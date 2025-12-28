@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+// Load signing.properties for release signing config
+val signingProperties = Properties().apply {
+    val signingPropsFile = rootProject.file("signing.properties")
+    if (signingPropsFile.exists()) {
+        signingPropsFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -27,6 +37,17 @@ android {
         aidl = true
     }
 
+    signingConfigs {
+        if (signingProperties.containsKey("storeFile")) {
+            create("release") {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -34,6 +55,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
