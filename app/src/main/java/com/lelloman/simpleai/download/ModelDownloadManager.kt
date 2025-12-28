@@ -34,16 +34,18 @@ object DefaultModel {
     )
 }
 
-class ModelDownloadManager(private val context: Context) {
-
-    private val client = OkHttpClient.Builder()
+class ModelDownloadManager(
+    private val context: Context,
+    private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.MINUTES)
         .writeTimeout(5, TimeUnit.MINUTES)
-        .build()
+        .build(),
+    private val modelsDirProvider: () -> File = { File(context.filesDir, "models").also { it.mkdirs() } }
+) {
 
     private val modelsDir: File
-        get() = File(context.filesDir, "models").also { it.mkdirs() }
+        get() = modelsDirProvider()
 
     fun getModelFile(config: ModelConfig = DefaultModel.CONFIG): File {
         return File(modelsDir, config.fileName)

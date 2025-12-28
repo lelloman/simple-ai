@@ -1,7 +1,8 @@
 package com.lelloman.simpleai.llm
 
 import android.content.ContentResolver
-import android.util.Log
+import com.lelloman.simpleai.util.AndroidLogger
+import com.lelloman.simpleai.util.Logger
 import org.nehuatl.llamacpp.LlamaHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -9,10 +10,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+
+typealias LlamaHelperFactory = (
+    ContentResolver,
+    CoroutineScope,
+    MutableSharedFlow<LlamaHelper.LLMEvent>
+) -> LlamaHelperWrapper
 
 data class GenerationParams(
     val maxTokens: Int = 512,
@@ -40,23 +46,28 @@ interface LLMEngine {
 /**
  * Real llama.cpp implementation using kotlinllamacpp library.
  */
-class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
+class LlamaEngine(
+    private val contentResolver: ContentResolver,
+    private val helperFactory: LlamaHelperFactory = ::RealLlamaHelperWrapper,
+    private val logger: Logger = AndroidLogger,
+    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS
+) : LLMEngine {
 
     companion object {
         private const val TAG = "LlamaEngine"
         private const val DEFAULT_CONTEXT_LENGTH = 4096
-        private const val GENERATION_TIMEOUT_MS = 120_000L // 2 minutes
+        private const val DEFAULT_GENERATION_TIMEOUT_MS = 120_000L // 2 minutes
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val llmFlow = MutableSharedFlow<LlamaHelper.LLMEvent>(
+    internal val llmFlow = MutableSharedFlow<LlamaHelper.LLMEvent>(
         replay = 0,
         extraBufferCapacity = 256,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
-    private var llamaHelper: LlamaHelper? = null
+    private var llamaHelper: LlamaHelperWrapper? = null
     private var _modelInfo: ModelInfo? = null
     private var currentModelPath: String? = null
 
@@ -75,13 +86,9 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
             // Unload previous model if any
             unloadModel()
 
-            Log.i(TAG, "Loading model from: ${modelPath.absolutePath}")
+            logger.i(TAG, "Loading model from: ${modelPath.absolutePath}")
 
-            val helper = LlamaHelper(
-                contentResolver = contentResolver,
-                scope = scope,
-                sharedFlow = llmFlow
-            )
+            val helper = helperFactory(contentResolver, scope, llmFlow)
 
             // Load model synchronously
             var loadSuccess = false
@@ -90,7 +97,7 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
             helper.load(
                 path = modelPath.absolutePath,
                 contextLength = DEFAULT_CONTEXT_LENGTH
-            ) {
+            ) { _ ->
                 loadSuccess = true
             }
 
@@ -110,11 +117,11 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
                 contextSize = DEFAULT_CONTEXT_LENGTH
             )
 
-            Log.i(TAG, "Model loaded successfully: ${modelPath.name}")
+            logger.i(TAG, "Model loaded successfully: ${modelPath.name}")
             Result.success(Unit)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading model", e)
+            logger.e(TAG, "Error loading model", e)
             Result.failure(e)
         }
     }
@@ -126,7 +133,7 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
                 helper.release()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error during model unload", e)
+            logger.w(TAG, "Error during model unload", e)
         }
         llamaHelper = null
         _modelInfo = null
@@ -138,27 +145,27 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
             ?: return Result.failure(IllegalStateException("Model not loaded"))
 
         return try {
-            Log.d(TAG, "Generating response for prompt (${prompt.length} chars)")
+            logger.d(TAG, "Generating response for prompt (${prompt.length} chars)")
 
             val response = runBlocking {
                 generateAsync(helper, prompt, params)
             }
 
             if (response != null) {
-                Log.d(TAG, "Generation complete: ${response.length} chars")
+                logger.d(TAG, "Generation complete: ${response.length} chars")
                 Result.success(response)
             } else {
                 Result.failure(RuntimeException("Generation timed out or failed"))
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error during generation", e)
+            logger.e(TAG, "Error during generation", e)
             Result.failure(e)
         }
     }
 
     private suspend fun generateAsync(
-        helper: LlamaHelper,
+        helper: LlamaHelperWrapper,
         prompt: String,
         params: GenerationParams
     ): String? {
@@ -170,14 +177,14 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
         helper.predict(prompt)
 
         // Collect events with timeout
-        withTimeoutOrNull(GENERATION_TIMEOUT_MS) {
+        withTimeoutOrNull(generationTimeoutMs) {
             llmFlow.collect { event ->
                 when (event) {
                     is LlamaHelper.LLMEvent.Started -> {
-                        Log.d(TAG, "Generation started")
+                        logger.d(TAG, "Generation started")
                     }
                     is LlamaHelper.LLMEvent.Loaded -> {
-                        Log.d(TAG, "Model loaded in generation context")
+                        logger.d(TAG, "Model loaded in generation context")
                     }
                     is LlamaHelper.LLMEvent.Ongoing -> {
                         responseBuilder.append(event.word)
@@ -189,12 +196,12 @@ class LlamaEngine(private val contentResolver: ContentResolver) : LLMEngine {
                         }
                     }
                     is LlamaHelper.LLMEvent.Done -> {
-                        Log.d(TAG, "Generation done")
+                        logger.d(TAG, "Generation done")
                         isComplete = true
                         return@collect
                     }
                     is LlamaHelper.LLMEvent.Error -> {
-                        Log.e(TAG, "Generation error: ${event.message}")
+                        logger.e(TAG, "Generation error: ${event.message}")
                         hasError = true
                         return@collect
                     }
