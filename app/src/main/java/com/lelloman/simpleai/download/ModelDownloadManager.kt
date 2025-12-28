@@ -35,10 +35,10 @@ data class ModelConfig(
 
 object DefaultModel {
     val CONFIG = ModelConfig(
-        name = "SmolLM2-1.7B",
-        url = "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
-        fileName = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
-        expectedSizeMb = 1060
+        name = "Llama-3.2-3B",
+        url = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        fileName = "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        expectedSizeMb = 2020
     )
 }
 

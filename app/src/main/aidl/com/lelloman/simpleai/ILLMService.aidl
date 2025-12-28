@@ -12,6 +12,34 @@ interface ILLMService {
      */
     String getStatus();
 
+    // ==================== Model Discovery ====================
+
+    /**
+     * Get available models that can be downloaded/used.
+     * Returns JSON array:
+     * [{"id": "qwen3-1.7b", "name": "Qwen 3 1.7B", "sizeMb": 1280,
+     *   "supportsTools": true, "downloaded": true}, ...]
+     */
+    String getAvailableModels();
+
+    /**
+     * Get currently loaded model info.
+     * Returns JSON:
+     * {"id": "qwen3-1.7b", "name": "Qwen 3 1.7B", "supportsTools": true, ...}
+     * Or null if no model is loaded.
+     */
+    String getCurrentModel();
+
+    /**
+     * Request to switch to a different model.
+     * This may trigger a download if the model is not cached.
+     * The switch happens asynchronously - monitor getStatus() for progress.
+     *
+     * @param modelId The model ID from getAvailableModels()
+     * @return "ok" if switch initiated, or "error: <message>"
+     */
+    String setModel(String modelId);
+
     // ==================== Generation ====================
 
     /**
@@ -33,6 +61,32 @@ interface ILLMService {
      */
     String generateWithParams(String prompt, int maxTokens, float temperature);
 
+    // ==================== Chat with Tools ====================
+
+    /**
+     * Chat with tool/function calling support.
+     * SimpleAI automatically uses the correct prompt format for the current model.
+     *
+     * @param messagesJson JSON array of messages in standard format:
+     *   [{"role": "user"|"assistant"|"tool", "content": "...",
+     *     "toolCallId": "..." (for tool results),
+     *     "toolCalls": [...] (for assistant tool requests)}]
+     *
+     * @param toolsJson JSON array of tool definitions (OpenAI format):
+     *   [{"type": "function", "function": {"name": "...", "description": "...",
+     *     "parameters": {"type": "object", "properties": {...}, "required": [...]}}}]
+     *   Pass null or empty string if no tools.
+     *
+     * @param systemPrompt Optional system prompt. Pass null for model default.
+     *
+     * @return JSON response in standard format:
+     *   {"type": "text", "content": "..."} - plain text response
+     *   {"type": "tool_calls", "toolCalls": [{"id": "...", "name": "...", "arguments": {...}}]}
+     *   {"type": "mixed", "content": "...", "toolCalls": [...]} - text + tool calls
+     *   {"type": "error", "message": "..."} - error occurred
+     */
+    String chat(String messagesJson, String toolsJson, String systemPrompt);
+
     // ==================== Translation ====================
 
     /**
@@ -42,43 +96,12 @@ interface ILLMService {
      * @param sourceLanguage Source language code (e.g., "en", "es", "auto" for auto-detect)
      * @param targetLanguage Target language code (e.g., "en", "es")
      * @return The translated text
-     *
-     * Supported language codes:
-     *   en - English
-     *   es - Spanish
-     *   fr - French
-     *   de - German
-     *   it - Italian
-     *   pt - Portuguese
-     *   nl - Dutch
-     *   pl - Polish
-     *   ru - Russian
-     *   uk - Ukrainian
-     *   zh - Chinese (Simplified)
-     *   ja - Japanese
-     *   ko - Korean
-     *   ar - Arabic
-     *   hi - Hindi
-     *   tr - Turkish
-     *   vi - Vietnamese
-     *   th - Thai
-     *   id - Indonesian
-     *   auto - Auto-detect source language
      */
     String translate(String text, String sourceLanguage, String targetLanguage);
 
     /**
      * Get list of supported language codes for translation.
      * Returns JSON array of language objects with "code" and "name" fields.
-     * Example: [{"code":"en","name":"English"},{"code":"es","name":"Spanish"}]
      */
     String getSupportedLanguages();
-
-    // ==================== Model Info ====================
-
-    /**
-     * Get information about the loaded model.
-     * Returns JSON string with model name, size, etc.
-     */
-    String getModelInfo();
 }

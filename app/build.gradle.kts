@@ -18,6 +18,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // Load signing.properties for release signing config
@@ -103,6 +104,9 @@ dependencies {
 
     // LLM inference
     implementation(libs.llamacpp.kotlin)
+
+    // JSON serialization
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

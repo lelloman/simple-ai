@@ -20,7 +20,11 @@ import kotlinx.coroutines.launch
 
 sealed class AppState {
     data object Starting : AppState()
-    data class Downloading(val progress: Float) : AppState()
+    data class Downloading(
+        val progress: Float,
+        val downloadedMb: Long = 0,
+        val totalMb: Long = 0
+    ) : AppState()
     data object Loading : AppState()
     data object Ready : AppState()
     data class Error(val message: String) : AppState()
@@ -49,7 +53,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LLMService.ACTION_STATUS_UPDATE) {
-                updateStateFromService()
+                // For download progress, read directly from the broadcast for real-time updates
+                val status = intent.getStringExtra(LLMService.EXTRA_STATUS)
+                if (status == "downloading") {
+                    val progress = intent.getFloatExtra(LLMService.EXTRA_PROGRESS, 0f)
+                    val downloadedBytes = intent.getLongExtra(LLMService.EXTRA_DOWNLOADED_BYTES, 0)
+                    val totalBytes = intent.getLongExtra(LLMService.EXTRA_TOTAL_BYTES, 0)
+                    _state.value = AppState.Downloading(
+                        progress = progress,
+                        downloadedMb = downloadedBytes / (1024 * 1024),
+                        totalMb = totalBytes / (1024 * 1024)
+                    )
+                } else {
+                    updateStateFromService()
+                }
             }
         }
     }

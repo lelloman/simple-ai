@@ -11,6 +11,12 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.lelloman.simpleai.ILLMService
 import com.lelloman.simpleai.R
+import com.lelloman.simpleai.chat.ChatFormatter
+import com.lelloman.simpleai.chat.ChatMessage
+import com.lelloman.simpleai.chat.ChatResponse
+import com.lelloman.simpleai.chat.FunctionDefinition
+import com.lelloman.simpleai.chat.ToolCall
+import com.lelloman.simpleai.chat.ToolDefinition
 import com.lelloman.simpleai.download.DownloadState
 import com.lelloman.simpleai.download.ModelDownloadManager
 import com.lelloman.simpleai.llm.GenerationParams
@@ -27,7 +33,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 class LLMService : Service() {
 
@@ -39,11 +52,17 @@ class LLMService : Service() {
         const val ACTION_STATUS_UPDATE = "com.lelloman.simpleai.STATUS_UPDATE"
         const val EXTRA_STATUS = "status"
         const val EXTRA_PROGRESS = "progress"
+        const val EXTRA_DOWNLOADED_BYTES = "downloaded_bytes"
+        const val EXTRA_TOTAL_BYTES = "total_bytes"
     }
 
     sealed class ServiceStatus {
         data object Initializing : ServiceStatus()
-        data class Downloading(val progress: Float) : ServiceStatus()
+        data class Downloading(
+            val progress: Float,
+            val downloadedBytes: Long = 0,
+            val totalBytes: Long = 0
+        ) : ServiceStatus()
         data object Loading : ServiceStatus()
         data object Ready : ServiceStatus()
         data class Error(val message: String) : ServiceStatus()
@@ -56,6 +75,14 @@ class LLMService : Service() {
 
     private val _status = MutableStateFlow<ServiceStatus>(ServiceStatus.Initializing)
     val status: StateFlow<ServiceStatus> = _status.asStateFlow()
+
+    private var currentModel: AvailableModel? = null
+    private var chatFormatter: ChatFormatter? = null
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     private val binder = object : ILLMService.Stub() {
         override fun isReady(): Boolean {
@@ -71,6 +98,12 @@ class LLMService : Service() {
                 is ServiceStatus.Error -> "error: ${s.message}"
             }
         }
+
+        override fun getAvailableModels(): String = buildAvailableModelsJson()
+
+        override fun getCurrentModel(): String? = buildCurrentModelJson()
+
+        override fun setModel(modelId: String): String = switchModel(modelId)
 
         override fun generate(prompt: String): String {
             if (!isReady) {
@@ -90,12 +123,15 @@ class LLMService : Service() {
             return llmEngine.generate(prompt, params).getOrElse { "Error: ${it.message}" }
         }
 
+        override fun chat(messagesJson: String, toolsJson: String?, systemPrompt: String?): String {
+            return handleChat(messagesJson, toolsJson, systemPrompt)
+        }
+
         override fun translate(text: String, sourceLanguage: String, targetLanguage: String): String {
             if (!isReady) {
                 return "Error: Model not ready. Status: ${getStatus()}"
             }
 
-            // Validate languages
             if (!Language.isValidCode(sourceLanguage)) {
                 return "Error: Invalid source language code: $sourceLanguage"
             }
@@ -103,16 +139,10 @@ class LLMService : Service() {
                 return "Error: Invalid target language code: $targetLanguage"
             }
 
-            val sourceLang = if (sourceLanguage == Language.AUTO_DETECT) {
-                null
-            } else {
-                Language.fromCode(sourceLanguage)
-            }
+            val sourceLang = if (sourceLanguage == Language.AUTO_DETECT) null else Language.fromCode(sourceLanguage)
             val targetLang = Language.fromCode(targetLanguage)!!
 
             val prompt = buildTranslationPrompt(text, sourceLang, targetLang)
-
-            // Use lower temperature for translation (more deterministic)
             val params = GenerationParams(
                 maxTokens = (text.length * 3).coerceIn(256, 2048),
                 temperature = 0.3f
@@ -123,40 +153,191 @@ class LLMService : Service() {
                 .getOrElse { "Error: ${it.message}" }
         }
 
-        override fun getSupportedLanguages(): String {
-            return Language.toJsonArray().toString()
+        override fun getSupportedLanguages(): String = Language.toJsonArray().toString()
+    }
+
+    // ==================== Model Discovery Helpers ====================
+
+    private fun buildAvailableModelsJson(): String {
+        val modelsArray = buildJsonArray {
+            AvailableModels.ALL.forEach { model ->
+                add(buildJsonObject {
+                    put("id", model.id)
+                    put("name", model.name)
+                    put("description", model.description)
+                    put("sizeMb", model.sizeMb)
+                    put("supportsTools", model.supportsTools)
+                    put("format", model.format.name)
+                    put("downloaded", downloadManager.isModelDownloaded(model))
+                })
+            }
+        }
+        return modelsArray.toString()
+    }
+
+    private fun buildCurrentModelJson(): String? {
+        val model = currentModel ?: return null
+        return buildJsonObject {
+            put("id", model.id)
+            put("name", model.name)
+            put("description", model.description)
+            put("sizeMb", model.sizeMb)
+            put("supportsTools", model.supportsTools)
+            put("format", model.format.name)
+        }.toString()
+    }
+
+    private fun switchModel(modelId: String): String {
+        val model = AvailableModels.findById(modelId)
+            ?: return "error: Unknown model ID: $modelId"
+
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_SELECTED_MODEL, modelId)
+            .apply()
+
+        llmEngine.unloadModel()
+        currentModel = null
+        chatFormatter = null
+
+        serviceScope.launch {
+            if (downloadManager.isModelDownloaded(model)) {
+                loadModel(model)
+            } else {
+                downloadModel(model)
+            }
         }
 
-        override fun getModelInfo(): String {
-            val info = llmEngine.modelInfo ?: return "{}"
-            return JSONObject().apply {
-                put("name", info.name)
-                put("path", info.path)
-                put("sizeBytes", info.sizeBytes)
-                put("contextSize", info.contextSize)
+        return "ok"
+    }
+
+    // ==================== Chat Helpers ====================
+
+    private fun handleChat(messagesJson: String, toolsJson: String?, systemPrompt: String?): String {
+        if (_status.value !is ServiceStatus.Ready || !llmEngine.isLoaded) {
+            return errorResponse("Model not ready")
+        }
+
+        val formatter = chatFormatter ?: return errorResponse("No formatter available")
+
+        return try {
+            val messages = parseMessages(messagesJson)
+            val tools = parseTools(toolsJson)
+
+            if (tools.isNotEmpty() && !formatter.supportsTools) {
+                return errorResponse("Current model does not support tool calling. Switch to Llama 3.2 or Qwen 3.")
+            }
+
+            val prompt = formatter.formatPrompt(messages, tools, systemPrompt)
+            val params = GenerationParams(maxTokens = 1024, temperature = 0.7f)
+            val rawResponse = llmEngine.generate(prompt, params).getOrThrow()
+            val parsed = formatter.parseResponse(rawResponse)
+
+            formatChatResponse(parsed)
+        } catch (e: Exception) {
+            errorResponse("Chat error: ${e.message}")
+        }
+    }
+
+    private fun parseMessages(messagesJson: String): List<ChatMessage> {
+        val messagesElement = json.parseToJsonElement(messagesJson)
+        return messagesElement.jsonArray.map { msgElement ->
+            val msgObj = msgElement.jsonObject
+            ChatMessage(
+                role = msgObj["role"]?.jsonPrimitive?.content ?: "user",
+                content = msgObj["content"]?.jsonPrimitive?.content ?: "",
+                toolCallId = msgObj["toolCallId"]?.jsonPrimitive?.content,
+                toolCalls = msgObj["toolCalls"]?.jsonArray?.map { tcElement ->
+                    val tcObj = tcElement.jsonObject
+                    ToolCall(
+                        id = tcObj["id"]?.jsonPrimitive?.content ?: "",
+                        name = tcObj["name"]?.jsonPrimitive?.content ?: "",
+                        arguments = tcObj["arguments"]?.jsonObject ?: JsonObject(emptyMap())
+                    )
+                }
+            )
+        }
+    }
+
+    private fun parseTools(toolsJson: String?): List<ToolDefinition> {
+        if (toolsJson.isNullOrBlank()) return emptyList()
+
+        val toolsElement = json.parseToJsonElement(toolsJson)
+        return toolsElement.jsonArray.map { toolElement ->
+            val toolObj = toolElement.jsonObject
+            val funcObj = toolObj["function"]?.jsonObject
+                ?: throw IllegalArgumentException("Tool missing 'function' field")
+            ToolDefinition(
+                type = toolObj["type"]?.jsonPrimitive?.content ?: "function",
+                function = FunctionDefinition(
+                    name = funcObj["name"]?.jsonPrimitive?.content ?: "",
+                    description = funcObj["description"]?.jsonPrimitive?.content ?: "",
+                    parameters = funcObj["parameters"]?.jsonObject ?: JsonObject(emptyMap())
+                )
+            )
+        }
+    }
+
+    private fun formatChatResponse(parsed: ChatResponse): String {
+        return when (parsed) {
+            is ChatResponse.Text -> buildJsonObject {
+                put("type", "text")
+                put("content", parsed.content)
             }.toString()
-        }
 
-        private fun buildTranslationPrompt(text: String, source: Language?, target: Language): String {
-            val sourceDesc = source?.displayName ?: "the source language"
-            return """Translate the following text from $sourceDesc to ${target.displayName}.
+            is ChatResponse.ToolCalls -> buildJsonObject {
+                put("type", "tool_calls")
+                put("toolCalls", buildToolCallsArray(parsed.toolCalls))
+            }.toString()
+
+            is ChatResponse.Mixed -> buildJsonObject {
+                put("type", "mixed")
+                put("content", parsed.content)
+                put("toolCalls", buildToolCallsArray(parsed.toolCalls))
+            }.toString()
+
+            is ChatResponse.Error -> errorResponse(parsed.message)
+        }
+    }
+
+    private fun buildToolCallsArray(toolCalls: List<ToolCall>) = buildJsonArray {
+        toolCalls.forEach { tc ->
+            add(buildJsonObject {
+                put("id", tc.id)
+                put("name", tc.name)
+                put("arguments", tc.arguments)
+            })
+        }
+    }
+
+    private fun errorResponse(message: String): String {
+        return buildJsonObject {
+            put("type", "error")
+            put("message", message)
+        }.toString()
+    }
+
+    // ==================== Translation Helpers ====================
+
+    private fun buildTranslationPrompt(text: String, source: Language?, target: Language): String {
+        val sourceDesc = source?.displayName ?: "the source language"
+        return """Translate the following text from $sourceDesc to ${target.displayName}.
 Only output the translation, nothing else.
 
 Text to translate:
 $text
 
 Translation:"""
-        }
-
-        private fun extractTranslation(response: String): String {
-            // Clean up the response - remove any prefixes the model might add
-            return response
-                .trim()
-                .removePrefix("Translation:")
-                .removePrefix("translation:")
-                .trim()
-        }
     }
+
+    private fun extractTranslation(response: String): String {
+        return response.trim()
+            .removePrefix("Translation:")
+            .removePrefix("translation:")
+            .trim()
+    }
+
+    // ==================== Service Lifecycle ====================
 
     override fun onCreate() {
         super.onCreate()
@@ -169,13 +350,9 @@ Translation:"""
         initialize()
     }
 
-    override fun onBind(intent: Intent?): IBinder {
-        return binder
-    }
+    override fun onBind(intent: Intent?): IBinder = binder
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
-    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         super.onDestroy()
@@ -209,16 +386,18 @@ Translation:"""
                     updateNotification("Starting download...")
                 }
                 is DownloadState.Downloading -> {
-                    _status.value = ServiceStatus.Downloading(state.progress)
+                    _status.value = ServiceStatus.Downloading(
+                        progress = state.progress,
+                        downloadedBytes = state.downloadedBytes,
+                        totalBytes = state.totalBytes
+                    )
                     val percent = (state.progress * 100).toInt()
                     val mbDownloaded = state.downloadedBytes / (1024 * 1024)
                     val mbTotal = state.totalBytes / (1024 * 1024)
                     updateNotification("Downloading: $percent% ($mbDownloaded/$mbTotal MB)")
                     broadcastStatus()
                 }
-                is DownloadState.Completed -> {
-                    loadModel(model)
-                }
+                is DownloadState.Completed -> loadModel(model)
                 is DownloadState.Error -> {
                     _status.value = ServiceStatus.Error(state.message)
                     updateNotification("Error: ${state.message}")
@@ -237,6 +416,8 @@ Translation:"""
             val modelFile = downloadManager.getModelFile(model)
             llmEngine.loadModel(modelFile).fold(
                 onSuccess = {
+                    currentModel = model
+                    chatFormatter = ChatFormatter.forFormat(model.format)
                     _status.value = ServiceStatus.Ready
                     updateNotification("Ready - ${model.name}")
                     broadcastStatus()
@@ -254,7 +435,11 @@ Translation:"""
         val intent = Intent(ACTION_STATUS_UPDATE).apply {
             putExtra(EXTRA_STATUS, binder.status)
             when (val s = _status.value) {
-                is ServiceStatus.Downloading -> putExtra(EXTRA_PROGRESS, s.progress)
+                is ServiceStatus.Downloading -> {
+                    putExtra(EXTRA_PROGRESS, s.progress)
+                    putExtra(EXTRA_DOWNLOADED_BYTES, s.downloadedBytes)
+                    putExtra(EXTRA_TOTAL_BYTES, s.totalBytes)
+                }
                 else -> {}
             }
         }
@@ -267,11 +452,8 @@ Translation:"""
                 NOTIFICATION_CHANNEL_ID,
                 "LLM Service",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Shows the status of the local LLM service"
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            ).apply { description = "Shows the status of the local LLM service" }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
@@ -285,8 +467,7 @@ Translation:"""
     }
 
     private fun updateNotification(text: String) {
-        val notification = createNotification(text)
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, notification)
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, createNotification(text))
     }
 }

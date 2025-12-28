@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -94,19 +95,9 @@ class LlamaEngine(
 
             logger.i(TAG, "Loading model from: ${modelPath.absolutePath}")
 
-            // Convert file path to content:// URI using FileProvider
-            val contentUri: Uri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, modelPath)
+            // Convert to content:// URI - required by the library
+            val contentUri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, modelPath)
             logger.i(TAG, "Content URI: $contentUri")
-
-            // Verify the file is accessible via ContentResolver before passing to native
-            try {
-                contentResolver.openFileDescriptor(contentUri, "r")?.use { fd ->
-                    logger.i(TAG, "File descriptor obtained successfully, fd=${fd.fd}")
-                } ?: throw IllegalStateException("Failed to open file descriptor")
-            } catch (e: Exception) {
-                logger.e(TAG, "Failed to access file via ContentResolver", e)
-                return Result.failure(e)
-            }
 
             val helper = helperFactory(contentResolver, scope, llmFlow)
 
@@ -195,49 +186,45 @@ class LlamaEngine(
         params: GenerationParams
     ): String? {
         val responseBuilder = StringBuilder()
-        var isComplete = false
         var hasError = false
 
         // Start prediction
         helper.predict(prompt)
 
-        // Collect events with timeout
+        // Collect events with timeout - use first{} to exit on terminal events
         withTimeoutOrNull(generationTimeoutMs) {
-            llmFlow.collect { event ->
+            llmFlow.first { event ->
                 when (event) {
                     is LlamaHelper.LLMEvent.Started -> {
                         logger.d(TAG, "Generation started")
+                        false // continue collecting
                     }
                     is LlamaHelper.LLMEvent.Loaded -> {
                         logger.d(TAG, "Model loaded in generation context")
+                        false // continue collecting
                     }
                     is LlamaHelper.LLMEvent.Ongoing -> {
                         responseBuilder.append(event.word)
                         // Check if we've reached max tokens (approximate by char count)
                         if (responseBuilder.length > params.maxTokens * 4) {
                             helper.stopPrediction()
-                            isComplete = true
-                            return@collect
+                            true // stop collecting
+                        } else {
+                            false // continue collecting
                         }
                     }
                     is LlamaHelper.LLMEvent.Done -> {
                         logger.d(TAG, "Generation done")
-                        isComplete = true
-                        return@collect
+                        true // stop collecting
                     }
                     is LlamaHelper.LLMEvent.Error -> {
                         logger.e(TAG, "Generation error: ${event.message}")
                         hasError = true
-                        return@collect
+                        true // stop collecting
                     }
                 }
             }
         }
-
-        // Stop prediction if still running
-        try {
-            helper.stopPrediction()
-        } catch (_: Exception) {}
 
         return if (hasError) null else responseBuilder.toString()
     }

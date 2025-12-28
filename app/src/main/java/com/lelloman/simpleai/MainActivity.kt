@@ -115,7 +115,11 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 AnimatedContent(targetState = state, label = "state") { currentState ->
                     when (currentState) {
                         is AppState.Starting -> StartingScreen()
-                        is AppState.Downloading -> DownloadingScreen(currentState.progress)
+                        is AppState.Downloading -> DownloadingScreen(
+                            progress = currentState.progress,
+                            downloadedMb = currentState.downloadedMb,
+                            totalMb = currentState.totalMb
+                        )
                         is AppState.Loading -> LoadingScreen()
                         is AppState.Ready -> ReadyScreen(viewModel)
                         is AppState.Error -> ErrorScreen(currentState.message)
@@ -142,7 +146,7 @@ fun StartingScreen() {
 }
 
 @Composable
-fun DownloadingScreen(progress: Float) {
+fun DownloadingScreen(progress: Float, downloadedMb: Long, totalMb: Long) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -156,7 +160,7 @@ fun DownloadingScreen(progress: Float) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "This is a one-time download (~1.3 GB)",
+            text = "This is a one-time download",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -169,8 +173,16 @@ fun DownloadingScreen(progress: Float) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "${(progress * 100).toInt()}%",
-            style = MaterialTheme.typography.bodyLarge
+            style = MaterialTheme.typography.titleLarge
         )
+        if (totalMb > 0) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "$downloadedMb / $totalMb MB",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

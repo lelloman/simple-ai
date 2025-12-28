@@ -14,8 +14,10 @@ lifecycleViewModel = "2.10.0"
 llamacppKotlin = "0.2.0"
 mockk = "1.13.9"
 turbine = "1.0.0"
+kotlinxSerialization = "1.7.3"
 
 [libraries]
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 llamacpp-kotlin = { group = "io.github.ljcamargo", name = "llamacpp-kotlin", version.ref = "llamacppKotlin" }
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -43,4 +45,5 @@ turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
