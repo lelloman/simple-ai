@@ -35,10 +35,10 @@ data class ModelConfig(
 
 object DefaultModel {
     val CONFIG = ModelConfig(
-        name = "Qwen3-1.7B",
-        url = "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf",
-        fileName = "Qwen_Qwen3-1.7B-Q4_K_M.gguf",
-        expectedSizeMb = 1280
+        name = "SmolLM2-1.7B",
+        url = "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+        fileName = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+        expectedSizeMb = 1060
     )
 }
 

@@ -2,7 +2,6 @@ package com.lelloman.simpleai.llm
 
 import android.content.ContentResolver
 import android.content.Context
-import android.net.Uri
 import com.lelloman.simpleai.util.NoOpLogger
 import io.mockk.every
 import io.mockk.mockk
@@ -43,19 +42,12 @@ class LlamaEngineTest {
         tempDir.deleteRecursively()
     }
 
-    private fun createMockUri(path: String): Uri {
-        val uri = mockk<Uri>(relaxed = true)
-        every { uri.toString() } returns "content://test/$path"
-        return uri
-    }
-
     private fun createEngine(timeoutMs: Long = 100L): LlamaEngine {
         engine = LlamaEngine(
             context = mockContext,
             helperFactory = { _, _, _ -> mockWrapper },
             logger = NoOpLogger,
-            generationTimeoutMs = timeoutMs,
-            fileToUriConverter = { file -> createMockUri(file.name) }
+            generationTimeoutMs = timeoutMs
         )
         return engine
     }

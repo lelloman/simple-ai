@@ -10,32 +10,24 @@ data class AvailableModel(
 )
 
 object AvailableModels {
-    val DEFAULT_MODEL_ID = "qwen3-1.7b"
+    val DEFAULT_MODEL_ID = "smollm2-1.7b"
 
     val ALL = listOf(
         AvailableModel(
-            id = "qwen3-0.6b",
-            name = "Qwen 3 0.6B",
+            id = "smollm2-360m",
+            name = "SmolLM2 360M",
             description = "Smallest, fastest. Good for simple tasks.",
-            url = "https://huggingface.co/bartowski/Qwen_Qwen3-0.6B-GGUF/resolve/main/Qwen_Qwen3-0.6B-Q4_K_M.gguf",
-            fileName = "Qwen_Qwen3-0.6B-Q4_K_M.gguf",
-            sizeMb = 430
+            url = "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q4_K_M.gguf",
+            fileName = "SmolLM2-360M-Instruct-Q4_K_M.gguf",
+            sizeMb = 271
         ),
         AvailableModel(
-            id = "qwen3-1.7b",
-            name = "Qwen 3 1.7B",
+            id = "smollm2-1.7b",
+            name = "SmolLM2 1.7B",
             description = "Balanced size and quality. Recommended.",
-            url = "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf",
-            fileName = "Qwen_Qwen3-1.7B-Q4_K_M.gguf",
-            sizeMb = 1280
-        ),
-        AvailableModel(
-            id = "qwen3-4b",
-            name = "Qwen 3 4B",
-            description = "Best quality. Requires more RAM.",
-            url = "https://huggingface.co/bartowski/Qwen_Qwen3-4B-GGUF/resolve/main/Qwen_Qwen3-4B-Q4_K_M.gguf",
-            fileName = "Qwen_Qwen3-4B-Q4_K_M.gguf",
-            sizeMb = 2900
+            url = "https://huggingface.co/bartowski/SmolLM2-1.7B-Instruct-GGUF/resolve/main/SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+            fileName = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
+            sizeMb = 1060
         )
     )
 

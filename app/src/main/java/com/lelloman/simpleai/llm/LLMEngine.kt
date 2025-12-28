@@ -46,8 +46,6 @@ interface LLMEngine {
     fun generate(prompt: String, params: GenerationParams = GenerationParams()): Result<String>
 }
 
-typealias FileToUriConverter = (File) -> Uri
-
 /**
  * Real llama.cpp implementation using kotlinllamacpp library.
  */
@@ -55,8 +53,7 @@ class LlamaEngine(
     private val context: Context,
     private val helperFactory: LlamaHelperFactory = ::RealLlamaHelperWrapper,
     private val logger: Logger = AndroidLogger,
-    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS,
-    private val fileToUriConverter: FileToUriConverter? = null
+    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS
 ) : LLMEngine {
 
     companion object {
@@ -67,10 +64,6 @@ class LlamaEngine(
     }
 
     private val contentResolver: ContentResolver = context.contentResolver
-
-    private val defaultFileToUri: FileToUriConverter = { file ->
-        FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
-    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -102,13 +95,22 @@ class LlamaEngine(
             logger.i(TAG, "Loading model from: ${modelPath.absolutePath}")
 
             // Convert file path to content:// URI using FileProvider
-            val converter = fileToUriConverter ?: defaultFileToUri
-            val contentUri: Uri = converter(modelPath)
+            val contentUri: Uri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, modelPath)
             logger.i(TAG, "Content URI: $contentUri")
+
+            // Verify the file is accessible via ContentResolver before passing to native
+            try {
+                contentResolver.openFileDescriptor(contentUri, "r")?.use { fd ->
+                    logger.i(TAG, "File descriptor obtained successfully, fd=${fd.fd}")
+                } ?: throw IllegalStateException("Failed to open file descriptor")
+            } catch (e: Exception) {
+                logger.e(TAG, "Failed to access file via ContentResolver", e)
+                return Result.failure(e)
+            }
 
             val helper = helperFactory(contentResolver, scope, llmFlow)
 
-            // Load model synchronously
+            // Load model using content URI
             var loadSuccess = false
             var loadError: String? = null
 
@@ -119,11 +121,16 @@ class LlamaEngine(
                 loadSuccess = true
             }
 
-            // Wait a bit for load to complete (the callback is called synchronously in the library)
-            Thread.sleep(100)
+            // Wait for load to complete - the library loads asynchronously
+            // Model loading can take several seconds for warmup
+            val maxWaitMs = 30_000L
+            val startTime = System.currentTimeMillis()
+            while (!loadSuccess && (System.currentTimeMillis() - startTime) < maxWaitMs) {
+                Thread.sleep(100)
+            }
 
             if (!loadSuccess) {
-                return Result.failure(RuntimeException("Failed to load model: ${loadError ?: "unknown error"}"))
+                return Result.failure(RuntimeException("Failed to load model: ${loadError ?: "timeout"}"))
             }
 
             llamaHelper = helper
