@@ -161,7 +161,7 @@ Translation:"""
     override fun onCreate() {
         super.onCreate()
         downloadManager = ModelDownloadManager(this)
-        llmEngine = LlamaEngine(contentResolver)
+        llmEngine = LlamaEngine(this)
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("Initializing..."))

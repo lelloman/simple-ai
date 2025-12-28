@@ -1,6 +1,9 @@
 package com.lelloman.simpleai.llm
 
 import android.content.ContentResolver
+import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
 import com.lelloman.simpleai.util.AndroidLogger
 import com.lelloman.simpleai.util.Logger
 import org.nehuatl.llamacpp.LlamaHelper
@@ -43,20 +46,30 @@ interface LLMEngine {
     fun generate(prompt: String, params: GenerationParams = GenerationParams()): Result<String>
 }
 
+typealias FileToUriConverter = (File) -> Uri
+
 /**
  * Real llama.cpp implementation using kotlinllamacpp library.
  */
 class LlamaEngine(
-    private val contentResolver: ContentResolver,
+    private val context: Context,
     private val helperFactory: LlamaHelperFactory = ::RealLlamaHelperWrapper,
     private val logger: Logger = AndroidLogger,
-    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS
+    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS,
+    private val fileToUriConverter: FileToUriConverter? = null
 ) : LLMEngine {
 
     companion object {
         private const val TAG = "LlamaEngine"
         private const val DEFAULT_CONTEXT_LENGTH = 4096
         private const val DEFAULT_GENERATION_TIMEOUT_MS = 120_000L // 2 minutes
+        private const val FILE_PROVIDER_AUTHORITY = "com.lelloman.simpleai.fileprovider"
+    }
+
+    private val contentResolver: ContentResolver = context.contentResolver
+
+    private val defaultFileToUri: FileToUriConverter = { file ->
+        FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -88,6 +101,11 @@ class LlamaEngine(
 
             logger.i(TAG, "Loading model from: ${modelPath.absolutePath}")
 
+            // Convert file path to content:// URI using FileProvider
+            val converter = fileToUriConverter ?: defaultFileToUri
+            val contentUri: Uri = converter(modelPath)
+            logger.i(TAG, "Content URI: $contentUri")
+
             val helper = helperFactory(contentResolver, scope, llmFlow)
 
             // Load model synchronously
@@ -95,7 +113,7 @@ class LlamaEngine(
             var loadError: String? = null
 
             helper.load(
-                path = modelPath.absolutePath,
+                path = contentUri.toString(),
                 contextLength = DEFAULT_CONTEXT_LENGTH
             ) { _ ->
                 loadSuccess = true
