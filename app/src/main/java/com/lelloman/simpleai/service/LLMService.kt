@@ -4,18 +4,20 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.lelloman.simpleai.ILLMService
 import com.lelloman.simpleai.R
-import com.lelloman.simpleai.download.DefaultModel
 import com.lelloman.simpleai.download.DownloadState
 import com.lelloman.simpleai.download.ModelDownloadManager
 import com.lelloman.simpleai.llm.GenerationParams
 import com.lelloman.simpleai.llm.LLMEngine
 import com.lelloman.simpleai.llm.LlamaEngine
+import com.lelloman.simpleai.model.AvailableModel
+import com.lelloman.simpleai.model.AvailableModels
 import com.lelloman.simpleai.translation.Language
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +34,8 @@ class LLMService : Service() {
     companion object {
         private const val NOTIFICATION_CHANNEL_ID = "llm_service_channel"
         private const val NOTIFICATION_ID = 1
+        private const val PREFS_NAME = "simple_ai_prefs"
+        private const val KEY_SELECTED_MODEL = "selected_model_id"
         const val ACTION_STATUS_UPDATE = "com.lelloman.simpleai.STATUS_UPDATE"
         const val EXTRA_STATUS = "status"
         const val EXTRA_PROGRESS = "progress"
@@ -179,18 +183,26 @@ Translation:"""
         serviceScope.cancel()
     }
 
+    private fun getSelectedModel(): AvailableModel {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val selectedId = prefs.getString(KEY_SELECTED_MODEL, AvailableModels.DEFAULT_MODEL_ID)
+            ?: AvailableModels.DEFAULT_MODEL_ID
+        return AvailableModels.findById(selectedId) ?: AvailableModels.getDefault()
+    }
+
     private fun initialize() {
         serviceScope.launch {
-            if (downloadManager.isModelDownloaded()) {
-                loadModel()
+            val model = getSelectedModel()
+            if (downloadManager.isModelDownloaded(model)) {
+                loadModel(model)
             } else {
-                downloadModel()
+                downloadModel(model)
             }
         }
     }
 
-    private suspend fun downloadModel() {
-        downloadManager.downloadModel().collect { state ->
+    private suspend fun downloadModel(model: AvailableModel) {
+        downloadManager.downloadModel(model).collect { state ->
             when (state) {
                 is DownloadState.Idle -> {
                     _status.value = ServiceStatus.Downloading(0f)
@@ -205,7 +217,7 @@ Translation:"""
                     broadcastStatus()
                 }
                 is DownloadState.Completed -> {
-                    loadModel()
+                    loadModel(model)
                 }
                 is DownloadState.Error -> {
                     _status.value = ServiceStatus.Error(state.message)
@@ -216,17 +228,17 @@ Translation:"""
         }
     }
 
-    private fun loadModel() {
+    private fun loadModel(model: AvailableModel) {
         _status.value = ServiceStatus.Loading
-        updateNotification("Loading model...")
+        updateNotification("Loading ${model.name}...")
         broadcastStatus()
 
         serviceScope.launch(Dispatchers.IO) {
-            val modelFile = downloadManager.getModelFile(DefaultModel.CONFIG)
+            val modelFile = downloadManager.getModelFile(model)
             llmEngine.loadModel(modelFile).fold(
                 onSuccess = {
                     _status.value = ServiceStatus.Ready
-                    updateNotification("Ready")
+                    updateNotification("Ready - ${model.name}")
                     broadcastStatus()
                 },
                 onFailure = {

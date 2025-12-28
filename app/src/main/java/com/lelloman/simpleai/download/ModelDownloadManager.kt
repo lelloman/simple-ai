@@ -1,6 +1,8 @@
 package com.lelloman.simpleai.download
 
 import android.content.Context
+import android.os.StatFs
+import com.lelloman.simpleai.model.AvailableModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -10,6 +12,12 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+
+data class StorageInfo(
+    val usedBytes: Long,
+    val availableBytes: Long,
+    val totalBytes: Long
+)
 
 sealed class DownloadState {
     data object Idle : DownloadState()
@@ -136,5 +144,56 @@ class ModelDownloadManager(
         val tempFile = File(modelsDir, "${config.fileName}.tmp")
         tempFile.delete()
         return file.delete()
+    }
+
+    // ==================== AvailableModel support ====================
+
+    fun getModelFile(model: AvailableModel): File {
+        return File(modelsDir, model.fileName)
+    }
+
+    fun isModelDownloaded(model: AvailableModel): Boolean {
+        val file = getModelFile(model)
+        return file.exists() && file.length() > 0
+    }
+
+    fun downloadModel(model: AvailableModel): Flow<DownloadState> {
+        val config = ModelConfig(
+            name = model.name,
+            url = model.url,
+            fileName = model.fileName,
+            expectedSizeMb = model.sizeMb
+        )
+        return downloadModel(config)
+    }
+
+    fun deleteModel(model: AvailableModel): Boolean {
+        val file = getModelFile(model)
+        val tempFile = File(modelsDir, "${model.fileName}.tmp")
+        tempFile.delete()
+        return file.delete()
+    }
+
+    fun getModelSizeBytes(model: AvailableModel): Long {
+        val file = getModelFile(model)
+        return if (file.exists()) file.length() else 0L
+    }
+
+    // ==================== Storage info ====================
+
+    fun getStorageInfo(): StorageInfo {
+        val modelsUsed = modelsDir.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".gguf") }
+            ?.sumOf { it.length() } ?: 0L
+
+        val statFs = StatFs(context.filesDir.absolutePath)
+        val availableBytes = statFs.availableBytes
+        val totalBytes = statFs.totalBytes
+
+        return StorageInfo(
+            usedBytes = modelsUsed,
+            availableBytes = availableBytes,
+            totalBytes = totalBytes
+        )
     }
 }
