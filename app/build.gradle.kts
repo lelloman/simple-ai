@@ -1,5 +1,19 @@
 import java.util.Properties
 
+val versionMajor = 1
+val versionMinor = 0
+val gitCommitCount: Int by lazy {
+    try {
+        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
+            .directory(projectDir)
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.bufferedReader().readText().trim().toInt()
+    } catch (e: Exception) {
+        1
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -22,8 +36,8 @@ android {
         applicationId = "com.lelloman.simpleai"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = gitCommitCount
+        versionName = "$versionMajor.$versionMinor.$gitCommitCount"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
