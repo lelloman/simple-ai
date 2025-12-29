@@ -152,25 +152,68 @@ class ModelDownloadManager(
         return File(modelsDir, model.fileName)
     }
 
-    fun isModelDownloaded(model: AvailableModel): Boolean {
-        val file = getModelFile(model)
-        return file.exists() && file.length() > 0
+    fun getTokenizerFile(model: AvailableModel): File {
+        // Extract filename from tokenizer URL, or use default
+        val tokenizerFileName = model.tokenizerUrl?.substringAfterLast("/") ?: "tokenizer.model"
+        return File(modelsDir, tokenizerFileName)
     }
 
-    fun downloadModel(model: AvailableModel): Flow<DownloadState> {
+    fun isModelDownloaded(model: AvailableModel): Boolean {
+        val modelFile = getModelFile(model)
+        val modelExists = modelFile.exists() && modelFile.length() > 0
+
+        // For ExecuTorch models, also check if tokenizer exists
+        if (model.tokenizerUrl != null) {
+            val tokenizerFile = getTokenizerFile(model)
+            return modelExists && tokenizerFile.exists() && tokenizerFile.length() > 0
+        }
+
+        return modelExists
+    }
+
+    fun downloadModel(model: AvailableModel): Flow<DownloadState> = flow {
+        // First, download the tokenizer if needed
+        if (model.tokenizerUrl != null) {
+            val tokenizerFile = getTokenizerFile(model)
+            if (!tokenizerFile.exists() || tokenizerFile.length() == 0L) {
+                emit(DownloadState.Idle)
+                // Download tokenizer (small file, no progress tracking)
+                try {
+                    val request = Request.Builder().url(model.tokenizerUrl).build()
+                    val response = client.newCall(request).execute()
+                    if (!response.isSuccessful) {
+                        emit(DownloadState.Error("Tokenizer download failed: HTTP ${response.code}"))
+                        return@flow
+                    }
+                    response.body?.byteStream()?.use { input ->
+                        tokenizerFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } catch (e: Exception) {
+                    emit(DownloadState.Error("Tokenizer download error: ${e.message}"))
+                    return@flow
+                }
+            }
+        }
+
+        // Then download the model
         val config = ModelConfig(
             name = model.name,
             url = model.url,
             fileName = model.fileName,
             expectedSizeMb = model.sizeMb
         )
-        return downloadModel(config)
-    }
+        downloadModel(config).collect { state ->
+            emit(state)
+        }
+    }.flowOn(Dispatchers.IO)
 
     fun deleteModel(model: AvailableModel): Boolean {
         val file = getModelFile(model)
         val tempFile = File(modelsDir, "${model.fileName}.tmp")
         tempFile.delete()
+        // Note: don't delete tokenizer as it may be shared between models
         return file.delete()
     }
 
@@ -183,7 +226,7 @@ class ModelDownloadManager(
 
     fun getStorageInfo(): StorageInfo {
         val modelsUsed = modelsDir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".gguf") }
+            ?.filter { it.isFile && (it.name.endsWith(".gguf") || it.name.endsWith(".pte") || it.name.startsWith("tokenizer.")) }
             ?.sumOf { it.length() } ?: 0L
 
         val statFs = StatFs(context.filesDir.absolutePath)

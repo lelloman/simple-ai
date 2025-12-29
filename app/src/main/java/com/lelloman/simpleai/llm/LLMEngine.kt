@@ -115,12 +115,14 @@ class LlamaEngine(
             // Wait for load to complete - the library loads asynchronously
             // Model loading can take several seconds for warmup
             val maxWaitMs = 30_000L
-            val startTime = System.currentTimeMillis()
-            while (!loadSuccess && (System.currentTimeMillis() - startTime) < maxWaitMs) {
+            val loadStartTime = System.currentTimeMillis()
+            while (!loadSuccess && (System.currentTimeMillis() - loadStartTime) < maxWaitMs) {
                 Thread.sleep(100)
             }
+            val loadElapsed = System.currentTimeMillis() - loadStartTime
 
             if (!loadSuccess) {
+                logger.w(TAG, "Model load failed after ${loadElapsed}ms")
                 return Result.failure(RuntimeException("Failed to load model: ${loadError ?: "timeout"}"))
             }
 
@@ -133,7 +135,7 @@ class LlamaEngine(
                 contextSize = DEFAULT_CONTEXT_LENGTH
             )
 
-            logger.i(TAG, "Model loaded successfully: ${modelPath.name}")
+            logger.i(TAG, "Model loaded successfully: ${modelPath.name} in ${loadElapsed}ms")
             Result.success(Unit)
 
         } catch (e: Exception) {
@@ -161,16 +163,19 @@ class LlamaEngine(
             ?: return Result.failure(IllegalStateException("Model not loaded"))
 
         return try {
-            logger.d(TAG, "Generating response for prompt (${prompt.length} chars)")
+            val startTime = System.currentTimeMillis()
+            logger.i(TAG, "Generating response for prompt (${prompt.length} chars)")
 
             val response = runBlocking {
                 generateAsync(helper, prompt, params)
             }
 
+            val elapsed = System.currentTimeMillis() - startTime
             if (response != null) {
-                logger.d(TAG, "Generation complete: ${response.length} chars")
+                logger.i(TAG, "Generation complete: ${response.length} chars in ${elapsed}ms")
                 Result.success(response)
             } else {
+                logger.w(TAG, "Generation failed after ${elapsed}ms")
                 Result.failure(RuntimeException("Generation timed out or failed"))
             }
 
@@ -187,6 +192,8 @@ class LlamaEngine(
     ): String? {
         val responseBuilder = StringBuilder()
         var hasError = false
+        val startTime = System.currentTimeMillis()
+        var firstTokenTime: Long? = null
 
         // Start prediction
         helper.predict(prompt)
@@ -196,14 +203,19 @@ class LlamaEngine(
             llmFlow.first { event ->
                 when (event) {
                     is LlamaHelper.LLMEvent.Started -> {
-                        logger.d(TAG, "Generation started")
+                        logger.i(TAG, "Generation started after ${System.currentTimeMillis() - startTime}ms")
                         false // continue collecting
                     }
                     is LlamaHelper.LLMEvent.Loaded -> {
-                        logger.d(TAG, "Model loaded in generation context")
+                        logger.i(TAG, "Model loaded in generation context after ${System.currentTimeMillis() - startTime}ms")
                         false // continue collecting
                     }
                     is LlamaHelper.LLMEvent.Ongoing -> {
+                        if (firstTokenTime == null) {
+                            firstTokenTime = System.currentTimeMillis()
+                            val ttft = firstTokenTime!! - startTime
+                            logger.i(TAG, "First token after ${ttft}ms (prompt processing time)")
+                        }
                         responseBuilder.append(event.word)
                         // Check if we've reached max tokens (approximate by char count)
                         if (responseBuilder.length > params.maxTokens * 4) {
@@ -214,11 +226,13 @@ class LlamaEngine(
                         }
                     }
                     is LlamaHelper.LLMEvent.Done -> {
-                        logger.d(TAG, "Generation done")
+                        val total = System.currentTimeMillis() - startTime
+                        val genTime = if (firstTokenTime != null) System.currentTimeMillis() - firstTokenTime!! else 0
+                        logger.i(TAG, "Generation done: total=${total}ms, generation=${genTime}ms, ${responseBuilder.length} chars")
                         true // stop collecting
                     }
                     is LlamaHelper.LLMEvent.Error -> {
-                        logger.e(TAG, "Generation error: ${event.message}")
+                        logger.e(TAG, "Generation error after ${System.currentTimeMillis() - startTime}ms: ${event.message}")
                         hasError = true
                         true // stop collecting
                     }

@@ -13,10 +13,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lelloman.simpleai.service.LLMService
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed class AppState {
     data object Starting : AppState()
@@ -53,19 +56,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == LLMService.ACTION_STATUS_UPDATE) {
-                // For download progress, read directly from the broadcast for real-time updates
-                val status = intent.getStringExtra(LLMService.EXTRA_STATUS)
-                if (status == "downloading") {
-                    val progress = intent.getFloatExtra(LLMService.EXTRA_PROGRESS, 0f)
-                    val downloadedBytes = intent.getLongExtra(LLMService.EXTRA_DOWNLOADED_BYTES, 0)
-                    val totalBytes = intent.getLongExtra(LLMService.EXTRA_TOTAL_BYTES, 0)
-                    _state.value = AppState.Downloading(
-                        progress = progress,
-                        downloadedMb = downloadedBytes / (1024 * 1024),
-                        totalMb = totalBytes / (1024 * 1024)
-                    )
-                } else {
-                    updateStateFromService()
+                // Use status directly from broadcast to avoid race with service binding
+                val status = intent.getStringExtra(LLMService.EXTRA_STATUS) ?: return
+                Log.d("MainViewModel", "Received status broadcast: $status")
+
+                _state.value = when {
+                    status == "downloading" -> {
+                        val progress = intent.getFloatExtra(LLMService.EXTRA_PROGRESS, 0f)
+                        val downloadedBytes = intent.getLongExtra(LLMService.EXTRA_DOWNLOADED_BYTES, 0)
+                        val totalBytes = intent.getLongExtra(LLMService.EXTRA_TOTAL_BYTES, 0)
+                        AppState.Downloading(
+                            progress = progress,
+                            downloadedMb = downloadedBytes / (1024 * 1024),
+                            totalMb = totalBytes / (1024 * 1024)
+                        )
+                    }
+                    status == "ready" -> AppState.Ready
+                    status == "loading" -> AppState.Loading
+                    status == "initializing" -> AppState.Starting
+                    status.startsWith("error:") -> AppState.Error(status.removePrefix("error: "))
+                    else -> AppState.Starting
                 }
             }
         }
@@ -122,8 +132,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             try {
-                val result = service.generate(prompt)
+                // Run AIDL call on IO thread to avoid blocking main thread
+                val result = withContext(Dispatchers.IO) {
+                    service.generate(prompt)
+                }
                 onResult(result)
+            } catch (e: Exception) {
+                onResult("Error: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Minimal test: ~100 tokens in, ~100 tokens out.
+     * For testing ExecuTorch prefill performance.
+     */
+    fun testMinimal(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val service = llmService
+            if (service == null) {
+                onResult("Error: Service not connected")
+                return@launch
+            }
+            try {
+                // ~100 tokens prompt (~400 chars)
+                // Llama tokenizer: ~4 chars per token, so 400 chars ≈ 100 tokens
+                val shortPrompt = """You are a helpful assistant. Your task is to write a very short creative poem about the moon and its gentle light shining down on a quiet village at night. The villagers are sleeping peacefully. Include imagery of stars, clouds, and perhaps a cat sitting on a rooftop. Keep your response under 50 words and make it beautiful and evocative."""
+
+                val startTime = System.currentTimeMillis()
+                val result = withContext(Dispatchers.IO) {
+                    service.generateWithParams(shortPrompt, 100, 0.7f)
+                }
+                val elapsed = System.currentTimeMillis() - startTime
+                onResult("[$elapsed ms]\n\n$result")
             } catch (e: Exception) {
                 onResult("Error: ${e.message}")
             }

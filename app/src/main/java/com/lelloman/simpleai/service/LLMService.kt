@@ -19,12 +19,15 @@ import com.lelloman.simpleai.chat.ToolCall
 import com.lelloman.simpleai.chat.ToolDefinition
 import com.lelloman.simpleai.download.DownloadState
 import com.lelloman.simpleai.download.ModelDownloadManager
+import com.lelloman.simpleai.llm.ExecuTorchEngine
 import com.lelloman.simpleai.llm.GenerationParams
 import com.lelloman.simpleai.llm.LLMEngine
 import com.lelloman.simpleai.llm.LlamaEngine
 import com.lelloman.simpleai.model.AvailableModel
 import com.lelloman.simpleai.model.AvailableModels
+import com.lelloman.simpleai.model.EngineType
 import com.lelloman.simpleai.translation.Language
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -71,7 +75,10 @@ class LLMService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var downloadManager: ModelDownloadManager
-    private lateinit var llmEngine: LLMEngine
+    private var llmEngine: LLMEngine? = null
+    private var llamaEngine: LlamaEngine? = null
+    private var execuTorchEngine: ExecuTorchEngine? = null
+    private var currentEngineType: EngineType? = null
 
     private val _status = MutableStateFlow<ServiceStatus>(ServiceStatus.Initializing)
     val status: StateFlow<ServiceStatus> = _status.asStateFlow()
@@ -86,7 +93,7 @@ class LLMService : Service() {
 
     private val binder = object : ILLMService.Stub() {
         override fun isReady(): Boolean {
-            return _status.value is ServiceStatus.Ready && llmEngine.isLoaded
+            return _status.value is ServiceStatus.Ready && llmEngine?.isLoaded == true
         }
 
         override fun getStatus(): String {
@@ -109,18 +116,26 @@ class LLMService : Service() {
             if (!isReady) {
                 return "Error: Model not ready. Status: ${getStatus()}"
             }
-            return llmEngine.generate(prompt).getOrElse { "Error: ${it.message}" }
+            val engine = llmEngine ?: return "Error: No engine available"
+            // Run generation on IO thread to avoid ANR
+            return runBlocking(Dispatchers.IO) {
+                engine.generate(prompt).getOrElse { "Error: ${it.message}" }
+            }
         }
 
         override fun generateWithParams(prompt: String, maxTokens: Int, temperature: Float): String {
             if (!isReady) {
                 return "Error: Model not ready. Status: ${getStatus()}"
             }
+            val engine = llmEngine ?: return "Error: No engine available"
             val params = GenerationParams(
                 maxTokens = if (maxTokens > 0) maxTokens else 512,
                 temperature = temperature.coerceIn(0f, 2f)
             )
-            return llmEngine.generate(prompt, params).getOrElse { "Error: ${it.message}" }
+            // Run generation on IO thread to avoid ANR
+            return runBlocking(Dispatchers.IO) {
+                engine.generate(prompt, params).getOrElse { "Error: ${it.message}" }
+            }
         }
 
         override fun chat(messagesJson: String, toolsJson: String?, systemPrompt: String?): String {
@@ -142,15 +157,19 @@ class LLMService : Service() {
             val sourceLang = if (sourceLanguage == Language.AUTO_DETECT) null else Language.fromCode(sourceLanguage)
             val targetLang = Language.fromCode(targetLanguage)!!
 
+            val engine = llmEngine ?: return "Error: No engine available"
             val prompt = buildTranslationPrompt(text, sourceLang, targetLang)
             val params = GenerationParams(
                 maxTokens = (text.length * 3).coerceIn(256, 2048),
                 temperature = 0.3f
             )
 
-            return llmEngine.generate(prompt, params)
-                .map { extractTranslation(it) }
-                .getOrElse { "Error: ${it.message}" }
+            // Run generation on IO thread to avoid ANR
+            return runBlocking(Dispatchers.IO) {
+                engine.generate(prompt, params)
+                    .map { extractTranslation(it) }
+                    .getOrElse { "Error: ${it.message}" }
+            }
         }
 
         override fun getSupportedLanguages(): String = Language.toJsonArray().toString()
@@ -196,7 +215,8 @@ class LLMService : Service() {
             .putString(KEY_SELECTED_MODEL, modelId)
             .apply()
 
-        llmEngine.unloadModel()
+        // Unload current engine
+        unloadCurrentEngine()
         currentModel = null
         chatFormatter = null
 
@@ -211,10 +231,21 @@ class LLMService : Service() {
         return "ok"
     }
 
+    private fun unloadCurrentEngine() {
+        llmEngine?.unloadModel()
+        llamaEngine?.release()
+        execuTorchEngine?.release()
+        llmEngine = null
+        llamaEngine = null
+        execuTorchEngine = null
+        currentEngineType = null
+    }
+
     // ==================== Chat Helpers ====================
 
     private fun handleChat(messagesJson: String, toolsJson: String?, systemPrompt: String?): String {
-        if (_status.value !is ServiceStatus.Ready || !llmEngine.isLoaded) {
+        val engine = llmEngine
+        if (_status.value !is ServiceStatus.Ready || engine == null || !engine.isLoaded) {
             return errorResponse("Model not ready")
         }
 
@@ -230,7 +261,10 @@ class LLMService : Service() {
 
             val prompt = formatter.formatPrompt(messages, tools, systemPrompt)
             val params = GenerationParams(maxTokens = 1024, temperature = 0.7f)
-            val rawResponse = llmEngine.generate(prompt, params).getOrThrow()
+            // Run generation on IO thread to avoid ANR
+            val rawResponse = runBlocking(Dispatchers.IO) {
+                engine.generate(prompt, params).getOrThrow()
+            }
             val parsed = formatter.parseResponse(rawResponse)
 
             formatChatResponse(parsed)
@@ -342,7 +376,7 @@ Translation:"""
     override fun onCreate() {
         super.onCreate()
         downloadManager = ModelDownloadManager(this)
-        llmEngine = LlamaEngine(this)
+        // Engine is lazily initialized based on model type in loadModel()
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
@@ -356,7 +390,7 @@ Translation:"""
 
     override fun onDestroy() {
         super.onDestroy()
-        (llmEngine as? LlamaEngine)?.release() ?: llmEngine.unloadModel()
+        unloadCurrentEngine()
         serviceScope.cancel()
     }
 
@@ -370,16 +404,23 @@ Translation:"""
     private fun initialize() {
         serviceScope.launch {
             val model = getSelectedModel()
-            if (downloadManager.isModelDownloaded(model)) {
+            Log.i("LLMService", "Initializing with model: ${model.id} (${model.name}), engineType: ${model.engineType}")
+            val isDownloaded = downloadManager.isModelDownloaded(model)
+            Log.i("LLMService", "Model downloaded: $isDownloaded")
+            if (isDownloaded) {
                 loadModel(model)
             } else {
+                Log.i("LLMService", "Starting download for model: ${model.id}")
                 downloadModel(model)
             }
         }
     }
 
     private suspend fun downloadModel(model: AvailableModel) {
-        downloadManager.downloadModel(model).collect { state ->
+        try {
+            Log.i("LLMService", "downloadModel starting collect for ${model.id}")
+            downloadManager.downloadModel(model).collect { state ->
+                Log.i("LLMService", "Download state: $state")
             when (state) {
                 is DownloadState.Idle -> {
                     _status.value = ServiceStatus.Downloading(0f)
@@ -404,6 +445,11 @@ Translation:"""
                     broadcastStatus()
                 }
             }
+            }
+        } catch (e: Exception) {
+            Log.e("LLMService", "Error in downloadModel", e)
+            _status.value = ServiceStatus.Error("Download error: ${e.message}")
+            updateNotification("Error: ${e.message}")
         }
     }
 
@@ -413,8 +459,11 @@ Translation:"""
         broadcastStatus()
 
         serviceScope.launch(Dispatchers.IO) {
+            // Create the appropriate engine based on model type
+            val engine = getOrCreateEngine(model)
+
             val modelFile = downloadManager.getModelFile(model)
-            llmEngine.loadModel(modelFile).fold(
+            engine.loadModel(modelFile).fold(
                 onSuccess = {
                     currentModel = model
                     chatFormatter = ChatFormatter.forFormat(model.format)
@@ -431,8 +480,35 @@ Translation:"""
         }
     }
 
+    private fun getOrCreateEngine(model: AvailableModel): LLMEngine {
+        // If switching engine types, unload the current one
+        if (currentEngineType != null && currentEngineType != model.engineType) {
+            unloadCurrentEngine()
+        }
+
+        return when (model.engineType) {
+            EngineType.EXECUTORCH -> {
+                if (execuTorchEngine == null) {
+                    execuTorchEngine = ExecuTorchEngine()
+                }
+                llmEngine = execuTorchEngine
+                currentEngineType = EngineType.EXECUTORCH
+                execuTorchEngine!!
+            }
+            EngineType.LLAMA_CPP -> {
+                if (llamaEngine == null) {
+                    llamaEngine = LlamaEngine(this@LLMService)
+                }
+                llmEngine = llamaEngine
+                currentEngineType = EngineType.LLAMA_CPP
+                llamaEngine!!
+            }
+        }
+    }
+
     private fun broadcastStatus() {
         val intent = Intent(ACTION_STATUS_UPDATE).apply {
+            setPackage(packageName)  // Explicit broadcast for Android 14+
             putExtra(EXTRA_STATUS, binder.status)
             when (val s = _status.value) {
                 is ServiceStatus.Downloading -> {
@@ -443,6 +519,7 @@ Translation:"""
                 else -> {}
             }
         }
+        Log.d("LLMService", "Broadcasting status: ${binder.status}")
         sendBroadcast(intent)
     }
 

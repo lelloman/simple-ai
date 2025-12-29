@@ -3,6 +3,11 @@ package com.lelloman.simpleai.model
 import com.lelloman.simpleai.chat.ModelFormat
 import kotlinx.serialization.Serializable
 
+enum class EngineType {
+    LLAMA_CPP,   // Uses llamacpp-kotlin with GGUF files
+    EXECUTORCH   // Uses ExecuTorch with PTE files
+}
+
 @Serializable
 data class AvailableModel(
     val id: String,
@@ -12,14 +17,16 @@ data class AvailableModel(
     val fileName: String,
     val sizeMb: Int,
     val format: ModelFormat,
-    val supportsTools: Boolean
+    val supportsTools: Boolean,
+    val engineType: EngineType = EngineType.LLAMA_CPP,
+    val tokenizerUrl: String? = null  // For ExecuTorch models that need separate tokenizer
 )
 
 object AvailableModels {
-    val DEFAULT_MODEL_ID = "llama3.2-3b"
+    val DEFAULT_MODEL_ID = "llama3.2-3b"  // GGUF - ExecuTorch models only have 1024 seq_len
 
     val ALL = listOf(
-        // ==================== Llama 3.2 (Recommended for tools) ====================
+        // ==================== Llama 3.2 GGUF (llama.cpp) ====================
         AvailableModel(
             id = "llama3.2-1b",
             name = "Llama 3.2 1B",
@@ -107,6 +114,20 @@ object AvailableModels {
             sizeMb = 2020,
             format = ModelFormat.HERMES,
             supportsTools = true
+        ),
+
+        // ==================== ExecuTorch (Fast, but limited context) ====================
+        AvailableModel(
+            id = "llama3.2-3b-et",
+            name = "Llama 3.2 3B (ExecuTorch)",
+            description = "Fast inference, but only 1024 token limit.",
+            url = "https://huggingface.co/software-mansion/react-native-executorch-llama-3.2/resolve/main/llama-3.2-3B/spinquant/llama3_2_3B_spinquant.pte",
+            fileName = "llama3_2_3B_spinquant.pte",
+            sizeMb = 2550,
+            format = ModelFormat.LLAMA,
+            supportsTools = true,
+            engineType = EngineType.EXECUTORCH,
+            tokenizerUrl = "https://huggingface.co/executorch-community/Llama-3.2-1B-Instruct-QLORA_INT4_EO8-ET/resolve/main/tokenizer.model"
         )
     )
 

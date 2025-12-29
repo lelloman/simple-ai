@@ -288,6 +288,32 @@ fun ReadyScreen(viewModel: MainViewModel) {
             }
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = {
+                if (!isLoading) {
+                    isLoading = true
+                    response = ""
+                    viewModel.testMinimal { result ->
+                        response = result
+                        isLoading = false
+                    }
+                }
+            },
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("Quick Test (~100 tok in/out)")
+            }
+        }
+
         if (response.isNotBlank()) {
             Spacer(modifier = Modifier.height(16.dp))
             Surface(

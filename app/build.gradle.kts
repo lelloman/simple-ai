@@ -105,6 +105,9 @@ dependencies {
     // LLM inference
     implementation(libs.llamacpp.kotlin)
 
+    // ExecuTorch for optimized on-device LLM inference
+    implementation("org.pytorch:executorch-android:0.6.0")
+
     // JSON serialization
     implementation(libs.kotlinx.serialization.json)
 
