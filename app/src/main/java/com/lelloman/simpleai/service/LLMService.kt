@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import com.lelloman.simpleai.ILLMService
 import com.lelloman.simpleai.R
@@ -26,6 +27,8 @@ import com.lelloman.simpleai.llm.LlamaEngine
 import com.lelloman.simpleai.model.AvailableModel
 import com.lelloman.simpleai.model.AvailableModels
 import com.lelloman.simpleai.model.EngineType
+import com.lelloman.simpleai.nlu.NLUEngine
+import com.lelloman.simpleai.nlu.OnnxNLUEngine
 import com.lelloman.simpleai.translation.Language
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +48,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonPrimitive
 
 class LLMService : Service() {
 
@@ -85,6 +89,9 @@ class LLMService : Service() {
 
     private var currentModel: AvailableModel? = null
     private var chatFormatter: ChatFormatter? = null
+
+    // NLU Engine for classification
+    private var nluEngine: NLUEngine? = null
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -173,6 +180,35 @@ class LLMService : Service() {
         }
 
         override fun getSupportedLanguages(): String = Language.toJsonArray().toString()
+
+        // ==================== Classification (NLU) ====================
+
+        override fun applyClassificationAdapter(
+            adapterId: String,
+            adapterVersion: String,
+            patchFd: ParcelFileDescriptor,
+            headsFd: ParcelFileDescriptor,
+            tokenizerFd: ParcelFileDescriptor,
+            configFd: ParcelFileDescriptor
+        ): String {
+            return handleApplyAdapter(adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd)
+        }
+
+        override fun removeClassificationAdapter(): String {
+            return handleRemoveAdapter()
+        }
+
+        override fun classify(text: String, adapterId: String): String {
+            return handleClassify(text, adapterId)
+        }
+
+        override fun getCurrentClassificationAdapter(): String? {
+            return buildCurrentAdapterJson()
+        }
+
+        override fun isClassificationReady(): Boolean {
+            return nluEngine?.isReady == true
+        }
     }
 
     // ==================== Model Discovery Helpers ====================
@@ -351,6 +387,89 @@ class LLMService : Service() {
         }.toString()
     }
 
+    // ==================== Classification Helpers ====================
+
+    private fun handleApplyAdapter(
+        adapterId: String,
+        adapterVersion: String,
+        patchFd: ParcelFileDescriptor,
+        headsFd: ParcelFileDescriptor,
+        tokenizerFd: ParcelFileDescriptor,
+        configFd: ParcelFileDescriptor
+    ): String {
+        val engine = nluEngine as? OnnxNLUEngine
+        if (engine == null) {
+            return "error: NLU engine not initialized"
+        }
+
+        return runBlocking(Dispatchers.IO) {
+            engine.applyAdapter(adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd).fold(
+                onSuccess = { "ok" },
+                onFailure = { "error: ${it.message}" }
+            )
+        }
+    }
+
+    private fun handleRemoveAdapter(): String {
+        val engine = nluEngine as? OnnxNLUEngine
+        if (engine == null) {
+            return "error: NLU engine not initialized"
+        }
+
+        return runBlocking(Dispatchers.IO) {
+            engine.removeAdapter().fold(
+                onSuccess = { "ok" },
+                onFailure = { "error: ${it.message}" }
+            )
+        }
+    }
+
+    private fun handleClassify(text: String, adapterId: String): String {
+        val engine = nluEngine
+        if (engine == null || !engine.isReady) {
+            return buildJsonObject {
+                put("error", "NLU engine not ready")
+            }.toString()
+        }
+
+        return runBlocking(Dispatchers.IO) {
+            engine.classify(text, adapterId).fold(
+                onSuccess = { result ->
+                    buildJsonObject {
+                        put("intent", result.intent)
+                        put("intent_confidence", result.intentConfidence)
+                        put("slots", buildJsonObject {
+                            result.slots.forEach { (slotType, values) ->
+                                put(slotType, buildJsonArray {
+                                    values.forEach { add(JsonPrimitive(it)) }
+                                })
+                            }
+                        })
+                        put("raw_slot_labels", buildJsonArray {
+                            result.rawSlotLabels.forEach { add(JsonPrimitive(it)) }
+                        })
+                    }.toString()
+                },
+                onFailure = { error ->
+                    buildJsonObject {
+                        put("error", error.message ?: "Classification failed")
+                    }.toString()
+                }
+            )
+        }
+    }
+
+    private fun buildCurrentAdapterJson(): String? {
+        val engine = nluEngine ?: return null
+        val adapter = engine.adapters.firstOrNull() ?: return null
+        return buildJsonObject {
+            put("id", adapter.id)
+            put("version", adapter.version)
+            put("intents", buildJsonArray { adapter.intents.forEach { add(JsonPrimitive(it)) } })
+            put("slot_types", buildJsonArray { adapter.slotTypes.forEach { add(JsonPrimitive(it)) } })
+        }.toString()
+    }
+
     // ==================== Translation Helpers ====================
 
     private fun buildTranslationPrompt(text: String, source: Language?, target: Language): String {
@@ -382,6 +501,27 @@ Translation:"""
         startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
 
         initialize()
+        initializeNLU()
+    }
+
+    private fun initializeNLU() {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                Log.i("LLMService", "Initializing NLU engine...")
+                val engine = OnnxNLUEngine(this@LLMService)
+                engine.initialize().fold(
+                    onSuccess = {
+                        nluEngine = engine
+                        Log.i("LLMService", "NLU engine ready with ${engine.adapters.size} adapters")
+                    },
+                    onFailure = { e ->
+                        Log.e("LLMService", "Failed to initialize NLU engine", e)
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("LLMService", "Error initializing NLU", e)
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -391,6 +531,8 @@ Translation:"""
     override fun onDestroy() {
         super.onDestroy()
         unloadCurrentEngine()
+        nluEngine?.release()
+        nluEngine = null
         serviceScope.cancel()
     }
 

@@ -104,4 +104,72 @@ interface ILLMService {
      * Returns JSON array of language objects with "code" and "name" fields.
      */
     String getSupportedLanguages();
+
+    // ==================== Classification (NLU) ====================
+
+    /**
+     * Apply a classification adapter provided by the caller app.
+     *
+     * The caller provides adapter files via ParcelFileDescriptors.
+     * SimpleAI keeps the base model in memory and patches it with the adapter.
+     * When switching adapters, the previous patch is reverted before applying the new one.
+     *
+     * @param adapterId Unique identifier for this adapter (e.g., "simpleephem")
+     * @param adapterVersion Version string for cache invalidation (e.g., "1.0")
+     * @param patchFd ParcelFileDescriptor for the .lorapatch file
+     * @param headsFd ParcelFileDescriptor for the heads.bin file
+     * @param tokenizerFd ParcelFileDescriptor for the tokenizer.json file
+     * @param configFd ParcelFileDescriptor for the config.json file
+     *
+     * @return "ok" if adapter applied successfully, or "error: <message>"
+     */
+    String applyClassificationAdapter(
+        String adapterId,
+        String adapterVersion,
+        in ParcelFileDescriptor patchFd,
+        in ParcelFileDescriptor headsFd,
+        in ParcelFileDescriptor tokenizerFd,
+        in ParcelFileDescriptor configFd
+    );
+
+    /**
+     * Remove the current classification adapter, reverting to pristine model state.
+     *
+     * @return "ok" if adapter removed successfully, or "error: <message>"
+     */
+    String removeClassificationAdapter();
+
+    /**
+     * Classify text using the currently applied adapter.
+     *
+     * @param text The input text to classify
+     * @param adapterId Must match the currently applied adapter
+     *
+     * @return JSON result:
+     *   {
+     *     "intent": "add_subject",
+     *     "intent_confidence": 0.95,
+     *     "slots": {
+     *       "planet": ["mars", "venus"],
+     *       "date": "tomorrow"
+     *     },
+     *     "raw_slot_labels": ["O", "B-planet", "O", ...]  // BIO tags per token
+     *   }
+     *   Or error: {"error": "No adapter applied"} or {"error": "Adapter mismatch: ..."}
+     */
+    String classify(String text, String adapterId);
+
+    /**
+     * Get info about the currently applied classification adapter.
+     *
+     * @return JSON object with adapter info, or null if no adapter applied:
+     *   {"id": "simpleephem", "version": "1.0", "intents": [...], "slot_types": [...]}
+     */
+    String getCurrentClassificationAdapter();
+
+    /**
+     * Check if classification is ready (base model loaded).
+     * Note: An adapter must be applied before calling classify().
+     */
+    boolean isClassificationReady();
 }
