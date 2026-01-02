@@ -45,11 +45,17 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
+
+        // SimpleAI protocol versioning
+        buildConfigField("int", "SERVICE_VERSION", "1")
+        buildConfigField("int", "MIN_PROTOCOL_VERSION", "1")
+        buildConfigField("int", "MAX_PROTOCOL_VERSION", "1")
     }
 
     buildFeatures {
         compose = true
         aidl = true
+        buildConfig = true
     }
 
     signingConfigs {
@@ -64,6 +70,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"https://dev-api.example.com/v1\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -73,6 +82,7 @@ android {
             if (signingConfigs.findByName("release") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"https://api.example.com/v1\"")
         }
     }
     compileOptions {
@@ -113,6 +123,9 @@ dependencies {
 
     // JSON serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // ML Kit Translation
+    implementation("com.google.mlkit:translate:17.0.3")
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
