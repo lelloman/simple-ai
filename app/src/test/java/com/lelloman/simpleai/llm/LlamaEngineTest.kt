@@ -5,21 +5,78 @@ import android.content.Context
 import com.lelloman.simpleai.util.NoOpLogger
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
-import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.io.File
 
+/**
+ * Simple test double for LlamaHelperWrapper that doesn't require MockK reflection.
+ */
+private class FakeLlamaHelperWrapper : LlamaHelperWrapper {
+    var loadCalled = false
+    var loadPath: String? = null
+    var loadContextLength: Int? = null
+    var predictCalled = false
+    var predictPrompt: String? = null
+    var stopPredictionCalled = false
+    var abortCalled = false
+    var releaseCalled = false
+    var abortCount = 0
+    var releaseCount = 0
+
+    // If set, load() will invoke callback immediately
+    var autoCompleteLoad = true
+
+    override fun load(path: String, contextLength: Int, onLoaded: (Long) -> Unit) {
+        loadCalled = true
+        loadPath = path
+        loadContextLength = contextLength
+        if (autoCompleteLoad) {
+            onLoaded(0L)
+        }
+    }
+
+    override fun predict(prompt: String) {
+        predictCalled = true
+        predictPrompt = prompt
+    }
+
+    override fun stopPrediction() {
+        stopPredictionCalled = true
+    }
+
+    override fun abort() {
+        abortCalled = true
+        abortCount++
+    }
+
+    override fun release() {
+        releaseCalled = true
+        releaseCount++
+    }
+
+    fun reset() {
+        loadCalled = false
+        loadPath = null
+        loadContextLength = null
+        predictCalled = false
+        predictPrompt = null
+        stopPredictionCalled = false
+        abortCalled = false
+        releaseCalled = false
+        abortCount = 0
+        releaseCount = 0
+    }
+}
+
 class LlamaEngineTest {
 
     private lateinit var tempDir: File
     private lateinit var mockContext: Context
     private lateinit var mockContentResolver: ContentResolver
-    private lateinit var mockWrapper: LlamaHelperWrapper
+    private lateinit var fakeWrapper: FakeLlamaHelperWrapper
     private lateinit var engine: LlamaEngine
 
     @Before
@@ -31,7 +88,7 @@ class LlamaEngineTest {
         mockContext = mockk(relaxed = true) {
             every { contentResolver } returns mockContentResolver
         }
-        mockWrapper = mockk(relaxed = true)
+        fakeWrapper = FakeLlamaHelperWrapper()
     }
 
     @After
@@ -45,9 +102,10 @@ class LlamaEngineTest {
     private fun createEngine(timeoutMs: Long = 100L): LlamaEngine {
         engine = LlamaEngine(
             context = mockContext,
-            helperFactory = { _, _, _ -> mockWrapper },
+            helperFactory = { _, _, _ -> fakeWrapper },
             logger = NoOpLogger,
-            generationTimeoutMs = timeoutMs
+            generationTimeoutMs = timeoutMs,
+            uriResolver = { file -> "content://test/${file.name}" }
         )
         return engine
     }
@@ -82,18 +140,13 @@ class LlamaEngineTest {
         val modelFile = File(tempDir, "model.gguf")
         modelFile.writeText("dummy model content")
 
-        // Capture the onLoaded callback and invoke it immediately
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
-
         val result = engine.loadModel(modelFile)
 
         assertTrue(result.isSuccess)
         assertTrue(engine.isLoaded)
         assertNotNull(engine.modelInfo)
         assertEquals("model.gguf", engine.modelInfo?.name)
+        assertTrue(fakeWrapper.loadCalled)
     }
 
     @Test
@@ -101,11 +154,6 @@ class LlamaEngineTest {
         val engine = createEngine()
         val modelFile = File(tempDir, "test_model.gguf")
         modelFile.writeBytes(ByteArray(1024)) // 1KB file
-
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
 
         engine.loadModel(modelFile)
 
@@ -125,17 +173,12 @@ class LlamaEngineTest {
         modelFile1.writeText("model1")
         modelFile2.writeText("model2")
 
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
-
         engine.loadModel(modelFile1)
         engine.loadModel(modelFile2)
 
         // Should have called abort and release on previous model
-        verify(atLeast = 1) { mockWrapper.abort() }
-        verify(atLeast = 1) { mockWrapper.release() }
+        assertTrue(fakeWrapper.abortCount >= 1)
+        assertTrue(fakeWrapper.releaseCount >= 1)
 
         assertEquals("model2.gguf", engine.modelInfo?.name)
     }
@@ -145,11 +188,6 @@ class LlamaEngineTest {
         val engine = createEngine()
         val modelFile = File(tempDir, "model.gguf")
         modelFile.writeText("model")
-
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
 
         engine.loadModel(modelFile)
         assertTrue(engine.isLoaded)
@@ -166,16 +204,12 @@ class LlamaEngineTest {
         val modelFile = File(tempDir, "model.gguf")
         modelFile.writeText("model")
 
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
-
         engine.loadModel(modelFile)
+        fakeWrapper.reset() // Reset to check only the unload calls
         engine.unloadModel()
 
-        verify { mockWrapper.abort() }
-        verify { mockWrapper.release() }
+        assertTrue(fakeWrapper.abortCalled)
+        assertTrue(fakeWrapper.releaseCalled)
     }
 
     @Test
@@ -194,11 +228,6 @@ class LlamaEngineTest {
         val modelFile = File(tempDir, "model.gguf")
         modelFile.writeText("model")
 
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
-
         engine.loadModel(modelFile)
 
         // generate() will timeout internally since we're not emitting events,
@@ -206,7 +235,8 @@ class LlamaEngineTest {
         engine.generate("test prompt")
 
         // Verify predict was called with the correct prompt
-        verify { mockWrapper.predict("test prompt") }
+        assertTrue(fakeWrapper.predictCalled)
+        assertEquals("test prompt", fakeWrapper.predictPrompt)
     }
 
     @Test
@@ -276,16 +306,12 @@ class LlamaEngineTest {
         val modelFile = File(tempDir, "model.gguf")
         modelFile.writeText("model")
 
-        val callbackSlot = slot<(Long) -> Unit>()
-        every { mockWrapper.load(any(), any(), capture(callbackSlot)) } answers {
-            callbackSlot.captured.invoke(0L)
-        }
-
         engine.loadModel(modelFile)
+        fakeWrapper.reset()
         engine.release()
 
         assertFalse(engine.isLoaded)
-        verify { mockWrapper.abort() }
-        verify { mockWrapper.release() }
+        assertTrue(fakeWrapper.abortCalled)
+        assertTrue(fakeWrapper.releaseCalled)
     }
 }

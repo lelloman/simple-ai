@@ -2,7 +2,6 @@ package com.lelloman.simpleai.llm
 
 import android.content.ContentResolver
 import android.content.Context
-import android.net.Uri
 import androidx.core.content.FileProvider
 import com.lelloman.simpleai.util.AndroidLogger
 import com.lelloman.simpleai.util.Logger
@@ -54,7 +53,10 @@ class LlamaEngine(
     private val context: Context,
     private val helperFactory: LlamaHelperFactory = ::RealLlamaHelperWrapper,
     private val logger: Logger = AndroidLogger,
-    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS
+    private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS,
+    private val uriResolver: (File) -> String = { file ->
+        FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file).toString()
+    }
 ) : LLMEngine {
 
     companion object {
@@ -96,8 +98,8 @@ class LlamaEngine(
             logger.i(TAG, "Loading model from: ${modelPath.absolutePath}")
 
             // Convert to content:// URI - required by the library
-            val contentUri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, modelPath)
-            logger.i(TAG, "Content URI: $contentUri")
+            val contentUriString = uriResolver(modelPath)
+            logger.i(TAG, "Content URI: $contentUriString")
 
             val helper = helperFactory(contentResolver, scope, llmFlow)
 
@@ -106,7 +108,7 @@ class LlamaEngine(
             var loadError: String? = null
 
             helper.load(
-                path = contentUri.toString(),
+                path = contentUriString,
                 contextLength = DEFAULT_CONTEXT_LENGTH
             ) { _ ->
                 loadSuccess = true
