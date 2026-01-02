@@ -41,14 +41,18 @@ interface ISimpleAI {
      * directly. If different, SimpleAI reverts the current patch, applies the new
      * one, and stores the revert data for future switches.
      *
+     * NOTE: The caller is responsible for closing the ParcelFileDescriptors after
+     * this call returns. SimpleAI reads from them during this call but does not
+     * take ownership.
+     *
      * @param protocolVersion Client's protocol version (e.g., 1, 2, 3)
      * @param text Text to classify
      * @param adapterId Unique identifier for the adapter (e.g., "simpleephem")
      * @param adapterVersion Version string for change detection (e.g., "1.0.3")
-     * @param patchFd ParcelFileDescriptor for .lorapatch file
-     * @param headsFd ParcelFileDescriptor for heads.bin file
-     * @param tokenizerFd ParcelFileDescriptor for tokenizer.json
-     * @param configFd ParcelFileDescriptor for config.json
+     * @param patchFd ParcelFileDescriptor for .lorapatch file (caller must close)
+     * @param headsFd ParcelFileDescriptor for heads.bin file (caller must close)
+     * @param tokenizerFd ParcelFileDescriptor for tokenizer.json (caller must close)
+     * @param configFd ParcelFileDescriptor for config.json (caller must close)
      * @return JSON response:
      *   Success:
      *   {

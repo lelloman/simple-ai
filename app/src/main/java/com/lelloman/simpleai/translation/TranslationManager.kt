@@ -32,7 +32,8 @@ class TranslationManager(
     companion object {
         private const val TAG = "TranslationManager"
 
-        // Map our language codes to ML Kit codes
+        // Map our language codes (BCP-47) to ML Kit TranslateLanguage constants
+        // This is the single source of truth for supported languages
         private val LANGUAGE_MAP = mapOf(
             "af" to TranslateLanguage.AFRIKAANS,
             "ar" to TranslateLanguage.ARABIC,
@@ -94,6 +95,12 @@ class TranslationManager(
             "vi" to TranslateLanguage.VIETNAMESE,
             "zh" to TranslateLanguage.CHINESE
         )
+
+        /**
+         * Set of all supported language codes (BCP-47 format).
+         * Used by CapabilityManager as the single source of truth.
+         */
+        val SUPPORTED_LANGUAGES: Set<String> = LANGUAGE_MAP.keys
     }
 
     private val modelManager = RemoteModelManager.getInstance()
@@ -282,6 +289,8 @@ class TranslationManager(
 
     /**
      * Detect the language of the given text.
+     *
+     * @return BCP-47 language code (e.g., "en", "it") or null if detection failed
      */
     suspend fun detectLanguage(text: String): String? = suspendCancellableCoroutine { cont ->
         languageIdentifier.identifyLanguage(text)
@@ -289,9 +298,10 @@ class TranslationManager(
                 if (langCode == "und") {
                     cont.resume(null)
                 } else {
-                    // ML Kit returns BCP-47 codes, map to our codes
-                    val ourCode = LANGUAGE_MAP.entries.find { it.value == langCode }?.key ?: langCode
-                    cont.resume(ourCode)
+                    // ML Kit language identifier returns BCP-47 codes (e.g., "en", "it")
+                    // which match our LANGUAGE_MAP keys. We verify it's a supported language.
+                    val supportedCode = if (langCode in LANGUAGE_MAP) langCode else null
+                    cont.resume(supportedCode)
                 }
             }
             .addOnFailureListener { _: Exception ->

@@ -121,7 +121,7 @@ class OnnxNLUEngine(
                 loadBaseModel()
 
                 _status.value = Status.Ready
-                Log.i(TAG, "NLU Engine initialized, model loaded (${modelBytes?.size?.div(1024 / 1024)} MB)")
+                Log.i(TAG, "NLU Engine initialized, model loaded (${modelBytes?.size?.div(1024 * 1024)} MB)")
                 Result.success(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to initialize NLU Engine", e)

@@ -98,14 +98,14 @@ All AIDL methods return JSON strings with this structure:
 // Success
 {
   "status": "success",
-  "protocolVersion": "v1",
+  "protocolVersion": 1,
   "data": { ... }
 }
 
 // Error
 {
   "status": "error",
-  "protocolVersion": "v1",
+  "protocolVersion": 1,
   "error": {
     "code": "CAPABILITY_NOT_READY",
     "message": "Voice Commands capability is not downloaded",

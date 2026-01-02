@@ -3,6 +3,7 @@ package com.lelloman.simpleai.capability
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.lelloman.simpleai.translation.TranslationManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,15 +26,9 @@ class CapabilityManager(
         const val LOCAL_AI_MODEL_SIZE = 1_300_000_000L      // ~1.3 GB Qwen 3 1.7B
         const val TRANSLATION_LANGUAGE_SIZE = 30_000_000L   // ~30 MB per language
 
-        // ML Kit supported languages
-        val SUPPORTED_LANGUAGES = setOf(
-            "af", "ar", "be", "bg", "bn", "ca", "cs", "cy", "da", "de",
-            "el", "en", "eo", "es", "et", "fa", "fi", "fr", "ga", "gl",
-            "gu", "he", "hi", "hr", "ht", "hu", "id", "is", "it", "ja",
-            "ka", "kn", "ko", "lt", "lv", "mk", "mr", "ms", "mt", "nl",
-            "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sv", "sw",
-            "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "zh"
-        )
+        // ML Kit supported languages - delegate to TranslationManager as single source of truth
+        val SUPPORTED_LANGUAGES: Set<String>
+            get() = TranslationManager.SUPPORTED_LANGUAGES
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -141,6 +136,15 @@ class CapabilityManager(
 
     fun updateTranslationStatus(status: CapabilityStatus) {
         _translationStatus.value = status
+    }
+
+    /**
+     * Sync downloaded languages from TranslationManager.
+     * This replaces the current set entirely to ensure consistency.
+     */
+    fun syncTranslationLanguages(languages: Set<String>) {
+        _downloadedLanguages.value = languages
+        persistTranslationLanguages(languages)
     }
 
     private fun persistTranslationLanguages(languages: Set<String>) {

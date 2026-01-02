@@ -416,15 +416,25 @@ class SimpleAIService : Service() {
                 manager.initialize()
                 translationManager = manager
 
-                // Sync with capability manager
+                // Initial sync with capability manager
                 val downloaded = manager.downloadedLanguages.value
-                downloaded.forEach { capabilityManager.addTranslationLanguage(it) }
+                syncTranslationLanguages(downloaded)
 
                 if (downloaded.isNotEmpty()) {
                     capabilityManager.updateTranslationStatus(CapabilityStatus.Ready)
                     Log.i(TAG, "Translation ready with languages: $downloaded")
                 } else {
                     Log.i(TAG, "Translation manager initialized, no languages downloaded")
+                }
+
+                // Observe ongoing changes to downloaded languages
+                manager.downloadedLanguages.collect { languages ->
+                    syncTranslationLanguages(languages)
+                    if (languages.isNotEmpty()) {
+                        capabilityManager.updateTranslationStatus(CapabilityStatus.Ready)
+                    } else {
+                        capabilityManager.updateTranslationStatus(CapabilityStatus.NotDownloaded(0))
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing Translation", e)
@@ -435,6 +445,15 @@ class SimpleAIService : Service() {
         }
 
         // TODO: Initialize cloud and local AI in later phases
+    }
+
+    /**
+     * Sync downloaded languages from TranslationManager to CapabilityManager.
+     * This ensures both components have the same view of downloaded languages.
+     */
+    private fun syncTranslationLanguages(languages: Set<String>) {
+        capabilityManager.syncTranslationLanguages(languages)
+        Log.d(TAG, "Synced translation languages: $languages")
     }
 
     override fun onBind(intent: Intent?): IBinder {
