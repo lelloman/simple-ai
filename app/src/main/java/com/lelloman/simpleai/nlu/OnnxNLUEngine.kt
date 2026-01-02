@@ -18,9 +18,12 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.LongBuffer
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import java.util.concurrent.TimeUnit
 
 /**
@@ -59,7 +62,8 @@ class OnnxNLUEngine(
     val status: StateFlow<Status> = _status
 
     private var ortEnv: OrtEnvironment? = null
-    private var modelBytes: ByteArray? = null
+    private var modelBuffer: MappedByteBuffer? = null
+    private var modelFileChannel: FileChannel? = null
     private var currentSession: OrtSession? = null
     private var currentRevertPatch: LoraPatcher.RevertPatch? = null
     private var currentAdapter: LoadedAdapter? = null
@@ -95,7 +99,7 @@ class OnnxNLUEngine(
     )
 
     override val isReady: Boolean
-        get() = modelBytes != null && _status.value == Status.Ready
+        get() = modelBuffer != null && _status.value == Status.Ready
 
     override val adapters: List<NLUAdapter>
         get() = currentAdapter?.let {
@@ -121,7 +125,7 @@ class OnnxNLUEngine(
                 loadBaseModel()
 
                 _status.value = Status.Ready
-                Log.i(TAG, "NLU Engine initialized, model loaded (${modelBytes?.size?.div(1024 * 1024)} MB)")
+                Log.i(TAG, "NLU Engine initialized, model loaded (${modelBuffer?.capacity()?.div(1024 * 1024)} MB)")
                 Result.success(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to initialize NLU Engine", e)
@@ -137,10 +141,12 @@ class OnnxNLUEngine(
             downloadBaseModel()
         }
 
-        // Load into memory
-        Log.i(TAG, "Loading base model into memory...")
-        modelBytes = baseModelFile.readBytes()
-        Log.i(TAG, "Base model loaded: ${modelBytes?.size?.div(1024 * 1024)} MB")
+        // Memory-map the file instead of reading into heap
+        Log.i(TAG, "Memory-mapping base model...")
+        val raf = RandomAccessFile(baseModelFile, "rw")
+        modelFileChannel = raf.channel
+        modelBuffer = modelFileChannel!!.map(FileChannel.MapMode.READ_WRITE, 0, baseModelFile.length())
+        Log.i(TAG, "Base model mapped: ${modelBuffer?.capacity()?.div(1024 * 1024)} MB")
     }
 
     private suspend fun downloadBaseModel() {
@@ -198,7 +204,7 @@ class OnnxNLUEngine(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
-                val bytes = modelBytes ?: return@withContext Result.failure(
+                val buffer = modelBuffer ?: return@withContext Result.failure(
                     IllegalStateException("Model not loaded")
                 )
 
@@ -213,7 +219,7 @@ class OnnxNLUEngine(
                 // Revert current patch if any
                 currentRevertPatch?.let { revert ->
                     Log.i(TAG, "Reverting current patch: ${revert.adapterId}")
-                    loraPatcher.revertPatch(bytes, revert)
+                    loraPatcher.revertPatch(buffer, revert)
                     currentSession?.close()
                     currentSession = null
                     currentRevertPatch = null
@@ -223,7 +229,7 @@ class OnnxNLUEngine(
                 // Apply new patch
                 Log.i(TAG, "Applying adapter $adapterId v$adapterVersion")
                 FileInputStream(patchFd.fileDescriptor).use { patchStream ->
-                    currentRevertPatch = loraPatcher.applyPatch(bytes, patchStream, adapterId, adapterVersion)
+                    currentRevertPatch = loraPatcher.applyPatch(buffer, patchStream, adapterId, adapterVersion)
                 }
 
                 // Load heads
@@ -241,14 +247,17 @@ class OnnxNLUEngine(
                     loadConfig(configStream)
                 }
 
-                // Create new ONNX session from patched bytes
+                // Force sync the patched buffer to disk
+                buffer.force()
+
+                // Create new ONNX session from the patched file
                 val env = ortEnv ?: return@withContext Result.failure(
                     IllegalStateException("ORT environment not initialized")
                 )
                 val sessionOptions = OrtSession.SessionOptions().apply {
                     setIntraOpNumThreads(4)
                 }
-                currentSession = env.createSession(bytes, sessionOptions)
+                currentSession = env.createSession(baseModelFile.absolutePath, sessionOptions)
 
                 currentAdapter = LoadedAdapter(
                     id = adapterId,
@@ -283,13 +292,14 @@ class OnnxNLUEngine(
     suspend fun removeAdapter(): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
-                val bytes = modelBytes ?: return@withContext Result.failure(
+                val buffer = modelBuffer ?: return@withContext Result.failure(
                     IllegalStateException("Model not loaded")
                 )
 
                 currentRevertPatch?.let { revert ->
                     Log.i(TAG, "Reverting patch: ${revert.adapterId}")
-                    loraPatcher.revertPatch(bytes, revert)
+                    loraPatcher.revertPatch(buffer, revert)
+                    buffer.force() // Sync changes to disk
                 }
 
                 currentSession?.close()
@@ -626,7 +636,9 @@ class OnnxNLUEngine(
         currentSession = null
         currentRevertPatch = null
         currentAdapter = null
-        modelBytes = null
+        modelBuffer = null
+        modelFileChannel?.close()
+        modelFileChannel = null
         ortEnv?.close()
         ortEnv = null
     }

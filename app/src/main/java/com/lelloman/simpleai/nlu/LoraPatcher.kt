@@ -53,14 +53,14 @@ class LoraPatcher {
     /**
      * Apply a LoRA patch to an in-memory model, returning a revert patch.
      *
-     * @param modelBytes The model bytes (will be modified in place)
+     * @param modelBuffer The model ByteBuffer (will be modified in place)
      * @param patchStream InputStream for the .lorapatch file
      * @param adapterId ID of the adapter being applied
      * @param adapterVersion Version of the adapter being applied
      * @return RevertPatch that can restore the model to its pre-patch state
      */
     fun applyPatch(
-        modelBytes: ByteArray,
+        modelBuffer: ByteBuffer,
         patchStream: InputStream,
         adapterId: String,
         adapterVersion: String
@@ -71,13 +71,15 @@ class LoraPatcher {
         // Capture original bytes before patching (this becomes the revert patch)
         val revertPatches = patches.map { patch ->
             val originalBytes = ByteArray(patch.data.size)
-            System.arraycopy(modelBytes, patch.offset.toInt(), originalBytes, 0, patch.data.size)
+            modelBuffer.position(patch.offset.toInt())
+            modelBuffer.get(originalBytes)
             Patch(patch.offset, originalBytes)
         }
 
         // Apply patches
         for (patch in patches) {
-            System.arraycopy(patch.data, 0, modelBytes, patch.offset.toInt(), patch.data.size)
+            modelBuffer.position(patch.offset.toInt())
+            modelBuffer.put(patch.data)
         }
 
         Log.i(TAG, "Applied ${patches.size} patches, revert patch is ${revertPatches.sumOf { it.data.size } / 1024} KB")
@@ -87,14 +89,15 @@ class LoraPatcher {
     /**
      * Revert a previously applied patch, restoring the model to pristine state.
      *
-     * @param modelBytes The model bytes (will be modified in place)
+     * @param modelBuffer The model ByteBuffer (will be modified in place)
      * @param revertPatch The revert patch from a previous applyPatch call
      */
-    fun revertPatch(modelBytes: ByteArray, revertPatch: RevertPatch) {
+    fun revertPatch(modelBuffer: ByteBuffer, revertPatch: RevertPatch) {
         Log.i(TAG, "Reverting ${revertPatch.patches.size} patches for ${revertPatch.adapterId}")
 
         for (patch in revertPatch.patches) {
-            System.arraycopy(patch.data, 0, modelBytes, patch.offset.toInt(), patch.data.size)
+            modelBuffer.position(patch.offset.toInt())
+            modelBuffer.put(patch.data)
         }
 
         Log.i(TAG, "Reverted to pristine state")
