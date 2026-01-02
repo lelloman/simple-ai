@@ -43,7 +43,7 @@ class OnnxNLUEngine(
         private const val PAD_TOKEN_ID = 1L
         private const val UNK_TOKEN_ID = 3L
 
-        private const val BASE_MODEL_URL = "https://huggingface.co/lelloman/xlm-roberta-base-onnx/resolve/main/xlm_roberta_base_int8.onnx"
+        private const val BASE_MODEL_URL = "https://huggingface.co/lelloman/xlm-roberta-base-onnx-int8/resolve/main/xlm_roberta_base_int8.onnx"
         private const val BASE_MODEL_FILE = "xlm_roberta_base_int8.onnx"
     }
 
@@ -82,7 +82,9 @@ class OnnxNLUEngine(
         val id: String,
         val version: String,
         val intentHead: FloatArray,
+        val intentBias: FloatArray,
         val slotHead: FloatArray,
+        val slotBias: FloatArray,
         val numIntents: Int,
         val numSlots: Int,
         val vocab: Map<String, Long>,
@@ -225,7 +227,7 @@ class OnnxNLUEngine(
                 }
 
                 // Load heads
-                val (intentHead, slotHead, numIntents, numSlots) = FileInputStream(headsFd.fileDescriptor).use { headsStream ->
+                val headsData = FileInputStream(headsFd.fileDescriptor).use { headsStream ->
                     loadHeads(headsStream)
                 }
 
@@ -251,10 +253,12 @@ class OnnxNLUEngine(
                 currentAdapter = LoadedAdapter(
                     id = adapterId,
                     version = adapterVersion,
-                    intentHead = intentHead,
-                    slotHead = slotHead,
-                    numIntents = numIntents,
-                    numSlots = numSlots,
+                    intentHead = headsData.intentHead,
+                    intentBias = headsData.intentBias,
+                    slotHead = headsData.slotHead,
+                    slotBias = headsData.slotBias,
+                    numIntents = headsData.numIntents,
+                    numSlots = headsData.numSlots,
                     vocab = vocab,
                     merges = merges,
                     maxLength = maxLength,
@@ -305,15 +309,18 @@ class OnnxNLUEngine(
 
     private data class HeadsData(
         val intentHead: FloatArray,
+        val intentBias: FloatArray,
         val slotHead: FloatArray,
+        val slotBias: FloatArray,
         val numIntents: Int,
         val numSlots: Int
     )
 
     private fun loadHeads(inputStream: java.io.InputStream): HeadsData {
         val headerBuffer = ByteArray(8)
+        val sizeBuffer = ByteArray(4)
 
-        // Intent head
+        // Intent head weight
         inputStream.read(headerBuffer)
         val intentHeader = ByteBuffer.wrap(headerBuffer).order(ByteOrder.LITTLE_ENDIAN)
         val intentRows = intentHeader.int
@@ -325,7 +332,7 @@ class OnnxNLUEngine(
         val intentHead = FloatArray(intentSize)
         ByteBuffer.wrap(intentBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(intentHead)
 
-        // Slot head
+        // Slot head weight
         inputStream.read(headerBuffer)
         val slotHeader = ByteBuffer.wrap(headerBuffer).order(ByteOrder.LITTLE_ENDIAN)
         val slotRows = slotHeader.int
@@ -337,8 +344,24 @@ class OnnxNLUEngine(
         val slotHead = FloatArray(slotSize)
         ByteBuffer.wrap(slotBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(slotHead)
 
-        Log.i(TAG, "Loaded heads: intent=${intentRows}x${intentCols}, slot=${slotRows}x${slotCols}")
-        return HeadsData(intentHead, slotHead, intentRows, slotRows)
+        // Intent bias
+        inputStream.read(sizeBuffer)
+        val intentBiasSize = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).int
+        val intentBiasBytes = ByteArray(intentBiasSize * 4)
+        inputStream.read(intentBiasBytes)
+        val intentBias = FloatArray(intentBiasSize)
+        ByteBuffer.wrap(intentBiasBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(intentBias)
+
+        // Slot bias
+        inputStream.read(sizeBuffer)
+        val slotBiasSize = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).int
+        val slotBiasBytes = ByteArray(slotBiasSize * 4)
+        inputStream.read(slotBiasBytes)
+        val slotBias = FloatArray(slotBiasSize)
+        ByteBuffer.wrap(slotBiasBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(slotBias)
+
+        Log.i(TAG, "Loaded heads: intent=${intentRows}x${intentCols} + bias[$intentBiasSize], slot=${slotRows}x${slotCols} + bias[$slotBiasSize]")
+        return HeadsData(intentHead, intentBias, slotHead, slotBias, intentRows, slotRows)
     }
 
     private fun loadTokenizer(inputStream: java.io.InputStream): Pair<Map<String, Long>, List<Pair<String, String>>> {
@@ -429,9 +452,9 @@ class OnnxNLUEngine(
                 val pooledOutput = sequenceOutput[0]
 
                 // Apply classification heads
-                val intentLogits = applyLinear(pooledOutput, adapter.intentHead, adapter.numIntents)
+                val intentLogits = applyLinear(pooledOutput, adapter.intentHead, adapter.intentBias, adapter.numIntents)
                 val slotLogits = sequenceOutput.map { tokenHidden ->
-                    applyLinear(tokenHidden, adapter.slotHead, adapter.numSlots)
+                    applyLinear(tokenHidden, adapter.slotHead, adapter.slotBias, adapter.numSlots)
                 }
 
                 // Get intent
@@ -467,11 +490,11 @@ class OnnxNLUEngine(
             }
         }
 
-    private fun applyLinear(input: FloatArray, weights: FloatArray, outFeatures: Int): FloatArray {
+    private fun applyLinear(input: FloatArray, weights: FloatArray, bias: FloatArray, outFeatures: Int): FloatArray {
         val inFeatures = input.size
         val output = FloatArray(outFeatures)
         for (i in 0 until outFeatures) {
-            var sum = 0f
+            var sum = bias[i]
             for (j in 0 until inFeatures) {
                 sum += input[j] * weights[i * inFeatures + j]
             }
