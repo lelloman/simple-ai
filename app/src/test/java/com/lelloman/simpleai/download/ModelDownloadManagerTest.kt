@@ -1,6 +1,7 @@
 package com.lelloman.simpleai.download
 
 import android.content.Context
+import com.lelloman.simpleai.model.LocalAIModel
 import app.cash.turbine.test
 import io.mockk.every
 import io.mockk.mockk
@@ -59,12 +60,13 @@ class ModelDownloadManagerTest {
     }
 
     @Test
-    fun `getModelFile uses default config when none provided`() {
+    fun `getLocalAiModelFile returns correct file path`() {
         val manager = createManager()
 
-        val file = manager.getModelFile()
+        val file = manager.getLocalAiModelFile()
 
-        assertEquals(DefaultModel.CONFIG.fileName, file.name)
+        assertEquals(LocalAIModel.FILE_NAME, file.name)
+        assertEquals(tempDir, file.parentFile)
     }
 
     @Test
@@ -250,11 +252,11 @@ class ModelDownloadManagerTest {
     }
 
     @Test
-    fun `DefaultModel CONFIG has expected values`() {
-        assertEquals("Qwen3-1.7B", DefaultModel.CONFIG.name)
-        assertTrue(DefaultModel.CONFIG.url.startsWith("https://huggingface.co/"))
-        assertTrue(DefaultModel.CONFIG.fileName.endsWith(".gguf"))
-        assertTrue(DefaultModel.CONFIG.expectedSizeMb > 0)
+    fun `LocalAIModel has expected values`() {
+        assertEquals("Qwen 3 1.7B", LocalAIModel.NAME)
+        assertTrue(LocalAIModel.URL.startsWith("https://huggingface.co/"))
+        assertTrue(LocalAIModel.FILE_NAME.endsWith(".gguf"))
+        assertTrue(LocalAIModel.SIZE_MB > 0)
     }
 
     @Test

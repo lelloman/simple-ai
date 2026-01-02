@@ -2,7 +2,7 @@ package com.lelloman.simpleai.download
 
 import android.content.Context
 import android.os.StatFs
-import com.lelloman.simpleai.model.AvailableModel
+import com.lelloman.simpleai.model.LocalAIModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -33,15 +33,6 @@ data class ModelConfig(
     val expectedSizeMb: Int
 )
 
-object DefaultModel {
-    val CONFIG = ModelConfig(
-        name = "Llama-3.2-3B",
-        url = "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-        fileName = "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-        expectedSizeMb = 2020
-    )
-}
-
 class ModelDownloadManager(
     private val context: Context,
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -55,16 +46,31 @@ class ModelDownloadManager(
     private val modelsDir: File
         get() = modelsDirProvider()
 
-    fun getModelFile(config: ModelConfig = DefaultModel.CONFIG): File {
+    fun getModelFile(config: ModelConfig): File {
         return File(modelsDir, config.fileName)
     }
 
-    fun isModelDownloaded(config: ModelConfig = DefaultModel.CONFIG): Boolean {
+    fun isModelDownloaded(config: ModelConfig): Boolean {
         val file = getModelFile(config)
         return file.exists() && file.length() > 0
     }
 
-    fun downloadModel(config: ModelConfig = DefaultModel.CONFIG): Flow<DownloadState> = flow {
+    /**
+     * Check if the local AI model is downloaded.
+     */
+    fun isLocalAiDownloaded(): Boolean {
+        val file = File(modelsDir, LocalAIModel.FILE_NAME)
+        return file.exists() && file.length() > 0
+    }
+
+    /**
+     * Get the local AI model file.
+     */
+    fun getLocalAiModelFile(): File {
+        return File(modelsDir, LocalAIModel.FILE_NAME)
+    }
+
+    fun downloadModel(config: ModelConfig): Flow<DownloadState> = flow {
         emit(DownloadState.Idle)
 
         val targetFile = getModelFile(config)
@@ -139,94 +145,26 @@ class ModelDownloadManager(
         }
     }.flowOn(Dispatchers.IO)
 
-    fun deleteModel(config: ModelConfig = DefaultModel.CONFIG): Boolean {
+    fun deleteModel(config: ModelConfig): Boolean {
         val file = getModelFile(config)
         val tempFile = File(modelsDir, "${config.fileName}.tmp")
         tempFile.delete()
         return file.delete()
     }
 
-    // ==================== AvailableModel support ====================
-
-    fun getModelFile(model: AvailableModel): File {
-        return File(modelsDir, model.fileName)
-    }
-
-    fun getTokenizerFile(model: AvailableModel): File {
-        // Extract filename from tokenizer URL, or use default
-        val tokenizerFileName = model.tokenizerUrl?.substringAfterLast("/") ?: "tokenizer.model"
-        return File(modelsDir, tokenizerFileName)
-    }
-
-    fun isModelDownloaded(model: AvailableModel): Boolean {
-        val modelFile = getModelFile(model)
-        val modelExists = modelFile.exists() && modelFile.length() > 0
-
-        // For ExecuTorch models, also check if tokenizer exists
-        if (model.tokenizerUrl != null) {
-            val tokenizerFile = getTokenizerFile(model)
-            return modelExists && tokenizerFile.exists() && tokenizerFile.length() > 0
-        }
-
-        return modelExists
-    }
-
-    fun downloadModel(model: AvailableModel): Flow<DownloadState> = flow {
-        // First, download the tokenizer if needed
-        if (model.tokenizerUrl != null) {
-            val tokenizerFile = getTokenizerFile(model)
-            if (!tokenizerFile.exists() || tokenizerFile.length() == 0L) {
-                emit(DownloadState.Idle)
-                // Download tokenizer (small file, no progress tracking)
-                try {
-                    val request = Request.Builder().url(model.tokenizerUrl).build()
-                    val response = client.newCall(request).execute()
-                    if (!response.isSuccessful) {
-                        emit(DownloadState.Error("Tokenizer download failed: HTTP ${response.code}"))
-                        return@flow
-                    }
-                    response.body?.byteStream()?.use { input ->
-                        tokenizerFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                } catch (e: Exception) {
-                    emit(DownloadState.Error("Tokenizer download error: ${e.message}"))
-                    return@flow
-                }
-            }
-        }
-
-        // Then download the model
-        val config = ModelConfig(
-            name = model.name,
-            url = model.url,
-            fileName = model.fileName,
-            expectedSizeMb = model.sizeMb
-        )
-        downloadModel(config).collect { state ->
-            emit(state)
-        }
-    }.flowOn(Dispatchers.IO)
-
-    fun deleteModel(model: AvailableModel): Boolean {
-        val file = getModelFile(model)
-        val tempFile = File(modelsDir, "${model.fileName}.tmp")
+    /**
+     * Delete the local AI model.
+     */
+    fun deleteLocalAi(): Boolean {
+        val file = File(modelsDir, LocalAIModel.FILE_NAME)
+        val tempFile = File(modelsDir, "${LocalAIModel.FILE_NAME}.tmp")
         tempFile.delete()
-        // Note: don't delete tokenizer as it may be shared between models
         return file.delete()
     }
 
-    fun getModelSizeBytes(model: AvailableModel): Long {
-        val file = getModelFile(model)
-        return if (file.exists()) file.length() else 0L
-    }
-
-    // ==================== Storage info ====================
-
     fun getStorageInfo(): StorageInfo {
         val modelsUsed = modelsDir.listFiles()
-            ?.filter { it.isFile && (it.name.endsWith(".gguf") || it.name.endsWith(".pte") || it.name.startsWith("tokenizer.")) }
+            ?.filter { it.isFile && it.name.endsWith(".gguf") }
             ?.sumOf { it.length() } ?: 0L
 
         val statFs = StatFs(context.filesDir.absolutePath)
