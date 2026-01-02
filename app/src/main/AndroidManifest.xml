@@ -38,6 +38,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Legacy service (to be removed in Phase 7) -->
         <service
             android:name=".service.LLMService"
             android:exported="true"
@@ -48,6 +49,20 @@
                 android:value="ai_inference" />
             <intent-filter>
                 <action android:name="com.lelloman.simpleai.LLM_SERVICE" />
+            </intent-filter>
+        </service>
+
+        <!-- New capability-based service -->
+        <service
+            android:name=".service.SimpleAIService"
+            android:exported="true"
+            android:foregroundServiceType="specialUse"
+            tools:ignore="ExportedService">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="ai_inference" />
+            <intent-filter>
+                <action android:name="com.lelloman.simpleai.SIMPLE_AI_SERVICE" />
             </intent-filter>
         </service>
     </application>

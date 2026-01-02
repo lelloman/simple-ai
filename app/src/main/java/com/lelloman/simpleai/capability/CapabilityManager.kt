@@ -24,6 +24,16 @@ class CapabilityManager(
         const val VOICE_COMMANDS_MODEL_SIZE = 120_000_000L  // ~120 MB XLM-RoBERTa
         const val LOCAL_AI_MODEL_SIZE = 1_300_000_000L      // ~1.3 GB Qwen 3 1.7B
         const val TRANSLATION_LANGUAGE_SIZE = 30_000_000L   // ~30 MB per language
+
+        // ML Kit supported languages
+        val SUPPORTED_LANGUAGES = setOf(
+            "af", "ar", "be", "bg", "bn", "ca", "cs", "cy", "da", "de",
+            "el", "en", "eo", "es", "et", "fa", "fi", "fr", "ga", "gl",
+            "gu", "he", "hi", "hr", "ht", "hu", "id", "is", "it", "ja",
+            "ka", "kn", "ko", "lt", "lv", "mk", "mr", "ms", "mt", "nl",
+            "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sv", "sw",
+            "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "zh"
+        )
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -189,18 +199,6 @@ class CapabilityManager(
             baseCapability = getCapability(CapabilityId.TRANSLATION),
             downloadedLanguages = _downloadedLanguages.value,
             availableLanguages = SUPPORTED_LANGUAGES
-        )
-    }
-
-    companion object {
-        // ML Kit supported languages
-        val SUPPORTED_LANGUAGES = setOf(
-            "af", "ar", "be", "bg", "bn", "ca", "cs", "cy", "da", "de",
-            "el", "en", "eo", "es", "et", "fa", "fi", "fr", "ga", "gl",
-            "gu", "he", "hi", "hr", "ht", "hu", "id", "is", "it", "ja",
-            "ka", "kn", "ko", "lt", "lv", "mk", "mr", "ms", "mt", "nl",
-            "no", "pl", "pt", "ro", "ru", "sk", "sl", "sq", "sv", "sw",
-            "ta", "te", "th", "tl", "tr", "uk", "ur", "vi", "zh"
         )
     }
 }

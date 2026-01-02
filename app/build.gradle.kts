@@ -124,8 +124,9 @@ dependencies {
     // JSON serialization
     implementation(libs.kotlinx.serialization.json)
 
-    // ML Kit Translation
+    // ML Kit Translation and Language ID
     implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.mlkit:language-id:17.0.6")
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
