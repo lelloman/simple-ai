@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SimpleAI Icon Concepts - Bugdroid + Brain</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+        }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .icon-card {
+            background: #2a2a2a;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+        .icon-card h3 {
+            margin: 10px 0 5px;
+            font-size: 14px;
+        }
+        .icon-card p {
+            margin: 0;
+            font-size: 11px;
+            color: #888;
+        }
+        .icon-wrapper {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+            border-radius: 18px;
+            overflow: hidden;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>Bugdroid + Brain Concepts</h1>
+    <div class="grid">
+
+        <!-- 1. Classic Bugdroid head with brain visible -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome with brain inside -->
+                    <path fill="white" d="M26,58 Q26,26 54,26 Q82,26 82,58 Z"/>
+                    <!-- Brain visible through head -->
+                    <path fill="#3DDC84" stroke="#3DDC84" stroke-width="2" d="M42,38 Q36,42 38,50 Q36,56 42,58 Q48,62 54,58 Q60,62 66,58 Q72,56 70,50 Q72,42 66,38 Q60,34 54,38 Q48,34 42,38"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="40" y1="28" x2="34" y2="18"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="68" y1="28" x2="74" y2="18"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="44" r="4"/>
+                    <circle fill="#3DDC84" cx="66" cy="44" r="4"/>
+                    <!-- Body hint -->
+                    <rect fill="white" x="32" y="60" width="44" height="24" rx="4"/>
+                </svg>
+            </div>
+            <h3>1. Brain Window</h3>
+            <p>Brain visible in head</p>
+        </div>
+
+        <!-- 2. Bugdroid head only, brain pattern overlay -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M22,62 Q22,24 54,24 Q86,24 86,62 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="38" y1="26" x2="32" y2="14"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="70" y1="26" x2="76" y2="14"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="40" cy="44" r="5"/>
+                    <circle fill="#3DDC84" cx="68" cy="44" r="5"/>
+                    <!-- Brain grooves on forehead -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M40,54 Q48,50 54,54 Q60,58 68,54"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M44,58 Q54,62 64,58"/>
+                </svg>
+            </div>
+            <h3>2. Brain Grooves</h3>
+            <p>Brain pattern on face</p>
+        </div>
+
+        <!-- 3. Bugdroid with brain instead of body -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M30,48 Q30,24 54,24 Q78,24 78,48 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="40" y1="26" x2="34" y2="16"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="68" y1="26" x2="74" y2="16"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="44" cy="38" r="4"/>
+                    <circle fill="#3DDC84" cx="64" cy="38" r="4"/>
+                    <!-- Brain as body -->
+                    <path fill="white" d="M34,52 Q28,58 30,68 Q28,78 36,82 Q44,88 54,84 Q64,88 72,82 Q80,78 78,68 Q80,58 74,52 Z"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M54,54 L54,80"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M42,62 Q38,68 42,74"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M66,62 Q70,68 66,74"/>
+                </svg>
+            </div>
+            <h3>3. Brain Body</h3>
+            <p>Brain replaces body</p>
+        </div>
+
+        <!-- 4. Just head, glowing brain effect -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Glow effect -->
+                    <ellipse fill="white" opacity="0.3" cx="54" cy="54" rx="38" ry="32"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M24,60 Q24,22 54,22 Q84,22 84,60 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="38" y1="24" x2="30" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="70" y1="24" x2="78" y2="12"/>
+                    <!-- Eyes glowing -->
+                    <circle fill="#3DDC84" cx="40" cy="42" r="6"/>
+                    <circle fill="white" cx="42" cy="40" r="2"/>
+                    <circle fill="#3DDC84" cx="68" cy="42" r="6"/>
+                    <circle fill="white" cx="70" cy="40" r="2"/>
+                    <!-- Simple body -->
+                    <rect fill="white" x="32" y="62" width="44" height="20" rx="4"/>
+                </svg>
+            </div>
+            <h3>4. Glowing Eyes</h3>
+            <p>Intelligent gaze</p>
+        </div>
+
+        <!-- 5. Bugdroid thinking - brain bubble -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome smaller, to the left -->
+                    <path fill="white" d="M18,58 Q18,32 40,32 Q62,32 62,58 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="2.5" stroke-linecap="round" x1="30" y1="34" x2="24" y2="24"/>
+                    <line stroke="white" stroke-width="2.5" stroke-linecap="round" x1="50" y1="34" x2="56" y2="24"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="32" cy="46" r="4"/>
+                    <circle fill="#3DDC84" cx="48" cy="46" r="4"/>
+                    <!-- Body -->
+                    <rect fill="white" x="24" y="60" width="32" height="18" rx="3"/>
+                    <!-- Thought bubbles -->
+                    <circle fill="white" cx="68" cy="54" r="4"/>
+                    <circle fill="white" cx="76" cy="44" r="6"/>
+                    <!-- Brain thought bubble -->
+                    <circle fill="white" cx="88" cy="30" r="14"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M82,26 Q80,30 84,34 M88,24 L88,36 M92,28 Q96,32 92,36"/>
+                </svg>
+            </div>
+            <h3>5. Thinking</h3>
+            <p>Brain thought bubble</p>
+        </div>
+
+        <!-- 6. Minimalist head with circuit brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Circuit brain pattern -->
+                    <circle fill="#3DDC84" cx="40" cy="38" r="3"/>
+                    <circle fill="#3DDC84" cx="54" cy="32" r="3"/>
+                    <circle fill="#3DDC84" cx="68" cy="38" r="3"/>
+                    <circle fill="#3DDC84" cx="46" cy="50" r="3"/>
+                    <circle fill="#3DDC84" cx="62" cy="50" r="3"/>
+                    <line stroke="#3DDC84" stroke-width="2" x1="40" y1="38" x2="54" y2="32"/>
+                    <line stroke="#3DDC84" stroke-width="2" x1="54" y1="32" x2="68" y2="38"/>
+                    <line stroke="#3DDC84" stroke-width="2" x1="40" y1="38" x2="46" y2="50"/>
+                    <line stroke="#3DDC84" stroke-width="2" x1="68" y1="38" x2="62" y2="50"/>
+                    <line stroke="#3DDC84" stroke-width="2" x1="46" y1="50" x2="62" y2="50"/>
+                </svg>
+            </div>
+            <h3>6. Circuit Mind</h3>
+            <p>Neural network face</p>
+        </div>
+
+        <!-- 7. Split head - half robot half brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M22,62 Q22,22 54,22 Q86,22 86,62 Z"/>
+                    <!-- Left side - normal -->
+                    <circle fill="#3DDC84" cx="38" cy="42" r="5"/>
+                    <!-- Right side - brain texture -->
+                    <circle fill="#3DDC84" cx="70" cy="42" r="5"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2.5" stroke-linecap="round" d="M58,32 Q66,36 62,44 Q68,48 62,56"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2.5" stroke-linecap="round" d="M70,34 Q78,40 72,50"/>
+                    <!-- Dividing line -->
+                    <line stroke="#3DDC84" stroke-width="2" stroke-dasharray="4,2" x1="54" y1="22" x2="54" y2="62"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Body -->
+                    <rect fill="white" x="30" y="64" width="48" height="20" rx="4"/>
+                </svg>
+            </div>
+            <h3>7. Half & Half</h3>
+            <p>Robot meets brain</p>
+        </div>
+
+        <!-- 8. Bugdroid head as brain shape -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Brain-shaped head -->
+                    <path fill="white" d="M30,54 Q24,44 30,34 Q36,24 48,24 L54,20 L60,24 Q72,24 78,34 Q84,44 78,54 Q84,64 78,74 Q72,84 54,84 Q36,84 30,74 Q24,64 30,54"/>
+                    <!-- Antennas from brain -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="40" y1="26" x2="34" y2="14"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="68" y1="26" x2="74" y2="14"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="48" r="5"/>
+                    <circle fill="#3DDC84" cx="66" cy="48" r="5"/>
+                    <!-- Brain center line -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M54,30 L54,74"/>
+                    <!-- Brain curves -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M44,60 Q38,66 44,72"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M64,60 Q70,66 64,72"/>
+                </svg>
+            </div>
+            <h3>8. Brain Shape</h3>
+            <p>Head is a brain</p>
+        </div>
+
+        <!-- 9. Simple head with brain icon inside -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Large head dome -->
+                    <path fill="white" d="M20,68 Q20,20 54,20 Q88,20 88,68 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="22" x2="26" y2="10"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="22" x2="82" y2="10"/>
+                    <!-- Brain icon centered -->
+                    <path fill="#3DDC84" d="M42,36 Q36,40 38,48 Q36,54 42,58 L54,58 L66,58 Q72,54 70,48 Q72,40 66,36 Q60,32 54,36 Q48,32 42,36"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M54,38 L54,56"/>
+                    <path fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" d="M46,44 Q42,48 46,52"/>
+                    <path fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" d="M62,44 Q66,48 62,52"/>
+                </svg>
+            </div>
+            <h3>9. Brain Inside</h3>
+            <p>Brain icon in head</p>
+        </div>
+
+        <!-- 10. Cute bugdroid with brain hat -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Brain hat -->
+                    <path fill="white" d="M30,38 Q24,32 30,24 Q38,16 50,18 L54,14 L58,18 Q70,16 78,24 Q84,32 78,38 Q72,42 54,42 Q36,42 30,38"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M54,20 L54,38"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" d="M42,28 Q38,32 42,36"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" d="M66,28 Q70,32 66,36"/>
+                    <!-- Head dome below -->
+                    <path fill="white" d="M28,70 Q28,44 54,44 Q80,44 80,70 Z"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="58" r="5"/>
+                    <circle fill="#3DDC84" cx="66" cy="58" r="5"/>
+                    <!-- Body hint -->
+                    <rect fill="white" x="34" y="72" width="40" height="16" rx="4"/>
+                </svg>
+            </div>
+            <h3>10. Brain Hat</h3>
+            <p>Wearing a brain</p>
+        </div>
+
+        <!-- 11. Outline style bugdroid with brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head outline -->
+                    <path fill="none" stroke="white" stroke-width="4" d="M24,60 Q24,24 54,24 Q84,24 84,60"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="38" y1="26" x2="30" y2="14"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="70" y1="26" x2="78" y2="14"/>
+                    <!-- Eyes -->
+                    <circle fill="white" cx="42" cy="44" r="5"/>
+                    <circle fill="white" cx="66" cy="44" r="5"/>
+                    <!-- Brain inside - filled -->
+                    <path fill="white" d="M40,50 Q36,54 38,60 Q36,66 42,68 Q48,72 54,68 Q60,72 66,68 Q72,66 70,60 Q72,54 68,50 Q62,46 54,50 Q46,46 40,50"/>
+                    <!-- Body outline -->
+                    <rect fill="none" stroke="white" stroke-width="4" x="32" y="62" width="44" height="24" rx="4"/>
+                </svg>
+            </div>
+            <h3>11. Outline Style</h3>
+            <p>Line art with brain</p>
+        </div>
+
+        <!-- 12. Bugdroid meditation with floating brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Floating brain above -->
+                    <path fill="white" d="M42,28 Q36,24 40,18 Q46,12 54,16 Q62,12 68,18 Q72,24 66,28 Q60,32 54,28 Q48,32 42,28"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="1.5" stroke-linecap="round" d="M54,18 L54,26"/>
+                    <!-- Energy lines -->
+                    <line stroke="white" stroke-width="2" stroke-dasharray="2,2" x1="54" y1="32" x2="54" y2="42"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M28,66 Q28,44 54,44 Q80,44 80,66 Z"/>
+                    <!-- Closed eyes (meditating) -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M36,56 Q42,60 48,56"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M60,56 Q66,60 72,56"/>
+                    <!-- Body -->
+                    <rect fill="white" x="34" y="68" width="40" height="20" rx="4"/>
+                </svg>
+            </div>
+            <h3>12. Meditation</h3>
+            <p>Brain floating above</p>
+        </div>
+
+        <!-- 13. Pixel art style -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Pixel head -->
+                    <rect fill="white" x="28" y="32" width="52" height="36"/>
+                    <rect fill="#3DDC84" x="28" y="32" width="8" height="8"/>
+                    <rect fill="#3DDC84" x="72" y="32" width="8" height="8"/>
+                    <!-- Antennas -->
+                    <rect fill="white" x="36" y="20" width="4" height="12"/>
+                    <rect fill="white" x="68" y="20" width="4" height="12"/>
+                    <!-- Eyes -->
+                    <rect fill="#3DDC84" x="36" y="44" width="12" height="8"/>
+                    <rect fill="#3DDC84" x="60" y="44" width="12" height="8"/>
+                    <!-- Brain pattern pixels -->
+                    <rect fill="#3DDC84" x="44" y="56" width="8" height="4"/>
+                    <rect fill="#3DDC84" x="56" y="56" width="8" height="4"/>
+                    <rect fill="#3DDC84" x="52" y="52" width="4" height="8"/>
+                    <!-- Body -->
+                    <rect fill="white" x="32" y="70" width="44" height="20"/>
+                </svg>
+            </div>
+            <h3>13. Pixel Art</h3>
+            <p>Retro style</p>
+        </div>
+
+        <!-- 14. Head with brain waves emanating -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Brain waves -->
+                    <path fill="none" stroke="white" stroke-width="2" opacity="0.5" d="M20,34 Q28,28 36,34 Q44,40 52,34"/>
+                    <path fill="none" stroke="white" stroke-width="2" opacity="0.7" d="M56,34 Q64,28 72,34 Q80,40 88,34"/>
+                    <path fill="none" stroke="white" stroke-width="2" opacity="0.3" d="M14,44 Q22,38 30,44"/>
+                    <path fill="none" stroke="white" stroke-width="2" opacity="0.3" d="M78,44 Q86,38 94,44"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M26,70 Q26,36 54,36 Q82,36 82,70 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="38" y1="38" x2="32" y2="28"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="70" y1="38" x2="76" y2="28"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="54" r="5"/>
+                    <circle fill="#3DDC84" cx="66" cy="54" r="5"/>
+                    <!-- Body -->
+                    <rect fill="white" x="34" y="72" width="40" height="16" rx="4"/>
+                </svg>
+            </div>
+            <h3>14. Brain Waves</h3>
+            <p>Emanating thoughts</p>
+        </div>
+
+        <!-- 15. Bugdroid silhouette with brain highlight -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome -->
+                    <path fill="white" d="M22,62 Q22,22 54,22 Q86,22 86,62 Z"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Large centered brain -->
+                    <path fill="#3DDC84" d="M38,34 Q30,40 34,52 Q30,62 40,66 Q50,72 54,66 Q58,72 68,66 Q78,62 74,52 Q78,40 70,34 Q62,28 54,34 Q46,28 38,34"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,36 L54,64"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,46 Q38,52 44,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,46 Q70,52 64,58"/>
+                    <!-- Body -->
+                    <rect fill="white" x="32" y="64" width="44" height="22" rx="4"/>
+                </svg>
+            </div>
+            <h3>15. Big Brain</h3>
+            <p>Brain dominates</p>
+        </div>
+
+        <!-- 16. Cute chibi style -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Big round head -->
+                    <circle fill="white" cx="54" cy="50" r="32"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="22" x2="28" y2="10"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="22" x2="80" y2="10"/>
+                    <!-- Big cute eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="48" r="8"/>
+                    <circle fill="white" cx="45" cy="45" r="3"/>
+                    <circle fill="#3DDC84" cx="66" cy="48" r="8"/>
+                    <circle fill="white" cx="69" cy="45" r="3"/>
+                    <!-- Small brain on top -->
+                    <path fill="#3DDC84" d="M46,28 Q42,26 44,22 Q48,18 54,20 Q60,18 64,22 Q66,26 62,28 Q58,30 54,28 Q50,30 46,28"/>
+                    <!-- Tiny body -->
+                    <rect fill="white" x="42" y="82" width="24" height="10" rx="3"/>
+                </svg>
+            </div>
+            <h3>16. Chibi Brain</h3>
+            <p>Cute with mini brain</p>
+        </div>
+
+        <!-- 17. Abstract geometric -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Geometric head -->
+                    <polygon fill="white" points="54,20 84,45 84,65 54,80 24,65 24,45"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="38" y1="26" x2="30" y2="14"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="70" y1="26" x2="78" y2="14"/>
+                    <!-- Eyes -->
+                    <polygon fill="#3DDC84" points="40,44 48,40 48,48"/>
+                    <polygon fill="#3DDC84" points="68,44 60,40 60,48"/>
+                    <!-- Brain pattern - geometric -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" d="M42,54 L54,50 L66,54 M48,60 L54,56 L60,60 M54,50 L54,66"/>
+                </svg>
+            </div>
+            <h3>17. Geometric</h3>
+            <p>Angular design</p>
+        </div>
+
+        <!-- 18. Bugdroid with exposed brain (sci-fi) -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head dome with window -->
+                    <path fill="white" d="M24,62 Q24,24 54,24 Q84,24 84,62 Z"/>
+                    <!-- Glass dome showing brain -->
+                    <ellipse fill="#3DDC84" opacity="0.3" cx="54" cy="40" rx="20" ry="14"/>
+                    <ellipse fill="none" stroke="white" stroke-width="2" cx="54" cy="40" rx="20" ry="14"/>
+                    <!-- Brain inside dome -->
+                    <path fill="white" d="M44,36 Q40,38 42,44 Q40,48 46,50 Q52,52 54,48 Q56,52 62,50 Q68,48 66,44 Q68,38 64,36 Q58,32 54,36 Q50,32 44,36"/>
+                    <!-- Eyes below dome -->
+                    <circle fill="#3DDC84" cx="40" cy="54" r="4"/>
+                    <circle fill="#3DDC84" cx="68" cy="54" r="4"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="26" x2="28" y2="14"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="26" x2="80" y2="14"/>
+                    <!-- Body -->
+                    <rect fill="white" x="32" y="64" width="44" height="22" rx="4"/>
+                </svg>
+            </div>
+            <h3>18. Brain Dome</h3>
+            <p>Sci-fi brain window</p>
+        </div>
+
+        <!-- 19. Simple and bold -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Very simple head -->
+                    <path fill="white" d="M24,60 Q24,24 54,24 Q84,24 84,60 Z"/>
+                    <!-- Bold antennas -->
+                    <line stroke="white" stroke-width="4" stroke-linecap="round" x1="38" y1="26" x2="30" y2="14"/>
+                    <line stroke="white" stroke-width="4" stroke-linecap="round" x1="70" y1="26" x2="78" y2="14"/>
+                    <!-- Simple eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="42" r="6"/>
+                    <circle fill="#3DDC84" cx="66" cy="42" r="6"/>
+                    <!-- Simple brain smile -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="4" stroke-linecap="round" d="M40,52 Q54,64 68,52"/>
+                </svg>
+            </div>
+            <h3>19. Bold Simple</h3>
+            <p>Clean and minimal</p>
+        </div>
+
+        <!-- 20. Head morphing into brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Morphed head-brain shape -->
+                    <path fill="white" d="M28,50 Q20,40 28,30 Q36,20 48,22 Q54,18 60,22 Q72,20 80,30 Q88,40 80,50 Q88,60 80,70 Q72,82 54,82 Q36,82 28,70 Q20,60 28,50"/>
+                    <!-- Antennas -->
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="40" y1="24" x2="32" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="68" y1="24" x2="76" y2="12"/>
+                    <!-- Eyes -->
+                    <circle fill="#3DDC84" cx="42" cy="44" r="5"/>
+                    <circle fill="#3DDC84" cx="66" cy="44" r="5"/>
+                    <!-- Brain details -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M54,50 L54,74"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M42,56 Q36,64 44,70"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M66,56 Q72,64 64,70"/>
+                </svg>
+            </div>
+            <h3>20. Morph</h3>
+            <p>Head becomes brain</p>
+        </div>
+
+    </div>
+
+    <h2 style="text-align: center; margin: 40px 0 20px; color: #3DDC84;">Set 2: Brain Face Variations (based on #6 Circuit Mind)</h2>
+    <div class="grid">
+
+        <!-- 21. Brain face - original style from #3 -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain from #3 style -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,42 Q40,48 44,54"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,42 Q68,48 64,54"/>
+                </svg>
+            </div>
+            <h3>21. Brain Face</h3>
+            <p>Classic brain style</p>
+        </div>
+
+        <!-- 22. Smaller brain, more head visible -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Smaller centered brain -->
+                    <path fill="#3DDC84" d="M42,36 Q38,40 40,48 Q38,54 44,56 Q50,60 54,56 Q58,60 64,56 Q70,54 68,48 Q70,40 66,36 Z"/>
+                    <path fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" d="M54,38 L54,54"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M48,44 Q44,48 48,52"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M60,44 Q64,48 60,52"/>
+                </svg>
+            </div>
+            <h3>22. Compact Brain</h3>
+            <p>Smaller, centered</p>
+        </div>
+
+        <!-- 23. Brain higher up, like forehead -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,68 Q22,22 54,22 Q86,22 86,68 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain on forehead area -->
+                    <path fill="#3DDC84" d="M40,28 Q34,34 36,42 Q34,48 42,52 Q50,56 54,52 Q58,56 66,52 Q74,48 72,42 Q74,34 68,28 Z"/>
+                    <path fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" d="M54,30 L54,50"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M46,36 Q42,42 46,48"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M62,36 Q66,42 62,48"/>
+                    <!-- Small eyes below -->
+                    <circle fill="#3DDC84" cx="42" cy="60" r="4"/>
+                    <circle fill="#3DDC84" cx="66" cy="60" r="4"/>
+                </svg>
+            </div>
+            <h3>23. Forehead Brain</h3>
+            <p>Brain on top, eyes below</p>
+        </div>
+
+        <!-- 24. Brain with thicker lines -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="4" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="4" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain with bold lines -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="4" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M44,42 Q40,48 44,54"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M64,42 Q68,48 64,54"/>
+                </svg>
+            </div>
+            <h3>24. Bold Lines</h3>
+            <p>Thicker brain details</p>
+        </div>
+
+        <!-- 25. Brain outline only -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain outline only -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Q62,26 54,32 Q46,26 38,32"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M44,42 Q40,48 44,54"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M64,42 Q68,48 64,54"/>
+                </svg>
+            </div>
+            <h3>25. Brain Outline</h3>
+            <p>No fill, just lines</p>
+        </div>
+
+        <!-- 26. Wider brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M20,66 Q20,20 54,20 Q88,20 88,66 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="34" y1="22" x2="26" y2="10"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="74" y1="22" x2="82" y2="10"/>
+                    <!-- Wide brain -->
+                    <path fill="#3DDC84" d="M32,30 Q24,38 28,50 Q24,60 36,64 Q48,68 54,62 Q60,68 72,64 Q84,60 80,50 Q84,38 76,30 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,32 L54,60"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M40,40 Q34,48 40,56"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M68,40 Q74,48 68,56"/>
+                </svg>
+            </div>
+            <h3>26. Wide Brain</h3>
+            <p>Fills more of head</p>
+        </div>
+
+        <!-- 27. Brain with more detail curves -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain with extra curves -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,38 Q38,42 42,48"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,50 Q40,54 44,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,38 Q70,42 66,48"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,50 Q68,54 64,58"/>
+                </svg>
+            </div>
+            <h3>27. Extra Curves</h3>
+            <p>More brain detail</p>
+        </div>
+
+        <!-- 28. Brain with no body -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Just head, larger -->
+                    <path fill="white" d="M18,72 Q18,18 54,18 Q90,18 90,72 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="34" y1="20" x2="24" y2="8"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="74" y1="20" x2="84" y2="8"/>
+                    <!-- Large centered brain -->
+                    <path fill="#3DDC84" d="M36,28 Q28,36 32,50 Q28,62 40,68 Q50,74 54,68 Q58,74 68,68 Q80,62 76,50 Q80,36 72,28 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,30 L54,66"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,40 Q38,50 44,60"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,40 Q70,50 64,60"/>
+                </svg>
+            </div>
+            <h3>28. Head Only</h3>
+            <p>No body, big head</p>
+        </div>
+
+        <!-- 29. Rounder brain shape -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Rounder brain -->
+                    <ellipse fill="#3DDC84" cx="54" cy="46" rx="22" ry="18"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,30 L54,62"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,38 Q38,46 44,54"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,38 Q70,46 64,54"/>
+                </svg>
+            </div>
+            <h3>29. Round Brain</h3>
+            <p>Elliptical shape</p>
+        </div>
+
+        <!-- 30. Brain with horizontal lines -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain with horizontal pattern -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M40,40 L50,40"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M58,40 L68,40"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M38,50 L50,50"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M58,50 L70,50"/>
+                </svg>
+            </div>
+            <h3>30. Horizontal</h3>
+            <p>Horizontal lines</p>
+        </div>
+
+        <!-- 31. Brain with dots -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain with dots pattern -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <circle fill="white" cx="44" cy="40" r="3"/>
+                    <circle fill="white" cx="44" cy="52" r="3"/>
+                    <circle fill="white" cx="64" cy="40" r="3"/>
+                    <circle fill="white" cx="64" cy="52" r="3"/>
+                </svg>
+            </div>
+            <h3>31. Brain Dots</h3>
+            <p>Dots instead of curves</p>
+        </div>
+
+        <!-- 32. Asymmetric brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Asymmetric brain -->
+                    <path fill="#3DDC84" d="M36,34 Q28,42 32,52 Q30,60 42,62 Q52,66 54,60 Q62,64 70,58 Q78,52 74,44 Q76,36 68,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,36 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M42,44 Q36,50 42,56"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,40 Q70,46 64,52"/>
+                </svg>
+            </div>
+            <h3>32. Asymmetric</h3>
+            <p>Uneven brain shape</p>
+        </div>
+
+        <!-- 33. Brain lower in head -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Eyes on top -->
+                    <circle fill="#3DDC84" cx="42" cy="34" r="4"/>
+                    <circle fill="#3DDC84" cx="66" cy="34" r="4"/>
+                    <!-- Brain in mouth area -->
+                    <path fill="#3DDC84" d="M40,44 Q34,48 36,54 Q34,60 42,62 Q50,66 54,62 Q58,66 66,62 Q74,60 72,54 Q74,48 68,44 Z"/>
+                    <path fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" d="M54,46 L54,60"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M46,50 Q42,54 46,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M62,50 Q66,54 62,58"/>
+                </svg>
+            </div>
+            <h3>33. Low Brain</h3>
+            <p>Brain below eyes</p>
+        </div>
+
+        <!-- 34. Brain with glow effect -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Glow -->
+                    <ellipse fill="white" opacity="0.2" cx="54" cy="46" rx="32" ry="26"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Glowing brain -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,42 Q40,48 44,54"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,42 Q68,48 64,54"/>
+                </svg>
+            </div>
+            <h3>34. Glowing</h3>
+            <p>Brain with glow</p>
+        </div>
+
+        <!-- 35. Minimal brain lines -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Super minimal brain - just the essential curves -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="4" stroke-linecap="round" d="M54,36 L54,56"/>
+                </svg>
+            </div>
+            <h3>35. Super Minimal</h3>
+            <p>Just center line</p>
+        </div>
+
+        <!-- 36. Outline Bugdroid with Brain (final concept) -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#0a1628" width="108" height="108"/>
+
+                    <!-- Antennas -->
+                    <line stroke="#00b4d8" stroke-width="2" stroke-linecap="round" x1="38" y1="16" x2="30" y2="6"/>
+                    <line stroke="#00b4d8" stroke-width="2" stroke-linecap="round" x1="70" y1="16" x2="78" y2="6"/>
+
+                    <!-- Head dome (outline only) -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="2.5" d="M24,44 Q24,12 54,12 Q84,12 84,44"/>
+
+                    <!-- Brain - detailed outline style -->
+                    <!-- Outer brain shape -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="2" d="M32,22 Q26,28 28,36 Q26,42 34,44 Q42,46 54,42 Q66,46 74,44 Q82,42 80,36 Q82,28 76,22 Q68,16 54,20 Q40,16 32,22"/>
+                    <!-- Brain folds - left hemisphere -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M36,26 Q32,32 36,38"/>
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M42,24 Q38,30 40,36 Q38,40 42,42"/>
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M48,22 Q44,28 46,34 Q44,38 48,40"/>
+                    <!-- Brain folds - right hemisphere -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M72,26 Q76,32 72,38"/>
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M66,24 Q70,30 68,36 Q70,40 66,42"/>
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M60,22 Q64,28 62,34 Q64,38 60,40"/>
+                    <!-- Brain center/stem -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="1.5" stroke-linecap="round" d="M54,42 Q52,44 54,46"/>
+
+                    <!-- Body outline -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="2.5" d="M28,46 L80,46 L80,72 Q80,80 72,80 L36,80 Q28,80 28,72 Z"/>
+
+                    <!-- Eyes on body -->
+                    <circle fill="#00b4d8" cx="40" cy="56" r="4"/>
+                    <circle fill="#00b4d8" cx="68" cy="56" r="4"/>
+
+                    <!-- Left arm (pill shape outline) -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="2.5" d="M12,50 Q12,46 16,46 Q20,46 20,50 L20,68 Q20,72 16,72 Q12,72 12,68 Z"/>
+                    <!-- Right arm (pill shape outline) -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="2.5" d="M88,50 Q88,46 92,46 Q96,46 96,50 L96,68 Q96,72 92,72 Q88,72 88,68 Z"/>
+
+                    <!-- Legs -->
+                    <path fill="none" stroke="#00b4d8" stroke-width="2.5" d="M38,80 L38,92 Q38,96 42,96 Q46,96 46,92 L46,80"/>
+                    <path fill="none" stroke="#00b4d8" stroke-width="2.5" d="M62,80 L62,92 Q62,96 66,96 Q70,96 70,92 L70,80"/>
+                </svg>
+            </div>
+            <h3>36. Outline Brain Bot</h3>
+            <p>Line art style</p>
+        </div>
+
+        <!-- 37. Inverted colors in brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Brain with white fill, green lines -->
+                    <path fill="white" stroke="#3DDC84" stroke-width="2" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Q62,26 54,32 Q46,26 38,32"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M44,42 Q40,48 44,54"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="2" stroke-linecap="round" d="M64,42 Q68,48 64,54"/>
+                </svg>
+            </div>
+            <h3>37. Inverted</h3>
+            <p>White brain, green lines</p>
+        </div>
+
+        <!-- 38. 3D effect brain -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M22,64 Q22,22 54,22 Q86,22 86,64 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="36" y1="24" x2="28" y2="12"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="72" y1="24" x2="80" y2="12"/>
+                    <!-- Shadow layer -->
+                    <path fill="#2ab86e" d="M40,34 Q34,40 36,50 Q34,58 42,62 Q50,66 56,62 Q62,66 70,62 Q78,58 76,50 Q78,40 72,34 Z"/>
+                    <!-- Brain main -->
+                    <path fill="#3DDC84" d="M38,32 Q32,38 34,48 Q32,56 40,60 Q48,64 54,60 Q60,64 68,60 Q76,56 74,48 Q76,38 70,32 Z"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,58"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M44,42 Q40,48 44,54"/>
+                    <path fill="none" stroke="white" stroke-width="2" stroke-linecap="round" d="M64,42 Q68,48 64,54"/>
+                </svg>
+            </div>
+            <h3>38. 3D Effect</h3>
+            <p>Shadow depth</p>
+        </div>
+
+        <!-- 39. Brain fills entire head -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <!-- Head shape IS the brain -->
+                    <path fill="white" d="M30,50 Q22,40 30,28 Q40,18 54,22 Q68,18 78,28 Q86,40 78,50 Q86,60 78,70 Q68,82 54,78 Q40,82 30,70 Q22,60 30,50"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="40" y1="22" x2="32" y2="10"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="68" y1="22" x2="76" y2="10"/>
+                    <!-- Brain pattern on white -->
+                    <path fill="none" stroke="#3DDC84" stroke-width="4" stroke-linecap="round" d="M54,26 L54,74"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M40,36 Q32,50 40,64"/>
+                    <path fill="none" stroke="#3DDC84" stroke-width="3" stroke-linecap="round" d="M68,36 Q76,50 68,64"/>
+                    <!-- Eyes as part of pattern -->
+                    <circle fill="#3DDC84" cx="42" cy="44" r="5"/>
+                    <circle fill="#3DDC84" cx="66" cy="44" r="5"/>
+                </svg>
+            </div>
+            <h3>39. Full Coverage</h3>
+            <p>Head is brain-shaped</p>
+        </div>
+
+        <!-- 40. Clean final version -->
+        <div class="icon-card">
+            <div class="icon-wrapper">
+                <svg viewBox="0 0 108 108">
+                    <rect fill="#3DDC84" width="108" height="108"/>
+                    <path fill="white" d="M24,62 Q24,24 54,24 Q84,24 84,62 Z"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="38" y1="26" x2="30" y2="14"/>
+                    <line stroke="white" stroke-width="3" stroke-linecap="round" x1="70" y1="26" x2="78" y2="14"/>
+                    <!-- Clean, balanced brain -->
+                    <path fill="#3DDC84" d="M40,32 Q34,38 36,46 Q34,54 42,58 Q50,62 54,58 Q58,62 66,58 Q74,54 72,46 Q74,38 68,32 Q60,26 54,32 Q48,26 40,32"/>
+                    <path fill="none" stroke="white" stroke-width="3" stroke-linecap="round" d="M54,34 L54,56"/>
+                    <path fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" d="M46,40 Q42,46 46,52"/>
+                    <path fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" d="M62,40 Q66,46 62,52"/>
+                </svg>
+            </div>
+            <h3>40. Clean Final</h3>
+            <p>Balanced & polished</p>
+        </div>
+
+    </div>
+</body>
+</html>
