@@ -29,6 +29,17 @@ val signingProperties = Properties().apply {
     }
 }
 
+// Load local.properties for API endpoints
+val localProperties = Properties().apply {
+    val localPropsFile = rootProject.file("local.properties")
+    if (localPropsFile.exists()) {
+        localPropsFile.inputStream().use { load(it) }
+    }
+}
+
+// Cloud LLM endpoint (OpenAI-compatible API)
+val cloudLlmEndpoint = localProperties.getProperty("cloud.llm.endpoint", "")
+
 android {
     namespace = "com.lelloman.simpleai"
     compileSdk = 36
@@ -71,7 +82,7 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"https://dev-api.example.com/v1\"")
+            buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"$cloudLlmEndpoint\"")
         }
         release {
             isMinifyEnabled = false
@@ -82,7 +93,7 @@ android {
             if (signingConfigs.findByName("release") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"https://api.example.com/v1\"")
+            buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"$cloudLlmEndpoint\"")
         }
     }
     compileOptions {
