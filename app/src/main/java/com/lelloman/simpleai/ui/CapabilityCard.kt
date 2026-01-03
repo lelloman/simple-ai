@@ -42,6 +42,7 @@ fun CapabilityCard(
     onDownload: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
     onConfigure: (() -> Unit)? = null,
+    onTest: (() -> Unit)? = null,
     extraContent: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -164,6 +165,12 @@ fun CapabilityCard(
                             fontWeight = FontWeight.Medium
                         )
                         Spacer(modifier = Modifier.weight(1f))
+                        if (onTest != null) {
+                            OutlinedButton(onClick = onTest) {
+                                Text("Test")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
                         if (onConfigure != null) {
                             OutlinedButton(onClick = onConfigure) {
                                 Text("Configure")

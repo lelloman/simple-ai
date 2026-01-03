@@ -545,11 +545,15 @@ class SimpleAIService : Service() {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 Log.i(TAG, "Initializing NLU engine...")
-                capabilityManager.updateVoiceCommandsStatus(
-                    CapabilityStatus.Downloading(0, CapabilityManager.VOICE_COMMANDS_MODEL_SIZE)
-                )
-
                 val engine = OnnxNLUEngine(this@SimpleAIService)
+
+                // Only show "Downloading" if the model isn't already downloaded
+                if (!engine.isModelDownloaded()) {
+                    capabilityManager.updateVoiceCommandsStatus(
+                        CapabilityStatus.Downloading(0, CapabilityManager.VOICE_COMMANDS_MODEL_SIZE)
+                    )
+                }
+
                 engine.initialize().fold(
                     onSuccess = {
                         nluEngine = engine

@@ -82,6 +82,11 @@ class OnnxNLUEngine(
     private val baseModelFile: File
         get() = File(nluDir, BASE_MODEL_FILE)
 
+    /**
+     * Check if the base model is already downloaded.
+     */
+    fun isModelDownloaded(): Boolean = baseModelFile.exists()
+
     data class LoadedAdapter(
         val id: String,
         val version: String,

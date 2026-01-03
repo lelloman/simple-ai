@@ -1,5 +1,6 @@
 package com.lelloman.simpleai.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lelloman.simpleai.capability.CapabilityStatus
 
+private enum class Screen {
+    Capabilities,
+    TranslationLanguages,
+    TranslationTest
+}
+
 /**
  * Main screen showing all capabilities as cards.
  */
@@ -33,91 +40,113 @@ fun CapabilitiesScreen(
     viewModel: CapabilitiesViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    var showLanguagePicker by remember { mutableStateOf(false) }
+    val translationState by viewModel.translationState.collectAsState()
+    var currentScreen by remember { mutableStateOf(Screen.Capabilities) }
 
-    if (showLanguagePicker) {
-        TranslationLanguagesScreen(
-            downloadedLanguages = state.downloadedLanguages,
-            downloadingLanguage = state.downloadingLanguage,
-            onDownloadLanguage = { viewModel.downloadTranslationLanguage(it) },
-            onDeleteLanguage = { viewModel.deleteTranslationLanguage(it) },
-            onBack = { showLanguagePicker = false }
-        )
-    } else {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("SimpleAI") }
-                )
-            }
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(16.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Voice Commands capability
-                CapabilityCard(
-                    title = "Voice Commands",
-                    icon = "\uD83C\uDFA4",  // microphone
-                    description = "Intent classification and entity extraction",
-                    status = state.voiceCommandsStatus,
-                    onRetry = { viewModel.refreshCapabilities() }
-                )
+    // Handle back button for sub-screens
+    BackHandler(enabled = currentScreen != Screen.Capabilities) {
+        currentScreen = Screen.Capabilities
+    }
 
-                // Translation capability
-                CapabilityCard(
-                    title = "Translation",
-                    icon = "\uD83C\uDF10",  // globe
-                    description = "On-device translation between languages",
-                    status = state.translationStatus,
-                    onConfigure = { showLanguagePicker = true },
-                    extraContent = {
-                        if (state.downloadedLanguages.isNotEmpty()) {
-                            val languageNames = state.downloadedLanguages
-                                .map { getLanguageName(it) }
-                                .sorted()
-                                .joinToString(", ")
-                            Text(
-                                text = "Languages: $languageNames",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+    when (currentScreen) {
+        Screen.TranslationLanguages -> {
+            TranslationLanguagesScreen(
+                downloadedLanguages = state.downloadedLanguages,
+                downloadingLanguage = state.downloadingLanguage,
+                onDownloadLanguage = { viewModel.downloadTranslationLanguage(it) },
+                onDeleteLanguage = { viewModel.deleteTranslationLanguage(it) },
+                onBack = { currentScreen = Screen.Capabilities }
+            )
+        }
+        Screen.TranslationTest -> {
+            TranslationTestScreen(
+                downloadedLanguages = state.downloadedLanguages,
+                translationState = translationState,
+                onTranslate = { text, source, target ->
+                    viewModel.translate(text, source, target)
+                },
+                onBack = { currentScreen = Screen.Capabilities }
+            )
+        }
+        Screen.Capabilities -> {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text("SimpleAI") }
+                    )
+                }
+            ) { innerPadding ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Voice Commands capability
+                    CapabilityCard(
+                        title = "Voice Commands",
+                        icon = "\uD83C\uDFA4",  // microphone
+                        description = "Intent classification and entity extraction",
+                        status = state.voiceCommandsStatus,
+                        onRetry = { viewModel.refreshCapabilities() }
+                    )
+
+                    // Translation capability
+                    CapabilityCard(
+                        title = "Translation",
+                        icon = "\uD83C\uDF10",  // globe
+                        description = "On-device translation between languages",
+                        status = state.translationStatus,
+                        onConfigure = { currentScreen = Screen.TranslationLanguages },
+                        onTest = if (state.downloadedLanguages.size >= 2) {
+                            { currentScreen = Screen.TranslationTest }
+                        } else null,
+                        extraContent = {
+                            if (state.downloadedLanguages.isNotEmpty()) {
+                                val languageNames = state.downloadedLanguages
+                                    .map { getLanguageName(it) }
+                                    .sorted()
+                                    .joinToString(", ")
+                                Text(
+                                    text = "Languages: $languageNames",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                    }
-                )
+                    )
 
-                // Cloud AI capability
-                CapabilityCard(
-                    title = "Cloud AI",
-                    icon = "\u2601\uFE0F",  // cloud
-                    description = "Cloud-based LLM (requires client auth)",
-                    status = state.cloudAiStatus,
-                    extraContent = {
-                        if (state.cloudAiStatus is CapabilityStatus.Ready) {
-                            Text(
-                                text = "No download required",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    // Cloud AI capability
+                    CapabilityCard(
+                        title = "Cloud AI",
+                        icon = "\u2601\uFE0F",  // cloud
+                        description = "Cloud-based LLM (requires client auth)",
+                        status = state.cloudAiStatus,
+                        extraContent = {
+                            if (state.cloudAiStatus is CapabilityStatus.Ready) {
+                                Text(
+                                    text = "No download required",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                    }
-                )
+                    )
 
-                // Local AI capability
-                CapabilityCard(
-                    title = "Local AI",
-                    icon = "\uD83E\uDD16",  // robot
-                    description = "On-device LLM for offline use",
-                    status = state.localAiStatus,
-                    onDownload = { viewModel.downloadLocalAi() },
-                    onRetry = { viewModel.downloadLocalAi() }
-                )
+                    // Local AI capability
+                    CapabilityCard(
+                        title = "Local AI",
+                        icon = "\uD83E\uDD16",  // robot
+                        description = "On-device LLM for offline use",
+                        status = state.localAiStatus,
+                        onDownload = { viewModel.downloadLocalAi() },
+                        onRetry = { viewModel.downloadLocalAi() }
+                    )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
             }
         }
     }

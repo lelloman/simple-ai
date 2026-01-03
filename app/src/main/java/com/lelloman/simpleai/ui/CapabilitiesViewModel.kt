@@ -35,13 +35,23 @@ import kotlinx.serialization.json.jsonPrimitive
  * UI state for the capabilities screen.
  */
 data class CapabilitiesState(
-    val voiceCommandsStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(120_000_000),
+    val voiceCommandsStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(534_000_000),
     val translationStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(0),
     val cloudAiStatus: CapabilityStatus = CapabilityStatus.Ready,
     val localAiStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(LocalAIModel.SIZE_BYTES),
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguage: String? = null,
     val isServiceConnected: Boolean = false
+)
+
+/**
+ * State for translation test screen.
+ */
+data class TranslationState(
+    val isTranslating: Boolean = false,
+    val translatedText: String? = null,
+    val detectedLanguage: String? = null,
+    val error: String? = null
 )
 
 /**
@@ -56,6 +66,9 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     private val _state = MutableStateFlow(CapabilitiesState())
     val state: StateFlow<CapabilitiesState> = _state.asStateFlow()
 
+    private val _translationState = MutableStateFlow(TranslationState())
+    val translationState: StateFlow<TranslationState> = _translationState.asStateFlow()
+
     private var simpleAiService: ISimpleAI? = null
     private var isBound = false
 
@@ -69,7 +82,12 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             Log.i(TAG, "Service connected")
             simpleAiService = ISimpleAI.Stub.asInterface(service)
             _state.update { it.copy(isServiceConnected = true) }
+            // Refresh immediately and again after a short delay to catch initialization
             refreshCapabilities()
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(500)
+                refreshCapabilities()
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -278,6 +296,33 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
                 },
                 onFailure = { e ->
                     Log.e(TAG, "Failed to delete language: $languageCode", e)
+                }
+            )
+        }
+    }
+
+    // =========================================================================
+    // Translation Test
+    // =========================================================================
+
+    fun translate(text: String, sourceLang: String, targetLang: String) {
+        viewModelScope.launch {
+            _translationState.value = TranslationState(isTranslating = true)
+
+            translationManager.translate(text, sourceLang, targetLang).fold(
+                onSuccess = { result ->
+                    _translationState.value = TranslationState(
+                        isTranslating = false,
+                        translatedText = result.translatedText,
+                        detectedLanguage = result.detectedSourceLang
+                    )
+                },
+                onFailure = { e ->
+                    Log.e(TAG, "Translation failed", e)
+                    _translationState.value = TranslationState(
+                        isTranslating = false,
+                        error = e.message ?: "Translation failed"
+                    )
                 }
             )
         }
