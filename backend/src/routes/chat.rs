@@ -37,7 +37,7 @@ async fn chat_completions(
 
     // Get model (from request or default)
     let model = request.model.clone()
-        .unwrap_or_else(|| state.config.ollama_model.clone());
+        .unwrap_or_else(|| state.config.ollama.model.clone());
 
     // Log request BEFORE calling Ollama
     let mut req_log = Request::new(user.id.clone(), "/chat/completions".to_string());

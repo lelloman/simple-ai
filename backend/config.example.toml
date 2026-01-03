@@ -1,0 +1,26 @@
+# SimpleAI Backend Configuration
+# Copy to config.toml and adjust values.
+# Environment variables override these settings (SIMPLEAI__SECTION__KEY format).
+
+# Server settings
+host = "0.0.0.0"
+port = 8080
+
+[ollama]
+base_url = "http://localhost:11434"
+model = "llama3.2"
+
+[oidc]
+# Required: Your OIDC provider's issuer URL
+issuer = "https://auth.example.com/realms/main"
+# Required: OIDC client ID (audience claim in tokens)
+audience = "simple-ai"
+
+[database]
+url = "sqlite:./data/audit.db"
+
+[logging]
+level = "info"
+
+[cors]
+origins = "*"

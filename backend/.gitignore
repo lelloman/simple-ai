@@ -2,3 +2,4 @@
 Cargo.lock
 *.db
 /data
+config.toml

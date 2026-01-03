@@ -28,21 +28,21 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load configuration
-    let config = Config::from_env()?;
+    let config = Config::load()?;
 
     // Initialize tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| config.log_level.clone().into()))
+            .unwrap_or_else(|_| config.logging.level.clone().into()))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     tracing::info!("Starting SimpleAI API Gateway");
 
     // Initialize components
-    let jwks_client = JwksClient::new(&config.oidc_issuer).await?;
-    let ollama_client = OllamaClient::new(&config.ollama_base_url, &config.ollama_model);
-    let audit_logger = AuditLogger::new(&config.database_url)?;
+    let jwks_client = JwksClient::new(&config.oidc.issuer).await?;
+    let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
+    let audit_logger = AuditLogger::new(&config.database.url)?;
 
     let state = Arc::new(AppState {
         config: config.clone(),
