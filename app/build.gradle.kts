@@ -115,9 +115,6 @@ dependencies {
     // LLM inference
     implementation(libs.llamacpp.kotlin)
 
-    // ExecuTorch for optimized on-device LLM inference
-    implementation("org.pytorch:executorch-android:0.6.0")
-
     // ONNX Runtime for transformer models (NLU classification)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
 

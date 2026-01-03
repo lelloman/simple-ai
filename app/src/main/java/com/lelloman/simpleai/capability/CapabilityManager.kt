@@ -82,8 +82,7 @@ class CapabilityManager(
             }
         }
 
-        // TODO: Check if models are actually downloaded on disk
-        // For now, we'll detect this when engines are initialized
+        // Model download status is detected when engines initialize in SimpleAIService
     }
 
     // =========================================================================

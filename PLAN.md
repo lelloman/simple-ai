@@ -392,13 +392,13 @@ Simple list of capability cards. No model selection, no advanced settings.
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure Refactor
+### Phase 1: Core Infrastructure Refactor ✅
 
 #### 1.1 Define Response Types
-- [ ] Create `ApiResponse` sealed class (Success/Error)
-- [ ] Create `ErrorCode` enum with all error types
-- [ ] Create JSON serialization for responses
-- [ ] Create `ProtocolHandler` for version compatibility
+- [x] Create `ApiResponse` sealed class (Success/Error)
+- [x] Create `ErrorCode` enum with all error types
+- [x] Create JSON serialization for responses
+- [x] Create `ProtocolHandler` for version compatibility
 
 **Files:**
 - `app/src/main/java/com/lelloman/simpleai/api/ApiResponse.kt`
@@ -406,10 +406,10 @@ Simple list of capability cards. No model selection, no advanced settings.
 - `app/src/main/java/com/lelloman/simpleai/api/ProtocolHandler.kt`
 
 #### 1.2 Capability Manager
-- [ ] Create `Capability` sealed class with states
-- [ ] Create `CapabilityManager` to track all capabilities
-- [ ] Implement download orchestration
-- [ ] Implement status persistence across restarts
+- [x] Create `Capability` sealed class with states
+- [x] Create `CapabilityManager` to track all capabilities
+- [x] Implement download orchestration
+- [x] Implement status persistence across restarts
 
 **Files:**
 - `app/src/main/java/com/lelloman/simpleai/capability/Capability.kt`
@@ -417,15 +417,15 @@ Simple list of capability cards. No model selection, no advanced settings.
 - `app/src/main/java/com/lelloman/simpleai/capability/CapabilityStatus.kt`
 
 #### 1.3 Update AIDL Interface
-- [ ] Rewrite `ISimpleAI.aidl` with new interface
-- [ ] Update service to implement new interface
-- [ ] Add protocol version handling to all methods
+- [x] Rewrite `ISimpleAI.aidl` with new interface
+- [x] Update service to implement new interface
+- [x] Add protocol version handling to all methods
 
 **Files:**
 - `app/src/main/aidl/com/lelloman/simpleai/ISimpleAI.aidl`
 - `app/src/main/java/com/lelloman/simpleai/service/SimpleAIService.kt`
 
-### Phase 2: Voice Commands (NLU)
+### Phase 2: Voice Commands (NLU) ✅
 
 #### 2.1 Adapter State Tracking
 
@@ -453,102 +453,103 @@ Base Model (in memory, ~120MB)
    c. Store revertPatch for future de-patching
    d. Run inference
 
-- [ ] Create `AdapterState` data class to track current adapter
-- [ ] Store revertPatch when applying adapter
-- [ ] Implement de-patch → re-patch flow
+- [x] Create `AdapterState` data class to track current adapter
+- [x] Store revertPatch when applying adapter
+- [x] Implement de-patch → re-patch flow
 
 **Files:**
-- `app/src/main/java/com/lelloman/simpleai/nlu/AdapterState.kt`
+- `app/src/main/java/com/lelloman/simpleai/nlu/OnnxNLUEngine.kt` (adapter state integrated)
 
 #### 2.2 Refactor OnnxNLUEngine
-- [ ] Update to use AdapterState (single adapter, not cache)
-- [ ] Accept adapter files per-request
-- [ ] Implement de-patch before re-patch logic
-- [ ] Return standardized ApiResponse
+- [x] Update to use AdapterState (single adapter, not cache)
+- [x] Accept adapter files per-request
+- [x] Implement de-patch before re-patch logic
+- [x] Return standardized ApiResponse
 
 **Files:**
 - `app/src/main/java/com/lelloman/simpleai/nlu/OnnxNLUEngine.kt` (update)
 
-### Phase 3: Translation (ML Kit)
+### Phase 3: Translation (ML Kit) ✅
 
 #### 3.1 ML Kit Integration
-- [ ] Add ML Kit translate dependency
-- [ ] Create `TranslationManager`
-- [ ] Implement language model download/delete
-- [ ] Auto-manage English (add when first lang added, remove when all removed)
+- [x] Add ML Kit translate dependency
+- [x] Create `TranslationManager`
+- [x] Implement language model download/delete
+- [x] Auto-manage English (add when first lang added, remove when all removed)
 
 **Files:**
 - `app/build.gradle.kts` (add dependency)
 - `app/src/main/java/com/lelloman/simpleai/translation/TranslationManager.kt`
 
 #### 3.2 Translation Capability
-- [ ] Wire TranslationManager to CapabilityManager
-- [ ] Track per-language download status
-- [ ] Implement translate() AIDL method
+- [x] Wire TranslationManager to CapabilityManager
+- [x] Track per-language download status
+- [x] Implement translate() AIDL method
 
-### Phase 4: Cloud AI Proxy
+### Phase 4: Cloud AI Proxy ✅
 
 #### 4.1 Cloud Client
-- [ ] Create `CloudLLMClient` with OkHttp
-- [ ] Use `BuildConfig.CLOUD_LLM_ENDPOINT`
-- [ ] OpenAI-compatible request/response format
-- [ ] Handle auth token pass-through
+- [x] Create `CloudLLMClient` with OkHttp
+- [x] Use `BuildConfig.CLOUD_LLM_ENDPOINT`
+- [x] OpenAI-compatible request/response format
+- [x] Handle auth token pass-through
 
 **Files:**
 - `app/build.gradle.kts` (add buildConfigField)
 - `app/src/main/java/com/lelloman/simpleai/cloud/CloudLLMClient.kt`
 
 #### 4.2 Cloud Capability
-- [ ] Always-ready capability (no downloads)
-- [ ] Implement cloudChat() AIDL method
+- [x] Always-ready capability (no downloads)
+- [x] Implement cloudChat() AIDL method
 
-### Phase 5: Local AI
+### Phase 5: Local AI ✅
 
 #### 5.1 Simplify LLM Engine
-- [ ] Keep only LlamaEngine
-- [ ] Remove ExecuTorchEngine (or keep disabled)
-- [ ] Hardcode Qwen 3 1.7B as the only model
-- [ ] Remove model selection logic
+- [x] Keep only LlamaEngine
+- [x] Remove ExecuTorchEngine (dependency removed)
+- [x] Hardcode Qwen 3 1.7B as the only model
+- [x] Remove model selection logic
 
 **Files:**
-- `app/src/main/java/com/lelloman/simpleai/llm/LLMEngine.kt` (simplify)
-- `app/src/main/java/com/lelloman/simpleai/model/AvailableModels.kt` (simplify to single model)
+- `app/src/main/java/com/lelloman/simpleai/llm/LLMEngine.kt` (simplified)
+- `app/src/main/java/com/lelloman/simpleai/model/LocalAIModel.kt` (renamed from AvailableModels, single model object)
 
 #### 5.2 Local AI Capability
-- [ ] Wire LlamaEngine to CapabilityManager
-- [ ] Implement localGenerate() and localChat() AIDL methods
+- [x] Wire LlamaEngine to CapabilityManager
+- [x] Implement localGenerate() and localChat() AIDL methods
 
-### Phase 6: UI Refactor
+### Phase 6: UI Refactor ✅
 
 #### 6.1 Main Screen
-- [ ] Create `CapabilityCard` composable
-- [ ] Show download progress, errors, retry
-- [ ] Remove all model selection UI
-- [ ] Remove generation test UI
+- [x] Create `CapabilityCard` composable
+- [x] Show download progress, errors, retry
+- [x] Remove all model selection UI
+- [x] Remove generation test UI
 
 **Files:**
 - `app/src/main/java/com/lelloman/simpleai/ui/CapabilityCard.kt`
-- `app/src/main/java/com/lelloman/simpleai/MainActivity.kt` (simplify)
-- `app/src/main/java/com/lelloman/simpleai/MainViewModel.kt` (simplify)
+- `app/src/main/java/com/lelloman/simpleai/ui/CapabilitiesScreen.kt`
+- `app/src/main/java/com/lelloman/simpleai/ui/CapabilitiesViewModel.kt`
+- `app/src/main/java/com/lelloman/simpleai/MainActivity.kt` (simplified, MainViewModel removed)
 
 #### 6.2 Translation Language Picker
-- [ ] Create language picker screen/dialog
-- [ ] Show downloaded vs available languages
-- [ ] Download/delete individual languages
+- [x] Create language picker screen/dialog
+- [x] Show downloaded vs available languages
+- [x] Download/delete individual languages
 
 **Files:**
 - `app/src/main/java/com/lelloman/simpleai/ui/TranslationLanguagesScreen.kt`
 
-### Phase 7: Cleanup
+### Phase 7: Cleanup ✅
 
 #### 7.1 Remove Unused Code
-- [ ] Delete ExecuTorchEngine (or move to disabled/)
-- [ ] Delete chat formatters (HermesFormatter, LlamaFormatter, RawFormatter)
-- [ ] Delete ChatModels.kt
-- [ ] Clean up old AIDL interface references
-- [ ] Remove old UI components
+- [x] Delete ExecuTorchEngine (removed code and dependency)
+- [x] Delete chat formatters (HermesFormatter, LlamaFormatter, RawFormatter)
+- [x] Delete ChatModels.kt
+- [x] Clean up old AIDL interface references
+- [x] Remove old UI components (MainViewModel removed)
 
-#### 7.2 Update SimpleEphem
+#### 7.2 Update SimpleEphem (separate repo)
 - [ ] Update AIDL interface copy
 - [ ] Update NluClient to use new API
 - [ ] Update SimpleAiClient for cloud proxy
