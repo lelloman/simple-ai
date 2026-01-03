@@ -1,84 +1,46 @@
 # SimpleAI
 
-An Android application that runs a local Large Language Model (LLM) on-device, providing AI text generation and translation capabilities without requiring an internet connection.
+An Android service that provides AI capabilities to other apps. SimpleAI acts as a capability manager where users opt-in to features and download required models.
 
-## Features
+## Capabilities
 
-- **Local LLM Inference** - Runs Qwen 3 1.7B model entirely on-device using llama.cpp
-- **Text Generation** - Generate responses with configurable parameters (max tokens, temperature)
-- **Translation** - Translate between 18 languages with auto-detect support
-- **AIDL Service** - Expose LLM capabilities to other apps via Android IPC
-- **Automatic Model Download** - Downloads and caches the model on first launch (~1.3GB)
+| Capability | Description | Download Required |
+|------------|-------------|-------------------|
+| **Voice Commands** | NLU intent classification + entity extraction | ~120 MB (XLM-RoBERTa) |
+| **Translation** | On-device translation via ML Kit | ~30 MB per language |
+| **Cloud AI** | Proxy to cloud LLM endpoint | None (requires client auth) |
+| **Local AI** | On-device LLM inference | ~1.3 GB (Qwen 3 1.7B) |
 
 ## Requirements
 
 - Android 7.0 (API 24) or higher
 - ARM processor (arm64-v8a or armeabi-v7a)
-- ~1.5GB free storage space for the model
-- ~2GB RAM recommended
+- Storage space depends on capabilities:
+  - Voice Commands: ~150 MB
+  - Translation: ~30 MB per language (English required as pivot)
+  - Local AI: ~1.5 GB
 
 ## Installation
 
 ### Build from Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/user/simple-ai.git
 cd simple-ai
-
-# Build debug APK
 ./gradlew assembleDebug
-
-# Install on connected device
 ./gradlew installDebug
 ```
 
-### Install APK
-
-1. Download the APK from releases
-2. Enable "Install from unknown sources" in device settings
-3. Open the APK file to install
-
-## Usage
-
-### First Launch
-
-1. Open SimpleAI - the app will start downloading the Qwen 3 1.7B model (~1.3GB)
-2. Wait for download and model loading to complete
-3. Once ready, you can test generation using the built-in UI
-
-### Service States
-
-The service goes through these states:
-- **Initializing** - Service starting up
-- **Downloading** - Model being downloaded (shows progress)
-- **Loading** - Model being loaded into memory
-- **Ready** - Model loaded and ready for inference
-- **Error** - Something went wrong (check logs)
-
 ## AIDL Integration
 
-Other Android apps can bind to SimpleAI's LLM service to use its capabilities.
+Client apps bind to SimpleAI via AIDL to use its capabilities.
 
 ### 1. Add the AIDL Interface
 
-Copy `ILLMService.aidl` to your project at:
-```
-app/src/main/aidl/com/lelloman/simpleai/ILLMService.aidl
-```
+Copy `ISimpleAI.aidl` to your project:
 
-```aidl
-package com.lelloman.simpleai;
-
-interface ILLMService {
-    boolean isReady();
-    String getStatus();
-    String generate(String prompt);
-    String generateWithParams(String prompt, int maxTokens, float temperature);
-    String translate(String text, String sourceLanguage, String targetLanguage);
-    String getSupportedLanguages();
-    String getModelInfo();
-}
+```
+app/src/main/aidl/com/lelloman/simpleai/ISimpleAI.aidl
 ```
 
 ### 2. Bind to the Service
@@ -86,24 +48,24 @@ interface ILLMService {
 ```kotlin
 class MyActivity : AppCompatActivity() {
 
-    private var llmService: ILLMService? = null
+    private var simpleAi: ISimpleAI? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            llmService = ILLMService.Stub.asInterface(service)
+            simpleAi = ISimpleAI.Stub.asInterface(service)
+            checkCapabilities()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            llmService = null
+            simpleAi = null
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Bind to SimpleAI service
         val intent = Intent().apply {
-            setClassName("com.lelloman.simpleai", "com.lelloman.simpleai.service.LLMService")
+            setClassName("com.lelloman.simpleai", "com.lelloman.simpleai.service.SimpleAIService")
         }
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
@@ -115,123 +77,475 @@ class MyActivity : AppCompatActivity() {
 }
 ```
 
-### 3. Use the API
+### 3. Protocol Versioning
+
+All AIDL methods require a `protocolVersion` parameter. This enables backward compatibility:
 
 ```kotlin
-// Check if ready
-if (llmService?.isReady() == true) {
+const val PROTOCOL_VERSION = 1
 
-    // Generate text
-    val response = llmService?.generate("Explain quantum computing in simple terms")
+// Check service compatibility
+val infoJson = simpleAi?.getServiceInfo(PROTOCOL_VERSION)
+val info = Json.parseToJsonElement(infoJson).jsonObject
 
-    // Generate with custom parameters
-    val response2 = llmService?.generateWithParams(
-        "Write a haiku about Android",
-        maxTokens = 100,
-        temperature = 0.8f
-    )
+// Check if our protocol is supported
+val minProtocol = info["data"]?.jsonObject?.get("minProtocol")?.jsonPrimitive?.int
+val maxProtocol = info["data"]?.jsonObject?.get("maxProtocol")?.jsonPrimitive?.int
 
-    // Translate text
-    val translated = llmService?.translate(
-        "Hello, how are you?",
-        "en",    // source language
-        "es"     // target language (Spanish)
-    )
-
-    // Auto-detect source language
-    val autoTranslated = llmService?.translate(
-        "Bonjour le monde",
-        "auto",  // auto-detect
-        "en"     // translate to English
-    )
-
-    // Get supported languages (returns JSON)
-    val languages = llmService?.getSupportedLanguages()
-
-    // Get model info (returns JSON)
-    val modelInfo = llmService?.getModelInfo()
+if (PROTOCOL_VERSION < minProtocol) {
+    // Client too old, needs update
+} else if (PROTOCOL_VERSION > maxProtocol) {
+    // SimpleAI too old, prompt user to update
 }
 ```
 
-### Supported Languages
+---
 
-| Code | Language |
-|------|----------|
-| en | English |
-| es | Spanish |
-| fr | French |
-| de | German |
-| it | Italian |
-| pt | Portuguese |
-| nl | Dutch |
-| pl | Polish |
-| ru | Russian |
-| uk | Ukrainian |
-| zh | Chinese |
-| ja | Japanese |
-| ko | Korean |
-| ar | Arabic |
-| hi | Hindi |
-| tr | Turkish |
-| vi | Vietnamese |
-| th | Thai |
-| id | Indonesian |
+## API Reference
+
+All methods return JSON strings with this structure:
+
+```json
+// Success
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": { ... }
+}
+
+// Error
+{
+  "status": "error",
+  "protocolVersion": 1,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "details": { ... }
+  }
+}
+```
+
+### getServiceInfo
+
+Get service version and capabilities status.
+
+```kotlin
+val result = simpleAi.getServiceInfo(protocolVersion = 1)
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "serviceVersion": 1,
+    "minProtocol": 1,
+    "maxProtocol": 1,
+    "capabilities": {
+      "voiceCommands": { "status": "ready" },
+      "translation": { "status": "ready", "languages": ["en", "it", "fr"] },
+      "cloudAi": { "status": "ready" },
+      "localAi": { "status": "not_downloaded", "modelSize": 1342177280 }
+    }
+  }
+}
+```
+
+**Capability Status Values:**
+- `not_downloaded` - Requires download (includes `modelSize`)
+- `downloading` - Download in progress (includes `progress` 0.0-1.0)
+- `ready` - Available for use
+- `error` - Failed (includes `message`, `canRetry`)
+
+---
+
+### Voice Commands (NLU)
+
+#### classify
+
+Classify text using a client-provided LoRA adapter.
+
+```kotlin
+// Open file descriptors for adapter files
+val patchFd = contentResolver.openFileDescriptor(patchUri, "r")
+val headsFd = contentResolver.openFileDescriptor(headsUri, "r")
+val tokenizerFd = contentResolver.openFileDescriptor(tokenizerUri, "r")
+val configFd = contentResolver.openFileDescriptor(configUri, "r")
+
+try {
+    val result = simpleAi.classify(
+        protocolVersion = 1,
+        text = "remind me to call John tomorrow",
+        adapterId = "my-app",
+        adapterVersion = "1.0.0",
+        patchFd = patchFd,
+        headsFd = headsFd,
+        tokenizerFd = tokenizerFd,
+        configFd = configFd
+    )
+} finally {
+    // Client must close FDs after call returns
+    patchFd?.close()
+    headsFd?.close()
+    tokenizerFd?.close()
+    configFd?.close()
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "intent": "add_reminder",
+    "intentConfidence": 0.94,
+    "slots": {
+      "person": ["John"],
+      "date": ["tomorrow"]
+    }
+  }
+}
+```
+
+**Notes:**
+- Adapter files are passed with every request
+- SimpleAI tracks the current adapter by (adapterId, adapterVersion)
+- If adapter matches, inference runs directly
+- If different, SimpleAI swaps adapters automatically
+
+#### clearAdapter
+
+Remove the currently applied adapter and restore the pristine model.
+
+```kotlin
+val result = simpleAi.clearAdapter(protocolVersion = 1)
+```
+
+---
+
+### Translation
+
+#### translate
+
+Translate text between languages.
+
+```kotlin
+val result = simpleAi.translate(
+    protocolVersion = 1,
+    text = "Hello, how are you?",
+    sourceLang = "en",      // or "auto" for detection
+    targetLang = "it"
+)
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "translatedText": "Ciao, come stai?",
+    "detectedSourceLang": "en"
+  }
+}
+```
+
+#### getTranslationLanguages
+
+Get list of downloaded translation languages.
+
+```kotlin
+val result = simpleAi.getTranslationLanguages(protocolVersion = 1)
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "languages": ["en", "it", "fr", "de"]
+  }
+}
+```
+
+**Supported Languages (59):**
+
+| Code | Language | Code | Language |
+|------|----------|------|----------|
+| af | Afrikaans | ka | Georgian |
+| ar | Arabic | kn | Kannada |
+| be | Belarusian | ko | Korean |
+| bg | Bulgarian | lt | Lithuanian |
+| bn | Bengali | lv | Latvian |
+| ca | Catalan | mk | Macedonian |
+| cs | Czech | mr | Marathi |
+| cy | Welsh | ms | Malay |
+| da | Danish | mt | Maltese |
+| de | German | nl | Dutch |
+| el | Greek | no | Norwegian |
+| en | English | pl | Polish |
+| eo | Esperanto | pt | Portuguese |
+| es | Spanish | ro | Romanian |
+| et | Estonian | ru | Russian |
+| fa | Persian | sk | Slovak |
+| fi | Finnish | sl | Slovenian |
+| fr | French | sq | Albanian |
+| ga | Irish | sv | Swedish |
+| gl | Galician | sw | Swahili |
+| gu | Gujarati | ta | Tamil |
+| he | Hebrew | te | Telugu |
+| hi | Hindi | th | Thai |
+| hr | Croatian | tl | Tagalog |
+| ht | Haitian Creole | tr | Turkish |
+| hu | Hungarian | uk | Ukrainian |
+| id | Indonesian | ur | Urdu |
+| is | Icelandic | vi | Vietnamese |
+| it | Italian | zh | Chinese |
+| ja | Japanese | | |
+
+---
+
+### Cloud AI
+
+#### cloudChat
+
+Send chat request to cloud LLM endpoint.
+
+```kotlin
+val messages = """[
+    {"role": "user", "content": "What is the capital of France?"}
+]"""
+
+val result = simpleAi.cloudChat(
+    protocolVersion = 1,
+    messagesJson = messages,
+    toolsJson = null,           // optional tool definitions
+    systemPrompt = null,        // optional system prompt
+    authToken = "your-api-key"  // client's auth token
+)
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "role": "assistant",
+    "content": "The capital of France is Paris.",
+    "finishReason": "stop",
+    "usage": {
+      "promptTokens": 15,
+      "completionTokens": 8,
+      "totalTokens": 23
+    }
+  }
+}
+```
+
+**With Tool Calls:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "role": "assistant",
+    "content": null,
+    "finishReason": "tool_calls",
+    "toolCalls": [
+      {
+        "id": "call_abc123",
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "arguments": "{\"location\": \"Paris\"}"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
+### Local AI
+
+#### localGenerate
+
+Generate text using the local LLM.
+
+```kotlin
+val result = simpleAi.localGenerate(
+    protocolVersion = 1,
+    prompt = "Explain quantum computing in simple terms:",
+    maxTokens = 256,
+    temperature = 0.7f
+)
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "text": "Quantum computing uses quantum mechanics principles..."
+  }
+}
+```
+
+#### localChat
+
+Chat using local LLM with optional tool support.
+
+```kotlin
+val messages = """[
+    {"role": "user", "content": "Hello!"}
+]"""
+
+val result = simpleAi.localChat(
+    protocolVersion = 1,
+    messagesJson = messages,
+    toolsJson = null,
+    systemPrompt = "You are a helpful assistant."
+)
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "protocolVersion": 1,
+  "data": {
+    "role": "assistant",
+    "content": "Hello! How can I help you today?"
+  }
+}
+```
+
+---
+
+## Error Codes
+
+| Code | Description | Typical Action |
+|------|-------------|----------------|
+| `VERSION_TOO_OLD` | SimpleAI needs update | Prompt user to update SimpleAI |
+| `UNSUPPORTED_PROTOCOL` | Client needs update | Update your app |
+| `CAPABILITY_NOT_READY` | Capability not downloaded | Direct user to SimpleAI to download |
+| `CAPABILITY_DOWNLOADING` | Download in progress | Show progress, retry later |
+| `CAPABILITY_ERROR` | Capability failed to initialize | Check `message`, maybe retry |
+| `ADAPTER_LOAD_FAILED` | LoRA adapter failed to load | Check adapter files |
+| `INVALID_REQUEST` | Malformed request | Fix request parameters |
+| `CLOUD_AUTH_FAILED` | Cloud rejected auth token | Check/refresh auth token |
+| `CLOUD_UNAVAILABLE` | Cloud endpoint unreachable | Check network, retry |
+| `TRANSLATION_LANGUAGE_NOT_AVAILABLE` | Language not downloaded | Direct user to download language |
+| `INTERNAL_ERROR` | Unexpected error | Report bug, retry |
+
+**Example Error Handling:**
+
+```kotlin
+val result = simpleAi.translate(1, "Hello", "en", "it")
+val json = Json.parseToJsonElement(result).jsonObject
+
+when (json["status"]?.jsonPrimitive?.content) {
+    "success" -> {
+        val translated = json["data"]?.jsonObject?.get("translatedText")?.jsonPrimitive?.content
+        // Use translated text
+    }
+    "error" -> {
+        val error = json["error"]?.jsonObject
+        val code = error?.get("code")?.jsonPrimitive?.content
+        val message = error?.get("message")?.jsonPrimitive?.content
+
+        when (code) {
+            "CAPABILITY_NOT_READY" -> showDownloadPrompt()
+            "TRANSLATION_LANGUAGE_NOT_AVAILABLE" -> showLanguageDownloadPrompt()
+            else -> showError(message)
+        }
+    }
+}
+```
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Client Apps                         │
-│                    (via AIDL binding)                    │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────┐
-│                    LLMService                            │
-│              (Foreground Service)                        │
-│  ┌─────────────────┬─────────────────┐                  │
-│  │  ILLMService    │  Status         │                  │
-│  │  (AIDL Binder)  │  Broadcasts     │                  │
-│  └────────┬────────┴────────┬────────┘                  │
-└───────────┼─────────────────┼───────────────────────────┘
-            │                 │
-┌───────────▼─────────────────▼───────────────────────────┐
-│                    LLMEngine                             │
-│            (LlamaEngine / StubEngine)                    │
-│  ┌─────────────────────────────────────┐                │
-│  │  llama.cpp (native inference)       │                │
-│  └─────────────────────────────────────┘                │
-└─────────────────────────────────────────────────────────┘
-            │
-┌───────────▼─────────────────────────────────────────────┐
-│              ModelDownloadManager                        │
-│         (Downloads model from HuggingFace)               │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      Client Apps                             │
+│                  (SimpleEphem, others)                       │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ AIDL (ISimpleAI)
+┌─────────────────────────▼───────────────────────────────────┐
+│                     SimpleAI Service                         │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │              Protocol Version Handler                   │ │
+│  │         (v1, v2, ... backward compatibility)           │ │
+│  └────────────────────────────────────────────────────────┘ │
+│  ┌─────────────┬─────────────┬─────────────┬──────────────┐ │
+│  │   Voice     │ Translation │  Cloud AI   │  Local AI    │ │
+│  │  Commands   │  (ML Kit)   │   (Proxy)   │ (llama.cpp)  │ │
+│  ├─────────────┼─────────────┼─────────────┼──────────────┤ │
+│  │ OnnxNLU     │ MLKit       │ OkHttp to   │ LlamaEngine  │ │
+│  │ Engine      │ Translator  │ cloud       │              │ │
+│  │ + LoRA      │             │ endpoint    │              │ │
+│  └─────────────┴─────────────┴─────────────┴──────────────┘ │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │              Capability Manager                         │ │
+│  │    (download status, progress, errors, retry)          │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Development
+---
 
-### Project Structure
+## Project Structure
 
 ```
 app/src/main/
-├── aidl/
-│   └── com/lelloman/simpleai/ILLMService.aidl
+├── aidl/com/lelloman/simpleai/
+│   └── ISimpleAI.aidl              # AIDL interface
 ├── java/com/lelloman/simpleai/
-│   ├── MainActivity.kt          # Compose UI
-│   ├── MainViewModel.kt         # UI state management
-│   ├── service/
-│   │   └── LLMService.kt        # Foreground service with AIDL
-│   ├── llm/
-│   │   ├── LLMEngine.kt         # LLM interface and implementations
-│   │   └── LlamaHelperWrapper.kt
+│   ├── MainActivity.kt             # Compose UI
+│   ├── api/
+│   │   ├── ApiResponse.kt          # Response types
+│   │   ├── ErrorCode.kt            # Error codes enum
+│   │   └── ProtocolHandler.kt      # Version handling
+│   ├── capability/
+│   │   ├── Capability.kt           # Capability data classes
+│   │   ├── CapabilityId.kt         # Capability identifiers
+│   │   ├── CapabilityManager.kt    # State management
+│   │   └── CapabilityStatus.kt     # Status sealed class
+│   ├── cloud/
+│   │   └── CloudLLMClient.kt       # Cloud API client
 │   ├── download/
-│   │   └── ModelDownloadManager.kt
+│   │   └── ModelDownloadManager.kt # Model downloads
+│   ├── llm/
+│   │   ├── LLMEngine.kt            # LLM interface
+│   │   └── LlamaHelperWrapper.kt   # llama.cpp wrapper
+│   ├── nlu/
+│   │   ├── NLUEngine.kt            # NLU interface
+│   │   ├── OnnxNLUEngine.kt        # ONNX implementation
+│   │   └── LoraPatcher.kt          # LoRA patching
+│   ├── service/
+│   │   └── SimpleAIService.kt      # Main foreground service
 │   ├── translation/
-│   │   └── Language.kt
-│   └── util/
-│       └── Logger.kt
+│   │   ├── Language.kt             # Language definitions
+│   │   └── TranslationManager.kt   # ML Kit integration
+│   └── ui/
+│       ├── CapabilitiesScreen.kt   # Main UI
+│       ├── CapabilitiesViewModel.kt
+│       ├── CapabilityCard.kt       # Capability card component
+│       └── TranslationLanguagesScreen.kt
 └── res/
 ```
+
+---
+
+## Development
 
 ### Building
 
@@ -239,32 +553,51 @@ app/src/main/
 # Debug build
 ./gradlew assembleDebug
 
-# Release build
+# Release build (requires signing config)
 ./gradlew assembleRelease
 
-# Run tests
-./gradlew testDebugUnitTest
+# Install on device
+./gradlew installDebug
 ```
 
-### Running Tests
+### Testing
 
 ```bash
 # Run all unit tests
 ./gradlew testDebugUnitTest
 
 # Run specific test class
-./gradlew testDebugUnitTest --tests "LanguageTest"
+./gradlew testDebugUnitTest --tests "com.lelloman.simpleai.api.ApiResponseTest"
+
+# Run tests with coverage
+./gradlew testDebugUnitTest jacocoTestReport
 ```
+
+### Build Configuration
+
+Protocol versioning is configured in `app/build.gradle.kts`:
+
+```kotlin
+buildConfigField("int", "SERVICE_VERSION", "1")       // Bump every release
+buildConfigField("int", "MIN_PROTOCOL_VERSION", "1")  // Bump when dropping old protocols
+buildConfigField("int", "MAX_PROTOCOL_VERSION", "1")  // Bump when adding new features
+```
+
+---
 
 ## Tech Stack
 
 - **Language**: Kotlin 2.2
 - **UI**: Jetpack Compose with Material 3
-- **LLM**: llama.cpp via [llamacpp-kotlin](https://github.com/anthropics/llamacpp-kotlin)
-- **Model**: Qwen 3 1.7B (Q4_K_M quantization)
+- **LLM**: llama.cpp via llamacpp-kotlin
+- **NLU**: ONNX Runtime with XLM-RoBERTa
+- **Translation**: Google ML Kit
 - **Networking**: OkHttp 4.12
-- **Async**: Kotlin Coroutines
+- **Serialization**: kotlinx.serialization
+- **Async**: Kotlin Coroutines + Flow
 - **Testing**: JUnit 4, MockK, Turbine
+
+---
 
 ## License
 
