@@ -384,10 +384,21 @@ class OnnxNLUEngine(
         val tokenizer = Json.parseToJsonElement(tokenizerJson).jsonObject
 
         val model = tokenizer["model"]!!.jsonObject
-        val vocabArray = model["vocab"]!!.jsonObject
+        val vocabElement = model["vocab"]!!
 
-        val vocab = vocabArray.entries.associate { (token, id) ->
-            token to id.jsonPrimitive.long
+        // SentencePiece format: vocab is array of [token, score] pairs
+        // BPE format: vocab is object of {token: id}
+        val vocab: Map<String, Long> = if (vocabElement is JsonArray) {
+            // SentencePiece format: [["token", score], ...]
+            vocabElement.mapIndexed { index, element ->
+                val token = element.jsonArray[0].jsonPrimitive.content
+                token to index.toLong()
+            }.toMap()
+        } else {
+            // BPE format: {"token": id, ...}
+            vocabElement.jsonObject.entries.associate { (token, id) ->
+                token to id.jsonPrimitive.long
+            }
         }
 
         val mergesArray = model["merges"]?.jsonArray ?: JsonArray(emptyList())
