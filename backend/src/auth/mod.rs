@@ -1,4 +1,4 @@
 mod jwks;
 
 #[allow(unused_imports)]
-pub use jwks::{JwksClient, AuthUser};
+pub use jwks::{JwksClient, AuthUser, AuthError};

@@ -1,0 +1,120 @@
+{% extends "admin_base.html" %}
+
+{% block page_title %}Requests{% endblock %}
+{% block header_title %}Request History{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<div class="mb-6 bg-white shadow sm:rounded-lg px-4 py-4">
+    <form method="GET" action="/admin/requests" class="flex flex-wrap gap-4 items-end">
+        <div>
+            <label for="user_id" class="block text-sm font-medium text-gray-700">User ID</label>
+            <input type="text" name="user_id" id="user_id" value="{{ filter_user_id }}"
+                class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                placeholder="Filter by user...">
+        </div>
+        <div>
+            <label for="model" class="block text-sm font-medium text-gray-700">Model</label>
+            <input type="text" name="model" id="model" value="{{ filter_model }}"
+                class="mt-1 block w-48 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                placeholder="Filter by model...">
+        </div>
+        <button type="submit" class="inline-flex items-center rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">
+            Filter
+        </button>
+        {% if !filter_user_id.is_empty() || !filter_model.is_empty() %}
+        <a href="/admin/requests" class="text-sm text-gray-600 hover:text-gray-900">Clear filters</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Requests table -->
+<div class="overflow-hidden bg-white shadow sm:rounded-lg">
+    <table class="min-w-full divide-y divide-gray-300">
+        <thead class="bg-gray-50">
+            <tr>
+                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Timestamp</th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">User</th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Model</th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Status</th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Latency</th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Tokens</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200 bg-white">
+            {% for req in requests %}
+            <tr>
+                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-500 sm:pl-6">{{ req.timestamp }}</td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900">
+                    <span class="font-mono text-xs">{{ req.user_id }}</span>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    {% match req.model %}
+                    {% when Some(model) %}
+                    <span class="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">{{ model }}</span>
+                    {% when None %}
+                    <span class="text-gray-400">-</span>
+                    {% endmatch %}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm">
+                    {% match req.status %}
+                    {% when Some(status) %}
+                    <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">{{ status }}</span>
+                    {% when None %}
+                    <span class="text-gray-400">Pending</span>
+                    {% endmatch %}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    {% match req.latency_ms %}
+                    {% when Some(latency) %}
+                    {{ latency }}ms
+                    {% when None %}
+                    <span class="text-gray-400">-</span>
+                    {% endmatch %}
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    {% match (req.tokens_prompt, req.tokens_completion) %}
+                    {% when (Some(p), Some(c)) %}
+                    <span class="text-xs">{{ p }} / {{ c }}</span>
+                    {% when (Some(p), None) %}
+                    <span class="text-xs">{{ p }} / -</span>
+                    {% when (None, Some(c)) %}
+                    <span class="text-xs">- / {{ c }}</span>
+                    {% when (None, None) %}
+                    <span class="text-gray-400">-</span>
+                    {% endmatch %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if requests.is_empty() %}
+    <div class="px-4 py-8 text-center text-gray-500">
+        No requests found.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="mt-4 flex items-center justify-between">
+    <div class="text-sm text-gray-700">
+        Page {{ page }} of {{ total_pages }}
+    </div>
+    <div class="flex gap-2">
+        {% if page > 1 %}
+        <a href="/admin/requests?page={{ page - 1 }}{% if !filter_user_id.is_empty() %}&user_id={{ filter_user_id }}{% endif %}{% if !filter_model.is_empty() %}&model={{ filter_model }}{% endif %}"
+           class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Previous
+        </a>
+        {% endif %}
+        {% if page < total_pages %}
+        <a href="/admin/requests?page={{ page + 1 }}{% if !filter_user_id.is_empty() %}&user_id={{ filter_user_id }}{% endif %}{% if !filter_model.is_empty() %}&model={{ filter_model }}{% endif %}"
+           class="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+            Next
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

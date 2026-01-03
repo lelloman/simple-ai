@@ -9,7 +9,10 @@ description = "SimpleAI API Gateway - OpenAI-compatible proxy for Ollama with OI
 # Web framework
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# Templating
+askama = "0.15"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

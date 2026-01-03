@@ -211,4 +211,263 @@ impl AuditLogger {
         tracing::debug!("Logged response for request: {}", response.request_id);
         Ok(())
     }
+
+    // ========== Admin queries ==========
+
+    /// Get dashboard statistics.
+    pub fn get_stats(&self) -> Result<DashboardStats, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let total_users: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        let total_requests: i64 = conn
+            .query_row("SELECT COUNT(*) FROM requests", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        // Requests in last 24 hours
+        let cutoff = (Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
+        let requests_24h: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM requests WHERE timestamp > ?1",
+                params![cutoff],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        // Total tokens
+        let total_tokens: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(COALESCE(tokens_prompt, 0) + COALESCE(tokens_completion, 0)), 0) FROM responses",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        Ok(DashboardStats {
+            total_users: total_users as u64,
+            total_requests: total_requests as u64,
+            requests_24h: requests_24h as u64,
+            total_tokens: total_tokens as u64,
+        })
+    }
+
+    /// Get recent requests for dashboard.
+    pub fn get_recent_requests(&self, limit: u32) -> Result<Vec<RequestSummary>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.timestamp, r.user_id, r.request_path, r.model
+             FROM requests r
+             ORDER BY r.timestamp DESC
+             LIMIT ?1"
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(RequestSummary {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                user_id: row.get(2)?,
+                request_path: row.get(3)?,
+                model: row.get(4)?,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut requests = Vec::new();
+        for row in rows {
+            requests.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+        Ok(requests)
+    }
+
+    /// Get all users with request counts.
+    pub fn get_users_with_stats(&self) -> Result<Vec<UserWithStats>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT u.id, u.email, u.created_at, u.last_seen_at, u.is_enabled,
+                    (SELECT COUNT(*) FROM requests r WHERE r.user_id = u.id) as request_count
+             FROM users u
+             ORDER BY u.last_seen_at DESC"
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(UserWithStats {
+                id: row.get(0)?,
+                email: row.get(1)?,
+                created_at: row.get(2)?,
+                last_seen_at: row.get(3)?,
+                is_enabled: row.get::<_, i32>(4)? != 0,
+                request_count: row.get(5)?,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+        Ok(users)
+    }
+
+    /// Get requests with response details, with optional filtering and pagination.
+    pub fn get_requests_paginated(
+        &self,
+        user_id: Option<&str>,
+        model: Option<&str>,
+        page: u32,
+        per_page: u32,
+    ) -> Result<(Vec<RequestWithResponse>, u32), AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Build query with filters
+        let mut where_clauses = Vec::new();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(uid) = user_id {
+            if !uid.is_empty() {
+                where_clauses.push("r.user_id LIKE ?");
+                params_vec.push(Box::new(format!("%{}%", uid)));
+            }
+        }
+        if let Some(m) = model {
+            if !m.is_empty() {
+                where_clauses.push("r.model LIKE ?");
+                params_vec.push(Box::new(format!("%{}%", m)));
+            }
+        }
+
+        let where_clause = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        // Get total count
+        let count_sql = format!("SELECT COUNT(*) FROM requests r {}", where_clause);
+        let total: i64 = {
+            let mut stmt = conn.prepare(&count_sql)
+                .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+            stmt.query_row(params_refs.as_slice(), |row| row.get(0))
+                .unwrap_or(0)
+        };
+
+        let total_pages = ((total as u32) + per_page - 1) / per_page;
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        // Get requests
+        let query_sql = format!(
+            "SELECT r.id, r.timestamp, r.user_id, r.request_path, r.model,
+                    resp.status, resp.latency_ms, resp.tokens_prompt, resp.tokens_completion
+             FROM requests r
+             LEFT JOIN responses resp ON resp.request_id = r.id
+             {}
+             ORDER BY r.timestamp DESC
+             LIMIT ? OFFSET ?",
+            where_clause
+        );
+
+        params_vec.push(Box::new(per_page as i64));
+        params_vec.push(Box::new(offset as i64));
+
+        let mut stmt = conn.prepare(&query_sql)
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt.query_map(params_refs.as_slice(), |row| {
+            Ok(RequestWithResponse {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                user_id: row.get(2)?,
+                request_path: row.get(3)?,
+                model: row.get(4)?,
+                status: row.get(5)?,
+                latency_ms: row.get(6)?,
+                tokens_prompt: row.get(7)?,
+                tokens_completion: row.get(8)?,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut requests = Vec::new();
+        for row in rows {
+            requests.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+
+        Ok((requests, total_pages))
+    }
+
+    /// Enable a user.
+    pub fn enable_user(&self, user_id: &str) -> Result<(), AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        conn.execute(
+            "UPDATE users SET is_enabled = 1 WHERE id = ?1",
+            params![user_id],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Disable a user.
+    pub fn disable_user(&self, user_id: &str) -> Result<(), AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        conn.execute(
+            "UPDATE users SET is_enabled = 0 WHERE id = ?1",
+            params![user_id],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        Ok(())
+    }
+}
+
+/// Dashboard statistics.
+#[derive(Debug, Clone)]
+pub struct DashboardStats {
+    pub total_users: u64,
+    pub total_requests: u64,
+    pub requests_24h: u64,
+    pub total_tokens: u64,
+}
+
+/// Request summary for dashboard.
+#[derive(Debug, Clone)]
+pub struct RequestSummary {
+    pub id: String,
+    pub timestamp: String,
+    pub user_id: String,
+    pub request_path: String,
+    pub model: Option<String>,
+}
+
+/// User with request count.
+#[derive(Debug, Clone)]
+pub struct UserWithStats {
+    pub id: String,
+    pub email: Option<String>,
+    pub created_at: String,
+    pub last_seen_at: String,
+    pub is_enabled: bool,
+    pub request_count: i64,
+}
+
+/// Request with response details.
+#[derive(Debug, Clone)]
+pub struct RequestWithResponse {
+    pub id: String,
+    pub timestamp: String,
+    pub user_id: String,
+    pub request_path: String,
+    pub model: Option<String>,
+    pub status: Option<i32>,
+    pub latency_ms: Option<i64>,
+    pub tokens_prompt: Option<i64>,
+    pub tokens_completion: Option<i64>,
 }

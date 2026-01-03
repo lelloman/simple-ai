@@ -11,6 +11,20 @@ use std::collections::HashMap;
 pub struct AuthUser {
     pub sub: String,
     pub email: Option<String>,
+    /// Per-app roles from the OIDC provider.
+    pub roles: Vec<String>,
+}
+
+impl AuthUser {
+    /// Check if the user has the "admin" role.
+    pub fn is_admin(&self) -> bool {
+        self.roles.iter().any(|r| r == "admin")
+    }
+
+    /// Check if the user has a specific role.
+    pub fn has_role(&self, role: &str) -> bool {
+        self.roles.iter().any(|r| r == role)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +63,8 @@ struct Claims {
     sub: String,
     #[serde(default)]
     email: Option<String>,
+    #[serde(default)]
+    roles: Vec<String>,
     #[serde(default)]
     aud: serde_json::Value,
     exp: u64,
@@ -163,6 +179,7 @@ impl JwksClient {
         Ok(AuthUser {
             sub: token_data.claims.sub,
             email: token_data.claims.email,
+            roles: token_data.claims.roles,
         })
     }
 }
