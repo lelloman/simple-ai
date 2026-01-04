@@ -12,6 +12,7 @@ RUN rm -rf src
 
 # Copy actual source
 COPY src ./src
+COPY templates ./templates
 
 # Build for release
 RUN touch src/main.rs && cargo build --release
