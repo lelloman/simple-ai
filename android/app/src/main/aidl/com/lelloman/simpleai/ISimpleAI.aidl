@@ -38,8 +38,8 @@ interface ISimpleAI {
      *
      * Adapter files are passed with every request. SimpleAI tracks the currently
      * applied adapter by (adapterId, adapterVersion). If it matches, inference runs
-     * directly. If different, SimpleAI reverts the current patch, applies the new
-     * one, and stores the revert data for future switches.
+     * directly. If different, SimpleAI reverts the current patch (if any), applies
+     * the new one, and stores the revert data for future switches.
      *
      * NOTE: The caller is responsible for closing the ParcelFileDescriptors after
      * this call returns. SimpleAI reads from them during this call but does not
@@ -49,7 +49,8 @@ interface ISimpleAI {
      * @param text Text to classify
      * @param adapterId Unique identifier for the adapter (e.g., "simpleephem")
      * @param adapterVersion Version string for change detection (e.g., "1.0.3")
-     * @param patchFd ParcelFileDescriptor for .lorapatch file (caller must close)
+     * @param patchFd ParcelFileDescriptor for .lorapatch file (optional, can be null
+     *                for adapters that only use classification heads without LoRA)
      * @param headsFd ParcelFileDescriptor for heads.bin file (caller must close)
      * @param tokenizerFd ParcelFileDescriptor for tokenizer.json (caller must close)
      * @param configFd ParcelFileDescriptor for config.json (caller must close)

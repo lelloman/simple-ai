@@ -194,7 +194,7 @@ class OnnxNLUEngine(
      *
      * @param adapterId Unique identifier for this adapter
      * @param adapterVersion Version string for cache invalidation
-     * @param patchFd ParcelFileDescriptor for the .lorapatch file
+     * @param patchFd ParcelFileDescriptor for the .lorapatch file (optional, null for non-LoRA adapters)
      * @param headsFd ParcelFileDescriptor for the heads.bin file
      * @param tokenizerFd ParcelFileDescriptor for the tokenizer.json file
      * @param configFd ParcelFileDescriptor for the config.json file
@@ -202,7 +202,7 @@ class OnnxNLUEngine(
     suspend fun applyAdapter(
         adapterId: String,
         adapterVersion: String,
-        patchFd: ParcelFileDescriptor,
+        patchFd: ParcelFileDescriptor?,
         headsFd: ParcelFileDescriptor,
         tokenizerFd: ParcelFileDescriptor,
         configFd: ParcelFileDescriptor
@@ -231,10 +231,14 @@ class OnnxNLUEngine(
                     currentAdapter = null
                 }
 
-                // Apply new patch
-                Log.i(TAG, "Applying adapter $adapterId v$adapterVersion")
-                FileInputStream(patchFd.fileDescriptor).use { patchStream ->
-                    currentRevertPatch = loraPatcher.applyPatch(buffer, patchStream, adapterId, adapterVersion)
+                // Apply new patch only if patchFd is provided
+                if (patchFd != null) {
+                    Log.i(TAG, "Applying LoRA adapter $adapterId v$adapterVersion")
+                    FileInputStream(patchFd.fileDescriptor).use { patchStream ->
+                        currentRevertPatch = loraPatcher.applyPatch(buffer, patchStream, adapterId, adapterVersion)
+                    }
+                } else {
+                    Log.i(TAG, "Applying adapter $adapterId v$adapterVersion (no LoRA patch)")
                 }
 
                 // Load heads
@@ -252,10 +256,12 @@ class OnnxNLUEngine(
                     loadConfig(configStream)
                 }
 
-                // Force sync the patched buffer to disk
-                buffer.force()
+                // Force sync the patched buffer to disk (only needed if we applied a patch)
+                if (patchFd != null) {
+                    buffer.force()
+                }
 
-                // Create new ONNX session from the patched file
+                // Create new ONNX session from the (possibly patched) file
                 val env = ortEnv ?: return@withContext Result.failure(
                     IllegalStateException("ORT environment not initialized")
                 )
