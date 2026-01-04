@@ -98,7 +98,9 @@ class CloudLLMClient {
             val responseBody = response.body?.string()
                 ?: return@withContext Result.failure(CloudException("Empty response body"))
 
+            Log.d(TAG, "Response body: $responseBody")
             val chatResponse = parseResponse(responseBody)
+            Log.d(TAG, "Parsed response: role=${chatResponse.role}, content=${chatResponse.content}, toolCalls=${chatResponse.toolCalls?.size ?: 0}")
             Result.success(chatResponse)
 
         } catch (e: java.net.UnknownHostException) {
@@ -150,11 +152,23 @@ class CloudLLMClient {
         val message = firstChoice["message"]?.jsonObject
             ?: throw CloudException("No message in choice")
 
-        val role = message["role"]?.jsonPrimitive?.content ?: "assistant"
-        val content = message["content"]?.jsonPrimitive?.content
+        val roleElement = message["role"]
+        val role = if (roleElement != null && roleElement !is kotlinx.serialization.json.JsonNull) {
+            roleElement.jsonPrimitive.content
+        } else {
+            "assistant"
+        }
+        val contentElement = message["content"]
+        val content = if (contentElement != null && contentElement !is kotlinx.serialization.json.JsonNull) {
+            contentElement.jsonPrimitive.content
+        } else {
+            null
+        }
 
-        // Parse tool calls if present
-        val toolCalls = message["tool_calls"]?.jsonArray?.map { toolCallElement ->
+        // Parse tool calls if present (handle both absent and explicit null)
+        val toolCallsElement = message["tool_calls"]
+        val toolCalls = if (toolCallsElement != null && toolCallsElement !is kotlinx.serialization.json.JsonNull) {
+            toolCallsElement.jsonArray.map { toolCallElement ->
             val toolCall = toolCallElement.jsonObject
             val id = toolCall["id"]?.jsonPrimitive?.content ?: ""
             val type = toolCall["type"]?.jsonPrimitive?.content ?: "function"
@@ -168,6 +182,9 @@ class CloudLLMClient {
                     arguments = function?.get("arguments")?.jsonPrimitive?.content ?: "{}"
                 )
             )
+        }
+        } else {
+            null
         }
 
         // Parse usage if present
