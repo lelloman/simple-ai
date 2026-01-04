@@ -63,7 +63,7 @@ pub struct LanguageConfig {
 fn default_host() -> String { "0.0.0.0".to_string() }
 fn default_port() -> u16 { 8080 }
 fn default_ollama_base_url() -> String { "http://localhost:11434".to_string() }
-fn default_ollama_model() -> String { "llama3.2".to_string() }
+fn default_ollama_model() -> String { "gpt-oss:20b".to_string() }
 fn default_database_url() -> String { "sqlite:./data/audit.db".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_cors_origins() -> String { "*".to_string() }
