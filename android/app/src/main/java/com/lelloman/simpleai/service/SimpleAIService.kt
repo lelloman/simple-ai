@@ -61,6 +61,7 @@ class SimpleAIService : Service() {
 
     // Engines
     private var nluEngine: OnnxNLUEngine? = null
+    private val nluEngineReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private var translationManager: TranslationManager? = null
     private val cloudClient = CloudLLMClient()
     private var llamaEngine: LlamaEngine? = null
@@ -94,28 +95,34 @@ class SimpleAIService : Service() {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
-            // Check capability
+            // Check capability - if downloading (not downloaded), return error
             val status = capabilityManager.voiceCommandsStatus.value
-            if (status !is CapabilityStatus.Ready) {
-                return when (status) {
-                    is CapabilityStatus.NotDownloaded -> ProtocolHandler.error(
-                        proto, ErrorCode.CAPABILITY_NOT_READY,
-                        "Voice Commands capability not downloaded"
-                    )
-                    is CapabilityStatus.Downloading -> ProtocolHandler.error(
-                        proto, ErrorCode.CAPABILITY_DOWNLOADING,
-                        "Voice Commands downloading: ${(status.progress * 100).toInt()}%",
-                        buildJsonObject { put("progress", status.progress) }
-                    )
-                    is CapabilityStatus.Error -> ProtocolHandler.error(
-                        proto, ErrorCode.CAPABILITY_ERROR, status.message
-                    )
-                    else -> ProtocolHandler.error(proto, ErrorCode.CAPABILITY_NOT_READY, "Voice Commands not ready")
-                }
+            if (status is CapabilityStatus.NotDownloaded) {
+                return ProtocolHandler.error(
+                    proto, ErrorCode.CAPABILITY_NOT_READY,
+                    "Voice Commands capability not downloaded"
+                )
+            }
+            if (status is CapabilityStatus.Downloading) {
+                return ProtocolHandler.error(
+                    proto, ErrorCode.CAPABILITY_DOWNLOADING,
+                    "Voice Commands downloading: ${(status.progress * 100).toInt()}%",
+                    buildJsonObject { put("progress", status.progress) }
+                )
+            }
+            if (status is CapabilityStatus.Error) {
+                return ProtocolHandler.error(
+                    proto, ErrorCode.CAPABILITY_ERROR, status.message
+                )
+            }
+
+            // Wait for engine to be ready (blocks until model is loaded into memory)
+            runBlocking {
+                nluEngineReady.await()
             }
 
             val engine = nluEngine ?: return ProtocolHandler.error(
-                proto, ErrorCode.CAPABILITY_ERROR, "NLU engine not initialized"
+                proto, ErrorCode.CAPABILITY_ERROR, "NLU engine failed to initialize"
             )
 
             // Check if we need to switch adapters
@@ -177,8 +184,13 @@ class SimpleAIService : Service() {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
+            // Wait for engine to be ready
+            runBlocking {
+                nluEngineReady.await()
+            }
+
             val engine = nluEngine ?: return ProtocolHandler.error(
-                proto, ErrorCode.CAPABILITY_ERROR, "NLU engine not initialized"
+                proto, ErrorCode.CAPABILITY_ERROR, "NLU engine failed to initialize"
             )
 
             return runBlocking(Dispatchers.IO) {
@@ -558,6 +570,7 @@ class SimpleAIService : Service() {
                     onSuccess = {
                         nluEngine = engine
                         capabilityManager.updateVoiceCommandsStatus(CapabilityStatus.Ready)
+                        nluEngineReady.complete(Unit)
                         Log.i(TAG, "NLU engine ready")
                         updateNotification("Ready")
                     },
@@ -566,6 +579,7 @@ class SimpleAIService : Service() {
                         capabilityManager.updateVoiceCommandsStatus(
                             CapabilityStatus.Error(e.message ?: "Failed to initialize")
                         )
+                        nluEngineReady.complete(Unit)  // Complete anyway so waiting calls can check error status
                         updateNotification("Error: ${e.message}")
                     }
                 )
@@ -574,6 +588,7 @@ class SimpleAIService : Service() {
                 capabilityManager.updateVoiceCommandsStatus(
                     CapabilityStatus.Error(e.message ?: "Initialization error")
                 )
+                nluEngineReady.complete(Unit)  // Complete anyway so waiting calls can check error status
             }
         }
 
