@@ -5,6 +5,7 @@ OpenAI-compatible API gateway that proxies requests to Ollama with OIDC authenti
 ## Features
 
 - OpenAI-compatible `/chat/completions` endpoint
+- Language detection via `/detect-language` endpoint
 - OIDC JWT authentication via JWKS
 - Proxies to local Ollama instance
 - Full audit logging to SQLite
@@ -85,6 +86,27 @@ OpenAI-compatible chat completion endpoint.
 }
 ```
 
+### POST /detect-language
+
+Detect the language of a text. Requires authentication.
+
+**Request:**
+```json
+{
+  "text": "Ciao, come stai?"
+}
+```
+
+**Response:**
+```json
+{
+  "language": "Italian",
+  "code": "ita",
+  "confidence": 0.9998,
+  "is_reliable": true
+}
+```
+
 ### GET /health
 
-Health check endpoint.
+Health check endpoint (no authentication required).
