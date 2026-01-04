@@ -25,7 +25,7 @@ An Android service that provides AI capabilities to other apps. SimpleAI acts as
 ### Build from Source
 
 ```bash
-git clone https://github.com/user/simple-ai.git
+git clone https://github.com/lelloman/simple-ai.git
 cd simple-ai
 ./gradlew assembleDebug
 ./gradlew installDebug
@@ -587,8 +587,9 @@ buildConfigField("int", "MAX_PROTOCOL_VERSION", "1")  // Bump when adding new fe
 
 ## Tech Stack
 
-- **Language**: Kotlin 2.2
+- **Language**: Kotlin 2.0
 - **UI**: Jetpack Compose with Material 3
+- **Navigation**: Jetpack Navigation Compose
 - **LLM**: llama.cpp via llamacpp-kotlin
 - **NLU**: ONNX Runtime with XLM-RoBERTa
 - **Translation**: Google ML Kit
@@ -601,4 +602,4 @@ buildConfigField("int", "MAX_PROTOCOL_VERSION", "1")  // Bump when adding new fe
 
 ## License
 
-TBD
+Apache 2.0

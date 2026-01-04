@@ -14,23 +14,23 @@ OpenAI-compatible API gateway that proxies requests to Ollama with OIDC authenti
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `HOST` | Server host | `0.0.0.0` |
-| `PORT` | Server port | `8080` |
-| `OLLAMA_BASE_URL` | Ollama API URL | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Default model | `llama3.2` |
-| `OIDC_ISSUER` | OIDC issuer URL | Required |
-| `OIDC_AUDIENCE` | OIDC audience/client ID | Required |
-| `DATABASE_URL` | SQLite database path | `sqlite:./data/audit.db` |
-| `LOG_LEVEL` | Log level | `info` |
-| `CORS_ORIGINS` | CORS allowed origins | `*` |
+| `SIMPLEAI__HOST` | Server host | `0.0.0.0` |
+| `SIMPLEAI__PORT` | Server port | `8080` |
+| `SIMPLEAI__OLLAMA__BASE_URL` | Ollama API URL | `http://localhost:11434` |
+| `SIMPLEAI__OLLAMA__MODEL` | Default model | `gpt-oss:20b` |
+| `SIMPLEAI__OIDC__ISSUER` | OIDC issuer URL | Required |
+| `SIMPLEAI__OIDC__AUDIENCE` | OIDC audience/client ID | Required |
+| `SIMPLEAI__DATABASE__URL` | SQLite database path | `sqlite:./data/audit.db` |
+| `SIMPLEAI__LOGGING__LEVEL` | Log level | `info` |
+| `SIMPLEAI__CORS__ORIGINS` | CORS allowed origins | `*` |
 | `SIMPLEAI__LANGUAGE__MODEL_PATH` | FastText model path | `/data/lid.176.ftz` |
 
 ## Running Locally
 
 ```bash
-export OIDC_ISSUER=https://auth.example.com
-export OIDC_AUDIENCE=simple-ai
-export OLLAMA_BASE_URL=http://localhost:11434
+export SIMPLEAI__OIDC__ISSUER=https://auth.example.com
+export SIMPLEAI__OIDC__AUDIENCE=simple-ai
+export SIMPLEAI__OLLAMA__BASE_URL=http://localhost:11434
 
 cargo run
 ```
@@ -41,9 +41,9 @@ cargo run
 docker build -t simple-ai-backend .
 
 docker run -p 8080:8080 \
-  -e OIDC_ISSUER=https://auth.example.com \
-  -e OIDC_AUDIENCE=simple-ai \
-  -e OLLAMA_BASE_URL=http://ollama:11434 \
+  -e SIMPLEAI__OIDC__ISSUER=https://auth.example.com \
+  -e SIMPLEAI__OIDC__AUDIENCE=simple-ai \
+  -e SIMPLEAI__OLLAMA__BASE_URL=http://ollama:11434 \
   -v ./data:/data \
   simple-ai-backend
 ```
@@ -60,7 +60,7 @@ OpenAI-compatible chat completion endpoint.
   "messages": [
     {"role": "user", "content": "Hello!"}
   ],
-  "model": "llama3.2"
+  "model": "gpt-oss:20b"
 }
 ```
 
@@ -70,7 +70,7 @@ OpenAI-compatible chat completion endpoint.
   "id": "chatcmpl-...",
   "object": "chat.completion",
   "created": 1234567890,
-  "model": "llama3.2",
+  "model": "gpt-oss:20b",
   "choices": [{
     "index": 0,
     "message": {
@@ -111,3 +111,7 @@ Language codes are ISO 639-1 (e.g., `en`, `it`, `fr`, `de`, `es`).
 ### GET /health
 
 Health check endpoint (no authentication required).
+
+### GET /metrics
+
+Prometheus-compatible metrics endpoint (no authentication required).
