@@ -31,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
  * Screen for testing translation functionality.
@@ -46,11 +48,12 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TranslationTestScreen(
-    downloadedLanguages: Set<String>,
-    translationState: TranslationState,
-    onTranslate: (text: String, sourceLang: String, targetLang: String) -> Unit,
+    viewModel: CapabilitiesViewModel = viewModel(),
     onBack: () -> Unit
 ) {
+    val state by viewModel.state.collectAsState()
+    val translationState by viewModel.translationState.collectAsState()
+    val downloadedLanguages = state.downloadedLanguages
     var inputText by remember { mutableStateOf("") }
     var sourceLang by remember { mutableStateOf("auto") }
     var targetLang by remember { mutableStateOf(downloadedLanguages.firstOrNull { it != "en" } ?: "en") }
@@ -138,7 +141,7 @@ fun TranslationTestScreen(
 
             // Translate button
             Button(
-                onClick = { onTranslate(inputText, sourceLang, targetLang) },
+                onClick = { viewModel.translate(inputText, sourceLang, targetLang) },
                 enabled = inputText.isNotBlank() && !translationState.isTranslating,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -170,7 +173,9 @@ fun TranslationTestScreen(
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
-                        if (translationState.error != null) {
+                        val errorMessage = translationState.error
+                        val detectedLang = translationState.detectedLanguage
+                        if (errorMessage != null) {
                             Text(
                                 text = "Error",
                                 style = MaterialTheme.typography.labelMedium,
@@ -179,14 +184,14 @@ fun TranslationTestScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = translationState.error,
+                                text = errorMessage,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onErrorContainer
                             )
                         } else {
-                            if (translationState.detectedLanguage != null && sourceLang == "auto") {
+                            if (detectedLang != null && sourceLang == "auto") {
                                 Text(
-                                    text = "Detected: ${getLanguageDisplayName(translationState.detectedLanguage)}",
+                                    text = "Detected: ${getLanguageDisplayName(detectedLang)}",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

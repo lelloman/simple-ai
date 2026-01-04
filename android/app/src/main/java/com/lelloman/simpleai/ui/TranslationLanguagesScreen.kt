@@ -28,10 +28,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
  * Language info for display.
@@ -51,12 +54,12 @@ data class LanguageInfo(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TranslationLanguagesScreen(
-    downloadedLanguages: Set<String>,
-    downloadingLanguage: String?,
-    onDownloadLanguage: (String) -> Unit,
-    onDeleteLanguage: (String) -> Unit,
+    viewModel: CapabilitiesViewModel = viewModel(),
     onBack: () -> Unit
 ) {
+    val state by viewModel.state.collectAsState()
+    val downloadedLanguages = state.downloadedLanguages
+    val downloadingLanguage = state.downloadingLanguage
     val allLanguages = getLanguageInfoList(downloadedLanguages, downloadingLanguage)
     val downloaded = allLanguages.filter { it.isDownloaded || it.isRequired }
     val available = allLanguages.filter { !it.isDownloaded && !it.isRequired }
@@ -99,7 +102,7 @@ fun TranslationLanguagesScreen(
                         language = language,
                         onAction = {
                             if (!language.isRequired) {
-                                onDeleteLanguage(language.code)
+                                viewModel.deleteTranslationLanguage(language.code)
                             }
                         }
                     )
@@ -121,7 +124,7 @@ fun TranslationLanguagesScreen(
                 items(available) { language ->
                     LanguageCard(
                         language = language,
-                        onAction = { onDownloadLanguage(language.code) }
+                        onAction = { viewModel.downloadTranslationLanguage(language.code) }
                     )
                 }
             }
