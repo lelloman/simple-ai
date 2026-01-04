@@ -95,7 +95,13 @@ class SimpleAIService : Service() {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
-            // Check capability - if downloading (not downloaded), return error
+            // Wait for engine to be ready (blocks until model is loaded into memory)
+            // Must wait BEFORE checking status, since status is NotDownloaded during init
+            runBlocking {
+                nluEngineReady.await()
+            }
+
+            // Check capability status AFTER waiting for initialization
             val status = capabilityManager.voiceCommandsStatus.value
             if (status is CapabilityStatus.NotDownloaded) {
                 return ProtocolHandler.error(
@@ -114,11 +120,6 @@ class SimpleAIService : Service() {
                 return ProtocolHandler.error(
                     proto, ErrorCode.CAPABILITY_ERROR, status.message
                 )
-            }
-
-            // Wait for engine to be ready (blocks until model is loaded into memory)
-            runBlocking {
-                nluEngineReady.await()
             }
 
             val engine = nluEngine ?: return ProtocolHandler.error(
