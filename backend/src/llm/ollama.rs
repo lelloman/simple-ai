@@ -1,7 +1,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage};
+use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction};
 
 /// Client for communicating with Ollama API.
 pub struct OllamaClient {
@@ -19,12 +19,32 @@ struct OllamaChatRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     options: Option<OllamaOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Serialize)]
 struct OllamaMessage {
     role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<OllamaToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OllamaToolCall {
+    #[serde(default)]
+    id: Option<String>,
+    function: OllamaToolFunction,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OllamaToolFunction {
+    name: String,
+    arguments: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -49,7 +69,10 @@ struct OllamaChatResponse {
 #[derive(Debug, Deserialize)]
 struct OllamaResponseMessage {
     role: String,
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<OllamaToolCall>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -79,9 +102,25 @@ impl OllamaClient {
     ) -> Result<ChatCompletionResponse, OllamaError> {
         // Convert messages to Ollama format
         let messages: Vec<OllamaMessage> = request.messages.iter()
-            .map(|m| OllamaMessage {
-                role: m.role.clone(),
-                content: m.content.clone().unwrap_or_default(),
+            .map(|m| {
+                // Convert tool_calls from OpenAI format to Ollama format
+                let tool_calls = m.tool_calls.as_ref().map(|calls| {
+                    calls.iter().map(|tc| OllamaToolCall {
+                        id: Some(tc.id.clone()),
+                        function: OllamaToolFunction {
+                            name: tc.function.name.clone(),
+                            arguments: serde_json::from_str(&tc.function.arguments)
+                                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                        },
+                    }).collect()
+                });
+
+                OllamaMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                    tool_calls,
+                    tool_call_id: m.tool_call_id.clone(),
+                }
             })
             .collect();
 
@@ -99,6 +138,7 @@ impl OllamaClient {
             messages,
             stream: false,
             options,
+            tools: request.tools.clone(),
         };
 
         let url = format!("{}/api/chat", self.base_url);
@@ -123,16 +163,35 @@ impl OllamaClient {
             .await
             .map_err(|e| OllamaError::InvalidResponse(e.to_string()))?;
 
+        // Convert tool_calls from Ollama format to OpenAI format
+        let tool_calls = ollama_response.message.tool_calls.map(|calls| {
+            calls.into_iter().enumerate().map(|(i, tc)| {
+                ToolCall {
+                    id: tc.id.unwrap_or_else(|| format!("call_{}", i)),
+                    call_type: "function".to_string(),
+                    function: ToolFunction {
+                        name: tc.function.name,
+                        arguments: tc.function.arguments.to_string(),
+                    },
+                }
+            }).collect()
+        });
+
         // Convert to OpenAI format
         let message = ChatMessage {
             role: ollama_response.message.role,
-            content: Some(ollama_response.message.content),
-            tool_calls: None,
+            content: ollama_response.message.content,
+            tool_calls,
             tool_call_id: None,
         };
 
+        // Determine finish_reason based on whether tool_calls are present
         let finish_reason = if ollama_response.done {
-            Some("stop".to_string())
+            if message.tool_calls.is_some() {
+                Some("tool_calls".to_string())
+            } else {
+                Some("stop".to_string())
+            }
         } else {
             None
         };
