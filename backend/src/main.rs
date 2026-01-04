@@ -4,13 +4,14 @@ mod auth;
 mod llm;
 mod audit;
 mod models;
+mod logging;
 
 use std::sync::Arc;
 use axum::Router;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
+use axum::middleware;
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use fasttext::FastText;
 
@@ -74,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(routes::language::router(state.clone()))
         .nest("/admin", routes::admin::router(state.clone()))
         .layer(cors)
-        .layer(TraceLayer::new_for_http());
+        .layer(middleware::from_fn(logging::request_logger));
 
     // Start server
     let addr = format!("{}:{}", config.host, config.port);
