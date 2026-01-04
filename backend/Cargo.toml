@@ -39,5 +39,8 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "1"
 
+# Language detection
+whatlang = "0.18"
+
 [dev-dependencies]
 tokio-test = "0.4"

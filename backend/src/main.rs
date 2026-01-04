@@ -61,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .merge(routes::health::router())
         .merge(routes::chat::router(state.clone()))
+        .merge(routes::language::router(state.clone()))
         .nest("/admin", routes::admin::router(state.clone()))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
