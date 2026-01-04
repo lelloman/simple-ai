@@ -8,9 +8,11 @@ mod models;
 use std::sync::Arc;
 use axum::Router;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use fasttext::FastText;
 
 use crate::config::Config;
 use crate::auth::JwksClient;
@@ -23,6 +25,7 @@ pub struct AppState {
     pub jwks_client: JwksClient,
     pub ollama_client: OllamaClient,
     pub audit_logger: AuditLogger,
+    pub lang_detector: Mutex<FastText>,
 }
 
 #[tokio::main]
@@ -44,11 +47,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
     let audit_logger = AuditLogger::new(&config.database.url)?;
 
+    // Load FastText language detection model
+    let mut lang_detector = FastText::default();
+    lang_detector.load_model(&config.language.model_path)
+        .map_err(|e| format!("Failed to load language model: {}", e))?;
+    tracing::info!("Loaded language detection model from {}", config.language.model_path);
+
     let state = Arc::new(AppState {
         config: config.clone(),
         jwks_client,
         ollama_client,
         audit_logger,
+        lang_detector: Mutex::new(lang_detector),
     });
 
     // Build CORS layer

@@ -16,10 +16,8 @@ pub struct DetectLanguageRequest {
 
 #[derive(Serialize)]
 pub struct DetectLanguageResponse {
-    pub language: Option<String>,
     pub code: Option<String>,
     pub confidence: Option<f64>,
-    pub is_reliable: bool,
 }
 
 async fn detect_language(
@@ -42,18 +40,19 @@ async fn detect_language(
         return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
     }
 
-    let response = match whatlang::detect(&request.text) {
-        Some(info) => DetectLanguageResponse {
-            language: Some(info.lang().eng_name().to_string()),
-            code: Some(info.lang().code().to_string()),
-            confidence: Some(info.confidence()),
-            is_reliable: info.is_reliable(),
+    // Detect language using FastText
+    let detector = state.lang_detector.lock().await;
+    let predictions = detector.predict(&request.text, 1, 0.0)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let response = match predictions.first() {
+        Some(pred) => DetectLanguageResponse {
+            code: Some(pred.label.replace("__label__", "")),
+            confidence: Some(pred.prob as f64),
         },
         None => DetectLanguageResponse {
-            language: None,
             code: None,
             confidence: None,
-            is_reliable: false,
         },
     };
 

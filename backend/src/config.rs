@@ -17,6 +17,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub cors: CorsConfig,
+    #[serde(default)]
+    pub language: LanguageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,6 +53,12 @@ pub struct CorsConfig {
     pub origins: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct LanguageConfig {
+    #[serde(default = "default_language_model_path")]
+    pub model_path: String,
+}
+
 // Defaults
 fn default_host() -> String { "0.0.0.0".to_string() }
 fn default_port() -> u16 { 8080 }
@@ -59,6 +67,7 @@ fn default_ollama_model() -> String { "llama3.2".to_string() }
 fn default_database_url() -> String { "sqlite:./data/audit.db".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_cors_origins() -> String { "*".to_string() }
+fn default_language_model_path() -> String { "/data/lid.176.ftz".to_string() }
 
 impl Default for OllamaConfig {
     fn default() -> Self {
@@ -84,6 +93,12 @@ impl Default for LoggingConfig {
 impl Default for CorsConfig {
     fn default() -> Self {
         Self { origins: default_cors_origins() }
+    }
+}
+
+impl Default for LanguageConfig {
+    fn default() -> Self {
+        Self { model_path: default_language_model_path() }
     }
 }
 
@@ -113,6 +128,7 @@ impl Config {
             .set_default("database.url", default_database_url())?
             .set_default("logging.level", default_log_level())?
             .set_default("cors.origins", default_cors_origins())?
+            .set_default("language.model_path", default_language_model_path())?
             // Load from config.toml if it exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (SIMPLEAI__KEY format)

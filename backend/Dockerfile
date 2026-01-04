@@ -24,9 +24,13 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 
 COPY --from=builder /app/target/release/simple-ai-backend /usr/local/bin/
 
-# Create data directory for SQLite
+# Create data directory for SQLite and download language detection model
 RUN mkdir -p /data
 ENV DATABASE_URL=sqlite:/data/audit.db
+
+# Download FastText language detection model
+ADD https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz /data/lid.176.ftz
+ENV SIMPLEAI__LANGUAGE__MODEL_PATH=/data/lid.176.ftz
 
 EXPOSE 8080
 

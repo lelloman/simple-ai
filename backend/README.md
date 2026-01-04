@@ -5,7 +5,7 @@ OpenAI-compatible API gateway that proxies requests to Ollama with OIDC authenti
 ## Features
 
 - OpenAI-compatible `/chat/completions` endpoint
-- Language detection via `/detect-language` endpoint
+- Language detection via `/detect-language` endpoint (FastText ML model, 176 languages)
 - OIDC JWT authentication via JWKS
 - Proxies to local Ollama instance
 - Full audit logging to SQLite
@@ -23,6 +23,7 @@ OpenAI-compatible API gateway that proxies requests to Ollama with OIDC authenti
 | `DATABASE_URL` | SQLite database path | `sqlite:./data/audit.db` |
 | `LOG_LEVEL` | Log level | `info` |
 | `CORS_ORIGINS` | CORS allowed origins | `*` |
+| `SIMPLEAI__LANGUAGE__MODEL_PATH` | FastText model path | `/data/lid.176.ftz` |
 
 ## Running Locally
 
@@ -100,12 +101,12 @@ Detect the language of a text. Requires authentication.
 **Response:**
 ```json
 {
-  "language": "Italian",
-  "code": "ita",
-  "confidence": 0.9998,
-  "is_reliable": true
+  "code": "it",
+  "confidence": 0.99
 }
 ```
+
+Language codes are ISO 639-1 (e.g., `en`, `it`, `fr`, `de`, `es`).
 
 ### GET /health
 
