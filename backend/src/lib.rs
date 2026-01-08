@@ -1,0 +1,30 @@
+pub mod config;
+pub mod routes;
+pub mod auth;
+pub mod llm;
+pub mod audit;
+pub mod models;
+pub mod logging;
+pub mod test_util;
+
+pub use config::Config;
+pub use auth::JwksClient;
+pub use llm::OllamaClient;
+pub use audit::AuditLogger;
+pub use models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction};
+pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
+pub use auth::AuthUser;
+pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
+
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use fasttext::FastText;
+
+/// Shared application state.
+pub struct AppState {
+    pub config: Config,
+    pub jwks_client: JwksClient,
+    pub ollama_client: OllamaClient,
+    pub audit_logger: AuditLogger,
+    pub lang_detector: Mutex<FastText>,
+}
