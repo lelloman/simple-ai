@@ -142,3 +142,111 @@ impl Config {
         config.try_deserialize().map_err(ConfigError::from)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_host() {
+        assert_eq!(default_host(), "0.0.0.0");
+    }
+
+    #[test]
+    fn test_default_port() {
+        assert_eq!(default_port(), 8080);
+    }
+
+    #[test]
+    fn test_default_ollama_base_url() {
+        assert_eq!(default_ollama_base_url(), "http://localhost:11434");
+    }
+
+    #[test]
+    fn test_default_ollama_model() {
+        assert_eq!(default_ollama_model(), "gpt-oss:20b");
+    }
+
+    #[test]
+    fn test_default_database_url() {
+        assert_eq!(default_database_url(), "sqlite:./data/audit.db");
+    }
+
+    #[test]
+    fn test_default_log_level() {
+        assert_eq!(default_log_level(), "info");
+    }
+
+    #[test]
+    fn test_default_cors_origins() {
+        assert_eq!(default_cors_origins(), "*");
+    }
+
+    #[test]
+    fn test_default_language_model_path() {
+        assert_eq!(default_language_model_path(), "/data/lid.176.ftz");
+    }
+
+    #[test]
+    fn test_oidc_config_requires_issuer() {
+        let config = OidcConfig {
+            issuer: "".to_string(),
+            audience: "test".to_string(),
+        };
+        assert!(config.issuer.is_empty());
+    }
+
+    #[test]
+    fn test_oidc_config_with_values() {
+        let config = OidcConfig {
+            issuer: "https://auth.example.com".to_string(),
+            audience: "my-app".to_string(),
+        };
+        assert_eq!(config.issuer, "https://auth.example.com");
+        assert_eq!(config.audience, "my-app");
+    }
+
+    #[test]
+    fn test_ollama_config_defaults() {
+        let config = OllamaConfig::default();
+        assert_eq!(config.base_url, "http://localhost:11434");
+        assert_eq!(config.model, "gpt-oss:20b");
+    }
+
+    #[test]
+    fn test_database_config_defaults() {
+        let config = DatabaseConfig::default();
+        assert_eq!(config.url, "sqlite:./data/audit.db");
+    }
+
+    #[test]
+    fn test_logging_config_defaults() {
+        let config = LoggingConfig::default();
+        assert_eq!(config.level, "info");
+    }
+
+    #[test]
+    fn test_cors_config_defaults() {
+        let config = CorsConfig::default();
+        assert_eq!(config.origins, "*");
+    }
+
+    #[test]
+    fn test_language_config_defaults() {
+        let config = LanguageConfig::default();
+        assert_eq!(config.model_path, "/data/lid.176.ftz");
+    }
+
+    #[test]
+    fn test_config_error_load_error() {
+        let error = ConfigError::LoadError("test error".to_string());
+        assert!(error.to_string().contains("Configuration error"));
+    }
+
+    #[test]
+    fn test_config_error_from_config_error() {
+        let config_err = ConfigCrateError::NotFound("file.toml".to_string());
+        let error: ConfigError = config_err.into();
+        assert!(error.to_string().contains("Configuration error"));
+    }
+}

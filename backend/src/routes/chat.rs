@@ -81,3 +81,75 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/chat/completions", post(chat_completions))
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::chat::{ChatCompletionRequest, ChatMessage};
+
+    fn create_test_request() -> ChatCompletionRequest {
+        ChatCompletionRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: Some("Hello".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            model: None,
+            temperature: None,
+            max_tokens: None,
+            tools: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_request_serialization() {
+        let req = create_test_request();
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("Hello"));
+        assert!(json.contains("user"));
+    }
+
+    #[tokio::test]
+    async fn test_chat_completion_request_default_values() {
+        let req = ChatCompletionRequest {
+            messages: vec![],
+            model: None,
+            temperature: None,
+            max_tokens: None,
+            tools: None,
+        };
+        assert!(req.messages.is_empty());
+        assert!(req.model.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_chat_message_default_content() {
+        let msg = ChatMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        assert!(msg.content.is_none());
+        assert!(msg.tool_calls.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_chat_request_with_model_override() {
+        let req = ChatCompletionRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: Some("Hi".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            model: Some("custom-model".to_string()),
+            temperature: Some(0.5),
+            max_tokens: Some(100),
+            tools: None,
+        };
+        assert_eq!(req.model, Some("custom-model".to_string()));
+        assert_eq!(req.temperature, Some(0.5));
+    }
+}

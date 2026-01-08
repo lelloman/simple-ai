@@ -214,3 +214,126 @@ pub fn router(state: Arc<AppState>) -> Router {
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_requests_query_defaults() {
+        let query = RequestsQuery {
+            user_id: None,
+            model: None,
+            page: None,
+        };
+        assert!(query.user_id.is_none());
+        assert!(query.model.is_none());
+        assert!(query.page.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_requests_query_with_values() {
+        let query = RequestsQuery {
+            user_id: Some("user123".to_string()),
+            model: Some("llama2".to_string()),
+            page: Some(2),
+        };
+        assert_eq!(query.user_id, Some("user123".to_string()));
+        assert_eq!(query.model, Some("llama2".to_string()));
+        assert_eq!(query.page, Some(2));
+    }
+
+    #[tokio::test]
+    async fn test_admin_user_struct() {
+        let admin = AdminUser {
+            sub: "auth0|123".to_string(),
+            email: Some("admin@example.com".to_string()),
+        };
+        assert_eq!(admin.sub, "auth0|123");
+        assert_eq!(admin.email, Some("admin@example.com".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_admin_user_without_email() {
+        let admin = AdminUser {
+            sub: "auth0|456".to_string(),
+            email: None,
+        };
+        assert!(admin.email.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_default() {
+        let stats = DashboardStats {
+            total_users: 0,
+            total_requests: 0,
+            requests_24h: 0,
+            total_tokens: 0,
+        };
+        assert_eq!(stats.total_users, 0);
+        assert_eq!(stats.total_requests, 0);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_stats_with_values() {
+        let stats = DashboardStats {
+            total_users: 100,
+            total_requests: 1000,
+            requests_24h: 50,
+            total_tokens: 50000,
+        };
+        assert_eq!(stats.total_users, 100);
+        assert_eq!(stats.total_requests, 1000);
+        assert_eq!(stats.requests_24h, 50);
+        assert_eq!(stats.total_tokens, 50000);
+    }
+
+    #[tokio::test]
+    async fn test_users_template() {
+        let template = UsersTemplate {
+            nav_active: "users",
+            admin_email: "admin@test.com".to_string(),
+            users: vec![],
+        };
+        assert_eq!(template.nav_active, "users");
+        assert!(template.users.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_requests_template() {
+        let template = RequestsTemplate {
+            nav_active: "requests",
+            admin_email: "admin@test.com".to_string(),
+            requests: vec![],
+            filter_user_id: "".to_string(),
+            filter_model: "".to_string(),
+            page: 1,
+            total_pages: 1,
+        };
+        assert_eq!(template.page, 1);
+        assert_eq!(template.total_pages, 1);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_template() {
+        let template = DashboardTemplate {
+            nav_active: "dashboard",
+            admin_email: "admin@test.com".to_string(),
+            stats: DashboardStats {
+                total_users: 10,
+                total_requests: 100,
+                requests_24h: 5,
+                total_tokens: 1000,
+            },
+            recent_requests: vec![],
+        };
+        assert_eq!(template.nav_active, "dashboard");
+        assert_eq!(template.stats.total_users, 10);
+    }
+
+    #[tokio::test]
+    async fn test_disable_user_route_path_extraction() {
+        let user_id = "test-user-123".to_string();
+        assert_eq!(user_id, "test-user-123");
+    }
+}

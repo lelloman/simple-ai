@@ -5,6 +5,7 @@ mod llm;
 mod audit;
 mod models;
 mod logging;
+mod test_util;
 
 use std::sync::Arc;
 use axum::Router;

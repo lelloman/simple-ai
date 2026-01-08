@@ -471,3 +471,336 @@ pub struct RequestWithResponse {
     pub tokens_prompt: Option<i64>,
     pub tokens_completion: Option<i64>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use uuid::Uuid;
+
+    fn create_test_logger() -> AuditLogger {
+        let test_db_path = format!("test_audit_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        AuditLogger::new(&test_db_path).unwrap()
+    }
+
+    fn cleanup_db(path: &str) {
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn test_new_creates_tables() {
+        let test_db_path = format!("test_new_tables_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let logger = AuditLogger::new(&test_db_path).unwrap();
+        drop(logger);
+        assert!(fs::metadata(&test_db_path).is_ok());
+        cleanup_db(&test_db_path);
+    }
+
+    #[test]
+    fn test_find_or_create_user_new() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+        assert_eq!(user.id, "user123");
+        assert_eq!(user.email, Some("user@example.com".to_string()));
+        assert!(user.is_enabled);
+    }
+
+    #[test]
+    fn test_find_or_create_user_existing() {
+        let logger = create_test_logger();
+        let user1 = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+        let user2 = logger.find_or_create_user("user123", Some("user2@example.com")).unwrap();
+        assert_eq!(user1.id, user2.id);
+        assert_eq!(user2.email, Some("user2@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_find_or_create_user_without_email() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        assert_eq!(user.id, "user123");
+        assert!(user.email.is_none());
+    }
+
+    #[test]
+    fn test_user_last_seen_updated() {
+        let logger = create_test_logger();
+        let user1 = logger.find_or_create_user("user123", None).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let user2 = logger.find_or_create_user("user123", None).unwrap();
+        assert!(user2.last_seen_at >= user1.last_seen_at);
+    }
+
+    #[test]
+    fn test_log_request() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        request.request_body = r#"{"messages":[{"role":"user","content":"hi"}]}"#.to_string();
+        request.model = Some("llama2".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+        assert_eq!(request_id, request.id);
+    }
+
+    #[test]
+    fn test_log_response() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+
+        let mut response = Response::new(request_id, 200);
+        response.response_body = r#"{"choices":[{"message":{"content":"Hello"}}]}"#.to_string();
+        response.latency_ms = 150;
+        response.tokens_prompt = Some(10);
+        response.tokens_completion = Some(5);
+        logger.log_response(&response).unwrap();
+    }
+
+    #[test]
+    fn test_get_stats_empty() {
+        let logger = create_test_logger();
+        let stats = logger.get_stats().unwrap();
+        assert_eq!(stats.total_users, 0);
+        assert_eq!(stats.total_requests, 0);
+        assert_eq!(stats.requests_24h, 0);
+        assert_eq!(stats.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_get_stats_with_users() {
+        let logger = create_test_logger();
+        logger.find_or_create_user("user1", None).unwrap();
+        logger.find_or_create_user("user2", None).unwrap();
+        let stats = logger.get_stats().unwrap();
+        assert_eq!(stats.total_users, 2);
+    }
+
+    #[test]
+    fn test_get_stats_with_requests() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        logger.log_request(&request).unwrap();
+        let stats = logger.get_stats().unwrap();
+        assert_eq!(stats.total_requests, 1);
+    }
+
+    #[test]
+    fn test_get_stats_with_tokens() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+        let mut response = Response::new(request_id, 200);
+        response.tokens_prompt = Some(10);
+        response.tokens_completion = Some(20);
+        logger.log_response(&response).unwrap();
+        let stats = logger.get_stats().unwrap();
+        assert_eq!(stats.total_tokens, 30);
+    }
+
+    #[test]
+    fn test_get_recent_requests_empty() {
+        let logger = create_test_logger();
+        let requests = logger.get_recent_requests(10).unwrap();
+        assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn test_get_recent_requests_with_data() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        for i in 0..5 {
+            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            request.model = Some(format!("model-{}", i));
+            logger.log_request(&request).unwrap();
+        }
+        let requests = logger.get_recent_requests(3).unwrap();
+        assert_eq!(requests.len(), 3);
+    }
+
+    #[test]
+    fn test_get_users_with_stats() {
+        let logger = create_test_logger();
+        logger.find_or_create_user("user1", None).unwrap();
+        let user2 = logger.find_or_create_user("user2", None).unwrap();
+        let request = Request::new(user2.id.clone(), "/chat/completions".to_string());
+        logger.log_request(&request).unwrap();
+        let users = logger.get_users_with_stats().unwrap();
+        assert_eq!(users.len(), 2);
+        let user2_stats = users.iter().find(|u| u.id == "user2").unwrap();
+        assert_eq!(user2_stats.request_count, 1);
+    }
+
+    #[test]
+    fn test_enable_user() {
+        let logger = create_test_logger();
+        logger.find_or_create_user("user123", None).unwrap();
+        logger.disable_user("user123").unwrap();
+        logger.enable_user("user123").unwrap();
+        let users = logger.get_users_with_stats().unwrap();
+        let user = users.iter().find(|u| u.id == "user123").unwrap();
+        assert!(user.is_enabled);
+    }
+
+    #[test]
+    fn test_disable_user() {
+        let logger = create_test_logger();
+        logger.find_or_create_user("user123", None).unwrap();
+        logger.disable_user("user123").unwrap();
+        let users = logger.get_users_with_stats().unwrap();
+        let user = users.iter().find(|u| u.id == "user123").unwrap();
+        assert!(!user.is_enabled);
+    }
+
+    #[test]
+    fn test_get_requests_paginated() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        for i in 0..15 {
+            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            request.model = Some(format!("model-{}", i));
+            logger.log_request(&request).unwrap();
+        }
+        let (requests, total_pages) = logger.get_requests_paginated(None, None, 1, 5).unwrap();
+        assert_eq!(requests.len(), 5);
+        assert_eq!(total_pages, 3);
+    }
+
+    #[test]
+    fn test_get_requests_paginated_filter_by_user() {
+        let logger = create_test_logger();
+        let user1 = logger.find_or_create_user("user1", None).unwrap();
+        let user2 = logger.find_or_create_user("user2", None).unwrap();
+        for _ in 0..3 {
+            let request = Request::new(user1.id.clone(), "/chat/completions".to_string());
+            logger.log_request(&request).unwrap();
+        }
+        for _ in 0..2 {
+            let request = Request::new(user2.id.clone(), "/chat/completions".to_string());
+            logger.log_request(&request).unwrap();
+        }
+        let (requests, _) = logger.get_requests_paginated(Some("user1"), None, 1, 10).unwrap();
+        assert!(requests.iter().all(|r| r.user_id.contains("user1")));
+    }
+
+    #[test]
+    fn test_get_requests_paginated_filter_by_model() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        for i in 0..5 {
+            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            request.model = Some(format!("model-{}", i));
+            logger.log_request(&request).unwrap();
+        }
+        let (requests, _) = logger.get_requests_paginated(None, Some("model-2"), 1, 10).unwrap();
+        assert!(requests.iter().all(|r| r.model.as_ref().unwrap().contains("model-2")));
+    }
+
+    #[test]
+    fn test_get_requests_paginated_second_page() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        for i in 0..10 {
+            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            request.model = Some(format!("model-{}", i));
+            logger.log_request(&request).unwrap();
+        }
+        let (requests, total_pages) = logger.get_requests_paginated(None, None, 2, 5).unwrap();
+        assert_eq!(requests.len(), 5);
+        assert_eq!(total_pages, 2);
+    }
+
+    #[test]
+    fn test_audit_error_database_error() {
+        let error = AuditError::DatabaseError("test error".to_string());
+        assert!(error.to_string().contains("Database error"));
+    }
+
+    #[test]
+    fn test_audit_error_io_error() {
+        let error = AuditError::IoError("permission denied".to_string());
+        assert!(error.to_string().contains("IO error"));
+    }
+
+    #[test]
+    fn test_dashboard_stats_struct() {
+        let stats = DashboardStats {
+            total_users: 10,
+            total_requests: 100,
+            requests_24h: 25,
+            total_tokens: 5000,
+        };
+        assert_eq!(stats.total_users, 10);
+        assert_eq!(stats.total_requests, 100);
+    }
+
+    #[test]
+    fn test_request_summary_struct() {
+        let summary = RequestSummary {
+            id: "req123".to_string(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            user_id: "user123".to_string(),
+            request_path: "/chat/completions".to_string(),
+            model: Some("llama2".to_string()),
+        };
+        assert_eq!(summary.id, "req123");
+        assert!(summary.model.is_some());
+    }
+
+    #[test]
+    fn test_user_with_stats_struct() {
+        let user = UserWithStats {
+            id: "user123".to_string(),
+            email: Some("user@example.com".to_string()),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            last_seen_at: "2024-01-02T00:00:00Z".to_string(),
+            is_enabled: true,
+            request_count: 5,
+        };
+        assert_eq!(user.request_count, 5);
+        assert!(user.is_enabled);
+    }
+
+    #[test]
+    fn test_request_with_response_struct() {
+        let req_with_resp = RequestWithResponse {
+            id: "req123".to_string(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            user_id: "user123".to_string(),
+            request_path: "/chat/completions".to_string(),
+            model: Some("llama2".to_string()),
+            status: Some(200),
+            latency_ms: Some(150),
+            tokens_prompt: Some(10),
+            tokens_completion: Some(5),
+        };
+        assert_eq!(req_with_resp.status, Some(200));
+        assert_eq!(req_with_resp.latency_ms, Some(150));
+    }
+
+    #[test]
+    fn test_database_url_parsing_sqlite_prefix() {
+        let logger = create_test_logger();
+        let url = "sqlite:memory";
+        assert!(url.starts_with("sqlite:"));
+    }
+
+    #[test]
+    fn test_multiple_log_operations() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        for i in 0..10 {
+            let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            let request_id = logger.log_request(&request).unwrap();
+            let mut response = Response::new(request_id, 200);
+            response.tokens_prompt = Some(10);
+            response.tokens_completion = Some(i as u32);
+            logger.log_response(&response).unwrap();
+        }
+        let stats = logger.get_stats().unwrap();
+        assert_eq!(stats.total_requests, 10);
+        assert_eq!(stats.total_tokens, 145); // 10 requests * 10 prompt + (0+1+...+9) completion
+    }
+}

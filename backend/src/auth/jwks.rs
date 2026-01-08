@@ -188,3 +188,197 @@ impl JwksClient {
 struct OidcConfig {
     jwks_uri: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+    use axum::http::header::AUTHORIZATION;
+
+    fn empty_headers() -> HeaderMap {
+        HeaderMap::new()
+    }
+
+    fn headers_with_auth(token: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, token.parse().unwrap());
+        headers
+    }
+
+    #[test]
+    fn test_auth_user_is_admin_with_admin_role() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: Some("user@example.com".to_string()),
+            roles: vec!["admin".to_string(), "user".to_string()],
+        };
+        assert!(user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_is_admin_without_admin_role() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: None,
+            roles: vec!["user".to_string()],
+        };
+        assert!(!user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_is_admin_with_empty_roles() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: None,
+            roles: vec![],
+        };
+        assert!(!user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_has_role_exact_match() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: None,
+            roles: vec!["moderator".to_string(), "viewer".to_string()],
+        };
+        assert!(user.has_role("moderator"));
+        assert!(user.has_role("viewer"));
+        assert!(!user.has_role("admin"));
+    }
+
+    #[test]
+    fn test_auth_user_has_role_case_sensitive() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: None,
+            roles: vec!["Admin".to_string()],
+        };
+        assert!(!user.has_role("admin"));
+        assert!(user.has_role("Admin"));
+    }
+
+    #[test]
+    fn test_auth_user_has_role_with_empty_roles() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: None,
+            roles: vec![],
+        };
+        assert!(!user.has_role("any"));
+    }
+
+    #[test]
+    fn test_auth_user_sub_and_email() {
+        let user = AuthUser {
+            sub: "auth0|123456".to_string(),
+            email: Some("test@auth0.com".to_string()),
+            roles: vec![],
+        };
+        assert_eq!(user.sub, "auth0|123456");
+        assert_eq!(user.email, Some("test@auth0.com".to_string()));
+    }
+
+    #[test]
+    fn test_auth_user_without_email() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: None,
+            roles: vec![],
+        };
+        assert!(user.email.is_none());
+    }
+
+    #[test]
+    fn test_auth_error_missing_header() {
+        let result: Result<AuthUser, AuthError> = Err(AuthError::MissingHeader);
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert_eq!(e.to_string(), "Missing Authorization header");
+        }
+    }
+
+    #[test]
+    fn test_auth_error_invalid_format() {
+        let result: Result<AuthUser, AuthError> = Err(AuthError::InvalidFormat);
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert_eq!(e.to_string(), "Invalid Authorization header format");
+        }
+    }
+
+    #[test]
+    fn test_auth_error_invalid_token() {
+        let result: Result<AuthUser, AuthError> = Err(AuthError::InvalidToken("test error".to_string()));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("Invalid token"));
+        }
+    }
+
+    #[test]
+    fn test_auth_error_jwks_fetch_error() {
+        let result: Result<AuthUser, AuthError> = Err(AuthError::JwksFetchError("connection refused".to_string()));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("JWKS fetch error"));
+        }
+    }
+
+    #[test]
+    fn test_auth_error_key_not_found() {
+        let result: Result<AuthUser, AuthError> = Err(AuthError::KeyNotFound("kid123".to_string()));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("Key not found for kid"));
+        }
+    }
+
+    #[test]
+    fn test_auth_user_clone() {
+        let original = AuthUser {
+            sub: "user123".to_string(),
+            email: Some("user@example.com".to_string()),
+            roles: vec!["admin".to_string()],
+        };
+        let cloned = original.clone();
+        assert_eq!(cloned.sub, original.sub);
+        assert_eq!(cloned.email, original.email);
+        assert_eq!(cloned.roles, original.roles);
+    }
+
+    #[test]
+    fn test_auth_user_debug_format() {
+        let user = AuthUser {
+            sub: "user123".to_string(),
+            email: Some("user@example.com".to_string()),
+            roles: vec!["admin".to_string()],
+        };
+        let debug = format!("{:?}", user);
+        assert!(debug.contains("user123"));
+        assert!(debug.contains("user@example.com"));
+        assert!(debug.contains("admin"));
+    }
+
+    #[test]
+    fn test_bearer_token_extraction_valid() {
+        let headers = headers_with_auth("Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test");
+        let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
+        assert!(auth_header.is_some());
+        assert!(auth_header.unwrap().starts_with("Bearer "));
+    }
+
+    #[test]
+    fn test_bearer_token_extraction_basic_auth() {
+        let headers = headers_with_auth("Basic dXNlcjpwYXNz");
+        let auth_header = headers.get("authorization").and_then(|v| v.to_str().ok());
+        assert!(auth_header.is_some());
+        assert!(!auth_header.unwrap().starts_with("Bearer "));
+    }
+
+    #[test]
+    fn test_empty_headers_has_no_auth() {
+        let headers = empty_headers();
+        assert!(headers.get("authorization").is_none());
+    }
+}

@@ -23,7 +23,7 @@ struct OllamaChatRequest {
     tools: Option<Vec<serde_json::Value>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct OllamaMessage {
     role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -210,5 +210,229 @@ impl OllamaClient {
         }
 
         Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_ollama_client_new() {
+        let client = OllamaClient::new("http://localhost:11434", "llama2");
+        assert_eq!(client.base_url, "http://localhost:11434");
+        assert_eq!(client.default_model, "llama2");
+    }
+
+    #[test]
+    fn test_ollama_client_url_trailing_slash_handled() {
+        let client = OllamaClient::new("http://localhost:11434/", "llama2");
+        assert_eq!(client.base_url, "http://localhost:11434");
+        assert!(!client.base_url.ends_with("/"));
+    }
+
+    #[test]
+    fn test_ollama_client_full_url_construction() {
+        let client = OllamaClient::new("http://localhost:11434", "llama2");
+        let full_url = format!("{}/api/chat", client.base_url);
+        assert_eq!(full_url, "http://localhost:11434/api/chat");
+    }
+
+    #[test]
+    fn test_ollama_chat_request_serialization() {
+        let request = OllamaChatRequest {
+            model: "llama2".to_string(),
+            messages: vec![OllamaMessage {
+                role: "user".to_string(),
+                content: Some("Hello".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            stream: false,
+            options: None,
+            tools: None,
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains(r#""model":"llama2""#));
+        assert!(json.contains(r#""role":"user""#));
+        assert!(json.contains(r#""content":"Hello""#));
+        assert!(json.contains(r#""stream":false"#));
+    }
+
+    #[test]
+    fn test_ollama_chat_request_with_options() {
+        let request = OllamaChatRequest {
+            model: "llama2".to_string(),
+            messages: vec![],
+            stream: false,
+            options: Some(OllamaOptions {
+                temperature: Some(0.7),
+                num_predict: Some(100),
+            }),
+            tools: None,
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains(r#""temperature":0.7"#));
+        assert!(json.contains(r#""num_predict":100"#));
+    }
+
+    #[test]
+    fn test_ollama_chat_request_options_none() {
+        let request = OllamaChatRequest {
+            model: "llama2".to_string(),
+            messages: vec![],
+            stream: false,
+            options: None,
+            tools: None,
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(!json.contains("temperature"));
+        assert!(!json.contains("num_predict"));
+    }
+
+    #[test]
+    fn test_ollama_response_deserialization() {
+        let json = r#"{
+            "message": {
+                "role": "assistant",
+                "content": "Hello!"
+            },
+            "done": true,
+            "prompt_eval_count": 10,
+            "eval_count": 5
+        }"#;
+        let response: OllamaChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.message.role, "assistant");
+        assert_eq!(response.message.content, Some("Hello!".to_string()));
+        assert!(response.done);
+        assert_eq!(response.prompt_eval_count, Some(10));
+        assert_eq!(response.eval_count, Some(5));
+    }
+
+    #[test]
+    fn test_ollama_response_without_usage() {
+        let json = r#"{
+            "message": {
+                "role": "assistant",
+                "content": "Hi"
+            },
+            "done": false
+        }"#;
+        let response: OllamaChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.message.content, Some("Hi".to_string()));
+        assert!(!response.done);
+        assert!(response.prompt_eval_count.is_none());
+        assert!(response.eval_count.is_none());
+    }
+
+    #[test]
+    fn test_ollama_tool_call_serialization() {
+        let tool_call = OllamaToolCall {
+            id: Some("call_1".to_string()),
+            function: OllamaToolFunction {
+                name: "get_weather".to_string(),
+                arguments: serde_json::json!({"location": "NYC"}),
+            },
+        };
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains(r#""id":"call_1""#));
+        assert!(json.contains(r#""name":"get_weather""#));
+    }
+
+    #[test]
+    fn test_ollama_error_request_failed() {
+        let error = OllamaError::RequestFailed("connection refused".to_string());
+        assert!(error.to_string().contains("HTTP request failed"));
+    }
+
+    #[test]
+    fn test_ollama_error_invalid_response() {
+        let error = OllamaError::InvalidResponse("invalid json".to_string());
+        assert!(error.to_string().contains("Invalid response"));
+    }
+
+    #[test]
+    fn test_ollama_error_ollama_error() {
+        let error = OllamaError::OllamaError("model not found".to_string());
+        assert!(error.to_string().contains("Ollama error"));
+    }
+
+    #[test]
+    fn test_ollama_chat_response_with_tool_calls() {
+        let json = r#"{
+            "message": {
+                "role": "assistant",
+                "content": "Let me check...",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": {"location": "NYC"}
+                        }
+                    }
+                ]
+            },
+            "done": true,
+            "prompt_eval_count": 15,
+            "eval_count": 8
+        }"#;
+        let response: OllamaChatResponse = serde_json::from_str(json).unwrap();
+        assert!(response.message.tool_calls.is_some());
+        let calls = response.message.tool_calls.unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, Some("call_1".to_string()));
+        assert_eq!(calls[0].function.name, "get_weather");
+    }
+
+    #[test]
+    fn test_ollama_message_with_null_content() {
+        let json = r#"{"role": "assistant", "content": null}"#;
+        let message: OllamaMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(message.content, None);
+    }
+
+    #[test]
+    fn test_ollama_message_without_content_field() {
+        let json = r#"{"role": "assistant"}"#;
+        let message: OllamaMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(message.content, None);
+    }
+
+    #[test]
+    fn test_ollama_options_serialization() {
+        let options = OllamaOptions {
+            temperature: Some(0.5),
+            num_predict: Some(256),
+        };
+        let json = serde_json::to_string(&options).unwrap();
+        assert!(json.contains(r#""temperature":0.5"#));
+        assert!(json.contains(r#""num_predict":256"#));
+    }
+
+    #[test]
+    fn test_ollama_chat_request_with_tools() {
+        let tools = vec![serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"}
+                    }
+                }
+            }
+        })];
+        let request = OllamaChatRequest {
+            model: "llama2".to_string(),
+            messages: vec![],
+            stream: false,
+            options: None,
+            tools: Some(tools),
+        };
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("get_weather"));
     }
 }

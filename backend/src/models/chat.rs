@@ -91,3 +91,193 @@ impl ChatCompletionResponse {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_chat_completion_request_default_values() {
+        let req = ChatCompletionRequest {
+            messages: vec![],
+            tools: None,
+            model: None,
+            temperature: None,
+            max_tokens: None,
+        };
+        assert!(req.messages.is_empty());
+        assert!(req.tools.is_none());
+        assert!(req.model.is_none());
+        assert!(req.temperature.is_none());
+        assert!(req.max_tokens.is_none());
+    }
+
+    #[test]
+    fn test_chat_completion_request_with_all_fields() {
+        let req = ChatCompletionRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: Some("Hello".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            tools: Some(vec![]),
+            model: Some("gpt-4".to_string()),
+            temperature: Some(0.7),
+            max_tokens: Some(100),
+        };
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.model, Some("gpt-4".to_string()));
+        assert_eq!(req.temperature, Some(0.7));
+        assert_eq!(req.max_tokens, Some(100));
+    }
+
+    #[test]
+    fn test_chat_message_default_content() {
+        let msg = ChatMessage {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        assert!(msg.content.is_none());
+    }
+
+    #[test]
+    fn test_tool_call_serialization() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            call_type: "function".to_string(),
+            function: ToolFunction {
+                name: "get_weather".to_string(),
+                arguments: "{\"location\": \"NYC\"}".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains("\"id\":\"call_123\""));
+        assert!(json.contains("\"type\":\"function\""));
+        assert!(json.contains("\"name\":\"get_weather\""));
+    }
+
+    #[test]
+    fn test_chat_completion_response_new() {
+        let message = ChatMessage {
+            role: "assistant".to_string(),
+            content: Some("Hello!".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        let response = ChatCompletionResponse::new(
+            "test-model".to_string(),
+            message.clone(),
+            Some("stop".to_string()),
+        );
+        assert!(response.id.starts_with("chatcmpl-"));
+        assert_eq!(response.object, "chat.completion");
+        assert_eq!(response.model, "test-model");
+        assert_eq!(response.choices.len(), 1);
+        assert_eq!(response.choices[0].message.role, "assistant");
+        assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
+    }
+
+    #[test]
+    fn test_chat_completion_response_with_usage() {
+        let message = ChatMessage {
+            role: "assistant".to_string(),
+            content: Some("Hello!".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        let response = ChatCompletionResponse::new(
+            "test-model".to_string(),
+            message,
+            Some("stop".to_string()),
+        ).with_usage(10, 5);
+
+        assert!(response.usage.is_some());
+        let usage = response.usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.completion_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[test]
+    fn test_usage_total_tokens_calculation() {
+        let usage = Usage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+        };
+        assert_eq!(usage.total_tokens, usage.prompt_tokens + usage.completion_tokens);
+    }
+
+    #[test]
+    fn test_choice_index() {
+        let message = ChatMessage {
+            role: "assistant".to_string(),
+            content: Some("Response".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        let response = ChatCompletionResponse::new(
+            "model".to_string(),
+            message,
+            None,
+        );
+        assert_eq!(response.choices[0].index, 0);
+    }
+
+    #[test]
+    fn test_finish_reason_none_when_not_done() {
+        let message = ChatMessage {
+            role: "assistant".to_string(),
+            content: Some("Streaming...".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        let response = ChatCompletionResponse::new(
+            "model".to_string(),
+            message,
+            None,
+        );
+        assert_eq!(response.choices[0].finish_reason, None);
+    }
+
+    #[test]
+    fn test_request_serde_roundtrip() {
+        let original = ChatCompletionRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: Some("What is 2+2?".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            model: Some("llama2".to_string()),
+            temperature: Some(0.5),
+            max_tokens: Some(50),
+            tools: None,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: ChatCompletionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.model, original.model);
+        assert_eq!(deserialized.temperature, original.temperature);
+        assert_eq!(deserialized.max_tokens, original.max_tokens);
+        assert_eq!(deserialized.messages.len(), original.messages.len());
+    }
+
+    #[test]
+    fn test_tool_call_with_empty_arguments() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            call_type: "function".to_string(),
+            function: ToolFunction {
+                name: "no_args".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&tool_call).unwrap();
+        let deserialized: ToolCall = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.function.name, "no_args");
+    }
+}
