@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -18,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,6 +43,7 @@ fun CapabilityCard(
     status: CapabilityStatus,
     onDownload: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     onConfigure: (() -> Unit)? = null,
     onTest: (() -> Unit)? = null,
     extraContent: @Composable (() -> Unit)? = null,
@@ -165,6 +168,15 @@ fun CapabilityCard(
                             fontWeight = FontWeight.Medium
                         )
                         Spacer(modifier = Modifier.weight(1f))
+                        if (onDelete != null) {
+                            IconButton(onClick = onDelete) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                         if (onTest != null) {
                             OutlinedButton(onClick = onTest) {
                                 Text("Test")

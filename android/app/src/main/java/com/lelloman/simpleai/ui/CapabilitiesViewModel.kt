@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -41,6 +40,7 @@ data class CapabilitiesState(
     val localAiStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(LocalAIModel.SIZE_BYTES),
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguage: String? = null,
+    val languageDownloadError: String? = null,
     val isServiceConnected: Boolean = false
 )
 
@@ -162,9 +162,8 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             // Parse translation
             val translation = capabilities["translation"]?.jsonObject
             val transStatus = parseCapabilityStatus(translation)
-            val languages = translation?.get("languages")?.jsonArray
-                ?.map { it.jsonPrimitive.content }
-                ?.toSet() ?: emptySet()
+            // Note: downloadedLanguages comes from TranslationManager's StateFlow,
+            // not from the service, to ensure we have the most up-to-date data
 
             // Parse cloud AI
             val cloudAi = capabilities["cloudAi"]?.jsonObject
@@ -174,13 +173,21 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             val localAi = capabilities["localAi"]?.jsonObject
             val localStatus = parseCapabilityStatus(localAi)
 
-            _state.update {
-                it.copy(
-                    voiceCommandsStatus = vcStatus,
+            _state.update { currentState ->
+                currentState.copy(
+                    // Don't overwrite if currently downloading (ViewModel manages download progress)
+                    voiceCommandsStatus = if (currentState.voiceCommandsStatus is CapabilityStatus.Downloading) {
+                        currentState.voiceCommandsStatus
+                    } else {
+                        vcStatus
+                    },
                     translationStatus = transStatus,
                     cloudAiStatus = cloudStatus,
-                    localAiStatus = localStatus,
-                    downloadedLanguages = languages
+                    localAiStatus = if (currentState.localAiStatus is CapabilityStatus.Downloading) {
+                        currentState.localAiStatus
+                    } else {
+                        localStatus
+                    }
                 )
             }
         } catch (e: Exception) {
@@ -265,27 +272,102 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    fun deleteLocalAi() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = downloadManager.deleteLocalAi()
+            if (success) {
+                _state.update { it.copy(localAiStatus = CapabilityStatus.NotDownloaded(LocalAIModel.SIZE_BYTES)) }
+            } else {
+                Log.e(TAG, "Failed to delete Local AI model")
+            }
+        }
+    }
+
+    fun deleteVoiceCommands() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = downloadManager.deleteVoiceCommands()
+            if (success) {
+                _state.update { it.copy(voiceCommandsStatus = CapabilityStatus.NotDownloaded(534_000_000)) }
+            } else {
+                Log.e(TAG, "Failed to delete Voice Commands model")
+            }
+        }
+    }
+
+    fun downloadVoiceCommands() {
+        viewModelScope.launch {
+            downloadManager.downloadVoiceCommands()
+                .catch { e ->
+                    _state.update {
+                        it.copy(voiceCommandsStatus = CapabilityStatus.Error(
+                            e.message ?: "Download failed",
+                            canRetry = true
+                        ))
+                    }
+                }
+                .collect { downloadState ->
+                    when (downloadState) {
+                        is DownloadState.Idle -> {
+                            _state.update {
+                                it.copy(voiceCommandsStatus = CapabilityStatus.Downloading(0, 534_000_000))
+                            }
+                        }
+                        is DownloadState.Downloading -> {
+                            _state.update {
+                                it.copy(voiceCommandsStatus = CapabilityStatus.Downloading(
+                                    downloadState.downloadedBytes,
+                                    downloadState.totalBytes
+                                ))
+                            }
+                        }
+                        is DownloadState.Completed -> {
+                            _state.update { it.copy(voiceCommandsStatus = CapabilityStatus.Ready) }
+                        }
+                        is DownloadState.Error -> {
+                            _state.update {
+                                it.copy(voiceCommandsStatus = CapabilityStatus.Error(
+                                    downloadState.message,
+                                    canRetry = true
+                                ))
+                            }
+                        }
+                    }
+                }
+        }
+    }
+
     // =========================================================================
     // Translation Languages
     // =========================================================================
 
     fun downloadTranslationLanguage(languageCode: String) {
         viewModelScope.launch {
-            _state.update { it.copy(downloadingLanguage = languageCode) }
+            _state.update { it.copy(downloadingLanguage = languageCode, languageDownloadError = null) }
 
             translationManager.downloadLanguage(languageCode) { progress ->
                 // Progress callback (ML Kit doesn't provide granular progress)
             }.fold(
                 onSuccess = {
-                    _state.update { it.copy(downloadingLanguage = null) }
+                    _state.update { it.copy(downloadingLanguage = null, languageDownloadError = null) }
                     refreshCapabilities()
                 },
                 onFailure = { e ->
                     Log.e(TAG, "Failed to download language: $languageCode", e)
-                    _state.update { it.copy(downloadingLanguage = null) }
+                    val errorMessage = when {
+                        e.message?.contains("wifi", ignoreCase = true) == true ->
+                            "WiFi required for download"
+                        e.message?.contains("network", ignoreCase = true) == true ->
+                            "Network error. Check your connection."
+                        else -> e.message ?: "Download failed"
+                    }
+                    _state.update { it.copy(downloadingLanguage = null, languageDownloadError = errorMessage) }
                 }
             )
         }
+    }
+
+    fun clearLanguageDownloadError() {
+        _state.update { it.copy(languageDownloadError = null) }
     }
 
     fun deleteTranslationLanguage(languageCode: String) {

@@ -161,7 +161,6 @@ class TranslationManager(
 
             val model = TranslateRemoteModel.Builder(mlKitCode).build()
             val conditions = DownloadConditions.Builder()
-                .requireWifi()
                 .build()
 
             suspendCancellableCoroutine<Unit> { cont ->

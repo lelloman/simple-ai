@@ -162,6 +162,105 @@ class ModelDownloadManager(
         return file.delete()
     }
 
+    /**
+     * Delete the voice commands (NLU) model.
+     */
+    fun deleteVoiceCommands(): Boolean {
+        val nluDir = File(context.filesDir, "nlu_models")
+        return if (nluDir.exists()) {
+            nluDir.deleteRecursively()
+        } else {
+            true
+        }
+    }
+
+    /**
+     * Check if the voice commands model is downloaded.
+     */
+    fun isVoiceCommandsDownloaded(): Boolean {
+        val nluDir = File(context.filesDir, "nlu_models")
+        val modelFile = File(nluDir, "xlm_roberta_base_int8.onnx")
+        return modelFile.exists() && modelFile.length() > 0
+    }
+
+    /**
+     * Download the voice commands (NLU) model.
+     */
+    fun downloadVoiceCommands(): Flow<DownloadState> = flow {
+        emit(DownloadState.Idle)
+
+        val nluDir = File(context.filesDir, "nlu_models")
+        nluDir.mkdirs()
+        val targetFile = File(nluDir, "xlm_roberta_base_int8.onnx")
+        val tempFile = File(nluDir, "xlm_roberta_base_int8.onnx.tmp")
+        val url = "https://huggingface.co/lelloman/xlm-roberta-base-onnx-int8/resolve/main/xlm_roberta_base_int8.onnx"
+
+        try {
+            val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
+
+            val requestBuilder = Request.Builder().url(url)
+            if (existingBytes > 0) {
+                requestBuilder.addHeader("Range", "bytes=$existingBytes-")
+            }
+
+            val response = client.newCall(requestBuilder.build()).execute()
+
+            if (!response.isSuccessful && response.code != 206) {
+                emit(DownloadState.Error("Download failed: HTTP ${response.code}"))
+                return@flow
+            }
+
+            val body = response.body ?: run {
+                emit(DownloadState.Error("Empty response body"))
+                return@flow
+            }
+
+            val contentLength = body.contentLength()
+            val totalBytes = if (response.code == 206) {
+                existingBytes + contentLength
+            } else {
+                contentLength
+            }
+
+            val outputStream = FileOutputStream(tempFile, response.code == 206)
+            val buffer = ByteArray(8192)
+            var downloadedBytes = existingBytes
+            var lastEmitTime = System.currentTimeMillis()
+
+            body.byteStream().use { inputStream ->
+                outputStream.use { output ->
+                    while (true) {
+                        val bytesRead = inputStream.read(buffer)
+                        if (bytesRead == -1) break
+
+                        output.write(buffer, 0, bytesRead)
+                        downloadedBytes += bytesRead
+
+                        val now = System.currentTimeMillis()
+                        if (now - lastEmitTime >= 100) {
+                            val progress = if (totalBytes > 0) {
+                                downloadedBytes.toFloat() / totalBytes
+                            } else {
+                                0f
+                            }
+                            emit(DownloadState.Downloading(progress, downloadedBytes, totalBytes))
+                            lastEmitTime = now
+                        }
+                    }
+                }
+            }
+
+            if (tempFile.renameTo(targetFile)) {
+                emit(DownloadState.Completed)
+            } else {
+                emit(DownloadState.Error("Failed to finalize download"))
+            }
+
+        } catch (e: Exception) {
+            emit(DownloadState.Error("Download error: ${e.message}"))
+        }
+    }.flowOn(Dispatchers.IO)
+
     fun getStorageInfo(): StorageInfo {
         val modelsUsed = modelsDir.listFiles()
             ?.filter { it.isFile && it.name.endsWith(".gguf") }

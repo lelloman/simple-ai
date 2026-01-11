@@ -555,19 +555,23 @@ class SimpleAIService : Service() {
     }
 
     private fun initializeEngines() {
-        // Initialize NLU engine (Voice Commands)
+        // Initialize NLU engine (Voice Commands) - only if model is already downloaded
         serviceScope.launch(Dispatchers.IO) {
             try {
-                Log.i(TAG, "Initializing NLU engine...")
+                Log.i(TAG, "Checking NLU engine model...")
                 val engine = OnnxNLUEngine(this@SimpleAIService)
 
-                // Only show "Downloading" if the model isn't already downloaded
+                // Don't auto-download - let user explicitly download via UI
                 if (!engine.isModelDownloaded()) {
+                    Log.i(TAG, "NLU model not downloaded, skipping initialization")
                     capabilityManager.updateVoiceCommandsStatus(
-                        CapabilityStatus.Downloading(0, CapabilityManager.VOICE_COMMANDS_MODEL_SIZE)
+                        CapabilityStatus.NotDownloaded(CapabilityManager.VOICE_COMMANDS_MODEL_SIZE)
                     )
+                    nluEngineReady.complete(Unit)
+                    return@launch
                 }
 
+                Log.i(TAG, "Initializing NLU engine...")
                 engine.initialize().fold(
                     onSuccess = {
                         nluEngine = engine

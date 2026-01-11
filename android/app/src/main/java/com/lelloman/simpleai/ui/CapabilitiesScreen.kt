@@ -10,20 +10,30 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lelloman.simpleai.capability.CapabilityStatus
+
+private enum class DeleteConfirmation {
+    VOICE_COMMANDS,
+    LOCAL_AI
+}
 
 /**
  * Main screen showing all capabilities as cards.
@@ -37,6 +47,44 @@ fun CapabilitiesScreen(
     onNavigateToAbout: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
+    var deleteConfirmation by remember { mutableStateOf<DeleteConfirmation?>(null) }
+
+    // Delete confirmation dialog
+    deleteConfirmation?.let { confirmation ->
+        val (title, size, onConfirm) = when (confirmation) {
+            DeleteConfirmation.VOICE_COMMANDS -> Triple(
+                "Voice Commands",
+                "~534 MB",
+                { viewModel.deleteVoiceCommands() }
+            )
+            DeleteConfirmation.LOCAL_AI -> Triple(
+                "Local AI",
+                "~1.3 GB",
+                { viewModel.deleteLocalAi() }
+            )
+        }
+
+        AlertDialog(
+            onDismissRequest = { deleteConfirmation = null },
+            title = { Text("Delete $title?") },
+            text = { Text("This will delete the downloaded model ($size). You can re-download it later.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onConfirm()
+                        deleteConfirmation = null
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteConfirmation = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -67,7 +115,11 @@ fun CapabilitiesScreen(
                 icon = "\uD83C\uDFA4",  // microphone
                 description = "Intent classification and entity extraction",
                 status = state.voiceCommandsStatus,
-                onRetry = { viewModel.refreshCapabilities() }
+                onDownload = { viewModel.downloadVoiceCommands() },
+                onRetry = { viewModel.downloadVoiceCommands() },
+                onDelete = if (state.voiceCommandsStatus is CapabilityStatus.Ready) {
+                    { deleteConfirmation = DeleteConfirmation.VOICE_COMMANDS }
+                } else null
             )
 
             // Translation capability
@@ -119,7 +171,10 @@ fun CapabilitiesScreen(
                 description = "On-device LLM for offline use",
                 status = state.localAiStatus,
                 onDownload = { viewModel.downloadLocalAi() },
-                onRetry = { viewModel.downloadLocalAi() }
+                onRetry = { viewModel.downloadLocalAi() },
+                onDelete = if (state.localAiStatus is CapabilityStatus.Ready) {
+                    { deleteConfirmation = DeleteConfirmation.LOCAL_AI }
+                } else null
             )
 
             Spacer(modifier = Modifier.height(16.dp))

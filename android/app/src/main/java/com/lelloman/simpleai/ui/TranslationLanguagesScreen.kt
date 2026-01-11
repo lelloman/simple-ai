@@ -25,11 +25,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -60,9 +66,19 @@ fun TranslationLanguagesScreen(
     val state by viewModel.state.collectAsState()
     val downloadedLanguages = state.downloadedLanguages
     val downloadingLanguage = state.downloadingLanguage
+    val languageDownloadError = state.languageDownloadError
     val allLanguages = getLanguageInfoList(downloadedLanguages, downloadingLanguage)
     val downloaded = allLanguages.filter { it.isDownloaded || it.isRequired }
     val available = allLanguages.filter { !it.isDownloaded && !it.isRequired }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(languageDownloadError) {
+        languageDownloadError?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            viewModel.clearLanguageDownloadError()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -77,6 +93,15 @@ fun TranslationLanguagesScreen(
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
         }
     ) { innerPadding ->
         LazyColumn(
