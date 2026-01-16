@@ -535,7 +535,7 @@ mod tests {
     fn test_log_request() {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
-        let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        let mut request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
         request.request_body = r#"{"messages":[{"role":"user","content":"hi"}]}"#.to_string();
         request.model = Some("llama2".to_string());
         let request_id = logger.log_request(&request).unwrap();
@@ -546,7 +546,7 @@ mod tests {
     fn test_log_response() {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
-        let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
         let request_id = logger.log_request(&request).unwrap();
 
         let mut response = Response::new(request_id, 200);
@@ -580,7 +580,7 @@ mod tests {
     fn test_get_stats_with_requests() {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
-        let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
         logger.log_request(&request).unwrap();
         let stats = logger.get_stats().unwrap();
         assert_eq!(stats.total_requests, 1);
@@ -590,7 +590,7 @@ mod tests {
     fn test_get_stats_with_tokens() {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
-        let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
         let request_id = logger.log_request(&request).unwrap();
         let mut response = Response::new(request_id, 200);
         response.tokens_prompt = Some(10);
@@ -612,7 +612,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
         for i in 0..5 {
-            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            let mut request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
             request.model = Some(format!("model-{}", i));
             logger.log_request(&request).unwrap();
         }
@@ -625,7 +625,7 @@ mod tests {
         let logger = create_test_logger();
         logger.find_or_create_user("user1", None).unwrap();
         let user2 = logger.find_or_create_user("user2", None).unwrap();
-        let request = Request::new(user2.id.clone(), "/chat/completions".to_string());
+        let request = Request::new(user2.id.clone(), "/v1/chat/completions".to_string());
         logger.log_request(&request).unwrap();
         let users = logger.get_users_with_stats().unwrap();
         assert_eq!(users.len(), 2);
@@ -659,7 +659,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
         for i in 0..15 {
-            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            let mut request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
             request.model = Some(format!("model-{}", i));
             logger.log_request(&request).unwrap();
         }
@@ -674,11 +674,11 @@ mod tests {
         let user1 = logger.find_or_create_user("user1", None).unwrap();
         let user2 = logger.find_or_create_user("user2", None).unwrap();
         for _ in 0..3 {
-            let request = Request::new(user1.id.clone(), "/chat/completions".to_string());
+            let request = Request::new(user1.id.clone(), "/v1/chat/completions".to_string());
             logger.log_request(&request).unwrap();
         }
         for _ in 0..2 {
-            let request = Request::new(user2.id.clone(), "/chat/completions".to_string());
+            let request = Request::new(user2.id.clone(), "/v1/chat/completions".to_string());
             logger.log_request(&request).unwrap();
         }
         let (requests, _) = logger.get_requests_paginated(Some("user1"), None, 1, 10).unwrap();
@@ -690,7 +690,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
         for i in 0..5 {
-            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            let mut request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
             request.model = Some(format!("model-{}", i));
             logger.log_request(&request).unwrap();
         }
@@ -703,7 +703,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
         for i in 0..10 {
-            let mut request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            let mut request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
             request.model = Some(format!("model-{}", i));
             logger.log_request(&request).unwrap();
         }
@@ -742,7 +742,7 @@ mod tests {
             id: "req123".to_string(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             user_id: "user123".to_string(),
-            request_path: "/chat/completions".to_string(),
+            request_path: "/v1/chat/completions".to_string(),
             model: Some("llama2".to_string()),
         };
         assert_eq!(summary.id, "req123");
@@ -769,7 +769,7 @@ mod tests {
             id: "req123".to_string(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             user_id: "user123".to_string(),
-            request_path: "/chat/completions".to_string(),
+            request_path: "/v1/chat/completions".to_string(),
             model: Some("llama2".to_string()),
             status: Some(200),
             latency_ms: Some(150),
@@ -792,7 +792,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
         for i in 0..10 {
-            let request = Request::new(user.id.clone(), "/chat/completions".to_string());
+            let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
             let request_id = logger.log_request(&request).unwrap();
             let mut response = Response::new(request_id, 200);
             response.tokens_prompt = Some(10);

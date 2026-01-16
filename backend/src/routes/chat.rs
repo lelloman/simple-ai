@@ -12,7 +12,7 @@ use crate::AppState;
 use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
 use crate::models::request::{Request, Response};
 
-/// POST /chat/completions - OpenAI-compatible chat endpoint
+/// POST /v1/chat/completions - OpenAI-compatible chat endpoint
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -40,7 +40,7 @@ async fn chat_completions(
         .unwrap_or_else(|| state.config.ollama.model.clone());
 
     // Log request BEFORE calling Ollama
-    let mut req_log = Request::new(user.id.clone(), "/chat/completions".to_string());
+    let mut req_log = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
     req_log.request_body = serde_json::to_string(&request).unwrap_or_default();
     req_log.model = Some(model.clone());
 

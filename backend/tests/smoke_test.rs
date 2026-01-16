@@ -102,7 +102,7 @@ async fn send_request(app: &axum::Router, method: http::Method, uri: &str, body:
 #[tokio::test]
 async fn test_chat_completions_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = routes::chat::router(state);
+    let app = axum::Router::new().nest("/v1", routes::chat::router(state));
 
     let request = ChatCompletionRequest {
         messages: vec![ChatMessage {
@@ -118,7 +118,7 @@ async fn test_chat_completions_requires_auth() {
     };
 
     let body = Bytes::from(serde_json::to_string(&request).unwrap());
-    let status = send_request(&app, http::Method::POST, "/chat/completions", Some(body)).await;
+    let status = send_request(&app, http::Method::POST, "/v1/chat/completions", Some(body)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 

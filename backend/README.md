@@ -4,8 +4,8 @@ OpenAI-compatible API gateway that proxies requests to Ollama with OIDC authenti
 
 ## Features
 
-- OpenAI-compatible `/chat/completions` endpoint
-- Language detection via `/detect-language` endpoint (FastText ML model, 176 languages)
+- OpenAI-compatible `/v1/chat/completions` endpoint
+- Language detection via `/v1/detect-language` endpoint (FastText ML model, 176 languages)
 - OIDC JWT authentication via JWKS
 - Proxies to local Ollama instance
 - Full audit logging to SQLite
@@ -50,7 +50,7 @@ docker run -p 8080:8080 \
 
 ## API
 
-### POST /chat/completions
+### POST /v1/chat/completions
 
 OpenAI-compatible chat completion endpoint.
 
@@ -87,7 +87,7 @@ OpenAI-compatible chat completion endpoint.
 }
 ```
 
-### POST /detect-language
+### POST /v1/detect-language
 
 Detect the language of a text. Requires authentication.
 

@@ -43,8 +43,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_headers(tower_http::cors::Any);
 
     let app = simple_ai_backend::routes::health::router()
-        .merge(simple_ai_backend::routes::chat::router(state.clone()))
-        .merge(simple_ai_backend::routes::language::router(state.clone()))
+        .nest("/v1",
+            simple_ai_backend::routes::chat::router(state.clone())
+                .merge(simple_ai_backend::routes::language::router(state.clone()))
+        )
         .nest("/admin", simple_ai_backend::routes::admin::router(state.clone()))
         .layer(cors)
         .layer(axum::middleware::from_fn(simple_ai_backend::logging::request_logger));

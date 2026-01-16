@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  * Client for proxying chat requests to our cloud LLM endpoint.
  *
  * The endpoint is OpenAI-compatible, expecting:
- * - POST /chat/completions
+ * - POST /v1/chat/completions
  * - Authorization: Bearer <token>
  * - Body: {"model": "...", "messages": [...], "tools": [...]}
  */
@@ -72,10 +72,10 @@ class CloudLLMClient {
             val requestBody = buildRequestBody(fullMessages, tools)
             val requestJson = json.encodeToString(requestBody)
 
-            Log.d(TAG, "Sending request to $endpoint/chat/completions")
+            Log.d(TAG, "Sending request to $endpoint/v1/chat/completions")
 
             val request = Request.Builder()
-                .url("$endpoint/chat/completions")
+                .url("$endpoint/v1/chat/completions")
                 .header("Authorization", "Bearer $authToken")
                 .header("Content-Type", "application/json")
                 .post(requestJson.toRequestBody(JSON_MEDIA_TYPE))

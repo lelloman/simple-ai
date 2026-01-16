@@ -60,10 +60,10 @@ mod tests {
 
     #[test]
     fn test_request_new() {
-        let req = Request::new("user123".to_string(), "/chat/completions".to_string());
+        let req = Request::new("user123".to_string(), "/v1/chat/completions".to_string());
         assert!(!req.id.is_empty());
         assert_eq!(req.user_id, "user123");
-        assert_eq!(req.request_path, "/chat/completions");
+        assert_eq!(req.request_path, "/v1/chat/completions");
         assert!(req.request_body.is_empty());
         assert!(req.model.is_none());
         assert!(!req.timestamp.to_string().is_empty());
@@ -71,14 +71,14 @@ mod tests {
 
     #[test]
     fn test_request_id_is_valid_uuid() {
-        let req = Request::new("user123".to_string(), "/chat/completions".to_string());
+        let req = Request::new("user123".to_string(), "/v1/chat/completions".to_string());
         let uuid_result = Uuid::parse_str(&req.id);
         assert!(uuid_result.is_ok());
     }
 
     #[test]
     fn test_request_with_model() {
-        let mut req = Request::new("user123".to_string(), "/chat/completions".to_string());
+        let mut req = Request::new("user123".to_string(), "/v1/chat/completions".to_string());
         req.model = Some("llama2".to_string());
         assert_eq!(req.model, Some("llama2".to_string()));
     }
@@ -137,11 +137,11 @@ mod tests {
 
     #[test]
     fn test_request_serialize() {
-        let mut req = Request::new("user123".to_string(), "/chat/completions".to_string());
+        let mut req = Request::new("user123".to_string(), "/v1/chat/completions".to_string());
         req.request_body = r#"{"messages":[{"role":"user","content":"hi"}]}"#.to_string();
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("user123"));
-        assert!(json.contains("/chat/completions"));
+        assert!(json.contains("/v1/chat/completions"));
     }
 
     #[test]
