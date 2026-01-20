@@ -3,9 +3,11 @@
 //! This module defines the `InferenceEngine` trait that abstracts different
 //! inference backends (Ollama, llama.cpp, etc.) behind a common interface.
 
+mod llama_cpp;
 mod ollama;
 mod registry;
 
+pub use llama_cpp::LlamaCppEngine;
 pub use ollama::OllamaEngine;
 pub use registry::EngineRegistry;
 

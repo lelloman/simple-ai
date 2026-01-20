@@ -27,10 +27,21 @@ port = 8080
 enabled = true
 base_url = "http://localhost:11434"
 
+# llama.cpp engine configuration
+# Manages llama-server subprocesses for inference. Each loaded model runs
+# in its own server process for isolation.
+#
 # [engines.llama_cpp]
 # enabled = false
-# model_dir = "/models"
-# server_binary = "/usr/bin/llama-server"
+# model_dir = "/models"                    # Directory containing .gguf model files
+# server_binary = "/usr/bin/llama-server"  # Path to llama-server binary
+# gpu_layers = 35                          # Layers to offload to GPU (-ngl flag)
+# context_size = 4096                      # Context window size (-c flag)
+# base_port = 9000                         # Optional: fixed base port (default: OS-assigned)
+# max_servers = 2                          # Max concurrent model servers (default: 2)
+# startup_timeout_secs = 120               # Server startup timeout (default: 120)
+# shutdown_timeout_secs = 10               # Graceful shutdown timeout (default: 10)
+# log_server_output = false                # Log llama-server output for debugging
 
 [capabilities.persistence]
 always_loaded = []

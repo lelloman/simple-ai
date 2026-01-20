@@ -16,7 +16,7 @@ mod gateway;
 mod state;
 
 use config::Config;
-use engine::{EngineRegistry, OllamaEngine};
+use engine::{EngineRegistry, LlamaCppEngine, OllamaEngine};
 use gateway::{GatewayClient, StatusCollector};
 use state::AppState;
 
@@ -51,6 +51,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let engine = Arc::new(OllamaEngine::new(&ollama_config.base_url));
             registry.register(engine).await;
             tracing::info!("Registered Ollama engine at {}", ollama_config.base_url);
+        }
+    }
+
+    if let Some(ref llama_config) = config.engines.llama_cpp {
+        if llama_config.enabled {
+            let engine = Arc::new(LlamaCppEngine::new(llama_config.clone()));
+            registry.register(engine).await;
+            tracing::info!(
+                "Registered llama.cpp engine: model_dir={}, binary={}",
+                llama_config.model_dir,
+                llama_config.server_binary
+            );
         }
     }
 

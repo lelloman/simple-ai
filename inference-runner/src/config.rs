@@ -79,17 +79,39 @@ pub struct OllamaEngineConfig {
 }
 
 /// llama.cpp engine configuration (Phase 3).
+///
+/// This engine manages llama-server subprocesses to provide inference capabilities.
+/// Each loaded model runs in its own llama-server process for isolation.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct LlamaCppEngineConfig {
+    /// Whether this engine is enabled.
     #[serde(default)]
     pub enabled: bool,
+    /// Directory containing .gguf model files.
     pub model_dir: String,
+    /// Path to the llama-server binary.
     pub server_binary: String,
+    /// Number of layers to offload to GPU (-ngl flag). 0 = CPU only.
     #[serde(default)]
     pub gpu_layers: Option<u32>,
+    /// Context window size (-c flag).
     #[serde(default)]
     pub context_size: Option<u32>,
+    /// Base port for server allocation. If not set, OS assigns ports dynamically.
+    #[serde(default)]
+    pub base_port: Option<u16>,
+    /// Maximum number of concurrent model servers (default: 2).
+    #[serde(default = "default_max_servers")]
+    pub max_servers: usize,
+    /// Server startup timeout in seconds (default: 120).
+    #[serde(default = "default_startup_timeout")]
+    pub startup_timeout_secs: u64,
+    /// Server graceful shutdown timeout in seconds (default: 10).
+    #[serde(default = "default_shutdown_timeout")]
+    pub shutdown_timeout_secs: u64,
+    /// Log llama-server stderr output for debugging (default: false).
+    #[serde(default)]
+    pub log_server_output: bool,
 }
 
 /// Capability configuration (Phase 2).
@@ -153,6 +175,15 @@ fn default_max_loaded() -> usize {
 }
 fn default_true() -> bool {
     true
+}
+fn default_max_servers() -> usize {
+    2
+}
+fn default_startup_timeout() -> u64 {
+    120
+}
+fn default_shutdown_timeout() -> u64 {
+    10
 }
 
 impl Config {
