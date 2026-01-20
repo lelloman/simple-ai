@@ -117,6 +117,10 @@ pub struct LlamaCppEngineConfig {
     /// Log llama-server stderr output for debugging (default: false).
     #[serde(default)]
     pub log_server_output: bool,
+    /// Extra arguments appended AFTER the standard llama-server flags.
+    /// Use this for flags like `["--flash-attn", "on", "--no-mmap"]`
+    #[serde(default)]
+    pub extra_args: Vec<String>,
 }
 
 /// Capability configuration (Phase 2).

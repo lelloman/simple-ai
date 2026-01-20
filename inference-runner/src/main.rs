@@ -1,5 +1,6 @@
 //! Inference Runner - abstracts local inference engines and exposes OpenAI-compatible API.
 
+use std::env;
 use std::sync::Arc;
 
 use axum::Router;
@@ -20,8 +21,22 @@ use engine::{EngineRegistry, LlamaCppEngine, OllamaEngine};
 use gateway::{GatewayClient, StatusCollector};
 use state::AppState;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const GIT_HASH: &str = env!("GIT_HASH");
+
+fn print_version() {
+    println!("inference-runner {} ({})", VERSION, GIT_HASH);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Handle --version / -V
+    let args: Vec<String> = env::args().collect();
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        print_version();
+        return Ok(());
+    }
+
     // Initialize tracing
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))

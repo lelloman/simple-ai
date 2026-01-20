@@ -332,6 +332,11 @@ impl LlamaCppEngine {
             cmd.arg("-c").arg(ctx_size.to_string());
         }
 
+        // Append extra llama-server arguments (e.g., --flash-attn on --no-mmap)
+        for arg in &self.config.extra_args {
+            cmd.arg(arg);
+        }
+
         // Configure process I/O
         cmd.stdin(Stdio::null()).kill_on_drop(true);
 
@@ -750,6 +755,7 @@ mod tests {
             startup_timeout_secs: 120,
             shutdown_timeout_secs: 10,
             log_server_output: false,
+            extra_args: vec![],
         }
     }
 
