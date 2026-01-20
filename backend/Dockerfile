@@ -2,20 +2,27 @@ FROM rust:1.91-bookworm AS builder
 
 WORKDIR /app
 
-# Copy manifests
-COPY Cargo.toml Cargo.lock* ./
+# Copy workspace manifests and Cargo.lock
+COPY Cargo.toml Cargo.lock ./
+COPY simple-ai-common/Cargo.toml ./simple-ai-common/
+COPY backend/Cargo.toml ./backend/
+COPY inference-runner/Cargo.toml ./inference-runner/
 
-# Create dummy source to cache dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-RUN rm -rf src
+# Create dummy sources to cache dependencies
+RUN mkdir -p simple-ai-common/src backend/src inference-runner/src && \
+    echo "pub fn dummy() {}" > simple-ai-common/src/lib.rs && \
+    echo "fn main() {}" > backend/src/main.rs && \
+    echo "fn main() {}" > inference-runner/src/main.rs
+RUN cargo build --release -p simple-ai-backend
+RUN rm -rf simple-ai-common/src backend/src inference-runner/src
 
 # Copy actual source
-COPY src ./src
-COPY templates ./templates
+COPY simple-ai-common/src ./simple-ai-common/src
+COPY backend/src ./backend/src
+COPY backend/templates ./backend/templates
 
 # Build for release
-RUN touch src/main.rs && cargo build --release
+RUN touch backend/src/main.rs && cargo build --release -p simple-ai-backend
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -32,6 +39,6 @@ ENV DATABASE_URL=sqlite:/data/audit.db
 ADD https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz /data/lid.176.ftz
 ENV SIMPLEAI__LANGUAGE__MODEL_PATH=/data/lid.176.ftz
 
-EXPOSE 8080
+EXPOSE 8080 8081
 
 CMD ["simple-ai-backend"]
