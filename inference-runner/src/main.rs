@@ -1,4 +1,4 @@
-//! Inference Runner - abstracts local inference engines and exposes OpenAI-compatible API.
+//! Simple AI Runner - abstracts local inference engines and exposes OpenAI-compatible API.
 
 use std::env;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_HASH: &str = env!("GIT_HASH");
 
 fn print_version() {
-    println!("inference-runner {} ({})", VERSION, GIT_HASH);
+    println!("simple-ai-runner {} ({})", VERSION, GIT_HASH);
 }
 
 #[tokio::main]
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     })?;
     tracing::info!(
-        "Starting inference-runner: {} ({})",
+        "Starting simple-ai-runner: {} ({})",
         config.runner.name,
         config.runner.id
     );

@@ -250,6 +250,55 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
     Json(RunnersResponse { runners, total })
 }
 
+/// Model info for /admin/models API response.
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminModelInfo {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameter_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_length: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantization: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
+    pub loaded: bool,
+    pub runners: Vec<String>,
+}
+
+/// Response for /admin/models endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminModelsResponse {
+    pub models: Vec<AdminModelInfo>,
+    pub total: usize,
+}
+
+/// GET /admin/models - List all models with loaded status (JSON API)
+async fn list_models(State(state): State<Arc<AppState>>) -> Json<AdminModelsResponse> {
+    let models = state.inference_router.list_models_with_details().await.unwrap_or_default();
+    let total = models.len();
+
+    let models: Vec<AdminModelInfo> = models
+        .into_iter()
+        .map(|m| AdminModelInfo {
+            id: m.id,
+            name: m.name,
+            size_bytes: m.size_bytes,
+            parameter_count: m.parameter_count,
+            context_length: m.context_length,
+            quantization: m.quantization,
+            modified_at: m.modified_at,
+            loaded: m.loaded,
+            runners: m.runners,
+        })
+        .collect();
+
+    Json(AdminModelsResponse { models, total })
+}
+
 /// Build the admin router.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -259,6 +308,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/users/:id/enable", post(enable_user))
         .route("/requests", get(requests_list))
         .route("/runners", get(list_runners))
+        .route("/models", get(list_models))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state)
 }

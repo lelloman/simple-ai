@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use tokio::sync::{mpsc, RwLock};
 
-use simple_ai_common::{GatewayMessage, RunnerStatus};
+use simple_ai_common::{GatewayMessage, ModelInfo as ProtocolModelInfo, RunnerStatus};
 
 /// Information about a connected runner.
 #[derive(Debug, Clone)]
@@ -144,15 +144,42 @@ impl RunnerRegistry {
             if !runner.is_operational() {
                 continue;
             }
-            for model_id in runner.loaded_models() {
-                models
-                    .entry(model_id.clone())
-                    .or_insert_with(|| ModelInfo {
-                        id: model_id,
-                        runners: vec![],
-                    })
-                    .runners
-                    .push(runner.id.clone());
+
+            // Collect all loaded model IDs for this runner
+            let loaded_ids: std::collections::HashSet<String> = runner
+                .loaded_models()
+                .into_iter()
+                .collect();
+
+            // Get all available models from each engine
+            for engine in &runner.status.engines {
+                for available_model in &engine.available_models {
+                    let model_id = &available_model.id;
+                    let is_loaded = loaded_ids.contains(model_id);
+
+                    let entry = models
+                        .entry(model_id.clone())
+                        .or_insert_with(|| ModelInfo {
+                            id: model_id.clone(),
+                            name: available_model.name.clone(),
+                            size_bytes: available_model.size_bytes,
+                            parameter_count: available_model.parameter_count,
+                            context_length: available_model.context_length,
+                            quantization: available_model.quantization.clone(),
+                            modified_at: available_model.modified_at.clone(),
+                            loaded: false,
+                            runners: vec![],
+                        });
+
+                    if is_loaded && !entry.runners.contains(&runner.id) {
+                        entry.runners.push(runner.id.clone());
+                    }
+
+                    // Update loaded status if any runner has it loaded
+                    if is_loaded {
+                        entry.loaded = true;
+                    }
+                }
             }
         }
 
@@ -194,6 +221,20 @@ impl RunnerRegistry {
 pub struct ModelInfo {
     /// Model identifier.
     pub id: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Model size in bytes (if known).
+    pub size_bytes: Option<u64>,
+    /// Parameter count (if known).
+    pub parameter_count: Option<u64>,
+    /// Maximum context length.
+    pub context_length: Option<u32>,
+    /// Quantization type (e.g., "Q4_K_M").
+    pub quantization: Option<String>,
+    /// When the model was last modified.
+    pub modified_at: Option<String>,
+    /// Whether this model is currently loaded on any runner.
+    pub loaded: bool,
     /// Runner IDs that have this model loaded.
     pub runners: Vec<String>,
 }
@@ -211,7 +252,19 @@ mod tests {
                 engine_type: "test".to_string(),
                 is_healthy: true,
                 version: None,
-                loaded_models: models,
+                loaded_models: models.clone(),
+                available_models: models
+                    .into_iter()
+                    .map(|id| ProtocolModelInfo {
+                        id: id.clone(),
+                        name: id.clone(),
+                        size_bytes: None,
+                        parameter_count: None,
+                        context_length: None,
+                        quantization: None,
+                        modified_at: None,
+                    })
+                    .collect(),
                 error: None,
             }],
             metrics: None,
@@ -340,6 +393,8 @@ mod tests {
 
         let model_a = models.iter().find(|m| m.id == "model-a").unwrap();
         assert_eq!(model_a.runners.len(), 2);
+        assert!(model_a.loaded); // model-a is loaded on both runners
+        assert_eq!(model_a.name, "model-a");
     }
 
     #[tokio::test]

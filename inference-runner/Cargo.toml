@@ -1,12 +1,12 @@
 [package]
 name = "inference-runner"
-description = "SimpleAI Inference Runner - abstracts local inference engines, exposes OpenAI-compatible API"
+description = "Simple AI Runner - abstracts local inference engines, exposes OpenAI-compatible API"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "inference-runner"
+name = "simple-ai-runner"
 path = "src/main.rs"
 
 [dependencies]

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use simple_ai_common::{
-    Capability, CapabilityInfo, CapabilityStatus, EngineStatus, RunnerHealth, RunnerStatus,
+    Capability, CapabilityInfo, CapabilityStatus, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus,
 };
 
 use crate::config::Config;
@@ -44,18 +44,39 @@ impl StatusCollector {
 
         for engine in self.engine_registry.all().await {
             let status = match engine.health_check().await {
-                Ok(health) => EngineStatus {
-                    engine_type: engine.engine_type().to_string(),
-                    is_healthy: health.is_healthy,
-                    version: health.version,
-                    loaded_models: health.models_loaded,
-                    error: None,
-                },
+                Ok(health) => {
+                    // Get all available models from this engine
+                    let available_models = match engine.list_models().await {
+                        Ok(models) => models
+                            .into_iter()
+                            .map(|m| ModelInfo {
+                                id: m.id,
+                                name: m.name,
+                                size_bytes: m.size_bytes,
+                                parameter_count: m.parameter_count,
+                                context_length: m.context_length,
+                                quantization: m.quantization,
+                                modified_at: m.modified_at,
+                            })
+                            .collect(),
+                        Err(_) => vec![],
+                    };
+
+                    EngineStatus {
+                        engine_type: engine.engine_type().to_string(),
+                        is_healthy: health.is_healthy,
+                        version: health.version,
+                        loaded_models: health.models_loaded,
+                        available_models,
+                        error: None,
+                    }
+                }
                 Err(e) => EngineStatus {
                     engine_type: engine.engine_type().to_string(),
                     is_healthy: false,
                     version: None,
                     loaded_models: vec![],
+                    available_models: vec![],
                     error: Some(e.to_string()),
                 },
             };
@@ -167,6 +188,7 @@ mod tests {
             is_healthy: true,
             version: None,
             loaded_models: vec!["llama3.2:3b".to_string()],
+            available_models: vec![],
             error: None,
         }];
 
@@ -195,6 +217,7 @@ mod tests {
             is_healthy: true,
             version: None,
             loaded_models: vec!["some-model".to_string()],
+            available_models: vec![],
             error: None,
         }];
 
@@ -217,6 +240,7 @@ mod tests {
             is_healthy: true,
             version: None,
             loaded_models: vec![],
+            available_models: vec![],
             error: None,
         }];
 
@@ -234,6 +258,7 @@ mod tests {
                 is_healthy: true,
                 version: None,
                 loaded_models: vec![],
+                available_models: vec![],
                 error: None,
             },
             EngineStatus {
@@ -241,6 +266,7 @@ mod tests {
                 is_healthy: true,
                 version: None,
                 loaded_models: vec![],
+                available_models: vec![],
                 error: None,
             },
         ];
@@ -255,6 +281,7 @@ mod tests {
                 is_healthy: true,
                 version: None,
                 loaded_models: vec![],
+                available_models: vec![],
                 error: None,
             },
             EngineStatus {
@@ -262,6 +289,7 @@ mod tests {
                 is_healthy: false,
                 version: None,
                 loaded_models: vec![],
+                available_models: vec![],
                 error: Some("Connection failed".to_string()),
             },
         ];
@@ -275,6 +303,7 @@ mod tests {
             is_healthy: false,
             version: None,
             loaded_models: vec![],
+            available_models: vec![],
             error: Some("Down".to_string()),
         }];
         assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Unhealthy);

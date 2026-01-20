@@ -119,6 +119,30 @@ pub enum RunnerHealth {
     Unhealthy,
 }
 
+/// Information about an available model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    /// Model identifier (e.g., "llama3.2:3b")
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Model size in bytes (if known)
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    /// Parameter count (if known)
+    #[serde(default)]
+    pub parameter_count: Option<u64>,
+    /// Maximum context length
+    #[serde(default)]
+    pub context_length: Option<u32>,
+    /// Quantization type (e.g., "Q4_K_M")
+    #[serde(default)]
+    pub quantization: Option<String>,
+    /// When the model was last modified
+    #[serde(default)]
+    pub modified_at: Option<String>,
+}
+
 /// Status of a single inference engine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineStatus {
@@ -132,6 +156,9 @@ pub struct EngineStatus {
     /// Models currently loaded in this engine.
     #[serde(default)]
     pub loaded_models: Vec<String>,
+    /// All models available on disk through this engine.
+    #[serde(default)]
+    pub available_models: Vec<ModelInfo>,
     /// Error message if unhealthy.
     #[serde(default)]
     pub error: Option<String>,
@@ -271,6 +298,7 @@ mod tests {
             is_healthy: true,
             version: Some("0.5.0".to_string()),
             loaded_models: vec!["llama3.2:3b".to_string()],
+            available_models: vec![],
             error: None,
         };
         let json = serde_json::to_string(&status).unwrap();
@@ -369,6 +397,7 @@ mod tests {
                 is_healthy: true,
                 version: Some("0.5.0".to_string()),
                 loaded_models: vec!["llama3.2:3b".to_string()],
+                available_models: vec![],
                 error: None,
             }],
             metrics: Some(RunnerMetrics {

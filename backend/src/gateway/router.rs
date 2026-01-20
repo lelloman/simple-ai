@@ -114,6 +114,11 @@ impl InferenceRouter {
             .collect())
     }
 
+    /// Get models with full details from all runners.
+    pub async fn list_models_with_details(&self) -> Result<Vec<crate::gateway::registry::ModelInfo>, RouterError> {
+        Ok(self.registry.all_models().await)
+    }
+
     /// Select a runner for the request.
     async fn select_runner(&self, model: Option<&str>) -> Result<ConnectedRunner, RouterError> {
         let candidates = if let Some(model_id) = model {
@@ -260,7 +265,7 @@ pub struct ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_ai_common::{EngineStatus, RunnerHealth, RunnerStatus};
+    use simple_ai_common::{EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
     use tokio::sync::mpsc;
 
     fn create_test_status(models: Vec<String>) -> RunnerStatus {
@@ -271,7 +276,19 @@ mod tests {
                 engine_type: "test".to_string(),
                 is_healthy: true,
                 version: None,
-                loaded_models: models,
+                loaded_models: models.clone(),
+                available_models: models
+                    .into_iter()
+                    .map(|id| ModelInfo {
+                        id: id.clone(),
+                        name: id.clone(),
+                        size_bytes: None,
+                        parameter_count: None,
+                        context_length: None,
+                        quantization: None,
+                        modified_at: None,
+                    })
+                    .collect(),
                 error: None,
             }],
             metrics: None,

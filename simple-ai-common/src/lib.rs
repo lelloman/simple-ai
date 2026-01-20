@@ -12,6 +12,6 @@ pub use chat::{
     Usage,
 };
 pub use protocol::{
-    CommandResponse, EngineStatus, GatewayMessage, RunnerHealth, RunnerMessage, RunnerMetrics,
+    CommandResponse, EngineStatus, GatewayMessage, ModelInfo, RunnerHealth, RunnerMessage, RunnerMetrics,
     RunnerRegistration, RunnerStatus, PROTOCOL_VERSION,
 };

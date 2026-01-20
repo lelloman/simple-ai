@@ -154,6 +154,8 @@ pub struct LlamaCppEngine {
     servers: RwLock<HashMap<String, Arc<ServerInstance>>>,
     /// Semaphore to limit concurrent server starts
     startup_semaphore: Semaphore,
+    /// Cache of discovered model_id -> full file path
+    model_paths: RwLock<HashMap<String, PathBuf>>,
 }
 
 impl LlamaCppEngine {
@@ -163,29 +165,97 @@ impl LlamaCppEngine {
             config,
             http_client: Client::new(),
             servers: RwLock::new(HashMap::new()),
+            model_paths: RwLock::new(HashMap::new()),
         }
     }
 
-    /// Get the path to a model file.
-    ///
-    /// Sanitizes model_id to prevent path traversal attacks by taking only
-    /// the filename component (no directory separators allowed).
-    fn model_path(&self, model_id: &str) -> PathBuf {
-        // Sanitize: take only the last path component to prevent traversal
-        let sanitized = model_id
-            .trim()
-            .split(['/', '\\'])
-            .last()
-            .unwrap_or(model_id)
-            .trim_start_matches('.');  // Also prevent hidden files like ".." or "..foo"
+    /// Recursively discover all GGUF model files in the model directory.
+    /// Returns a map of model_id -> full path, filtering out non-primary shards.
+    fn discover_models(&self) -> HashMap<String, PathBuf> {
+        let mut models = HashMap::new();
+        let model_dir = PathBuf::from(&self.config.model_dir);
 
-        let mut path = PathBuf::from(&self.config.model_dir);
-        if sanitized.ends_with(".gguf") {
-            path.push(sanitized);
-        } else {
-            path.push(format!("{}.gguf", sanitized));
+        if !model_dir.exists() {
+            return models;
         }
-        path
+
+        self.scan_directory_recursive(&model_dir, &mut models);
+        models
+    }
+
+    /// Recursively scan a directory for GGUF files.
+    fn scan_directory_recursive(&self, dir: &PathBuf, models: &mut HashMap<String, PathBuf>) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            if path.is_dir() {
+                self.scan_directory_recursive(&path, models);
+            } else if path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("gguf")) {
+                let filename = match path.file_name().and_then(|s| s.to_str()) {
+                    Some(f) => f,
+                    None => continue,
+                };
+
+                // Skip non-primary shards (e.g., -00002-of-00003.gguf)
+                if Self::is_non_primary_shard(filename) {
+                    continue;
+                }
+
+                // Create a nice model ID from the filename
+                let model_id = Self::create_model_id(filename);
+                models.insert(model_id, path);
+            }
+        }
+    }
+
+    /// Check if a filename is a non-primary shard (not the first part of a split model).
+    fn is_non_primary_shard(filename: &str) -> bool {
+        // Match patterns like -00002-of-00003.gguf, -00003-of-00005.gguf, etc.
+        // Primary shards have -00001-of-XXXXX
+        if let Some(pos) = filename.find("-of-") {
+            // Look backwards from "-of-" to find the shard number
+            let prefix = &filename[..pos];
+            if let Some(dash_pos) = prefix.rfind('-') {
+                let shard_num = &prefix[dash_pos + 1..];
+                // If it's not "00001", it's a non-primary shard
+                if shard_num.chars().all(|c| c.is_ascii_digit()) && shard_num != "00001" {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Create a nice model ID from a GGUF filename.
+    fn create_model_id(filename: &str) -> String {
+        let stem = filename.strip_suffix(".gguf").unwrap_or(filename);
+
+        // Remove shard suffix like -00001-of-00002
+        let clean = if let Some(pos) = stem.find("-00001-of-") {
+            &stem[..pos]
+        } else {
+            stem
+        };
+
+        clean.to_string()
+    }
+
+    /// Get the path to a model file from the cache.
+    async fn model_path(&self, model_id: &str) -> Option<PathBuf> {
+        let paths = self.model_paths.read().await;
+        paths.get(model_id).cloned()
+    }
+
+    /// Refresh the model paths cache by scanning the model directory.
+    async fn refresh_model_cache(&self) {
+        let discovered = self.discover_models();
+        let mut paths = self.model_paths.write().await;
+        *paths = discovered;
     }
 
     /// Allocate a port for a new server.
@@ -297,8 +367,11 @@ impl LlamaCppEngine {
 
     /// Start a llama-server process for a model.
     async fn start_server(&self, model_id: &str) -> Result<Arc<ServerInstance>> {
-        // Check if model file exists
-        let model_path = self.model_path(model_id);
+        // Look up model path from cache
+        let model_path = self.model_path(model_id).await.ok_or_else(|| {
+            Error::ModelNotFound(format!("Model not found: {}", model_id))
+        })?;
+
         if !model_path.exists() {
             return Err(Error::ModelNotFound(format!(
                 "Model file not found: {}",
@@ -558,49 +631,34 @@ impl InferenceEngine for LlamaCppEngine {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        let model_dir = PathBuf::from(&self.config.model_dir);
+        // Refresh the model cache
+        self.refresh_model_cache().await;
 
-        if !model_dir.exists() {
-            return Ok(vec![]);
-        }
-
-        let entries = std::fs::read_dir(&model_dir)
-            .map_err(|e| Error::Internal(format!("Failed to read model dir: {}", e)))?;
-
+        let paths = self.model_paths.read().await;
         let mut models = Vec::new();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path
-                .extension()
-                .map_or(false, |ext| ext.eq_ignore_ascii_case("gguf"))
-            {
-                let filename = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
+        for (model_id, path) in paths.iter() {
+            let filename = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
 
-                let model_id = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-                    .to_string();
+            let size_bytes = std::fs::metadata(path).map(|m| m.len()).ok();
+            let quantization = Self::extract_quantization(filename);
 
-                let size_bytes = std::fs::metadata(&path).map(|m| m.len()).ok();
-
-                let quantization = Self::extract_quantization(filename);
-
-                models.push(ModelInfo {
-                    id: model_id.clone(),
-                    name: model_id,
-                    size_bytes,
-                    parameter_count: None,
-                    context_length: self.config.context_size,
-                    quantization,
-                    modified_at: None,
-                });
-            }
+            models.push(ModelInfo {
+                id: model_id.clone(),
+                name: model_id.clone(),
+                size_bytes,
+                parameter_count: None,
+                context_length: self.config.context_size,
+                quantization,
+                modified_at: None,
+            });
         }
+
+        // Sort by name for consistent ordering
+        models.sort_by(|a, b| a.name.cmp(&b.name));
 
         Ok(models)
     }
@@ -766,17 +824,38 @@ mod tests {
     }
 
     #[test]
-    fn test_model_path_with_extension() {
-        let engine = LlamaCppEngine::new(test_config());
-        let path = engine.model_path("model.gguf");
-        assert_eq!(path.to_str().unwrap(), "/tmp/models/model.gguf");
+    fn test_is_non_primary_shard() {
+        // Primary shards should return false
+        assert!(!LlamaCppEngine::is_non_primary_shard("model-00001-of-00002.gguf"));
+        assert!(!LlamaCppEngine::is_non_primary_shard("gpt-oss-120b-Q4_K_M-00001-of-00002.gguf"));
+
+        // Non-primary shards should return true
+        assert!(LlamaCppEngine::is_non_primary_shard("model-00002-of-00002.gguf"));
+        assert!(LlamaCppEngine::is_non_primary_shard("model-00003-of-00005.gguf"));
+        assert!(LlamaCppEngine::is_non_primary_shard("gpt-oss-120b-Q4_K_M-00002-of-00002.gguf"));
+
+        // Non-sharded models should return false
+        assert!(!LlamaCppEngine::is_non_primary_shard("model.gguf"));
+        assert!(!LlamaCppEngine::is_non_primary_shard("llama-7b-q4_0.gguf"));
     }
 
     #[test]
-    fn test_model_path_without_extension() {
-        let engine = LlamaCppEngine::new(test_config());
-        let path = engine.model_path("model");
-        assert_eq!(path.to_str().unwrap(), "/tmp/models/model.gguf");
+    fn test_create_model_id() {
+        // Non-sharded models
+        assert_eq!(
+            LlamaCppEngine::create_model_id("llama-7b-q4_0.gguf"),
+            "llama-7b-q4_0"
+        );
+        assert_eq!(
+            LlamaCppEngine::create_model_id("Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"),
+            "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M"
+        );
+
+        // Sharded models - should strip shard suffix
+        assert_eq!(
+            LlamaCppEngine::create_model_id("gpt-oss-120b-Q4_K_M-00001-of-00002.gguf"),
+            "gpt-oss-120b-Q4_K_M"
+        );
     }
 
     #[test]
@@ -919,23 +998,4 @@ mod tests {
         assert_eq!(port1, 10000);
     }
 
-    #[test]
-    fn test_model_path_sanitizes_traversal() {
-        let engine = LlamaCppEngine::new(test_config());
-
-        // Path traversal attempts should be sanitized
-        let path = engine.model_path("../../../etc/passwd");
-        assert_eq!(path.to_str().unwrap(), "/tmp/models/passwd.gguf");
-
-        let path = engine.model_path("..\\..\\windows\\system32");
-        assert_eq!(path.to_str().unwrap(), "/tmp/models/system32.gguf");
-
-        // Hidden file prefix should be stripped
-        let path = engine.model_path("..hidden");
-        assert_eq!(path.to_str().unwrap(), "/tmp/models/hidden.gguf");
-
-        // Normal model names should work fine
-        let path = engine.model_path("llama-7b-q4_0");
-        assert_eq!(path.to_str().unwrap(), "/tmp/models/llama-7b-q4_0.gguf");
-    }
 }
