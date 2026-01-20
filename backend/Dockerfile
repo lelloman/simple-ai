@@ -21,8 +21,8 @@ COPY simple-ai-common/src ./simple-ai-common/src
 COPY backend/src ./backend/src
 COPY backend/templates ./backend/templates
 
-# Build for release
-RUN touch backend/src/main.rs && cargo build --release -p simple-ai-backend
+# Build for release (touch both to ensure cargo rebuilds with actual sources)
+RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --release -p simple-ai-backend
 
 # Runtime image
 FROM debian:bookworm-slim
