@@ -47,8 +47,16 @@ async fn chat_completions(
     let request_id = state.audit_logger.log_request(&req_log)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Forward to Ollama
-    let result = state.ollama_client.chat(&request, &model).await;
+    // Forward to appropriate backend (gateway or direct Ollama)
+    let result = if state.config.gateway.enabled {
+        state
+            .inference_router
+            .chat_completion(&model, &request)
+            .await
+            .map_err(|e| crate::llm::OllamaError::ConnectionFailed(e.to_string()))
+    } else {
+        state.ollama_client.chat(&request, &model).await
+    };
 
     // Log response
     let (response, resp_log) = match result {

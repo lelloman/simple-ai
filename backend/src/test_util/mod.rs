@@ -3,13 +3,15 @@ pub mod mock_ollama;
 use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
 use chrono::{Duration, Utc};
 use crate::auth::AuthUser;
-use crate::config::{Config, OllamaConfig, OidcConfig, DatabaseConfig, LoggingConfig, LanguageConfig, CorsConfig};
+use crate::config::{Config, OllamaConfig, OidcConfig, DatabaseConfig, LoggingConfig, LanguageConfig, CorsConfig, GatewayConfig};
 use tokio::sync::Mutex;
 use fasttext::FastText;
+use std::sync::Arc;
 use crate::AppState;
 use crate::llm::OllamaClient;
 use crate::audit::AuditLogger;
 use crate::auth::JwksClient;
+use crate::gateway::{InferenceRouter, RunnerRegistry};
 
 pub fn test_config() -> Config {
     Config {
@@ -33,6 +35,7 @@ pub fn test_config() -> Config {
         language: LanguageConfig {
             model_path: "/tmp/test-lid.ftz".to_string(),
         },
+        gateway: GatewayConfig::default(),
     }
 }
 
@@ -43,12 +46,17 @@ pub async fn create_test_state() -> AppState {
     let audit_logger = AuditLogger::new(&config.database.url).unwrap();
     let lang_detector = Mutex::new(FastText::default());
 
+    let runner_registry = Arc::new(RunnerRegistry::new());
+    let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
+
     AppState {
         config,
         jwks_client,
         ollama_client,
         audit_logger,
         lang_detector,
+        runner_registry,
+        inference_router,
     }
 }
 

@@ -19,6 +19,9 @@ pub struct Config {
     pub cors: CorsConfig,
     #[serde(default)]
     pub language: LanguageConfig,
+    /// Gateway configuration for runner fleet management.
+    #[serde(default)]
+    pub gateway: GatewayConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,6 +62,23 @@ pub struct LanguageConfig {
     pub model_path: String,
 }
 
+/// Gateway configuration for runner fleet management.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GatewayConfig {
+    /// Whether gateway mode is enabled.
+    /// When enabled, requests are routed to connected inference runners.
+    /// When disabled, requests go directly to the configured Ollama instance.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Authentication token for runner connections.
+    /// Runners must provide this token to connect.
+    #[serde(default = "default_gateway_auth_token")]
+    pub auth_token: String,
+    /// Timeout for stale runner removal (seconds).
+    #[serde(default = "default_runner_timeout")]
+    pub runner_timeout_secs: u64,
+}
+
 // Defaults
 fn default_host() -> String { "0.0.0.0".to_string() }
 fn default_port() -> u16 { 8080 }
@@ -68,6 +88,8 @@ fn default_database_url() -> String { "sqlite:./data/audit.db".to_string() }
 fn default_log_level() -> String { "info".to_string() }
 fn default_cors_origins() -> String { "*".to_string() }
 fn default_language_model_path() -> String { "/data/lid.176.ftz".to_string() }
+fn default_gateway_auth_token() -> String { "change-me-in-production".to_string() }
+fn default_runner_timeout() -> u64 { 90 }
 
 impl Default for OllamaConfig {
     fn default() -> Self {
@@ -102,6 +124,16 @@ impl Default for LanguageConfig {
     }
 }
 
+impl Default for GatewayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            auth_token: default_gateway_auth_token(),
+            runner_timeout_secs: default_runner_timeout(),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("Configuration error: {0}")]
@@ -129,6 +161,9 @@ impl Config {
             .set_default("logging.level", default_log_level())?
             .set_default("cors.origins", default_cors_origins())?
             .set_default("language.model_path", default_language_model_path())?
+            .set_default("gateway.enabled", false)?
+            .set_default("gateway.auth_token", default_gateway_auth_token())?
+            .set_default("gateway.runner_timeout_secs", default_runner_timeout() as i64)?
             // Load from config.toml if it exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (SIMPLEAI__KEY format)
@@ -248,5 +283,13 @@ mod tests {
         let config_err = ConfigCrateError::NotFound("file.toml".to_string());
         let error: ConfigError = config_err.into();
         assert!(error.to_string().contains("Configuration error"));
+    }
+
+    #[test]
+    fn test_gateway_config_defaults() {
+        let config = GatewayConfig::default();
+        assert!(!config.enabled);
+        assert_eq!(config.auth_token, "change-me-in-production");
+        assert_eq!(config.runner_timeout_secs, 90);
     }
 }

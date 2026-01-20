@@ -23,6 +23,7 @@ pub struct GatewayClient {
     runner_id: String,
     runner_name: String,
     machine_type: Option<String>,
+    http_port: u16,
     status_collector: Arc<StatusCollector>,
     engine_registry: Arc<EngineRegistry>,
 }
@@ -33,6 +34,7 @@ impl GatewayClient {
         runner_id: String,
         runner_name: String,
         machine_type: Option<String>,
+        http_port: u16,
         status_collector: Arc<StatusCollector>,
         engine_registry: Arc<EngineRegistry>,
     ) -> Self {
@@ -41,6 +43,7 @@ impl GatewayClient {
             runner_id,
             runner_name,
             machine_type,
+            http_port,
             status_collector,
             engine_registry,
         }
@@ -81,6 +84,7 @@ impl GatewayClient {
             self.runner_id.clone(),
             self.runner_name.clone(),
             self.machine_type.clone(),
+            self.http_port,
             self.config.auth_token.clone(),
             status,
         );
@@ -364,12 +368,14 @@ mod tests {
             config.runner.id.clone(),
             config.runner.name.clone(),
             config.runner.machine_type.clone(),
+            8080,
             status_collector,
             registry,
         );
 
         assert_eq!(client.runner_id, "test-runner");
         assert_eq!(client.runner_name, "Test Runner");
+        assert_eq!(client.http_port, 8080);
     }
 
     #[test]
@@ -379,11 +385,13 @@ mod tests {
             "runner-1".to_string(),
             "Runner One".to_string(),
             Some("gpu".to_string()),
+            8080,
             "token".to_string(),
             status,
         );
 
         assert_eq!(reg.runner_id, "runner-1");
+        assert_eq!(reg.http_port, 8080);
         assert_eq!(reg.protocol_version, PROTOCOL_VERSION);
     }
 }

@@ -1,8 +1,10 @@
 use std::sync::Arc;
+use axum::routing::get;
 use simple_ai_backend::config::Config;
 use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::llm::OllamaClient;
 use simple_ai_backend::audit::AuditLogger;
+use simple_ai_backend::gateway::{ws_handler, InferenceRouter, RunnerRegistry, WsState};
 use simple_ai_backend::AppState;
 
 #[tokio::main]
@@ -29,12 +31,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to load language model: {}", e))?;
     tracing::info!("Loaded language detection model from {}", config.language.model_path);
 
+    // Initialize gateway components
+    let runner_registry = Arc::new(RunnerRegistry::new());
+    let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
+
+    if config.gateway.enabled {
+        tracing::info!("Gateway mode enabled - will accept runner connections");
+    } else {
+        tracing::info!("Gateway mode disabled - using direct Ollama connection");
+    }
+
     let state = Arc::new(AppState {
         config: config.clone(),
         jwks_client,
         ollama_client,
         audit_logger,
         lang_detector: tokio::sync::Mutex::new(lang_detector),
+        runner_registry: runner_registry.clone(),
+        inference_router,
     });
 
     let cors = tower_http::cors::CorsLayer::new()
@@ -42,12 +56,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
 
+    // Create WebSocket state for runner connections
+    let ws_state = Arc::new(WsState {
+        registry: runner_registry.clone(),
+        auth_token: config.gateway.auth_token.clone(),
+    });
+
     let app = simple_ai_backend::routes::health::router()
         .nest("/v1",
             simple_ai_backend::routes::chat::router(state.clone())
                 .merge(simple_ai_backend::routes::language::router(state.clone()))
+                .merge(simple_ai_backend::routes::models::router(state.clone()))
         )
         .nest("/admin", simple_ai_backend::routes::admin::router(state.clone()))
+        // WebSocket endpoint for runner connections
+        .route("/ws/runners", get(ws_handler).with_state(ws_state))
         .layer(cors)
         .layer(axum::middleware::from_fn(simple_ai_backend::logging::request_logger));
 
@@ -55,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
 
     Ok(())
 }

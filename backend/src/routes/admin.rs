@@ -14,8 +14,10 @@ use axum::{
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
+
+use serde::Serialize;
 
 use crate::audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
 use crate::AppState;
@@ -203,6 +205,51 @@ async fn enable_user(
     }
 }
 
+/// Runner info for API response.
+#[derive(Debug, Clone, Serialize)]
+pub struct RunnerInfo {
+    pub id: String,
+    pub name: String,
+    pub machine_type: Option<String>,
+    pub health: String,
+    pub loaded_models: Vec<String>,
+    pub connected_at: String,
+    pub last_heartbeat: String,
+    pub http_base_url: Option<String>,
+}
+
+/// Response for /admin/runners endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct RunnersResponse {
+    pub runners: Vec<RunnerInfo>,
+    pub total: usize,
+}
+
+/// GET /admin/runners - List connected runners (JSON API)
+async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersResponse> {
+    let runners = state.runner_registry.all().await;
+    let total = runners.len();
+
+    let runners: Vec<RunnerInfo> = runners
+        .into_iter()
+        .map(|r| {
+            let loaded_models = r.loaded_models();
+            RunnerInfo {
+                id: r.id,
+                name: r.name,
+                machine_type: r.machine_type,
+                health: format!("{:?}", r.status.health),
+                loaded_models,
+                connected_at: r.connected_at.to_rfc3339(),
+                last_heartbeat: r.last_heartbeat.to_rfc3339(),
+                http_base_url: r.http_base_url,
+            }
+        })
+        .collect();
+
+    Json(RunnersResponse { runners, total })
+}
+
 /// Build the admin router.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -211,6 +258,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/users/:id/disable", post(disable_user))
         .route("/users/:id/enable", post(enable_user))
         .route("/requests", get(requests_list))
+        .route("/runners", get(list_runners))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state)
 }

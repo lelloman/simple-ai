@@ -5,6 +5,7 @@ pub mod llm;
 pub mod audit;
 pub mod models;
 pub mod logging;
+pub mod gateway;
 pub mod test_util;
 
 pub use config::Config;
@@ -15,7 +16,9 @@ pub use models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessag
 pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
 pub use auth::AuthUser;
 pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
+pub use gateway::{InferenceRouter, RunnerRegistry};
 
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use fasttext::FastText;
 
@@ -26,4 +29,8 @@ pub struct AppState {
     pub ollama_client: OllamaClient,
     pub audit_logger: AuditLogger,
     pub lang_detector: Mutex<FastText>,
+    /// Runner registry for connected inference runners.
+    pub runner_registry: Arc<RunnerRegistry>,
+    /// Inference router for distributing requests.
+    pub inference_router: Arc<InferenceRouter>,
 }

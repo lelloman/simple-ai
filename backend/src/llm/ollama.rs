@@ -83,6 +83,8 @@ pub enum OllamaError {
     InvalidResponse(String),
     #[error("Ollama error: {0}")]
     OllamaError(String),
+    #[error("Connection failed: {0}")]
+    ConnectionFailed(String),
 }
 
 impl OllamaClient {

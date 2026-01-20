@@ -74,12 +74,19 @@ pub struct RunnerRegistration {
     /// Machine type for routing (e.g., "gpu-server", "strix-halo").
     #[serde(default)]
     pub machine_type: Option<String>,
+    /// HTTP port the runner's API is listening on (default: 8080).
+    #[serde(default = "default_http_port")]
+    pub http_port: u16,
     /// Protocol version for compatibility checking.
     pub protocol_version: u32,
     /// Authentication token.
     pub auth_token: String,
     /// Initial status.
     pub status: RunnerStatus,
+}
+
+fn default_http_port() -> u16 {
+    8080
 }
 
 /// Current status of a runner.
@@ -176,6 +183,7 @@ impl RunnerRegistration {
         runner_id: String,
         runner_name: String,
         machine_type: Option<String>,
+        http_port: u16,
         auth_token: String,
         status: RunnerStatus,
     ) -> Self {
@@ -183,6 +191,7 @@ impl RunnerRegistration {
             runner_id,
             runner_name,
             machine_type,
+            http_port,
             protocol_version: PROTOCOL_VERSION,
             auth_token,
             status,
@@ -238,11 +247,13 @@ mod tests {
             "runner-1".to_string(),
             "My Runner".to_string(),
             Some("gpu-server".to_string()),
+            8080,
             "secret".to_string(),
             status,
         );
         assert_eq!(reg.protocol_version, PROTOCOL_VERSION);
         assert_eq!(reg.runner_id, "runner-1");
+        assert_eq!(reg.http_port, 8080);
     }
 
     #[test]
@@ -322,6 +333,7 @@ mod tests {
             "runner-1".to_string(),
             "Test Runner".to_string(),
             Some("gpu".to_string()),
+            8080,
             "token".to_string(),
             status,
         );
@@ -332,6 +344,7 @@ mod tests {
         match parsed {
             RunnerMessage::Register(r) => {
                 assert_eq!(r.runner_id, "runner-1");
+                assert_eq!(r.http_port, 8080);
                 assert_eq!(r.protocol_version, PROTOCOL_VERSION);
             }
             _ => panic!("Expected Register message"),
