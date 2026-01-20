@@ -1,0 +1,12 @@
+[package]
+name = "simple-ai-common"
+description = "Shared types for SimpleAI - chat models, capabilities, protocol messages"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }

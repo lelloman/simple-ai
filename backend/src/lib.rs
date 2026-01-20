@@ -16,7 +16,6 @@ pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
 pub use auth::AuthUser;
 pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
 
-use std::sync::Arc;
 use tokio::sync::Mutex;
 use fasttext::FastText;
 

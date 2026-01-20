@@ -1,9 +1,13 @@
 [package]
-name = "simple-ai-backend"
-description = "SimpleAI API Gateway - OpenAI-compatible proxy for Ollama with OIDC auth"
+name = "inference-runner"
+description = "SimpleAI Inference Runner - abstracts local inference engines, exposes OpenAI-compatible API"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+
+[[bin]]
+name = "inference-runner"
+path = "src/main.rs"
 
 [dependencies]
 # Internal crates
@@ -12,23 +16,17 @@ simple-ai-common = { workspace = true }
 # Web framework
 axum = { workspace = true }
 tokio = { workspace = true }
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
-
-# Templating
-askama = "0.15"
+tower-http = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# HTTP client
+# HTTP client (for Ollama)
 reqwest = { workspace = true }
 
-# JWT/OIDC
-jsonwebtoken = "9"
-
-# Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+# Async traits
+async-trait = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
@@ -42,16 +40,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 
-# Language detection
-fasttext = "0.7"
-
 [dev-dependencies]
-tower = "0.5"
-tower-test = "0.4"
 wiremock = "0.6"
-mockall = "0.11"
-rstest = "0.17"
-claim = "0.5"
 tempfile = "3.8"
-http = "1.0"
-bytes = "1"
+tower = "0.5"

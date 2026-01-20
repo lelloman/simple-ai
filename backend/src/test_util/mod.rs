@@ -4,7 +4,6 @@ use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
 use chrono::{Duration, Utc};
 use crate::auth::AuthUser;
 use crate::config::{Config, OllamaConfig, OidcConfig, DatabaseConfig, LoggingConfig, LanguageConfig, CorsConfig};
-use std::sync::Arc;
 use tokio::sync::Mutex;
 use fasttext::FastText;
 use crate::AppState;

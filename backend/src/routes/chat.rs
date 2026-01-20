@@ -84,7 +84,6 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::models::chat::{ChatCompletionRequest, ChatMessage};
 
     fn create_test_request() -> ChatCompletionRequest {

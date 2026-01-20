@@ -782,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_database_url_parsing_sqlite_prefix() {
-        let logger = create_test_logger();
+        let _logger = create_test_logger();
         let url = "sqlite:memory";
         assert!(url.starts_with("sqlite:"));
     }

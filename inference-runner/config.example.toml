@@ -1,0 +1,35 @@
+# Example configuration for inference-runner
+
+[runner]
+id = "gpu-server-01"
+name = "Primary GPU Server"
+machine_type = "gpu-server"
+
+[api]
+host = "0.0.0.0"
+port = 8080
+
+# Gateway connection (optional, for fleet integration)
+# [gateway]
+# ws_url = "ws://gateway.local:8081/ws/runners"
+# auth_token = "your-secret-token"
+
+[engines.ollama]
+enabled = true
+base_url = "http://localhost:11434"
+
+# [engines.llama_cpp]
+# enabled = false
+# model_dir = "/models"
+# server_binary = "/usr/bin/llama-server"
+
+[capabilities.persistence]
+always_loaded = []
+idle_timeout_secs = 300
+max_loaded_models = 3
+
+# Map models to capabilities
+# [capabilities.mappings]
+# "llama3.2:3b" = ["fast_chat"]
+# "qwen2.5:72b" = ["large_chat"]
+# "nomic-embed-text" = ["embeddings"]
