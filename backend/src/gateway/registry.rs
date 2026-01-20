@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use tokio::sync::{mpsc, RwLock};
 
-use simple_ai_common::{GatewayMessage, ModelInfo as ProtocolModelInfo, RunnerStatus};
+use simple_ai_common::{GatewayMessage, RunnerStatus};
 
 /// Information about a connected runner.
 #[derive(Debug, Clone)]
@@ -169,7 +169,13 @@ impl RunnerRegistry {
                             modified_at: available_model.modified_at.clone(),
                             loaded: false,
                             runners: vec![],
+                            available_on: vec![],
                         });
+
+                    // Track which runners have this model available
+                    if !entry.available_on.contains(&runner.id) {
+                        entry.available_on.push(runner.id.clone());
+                    }
 
                     if is_loaded && !entry.runners.contains(&runner.id) {
                         entry.runners.push(runner.id.clone());
@@ -235,14 +241,16 @@ pub struct ModelInfo {
     pub modified_at: Option<String>,
     /// Whether this model is currently loaded on any runner.
     pub loaded: bool,
-    /// Runner IDs that have this model loaded.
+    /// Runner IDs that have this model loaded (in GPU memory).
     pub runners: Vec<String>,
+    /// Runner IDs that have this model available (on disk).
+    pub available_on: Vec<String>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_ai_common::{EngineStatus, RunnerHealth};
+    use simple_ai_common::{EngineStatus, ModelInfo as ProtocolModelInfo, RunnerHealth};
 
     fn create_test_status(models: Vec<String>) -> RunnerStatus {
         RunnerStatus {

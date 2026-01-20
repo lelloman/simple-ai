@@ -453,11 +453,12 @@
                                     ${model.size_bytes ? ` | Size: ${(model.size_bytes / 1024 / 1024 / 1024).toFixed(1)} GB` : ''}
                                 </p>
                             </div>
-                            <div class="flex items-center space-x-2">
+                            <div class="flex items-center space-x-3">
                                 <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                                     model.loaded ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                                }">${model.loaded ? 'Loaded' : 'Available'}</span>
-                                <span class="text-xs text-gray-500">${model.runners.length} runner(s)</span>
+                                }">${model.loaded ? 'Loaded' : 'Not loaded'}</span>
+                                <span class="text-xs text-gray-500" title="Runners with model in memory">${model.runners.length} loaded</span>
+                                <span class="text-xs text-gray-400" title="Runners with model on disk">${model.available_on ? model.available_on.length : 0} available</span>
                             </div>
                         </div>
                     </li>

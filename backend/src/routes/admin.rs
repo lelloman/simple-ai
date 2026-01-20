@@ -266,7 +266,10 @@ pub struct AdminModelInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<String>,
     pub loaded: bool,
+    /// Runner IDs that have this model loaded (in GPU memory).
     pub runners: Vec<String>,
+    /// Runner IDs that have this model available (on disk).
+    pub available_on: Vec<String>,
 }
 
 /// Response for /admin/models endpoint.
@@ -293,6 +296,7 @@ async fn list_models(State(state): State<Arc<AppState>>) -> Json<AdminModelsResp
             modified_at: m.modified_at,
             loaded: m.loaded,
             runners: m.runners,
+            available_on: m.available_on,
         })
         .collect();
 
