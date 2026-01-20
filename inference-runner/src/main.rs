@@ -12,10 +12,12 @@ mod capability;
 mod config;
 mod engine;
 mod error;
+mod gateway;
 mod state;
 
 use config::Config;
 use engine::{EngineRegistry, OllamaEngine};
+use gateway::{GatewayClient, StatusCollector};
 use state::AppState;
 
 #[tokio::main]
@@ -53,7 +55,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create shared state
-    let state = Arc::new(AppState::new(config.clone(), registry));
+    let state = Arc::new(AppState::new(config.clone(), registry.clone()));
+
+    // Start gateway client if configured
+    if let Some(ref gateway_config) = config.gateway {
+        let status_collector = Arc::new(StatusCollector::new(config.clone(), registry.clone()));
+        let client = GatewayClient::new(
+            gateway_config.clone(),
+            config.runner.id.clone(),
+            config.runner.name.clone(),
+            config.runner.machine_type.clone(),
+            status_collector,
+            registry,
+        );
+
+        // Spawn gateway client task
+        tokio::spawn(async move {
+            client.run().await;
+        });
+        tracing::info!("Gateway client started, connecting to {}", gateway_config.ws_url);
+    } else {
+        tracing::info!("No gateway configured, running in standalone mode");
+    }
 
     // Build router
     let app = Router::new()

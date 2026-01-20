@@ -10,9 +10,18 @@ host = "0.0.0.0"
 port = 8080
 
 # Gateway connection (optional, for fleet integration)
+# When configured, the runner will maintain a WebSocket connection to the gateway
+# and report its status (capabilities, model states, health) periodically.
+#
+# IMPORTANT: Use wss:// in production to encrypt the connection and protect the auth token.
+# The auth_token should be a secure, randomly-generated secret shared with the gateway.
+# Generate one with: openssl rand -hex 32
+#
 # [gateway]
-# ws_url = "ws://gateway.local:8081/ws/runners"
-# auth_token = "your-secret-token"
+# ws_url = "wss://gateway.example.com/ws/runners"  # Use wss:// in production
+# auth_token = "your-secret-token"                 # Shared secret with gateway
+# reconnect_delay_secs = 5                         # Time between reconnection attempts
+# heartbeat_interval_secs = 30                     # How often to send status updates
 
 [engines.ollama]
 enabled = true
