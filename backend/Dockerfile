@@ -20,6 +20,7 @@ RUN rm -rf simple-ai-common/src backend/src inference-runner/src
 COPY simple-ai-common/src ./simple-ai-common/src
 COPY backend/src ./backend/src
 COPY backend/templates ./backend/templates
+COPY backend/static ./backend/static
 
 # Build for release (touch both to ensure cargo rebuilds with actual sources)
 RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --release -p simple-ai-backend

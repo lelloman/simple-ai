@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - SimpleAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0fdf4', 100: '#dcfce7', 200: '#bbf7d0', 300: '#86efac',
+                            400: '#4ade80', 500: '#22c55e', 600: '#16a34a', 700: '#15803d',
+                            800: '#166534', 900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-full">
+    <div id="app" class="min-h-full">
+        <!-- Loading state -->
+        <div id="loading" class="flex items-center justify-center h-screen">
+            <div class="text-gray-500">Loading...</div>
+        </div>
+
+        <!-- Login required -->
+        <div id="login-required" class="hidden flex items-center justify-center h-screen">
+            <div class="text-center">
+                <h1 class="text-2xl font-bold text-gray-900 mb-4">SimpleAI Admin</h1>
+                <p class="text-gray-600 mb-6">Please sign in to access the admin dashboard.</p>
+                <button onclick="login()" class="bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md">
+                    Sign in with OIDC
+                </button>
+            </div>
+        </div>
+
+        <!-- Main app -->
+        <div id="main-app" class="hidden">
+            <!-- Navigation -->
+            <nav class="bg-gray-800">
+                <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                    <div class="flex h-16 items-center justify-between">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <span class="text-white font-bold text-lg">SimpleAI</span>
+                            </div>
+                            <div class="ml-10 flex items-baseline space-x-4">
+                                <a href="#dashboard" onclick="showPage('dashboard')" id="nav-dashboard" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Dashboard</a>
+                                <a href="#runners" onclick="showPage('runners')" id="nav-runners" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Runners</a>
+                                <a href="#models" onclick="showPage('models')" id="nav-models" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Models</a>
+                                <a href="#users" onclick="showPage('users')" id="nav-users" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Users</a>
+                                <a href="#requests" onclick="showPage('requests')" id="nav-requests" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Requests</a>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <span id="user-email" class="text-gray-300 text-sm"></span>
+                            <button onclick="logout()" class="text-gray-300 hover:text-white text-sm">Logout</button>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Header -->
+            <header class="bg-white shadow">
+                <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                    <h1 id="page-title" class="text-3xl font-bold tracking-tight text-gray-900">Dashboard</h1>
+                </div>
+            </header>
+
+            <!-- Main content -->
+            <main>
+                <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                    <!-- Dashboard page -->
+                    <div id="page-dashboard" class="page">
+                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Total Users</dt>
+                                <dd id="stat-users" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                            </div>
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Total Requests</dt>
+                                <dd id="stat-requests" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                            </div>
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Requests (24h)</dt>
+                                <dd id="stat-requests-24h" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                            </div>
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Connected Runners</dt>
+                                <dd id="stat-runners" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Runners page -->
+                    <div id="page-runners" class="page hidden">
+                        <div id="runners-list" class="space-y-4"></div>
+                    </div>
+
+                    <!-- Models page -->
+                    <div id="page-models" class="page hidden">
+                        <div id="models-list" class="overflow-hidden bg-white shadow sm:rounded-md">
+                            <ul role="list" class="divide-y divide-gray-200" id="models-ul"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Users page -->
+                    <div id="page-users" class="page hidden">
+                        <div id="users-list" class="overflow-hidden bg-white shadow sm:rounded-md">
+                            <ul role="list" class="divide-y divide-gray-200" id="users-ul"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Requests page -->
+                    <div id="page-requests" class="page hidden">
+                        <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
+                            <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // OIDC Configuration
+        const OIDC_ISSUER = 'https://auth.lelloman.com';
+        const OIDC_CLIENT_ID = 'simple-ai';
+        const REDIRECT_URI = window.location.origin + '/admin-ui';
+
+        let accessToken = null;
+        let userInfo = null;
+
+        // Check for token in URL (after OIDC redirect)
+        async function init() {
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+
+            if (params.has('access_token')) {
+                accessToken = params.get('access_token');
+                localStorage.setItem('access_token', accessToken);
+                // Clean URL
+                history.replaceState(null, '', window.location.pathname);
+            } else {
+                accessToken = localStorage.getItem('access_token');
+            }
+
+            if (accessToken) {
+                // Validate token by making a request
+                try {
+                    const response = await fetch('/admin/runners', {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+
+                    if (response.ok) {
+                        // Parse JWT to get user info
+                        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                        userInfo = payload;
+                        document.getElementById('user-email').textContent = payload.email || payload.sub;
+                        showApp();
+                        showPage('dashboard');
+                        return;
+                    } else if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('access_token');
+                        accessToken = null;
+                    }
+                } catch (e) {
+                    console.error('Token validation failed:', e);
+                }
+            }
+
+            showLoginRequired();
+        }
+
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('login-required').classList.add('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+        }
+
+        function showLoginRequired() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('login-required').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+        }
+
+        function showApp() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('login-required').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+        }
+
+        function login() {
+            const authUrl = `${OIDC_ISSUER}/authorize?` + new URLSearchParams({
+                response_type: 'token',
+                client_id: OIDC_CLIENT_ID,
+                redirect_uri: REDIRECT_URI,
+                scope: 'openid email profile',
+            });
+            window.location.href = authUrl;
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            accessToken = null;
+            showLoginRequired();
+        }
+
+        async function apiFetch(endpoint) {
+            const response = await fetch(endpoint, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            if (!response.ok) {
+                if (response.status === 401) {
+                    logout();
+                    throw new Error('Unauthorized');
+                }
+                throw new Error(`API error: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        function showPage(page) {
+            // Update nav
+            document.querySelectorAll('.nav-link').forEach(el => {
+                el.classList.remove('bg-gray-900', 'text-white');
+                el.classList.add('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
+            });
+            const activeNav = document.getElementById(`nav-${page}`);
+            if (activeNav) {
+                activeNav.classList.add('bg-gray-900', 'text-white');
+                activeNav.classList.remove('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
+            }
+
+            // Update title
+            const titles = {
+                dashboard: 'Dashboard',
+                runners: 'Runners',
+                models: 'Models',
+                users: 'Users',
+                requests: 'Requests'
+            };
+            document.getElementById('page-title').textContent = titles[page] || page;
+
+            // Show page
+            document.querySelectorAll('.page').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`page-${page}`).classList.remove('hidden');
+
+            // Load data
+            if (page === 'dashboard') loadDashboard();
+            else if (page === 'runners') loadRunners();
+            else if (page === 'models') loadModels();
+            else if (page === 'users') loadUsers();
+            else if (page === 'requests') loadRequests();
+        }
+
+        async function loadDashboard() {
+            try {
+                const [runnersData] = await Promise.all([
+                    apiFetch('/admin/runners')
+                ]);
+                document.getElementById('stat-runners').textContent = runnersData.total;
+
+                // Try to load stats (may not have dedicated endpoint)
+                document.getElementById('stat-users').textContent = '-';
+                document.getElementById('stat-requests').textContent = '-';
+                document.getElementById('stat-requests-24h').textContent = '-';
+            } catch (e) {
+                console.error('Failed to load dashboard:', e);
+            }
+        }
+
+        async function loadRunners() {
+            try {
+                const data = await apiFetch('/admin/runners');
+                const container = document.getElementById('runners-list');
+
+                if (data.runners.length === 0) {
+                    container.innerHTML = '<div class="bg-white rounded-lg shadow p-6 text-gray-500 text-center">No runners connected</div>';
+                    return;
+                }
+
+                container.innerHTML = data.runners.map(runner => `
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="text-lg font-medium text-gray-900">${runner.name}</h3>
+                                <p class="text-sm text-gray-500">${runner.id}</p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
+                                runner.health === 'Healthy' ? 'bg-green-100 text-green-800' :
+                                runner.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                            }">${runner.health}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <span class="text-gray-500">Machine Type:</span>
+                                <span class="ml-2 text-gray-900">${runner.machine_type || 'N/A'}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">HTTP URL:</span>
+                                <span class="ml-2 text-gray-900">${runner.http_base_url || 'N/A'}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">Connected:</span>
+                                <span class="ml-2 text-gray-900">${new Date(runner.connected_at).toLocaleString()}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">Last Heartbeat:</span>
+                                <span class="ml-2 text-gray-900">${new Date(runner.last_heartbeat).toLocaleString()}</span>
+                            </div>
+                        </div>
+                        ${runner.loaded_models.length > 0 ? `
+                            <div class="mt-4">
+                                <span class="text-sm text-gray-500">Loaded Models:</span>
+                                <div class="mt-1 flex flex-wrap gap-2">
+                                    ${runner.loaded_models.map(m => `<span class="inline-flex items-center rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700">${m}</span>`).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load runners:', e);
+            }
+        }
+
+        async function loadModels() {
+            try {
+                const data = await apiFetch('/admin/models');
+                const ul = document.getElementById('models-ul');
+
+                if (data.models.length === 0) {
+                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No models available</li>';
+                    return;
+                }
+
+                ul.innerHTML = data.models.map(model => `
+                    <li class="px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">${model.id}</p>
+                                <p class="text-xs text-gray-500">
+                                    ${model.quantization ? `Quant: ${model.quantization}` : ''}
+                                    ${model.context_length ? ` | Context: ${model.context_length}` : ''}
+                                    ${model.size_bytes ? ` | Size: ${(model.size_bytes / 1024 / 1024 / 1024).toFixed(1)} GB` : ''}
+                                </p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                    model.loaded ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                                }">${model.loaded ? 'Loaded' : 'Available'}</span>
+                                <span class="text-xs text-gray-500">${model.runners.length} runner(s)</span>
+                            </div>
+                        </div>
+                    </li>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load models:', e);
+            }
+        }
+
+        async function loadUsers() {
+            const ul = document.getElementById('users-ul');
+            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">User list requires server-side rendering (use /admin/users with token)</li>';
+        }
+
+        async function loadRequests() {
+            const ul = document.getElementById('requests-ul');
+            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Request list requires server-side rendering (use /admin/requests with token)</li>';
+        }
+
+        // Initialize on page load
+        init();
+    </script>
+</body>
+</html>

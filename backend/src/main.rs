@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use axum::routing::get;
+use axum::response::Html;
 use simple_ai_backend::config::Config;
 use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::llm::OllamaClient;
@@ -62,6 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         auth_token: config.gateway.auth_token.clone(),
     });
 
+    // Static admin UI HTML
+    const ADMIN_UI_HTML: &str = include_str!("../static/admin.html");
+
     let app = simple_ai_backend::routes::health::router()
         .nest("/v1",
             simple_ai_backend::routes::chat::router(state.clone())
@@ -69,6 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .merge(simple_ai_backend::routes::models::router(state.clone()))
         )
         .nest("/admin", simple_ai_backend::routes::admin::router(state.clone()))
+        // Admin UI (public, auth handled in browser)
+        .route("/admin-ui", get(|| async { Html(ADMIN_UI_HTML) }))
         // WebSocket endpoint for runner connections
         .route("/ws/runners", get(ws_handler).with_state(ws_state))
         .layer(cors)
