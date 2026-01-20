@@ -89,8 +89,13 @@ pub struct LlamaCppEngineConfig {
     pub enabled: bool,
     /// Directory containing .gguf model files.
     pub model_dir: String,
-    /// Path to the llama-server binary.
+    /// Path to the llama-server binary or wrapper command (e.g., "toolbox").
     pub server_binary: String,
+    /// Extra arguments inserted BEFORE the model args.
+    /// Use this for wrapper commands like toolbox.
+    /// Example: `["run", "-c", "llamacpp", "llama-server"]`
+    #[serde(default)]
+    pub server_args: Vec<String>,
     /// Number of layers to offload to GPU (-ngl flag). 0 = CPU only.
     #[serde(default)]
     pub gpu_layers: Option<u32>,

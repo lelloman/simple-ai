@@ -311,6 +311,12 @@ impl LlamaCppEngine {
 
         // Build command
         let mut cmd = Command::new(&self.config.server_binary);
+
+        // Prepend wrapper arguments (e.g., toolbox run -c llamacpp llama-server)
+        // These must come before the llama-server specific flags
+        for arg in &self.config.server_args {
+            cmd.arg(arg);
+        }
         cmd.arg("-m")
             .arg(&model_path)
             .arg("--host")
@@ -515,13 +521,19 @@ impl InferenceEngine for LlamaCppEngine {
             )));
         }
 
-        // Check if server binary exists
+        // Check if server binary exists (only for absolute paths)
+        // For relative paths like "toolbox", we assume it's in PATH
         let binary_path = PathBuf::from(&self.config.server_binary);
-        if !binary_path.exists() {
+        if binary_path.is_absolute() && !binary_path.exists() {
             return Err(Error::EngineNotAvailable(format!(
                 "llama-server binary not found: {}",
                 self.config.server_binary
             )));
+        } else if !binary_path.is_absolute() {
+            tracing::debug!(
+                "Using relative path binary '{}', assuming it's in PATH",
+                self.config.server_binary
+            );
         }
 
         // Collect loaded models
@@ -730,6 +742,7 @@ mod tests {
             enabled: true,
             model_dir: "/tmp/models".to_string(),
             server_binary: "/usr/bin/llama-server".to_string(),
+            server_args: vec![],
             gpu_layers: Some(35),
             context_size: Some(4096),
             base_port: None,

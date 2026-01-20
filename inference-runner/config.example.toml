@@ -34,7 +34,8 @@ base_url = "http://localhost:11434"
 # [engines.llama_cpp]
 # enabled = false
 # model_dir = "/models"                    # Directory containing .gguf model files
-# server_binary = "/usr/bin/llama-server"  # Path to llama-server binary
+# server_binary = "/usr/bin/llama-server"  # Path to llama-server binary (or wrapper like "toolbox")
+# server_args = []                         # Extra args before model args (for wrappers)
 # gpu_layers = 35                          # Layers to offload to GPU (-ngl flag)
 # context_size = 4096                      # Context window size (-c flag)
 # base_port = 9000                         # Optional: fixed base port (default: OS-assigned)
@@ -42,6 +43,15 @@ base_url = "http://localhost:11434"
 # startup_timeout_secs = 120               # Server startup timeout (default: 120)
 # shutdown_timeout_secs = 10               # Graceful shutdown timeout (default: 10)
 # log_server_output = false                # Log llama-server output for debugging
+#
+# Example: Running llama-server via toolbox container:
+# [engines.llama_cpp]
+# enabled = true
+# server_binary = "toolbox"
+# server_args = ["run", "-c", "llamacpp", "llama-server"]
+# model_dir = "/home/user/.cache/huggingface/hub"
+# gpu_layers = 99
+# startup_timeout_secs = 300               # Large models need more startup time
 
 [capabilities.persistence]
 always_loaded = []
