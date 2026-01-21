@@ -1,0 +1,13 @@
+[Unit]
+Description=Simple AI Runner
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lelloman
+ExecStart=/home/lelloman/simple-ai-runner
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
