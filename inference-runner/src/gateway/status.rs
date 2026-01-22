@@ -160,6 +160,7 @@ mod tests {
                 id: "test".to_string(),
                 name: "Test".to_string(),
                 machine_type: None,
+                mac_address: None,
             },
             api: ApiConfig::default(),
             gateway: None,

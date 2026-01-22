@@ -26,6 +26,8 @@ pub struct ConnectedRunner {
     pub http_base_url: Option<String>,
     /// Channel to send messages to this runner.
     pub tx: mpsc::Sender<GatewayMessage>,
+    /// MAC address for Wake-on-LAN (format: AA:BB:CC:DD:EE:FF).
+    pub mac_address: Option<String>,
 }
 
 impl ConnectedRunner {
@@ -75,6 +77,7 @@ impl RunnerRegistry {
         status: RunnerStatus,
         http_base_url: Option<String>,
         tx: mpsc::Sender<GatewayMessage>,
+        mac_address: Option<String>,
     ) {
         let now = Utc::now();
         let runner = ConnectedRunner {
@@ -86,6 +89,7 @@ impl RunnerRegistry {
             last_heartbeat: now,
             http_base_url,
             tx,
+            mac_address,
         };
         self.runners.write().await.insert(id, runner);
     }
@@ -293,6 +297,7 @@ mod tests {
                 status,
                 Some("http://localhost:8080".to_string()),
                 tx,
+                None,
             )
             .await;
 
@@ -316,6 +321,7 @@ mod tests {
                 status,
                 None,
                 tx,
+                None,
             )
             .await;
 
@@ -341,6 +347,7 @@ mod tests {
                 create_test_status(vec!["llama3".to_string()]),
                 None,
                 tx1,
+                None,
             )
             .await;
 
@@ -352,6 +359,7 @@ mod tests {
                 create_test_status(vec!["gpt4".to_string()]),
                 None,
                 tx2,
+                None,
             )
             .await;
 
@@ -382,6 +390,7 @@ mod tests {
                 create_test_status(vec!["model-a".to_string(), "model-b".to_string()]),
                 None,
                 tx1,
+                None,
             )
             .await;
 
@@ -393,6 +402,7 @@ mod tests {
                 create_test_status(vec!["model-a".to_string(), "model-c".to_string()]),
                 None,
                 tx2,
+                None,
             )
             .await;
 
@@ -424,6 +434,7 @@ mod tests {
                 healthy_status,
                 None,
                 tx1,
+                None,
             )
             .await;
 
@@ -435,6 +446,7 @@ mod tests {
                 unhealthy_status,
                 None,
                 tx2,
+                None,
             )
             .await;
 
@@ -456,6 +468,7 @@ mod tests {
                 create_test_status(vec![]),
                 None,
                 tx,
+                None,
             )
             .await;
 

@@ -31,6 +31,9 @@ pub struct RunnerConfig {
     /// Machine type for routing decisions (Phase 2)
     #[serde(default)]
     pub machine_type: Option<String>,
+    /// MAC address for Wake-on-LAN (format: AA:BB:CC:DD:EE:FF)
+    #[serde(default)]
+    pub mac_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

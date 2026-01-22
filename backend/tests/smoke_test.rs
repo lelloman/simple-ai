@@ -37,6 +37,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
             model_path: "models/lid.176.bin".to_string(),
         },
         gateway: simple_ai_backend::config::GatewayConfig::default(),
+        wol: simple_ai_backend::config::WolConfig::default(),
     };
 
     let mock_server = MockServer::start().await;
@@ -70,9 +71,10 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
 
     let jwks_client = JwksClient::new(&format!("{}/", mock_server.uri())).await?;
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
-    let audit_logger = AuditLogger::new(&config.database.url).unwrap();
+    let audit_logger = Arc::new(AuditLogger::new(&config.database.url).unwrap());
     let runner_registry = Arc::new(RunnerRegistry::new());
     let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
+    let wol_config = config.wol.clone();
 
     Ok(Arc::new(AppState {
         config,
@@ -82,6 +84,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         lang_detector: tokio::sync::Mutex::new(fasttext::FastText::default()),
         runner_registry,
         inference_router,
+        wol_config,
     }))
 }
 

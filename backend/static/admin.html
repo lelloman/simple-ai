@@ -382,42 +382,58 @@
                 const container = document.getElementById('runners-list');
 
                 if (data.runners.length === 0) {
-                    container.innerHTML = '<div class="bg-white rounded-lg shadow p-6 text-gray-500 text-center">No runners connected</div>';
+                    container.innerHTML = '<div class="bg-white rounded-lg shadow p-6 text-gray-500 text-center">No runners registered</div>';
                     return;
                 }
 
                 container.innerHTML = data.runners.map(runner => `
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}">
                         <div class="flex items-center justify-between mb-4">
                             <div>
-                                <h3 class="text-lg font-medium text-gray-900">${runner.name}</h3>
+                                <h3 class="text-lg font-medium ${runner.is_online ? 'text-gray-900' : 'text-gray-500'}">${runner.name}</h3>
                                 <p class="text-sm text-gray-500">${runner.id}</p>
                             </div>
-                            <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                                runner.health === 'Healthy' ? 'bg-green-100 text-green-800' :
-                                runner.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                            }">${runner.health}</span>
+                            <div class="flex items-center space-x-2">
+                                ${!runner.is_online && runner.mac_address ? `
+                                    <button onclick="wakeRunner('${runner.id}')"
+                                            class="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                            id="wake-btn-${runner.id}">
+                                        Wake
+                                    </button>
+                                ` : ''}
+                                <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
+                                    runner.health === 'Healthy' ? 'bg-green-100 text-green-800' :
+                                    runner.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
+                                    runner.health === 'Offline' ? 'bg-gray-100 text-gray-600' :
+                                    'bg-red-100 text-red-800'
+                                }">${runner.health}</span>
+                            </div>
                         </div>
                         <div class="grid grid-cols-2 gap-4 text-sm">
                             <div>
                                 <span class="text-gray-500">Machine Type:</span>
-                                <span class="ml-2 text-gray-900">${runner.machine_type || 'N/A'}</span>
+                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.machine_type || 'N/A'}</span>
                             </div>
                             <div>
-                                <span class="text-gray-500">HTTP URL:</span>
-                                <span class="ml-2 text-gray-900">${runner.http_base_url || 'N/A'}</span>
+                                <span class="text-gray-500">MAC Address:</span>
+                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.mac_address || 'N/A'}</span>
                             </div>
+                            ${runner.is_online ? `
+                                <div>
+                                    <span class="text-gray-500">HTTP URL:</span>
+                                    <span class="ml-2 text-gray-900">${runner.http_base_url || 'N/A'}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">Connected:</span>
+                                    <span class="ml-2 text-gray-900">${runner.connected_at ? new Date(runner.connected_at).toLocaleString() : 'N/A'}</span>
+                                </div>
+                            ` : ''}
                             <div>
-                                <span class="text-gray-500">Connected:</span>
-                                <span class="ml-2 text-gray-900">${new Date(runner.connected_at).toLocaleString()}</span>
-                            </div>
-                            <div>
-                                <span class="text-gray-500">Last Heartbeat:</span>
-                                <span class="ml-2 text-gray-900">${new Date(runner.last_heartbeat).toLocaleString()}</span>
+                                <span class="text-gray-500">${runner.is_online ? 'Last Heartbeat' : 'Last Seen'}:</span>
+                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.last_heartbeat ? new Date(runner.last_heartbeat).toLocaleString() : 'N/A'}</span>
                             </div>
                         </div>
-                        ${runner.loaded_models.length > 0 ? `
+                        ${runner.loaded_models && runner.loaded_models.length > 0 ? `
                             <div class="mt-4">
                                 <span class="text-sm text-gray-500">Loaded Models:</span>
                                 <div class="mt-1 flex flex-wrap gap-2">
@@ -429,6 +445,46 @@
                 `).join('');
             } catch (e) {
                 console.error('Failed to load runners:', e);
+            }
+        }
+
+        async function wakeRunner(runnerId) {
+            const btn = document.getElementById(`wake-btn-${runnerId}`);
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Waking...';
+            }
+
+            try {
+                const response = await fetch(`/admin/runners/${encodeURIComponent(runnerId)}/wake`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    if (btn) {
+                        btn.textContent = 'Sent!';
+                        btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                        btn.classList.add('bg-green-600');
+                    }
+                    // Refresh runners list after a short delay
+                    setTimeout(() => loadRunners(), 2000);
+                } else {
+                    alert(`Failed to wake runner: ${result.message}`);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Wake';
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to wake runner:', e);
+                alert('Failed to send wake request');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Wake';
+                }
             }
         }
 

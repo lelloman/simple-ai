@@ -22,6 +22,9 @@ pub struct Config {
     /// Gateway configuration for runner fleet management.
     #[serde(default)]
     pub gateway: GatewayConfig,
+    /// Wake-on-LAN configuration.
+    #[serde(default)]
+    pub wol: WolConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,6 +82,17 @@ pub struct GatewayConfig {
     pub runner_timeout_secs: u64,
 }
 
+/// Wake-on-LAN configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WolConfig {
+    /// Broadcast address for WOL packets.
+    #[serde(default = "default_wol_broadcast")]
+    pub broadcast_address: String,
+    /// UDP port for WOL packets (typically 9 or 7).
+    #[serde(default = "default_wol_port")]
+    pub port: u16,
+}
+
 // Defaults
 fn default_host() -> String { "0.0.0.0".to_string() }
 fn default_port() -> u16 { 8080 }
@@ -90,6 +104,8 @@ fn default_cors_origins() -> String { "*".to_string() }
 fn default_language_model_path() -> String { "/data/lid.176.ftz".to_string() }
 fn default_gateway_auth_token() -> String { "change-me-in-production".to_string() }
 fn default_runner_timeout() -> u64 { 90 }
+fn default_wol_broadcast() -> String { "255.255.255.255".to_string() }
+fn default_wol_port() -> u16 { 9 }
 
 impl Default for OllamaConfig {
     fn default() -> Self {
@@ -134,6 +150,15 @@ impl Default for GatewayConfig {
     }
 }
 
+impl Default for WolConfig {
+    fn default() -> Self {
+        Self {
+            broadcast_address: default_wol_broadcast(),
+            port: default_wol_port(),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("Configuration error: {0}")]
@@ -164,6 +189,8 @@ impl Config {
             .set_default("gateway.enabled", false)?
             .set_default("gateway.auth_token", default_gateway_auth_token())?
             .set_default("gateway.runner_timeout_secs", default_runner_timeout() as i64)?
+            .set_default("wol.broadcast_address", default_wol_broadcast())?
+            .set_default("wol.port", default_wol_port() as i64)?
             // Load from config.toml if it exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (SIMPLEAI__KEY format)

@@ -4,6 +4,7 @@
 id = "gpu-server-01"
 name = "Primary GPU Server"
 machine_type = "gpu-server"
+# mac_address = "AA:BB:CC:DD:EE:FF"  # Optional, for Wake-on-LAN support
 
 [api]
 host = "0.0.0.0"

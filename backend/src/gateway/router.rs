@@ -317,6 +317,7 @@ mod tests {
                 create_test_status(vec!["llama3".to_string()]),
                 Some("http://localhost:8080".to_string()),
                 tx,
+                None,
             )
             .await;
 
@@ -342,6 +343,7 @@ mod tests {
                 create_test_status(vec!["model".to_string()]),
                 Some("http://host1:8080".to_string()),
                 tx1,
+                None,
             )
             .await;
 
@@ -353,6 +355,7 @@ mod tests {
                 create_test_status(vec!["model".to_string()]),
                 Some("http://host2:8080".to_string()),
                 tx2,
+                None,
             )
             .await;
 
@@ -381,6 +384,7 @@ mod tests {
                 create_test_status(vec!["model-a".to_string(), "model-b".to_string()]),
                 None,
                 tx1,
+                None,
             )
             .await;
 
@@ -392,6 +396,7 @@ mod tests {
                 create_test_status(vec!["model-a".to_string(), "model-c".to_string()]),
                 None,
                 tx2,
+                None,
             )
             .await;
 

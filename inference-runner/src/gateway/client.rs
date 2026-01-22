@@ -23,6 +23,7 @@ pub struct GatewayClient {
     runner_id: String,
     runner_name: String,
     machine_type: Option<String>,
+    mac_address: Option<String>,
     http_port: u16,
     status_collector: Arc<StatusCollector>,
     engine_registry: Arc<EngineRegistry>,
@@ -34,6 +35,7 @@ impl GatewayClient {
         runner_id: String,
         runner_name: String,
         machine_type: Option<String>,
+        mac_address: Option<String>,
         http_port: u16,
         status_collector: Arc<StatusCollector>,
         engine_registry: Arc<EngineRegistry>,
@@ -43,6 +45,7 @@ impl GatewayClient {
             runner_id,
             runner_name,
             machine_type,
+            mac_address,
             http_port,
             status_collector,
             engine_registry,
@@ -80,7 +83,7 @@ impl GatewayClient {
 
         // Send registration
         let status = self.status_collector.collect().await;
-        let registration = RunnerRegistration::new(
+        let mut registration = RunnerRegistration::new(
             self.runner_id.clone(),
             self.runner_name.clone(),
             self.machine_type.clone(),
@@ -88,6 +91,7 @@ impl GatewayClient {
             self.config.auth_token.clone(),
             status,
         );
+        registration.mac_address = self.mac_address.clone();
         let msg = RunnerMessage::Register(registration);
         let json = serde_json::to_string(&msg)?;
         write.send(Message::Text(json)).await?;
@@ -339,6 +343,7 @@ mod tests {
                 id: "test-runner".to_string(),
                 name: "Test Runner".to_string(),
                 machine_type: None,
+                mac_address: None,
             },
             api: ApiConfig::default(),
             gateway: None,
@@ -368,6 +373,7 @@ mod tests {
             config.runner.id.clone(),
             config.runner.name.clone(),
             config.runner.machine_type.clone(),
+            None,
             8080,
             status_collector,
             registry,

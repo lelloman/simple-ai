@@ -7,8 +7,9 @@ pub mod models;
 pub mod logging;
 pub mod gateway;
 pub mod test_util;
+pub mod wol;
 
-pub use config::Config;
+pub use config::{Config, WolConfig};
 pub use auth::JwksClient;
 pub use llm::OllamaClient;
 pub use audit::AuditLogger;
@@ -27,10 +28,12 @@ pub struct AppState {
     pub config: Config,
     pub jwks_client: JwksClient,
     pub ollama_client: OllamaClient,
-    pub audit_logger: AuditLogger,
+    pub audit_logger: Arc<AuditLogger>,
     pub lang_detector: Mutex<FastText>,
     /// Runner registry for connected inference runners.
     pub runner_registry: Arc<RunnerRegistry>,
     /// Inference router for distributing requests.
     pub inference_router: Arc<InferenceRouter>,
+    /// Wake-on-LAN configuration.
+    pub wol_config: WolConfig,
 }

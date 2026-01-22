@@ -97,6 +97,18 @@ impl AuditLogger {
             [],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        // Create runners table for persistent runner tracking
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS runners (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                mac_address TEXT,
+                machine_type TEXT,
+                last_seen_at TEXT NOT NULL
+            )",
+            [],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
         tracing::info!("Audit logger initialized with database: {}", path);
 
         Ok(Self {
@@ -472,6 +484,96 @@ pub struct RequestWithResponse {
     pub tokens_completion: Option<i64>,
 }
 
+/// Persistent runner record for WOL and offline tracking.
+#[derive(Debug, Clone)]
+pub struct RunnerRecord {
+    pub id: String,
+    pub name: String,
+    pub mac_address: Option<String>,
+    pub machine_type: Option<String>,
+    pub last_seen_at: String,
+}
+
+impl AuditLogger {
+    /// Insert or update a runner record.
+    pub fn upsert_runner(
+        &self,
+        id: &str,
+        name: &str,
+        mac_address: Option<&str>,
+        machine_type: Option<&str>,
+    ) -> Result<(), AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO runners (id, name, mac_address, machine_type, last_seen_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                mac_address = COALESCE(excluded.mac_address, runners.mac_address),
+                machine_type = COALESCE(excluded.machine_type, runners.machine_type),
+                last_seen_at = excluded.last_seen_at",
+            params![id, name, mac_address, machine_type, now],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        tracing::debug!("Upserted runner: {}", id);
+        Ok(())
+    }
+
+    /// Get a runner by ID.
+    pub fn get_runner(&self, id: &str) -> Result<Option<RunnerRecord>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let result = conn.query_row(
+            "SELECT id, name, mac_address, machine_type, last_seen_at FROM runners WHERE id = ?1",
+            params![id],
+            |row| Ok(RunnerRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                mac_address: row.get(2)?,
+                machine_type: row.get(3)?,
+                last_seen_at: row.get(4)?,
+            }),
+        );
+
+        match result {
+            Ok(record) => Ok(Some(record)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AuditError::DatabaseError(e.to_string())),
+        }
+    }
+
+    /// Get all runner records.
+    pub fn get_all_runners(&self) -> Result<Vec<RunnerRecord>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, name, mac_address, machine_type, last_seen_at FROM runners ORDER BY last_seen_at DESC"
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(RunnerRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                mac_address: row.get(2)?,
+                machine_type: row.get(3)?,
+                last_seen_at: row.get(4)?,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut runners = Vec::new();
+        for row in rows {
+            runners.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+        Ok(runners)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -802,5 +904,86 @@ mod tests {
         let stats = logger.get_stats().unwrap();
         assert_eq!(stats.total_requests, 10);
         assert_eq!(stats.total_tokens, 145); // 10 requests * 10 prompt + (0+1+...+9) completion
+    }
+
+    #[test]
+    fn test_upsert_runner_new() {
+        let logger = create_test_logger();
+        logger.upsert_runner(
+            "runner-1",
+            "Test Runner",
+            Some("AA:BB:CC:DD:EE:FF"),
+            Some("gpu-server"),
+        ).unwrap();
+
+        let runner = logger.get_runner("runner-1").unwrap().unwrap();
+        assert_eq!(runner.id, "runner-1");
+        assert_eq!(runner.name, "Test Runner");
+        assert_eq!(runner.mac_address, Some("AA:BB:CC:DD:EE:FF".to_string()));
+        assert_eq!(runner.machine_type, Some("gpu-server".to_string()));
+    }
+
+    #[test]
+    fn test_upsert_runner_update() {
+        let logger = create_test_logger();
+
+        // Initial insert
+        logger.upsert_runner("runner-1", "Old Name", Some("AA:BB:CC:DD:EE:FF"), None).unwrap();
+
+        // Update with new name, keeps MAC address
+        logger.upsert_runner("runner-1", "New Name", None, Some("cpu-server")).unwrap();
+
+        let runner = logger.get_runner("runner-1").unwrap().unwrap();
+        assert_eq!(runner.name, "New Name");
+        assert_eq!(runner.mac_address, Some("AA:BB:CC:DD:EE:FF".to_string())); // Preserved
+        assert_eq!(runner.machine_type, Some("cpu-server".to_string()));
+    }
+
+    #[test]
+    fn test_upsert_runner_without_mac() {
+        let logger = create_test_logger();
+        logger.upsert_runner("runner-1", "Test Runner", None, None).unwrap();
+
+        let runner = logger.get_runner("runner-1").unwrap().unwrap();
+        assert_eq!(runner.id, "runner-1");
+        assert!(runner.mac_address.is_none());
+    }
+
+    #[test]
+    fn test_get_runner_not_found() {
+        let logger = create_test_logger();
+        let result = logger.get_runner("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_all_runners_empty() {
+        let logger = create_test_logger();
+        let runners = logger.get_all_runners().unwrap();
+        assert!(runners.is_empty());
+    }
+
+    #[test]
+    fn test_get_all_runners() {
+        let logger = create_test_logger();
+        logger.upsert_runner("runner-1", "Runner 1", Some("AA:BB:CC:DD:EE:01"), None).unwrap();
+        logger.upsert_runner("runner-2", "Runner 2", Some("AA:BB:CC:DD:EE:02"), None).unwrap();
+        logger.upsert_runner("runner-3", "Runner 3", None, None).unwrap();
+
+        let runners = logger.get_all_runners().unwrap();
+        assert_eq!(runners.len(), 3);
+    }
+
+    #[test]
+    fn test_runner_record_struct() {
+        let record = RunnerRecord {
+            id: "runner-1".to_string(),
+            name: "Test Runner".to_string(),
+            mac_address: Some("AA:BB:CC:DD:EE:FF".to_string()),
+            machine_type: Some("gpu-server".to_string()),
+            last_seen_at: "2024-01-01T00:00:00Z".to_string(),
+        };
+        assert_eq!(record.id, "runner-1");
+        assert!(record.mac_address.is_some());
     }
 }

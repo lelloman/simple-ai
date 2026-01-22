@@ -92,6 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.runner.id.clone(),
             config.runner.name.clone(),
             config.runner.machine_type.clone(),
+            config.runner.mac_address.clone(),
             config.api.port,
             status_collector,
             registry,

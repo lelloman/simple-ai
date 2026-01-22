@@ -16,12 +16,14 @@ use tokio::time::{timeout, Duration};
 
 use simple_ai_common::{GatewayMessage, RunnerMessage, RunnerRegistration, PROTOCOL_VERSION};
 
+use crate::audit::AuditLogger;
 use super::RunnerRegistry;
 
 /// Shared state for WebSocket connections.
 pub struct WsState {
     pub registry: Arc<RunnerRegistry>,
     pub auth_token: String,
+    pub audit_logger: Arc<AuditLogger>,
 }
 
 /// WebSocket upgrade handler.
@@ -118,8 +120,19 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
             registration.status.clone(),
             Some(http_base_url),
             tx,
+            registration.mac_address.clone(),
         )
         .await;
+
+    // Persist runner to database for WOL and offline tracking
+    if let Err(e) = state.audit_logger.upsert_runner(
+        &registration.runner_id,
+        &registration.runner_name,
+        registration.mac_address.as_deref(),
+        registration.machine_type.as_deref(),
+    ) {
+        tracing::warn!("Failed to persist runner {}: {}", registration.runner_id, e);
+    }
 
     let runner_id = registration.runner_id.clone();
 

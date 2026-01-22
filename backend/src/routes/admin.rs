@@ -20,6 +20,7 @@ use axum::{
 use serde::Serialize;
 
 use crate::audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
+use crate::wol;
 use crate::AppState;
 
 /// Admin user info for templates.
@@ -216,6 +217,8 @@ pub struct RunnerInfo {
     pub connected_at: String,
     pub last_heartbeat: String,
     pub http_base_url: Option<String>,
+    pub mac_address: Option<String>,
+    pub is_online: bool,
 }
 
 /// Response for /admin/runners endpoint.
@@ -225,12 +228,15 @@ pub struct RunnersResponse {
     pub total: usize,
 }
 
-/// GET /admin/runners - List connected runners (JSON API)
+/// GET /admin/runners - List all runners (connected + offline from DB)
 async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersResponse> {
-    let runners = state.runner_registry.all().await;
-    let total = runners.len();
+    use std::collections::HashSet;
 
-    let runners: Vec<RunnerInfo> = runners
+    let connected_runners = state.runner_registry.all().await;
+    let connected_ids: HashSet<String> = connected_runners.iter().map(|r| r.id.clone()).collect();
+
+    // Convert connected runners to RunnerInfo
+    let mut runners: Vec<RunnerInfo> = connected_runners
         .into_iter()
         .map(|r| {
             let loaded_models = r.loaded_models();
@@ -243,10 +249,33 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
                 connected_at: r.connected_at.to_rfc3339(),
                 last_heartbeat: r.last_heartbeat.to_rfc3339(),
                 http_base_url: r.http_base_url,
+                mac_address: r.mac_address,
+                is_online: true,
             }
         })
         .collect();
 
+    // Add offline runners from database
+    if let Ok(db_runners) = state.audit_logger.get_all_runners() {
+        for db_runner in db_runners {
+            if !connected_ids.contains(&db_runner.id) {
+                runners.push(RunnerInfo {
+                    id: db_runner.id,
+                    name: db_runner.name,
+                    machine_type: db_runner.machine_type,
+                    health: "Offline".to_string(),
+                    loaded_models: vec![],
+                    connected_at: "".to_string(),
+                    last_heartbeat: db_runner.last_seen_at,
+                    http_base_url: None,
+                    mac_address: db_runner.mac_address,
+                    is_online: false,
+                });
+            }
+        }
+    }
+
+    let total = runners.len();
     Json(RunnersResponse { runners, total })
 }
 
@@ -303,6 +332,71 @@ async fn list_models(State(state): State<Arc<AppState>>) -> Json<AdminModelsResp
     Json(AdminModelsResponse { models, total })
 }
 
+/// Response for wake endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct WakeResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// POST /admin/runners/:id/wake - Send Wake-on-LAN packet to runner
+async fn wake_runner(
+    State(state): State<Arc<AppState>>,
+    Path(runner_id): Path<String>,
+) -> Result<Json<WakeResponse>, (StatusCode, Json<WakeResponse>)> {
+    // First check if runner is already online
+    if let Some(runner) = state.runner_registry.get(&runner_id).await {
+        if runner.is_operational() {
+            return Ok(Json(WakeResponse {
+                success: true,
+                message: "Runner is already online".to_string(),
+            }));
+        }
+    }
+
+    // Look up MAC address from connected runner or database
+    let mac_address = if let Some(runner) = state.runner_registry.get(&runner_id).await {
+        runner.mac_address
+    } else {
+        // Check database for offline runner
+        state.audit_logger.get_runner(&runner_id)
+            .ok()
+            .flatten()
+            .and_then(|r| r.mac_address)
+    };
+
+    let Some(mac) = mac_address else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(WakeResponse {
+                success: false,
+                message: "Runner has no MAC address configured".to_string(),
+            }),
+        ));
+    };
+
+    // Send WOL packet
+    match wol::send_wol(&mac, &state.wol_config.broadcast_address, state.wol_config.port) {
+        Ok(()) => {
+            tracing::info!("Sent WOL packet for runner {} (MAC: {})", runner_id, mac);
+            Ok(Json(WakeResponse {
+                success: true,
+                message: format!("Wake-on-LAN packet sent to {}", mac),
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to send WOL packet for runner {}: {}", runner_id, e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(WakeResponse {
+                    success: false,
+                    message: format!("Failed to send WOL packet: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
 /// Build the admin router.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -312,6 +406,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/users/:id/enable", post(enable_user))
         .route("/requests", get(requests_list))
         .route("/runners", get(list_runners))
+        .route("/runners/:id/wake", post(wake_runner))
         .route("/models", get(list_models))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state)

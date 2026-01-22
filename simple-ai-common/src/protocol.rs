@@ -83,6 +83,9 @@ pub struct RunnerRegistration {
     pub auth_token: String,
     /// Initial status.
     pub status: RunnerStatus,
+    /// MAC address for Wake-on-LAN (format: AA:BB:CC:DD:EE:FF).
+    #[serde(default)]
+    pub mac_address: Option<String>,
 }
 
 fn default_http_port() -> u16 {
@@ -222,6 +225,7 @@ impl RunnerRegistration {
             protocol_version: PROTOCOL_VERSION,
             auth_token,
             status,
+            mac_address: None,
         }
     }
 }

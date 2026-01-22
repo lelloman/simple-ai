@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let jwks_client = JwksClient::new(&config.oidc.issuer).await?;
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
-    let audit_logger = AuditLogger::new(&config.database.url)?;
+    let audit_logger = Arc::new(AuditLogger::new(&config.database.url)?);
 
     let mut lang_detector = fasttext::FastText::default();
     lang_detector.load_model(&config.language.model_path)
@@ -46,10 +46,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config: config.clone(),
         jwks_client,
         ollama_client,
-        audit_logger,
+        audit_logger: audit_logger.clone(),
         lang_detector: tokio::sync::Mutex::new(lang_detector),
         runner_registry: runner_registry.clone(),
         inference_router,
+        wol_config: config.wol.clone(),
     });
 
     let cors = tower_http::cors::CorsLayer::new()
@@ -61,6 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ws_state = Arc::new(WsState {
         registry: runner_registry.clone(),
         auth_token: config.gateway.auth_token.clone(),
+        audit_logger: audit_logger.clone(),
     });
 
     // Static admin UI HTML
