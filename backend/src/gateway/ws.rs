@@ -110,13 +110,20 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     // Derive HTTP base URL from socket address and registered port
     let http_base_url = format!("http://{}:{}", addr.ip(), registration.http_port);
 
-    // Look up MAC address from ARP cache
-    let mac_address = crate::arp::lookup_mac(&addr.ip());
-    if let Some(ref mac) = mac_address {
-        tracing::info!("Discovered MAC {} for runner {} ({})", mac, registration.runner_id, addr.ip());
+    // Use MAC address from registration if provided, otherwise try ARP lookup
+    let mac_address = if let Some(ref mac) = registration.mac_address {
+        tracing::info!("Runner {} provided MAC address: {}", registration.runner_id, mac);
+        Some(mac.clone())
     } else {
-        tracing::debug!("No MAC address found in ARP cache for {} - WOL will not be available", addr.ip());
-    }
+        // Fall back to ARP lookup (works for non-Docker deployments)
+        let arp_mac = crate::arp::lookup_mac(&addr.ip());
+        if let Some(ref mac) = arp_mac {
+            tracing::info!("Discovered MAC {} for runner {} via ARP ({})", mac, registration.runner_id, addr.ip());
+        } else {
+            tracing::debug!("No MAC address for runner {} - not provided and not found in ARP cache", registration.runner_id);
+        }
+        arp_mac
+    };
 
     // Register the runner
     state

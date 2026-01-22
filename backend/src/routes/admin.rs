@@ -256,26 +256,39 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
         .collect();
 
     // Add offline runners from database
-    if let Ok(db_runners) = state.audit_logger.get_all_runners() {
-        for db_runner in db_runners {
-            if !connected_ids.contains(&db_runner.id) {
-                runners.push(RunnerInfo {
-                    id: db_runner.id,
-                    name: db_runner.name,
-                    machine_type: db_runner.machine_type,
-                    health: "Offline".to_string(),
-                    loaded_models: vec![],
-                    connected_at: "".to_string(),
-                    last_heartbeat: db_runner.last_seen_at,
-                    http_base_url: None,
-                    mac_address: db_runner.mac_address,
-                    is_online: false,
-                });
+    let offline_count = match state.audit_logger.get_all_runners() {
+        Ok(db_runners) => {
+            let db_count = db_runners.len();
+            let mut added = 0;
+            for db_runner in db_runners {
+                if !connected_ids.contains(&db_runner.id) {
+                    tracing::debug!("Adding offline runner: {} (MAC: {:?})", db_runner.id, db_runner.mac_address);
+                    runners.push(RunnerInfo {
+                        id: db_runner.id,
+                        name: db_runner.name,
+                        machine_type: db_runner.machine_type,
+                        health: "Offline".to_string(),
+                        loaded_models: vec![],
+                        connected_at: "".to_string(),
+                        last_heartbeat: db_runner.last_seen_at,
+                        http_base_url: None,
+                        mac_address: db_runner.mac_address,
+                        is_online: false,
+                    });
+                    added += 1;
+                }
             }
+            tracing::debug!("Runners: {} in DB, {} connected, {} offline added", db_count, connected_ids.len(), added);
+            added
         }
-    }
+        Err(e) => {
+            tracing::error!("Failed to fetch runners from database: {}", e);
+            0
+        }
+    };
 
     let total = runners.len();
+    tracing::debug!("Returning {} runners ({} connected, {} offline)", total, connected_ids.len(), offline_count);
     Json(RunnersResponse { runners, total })
 }
 
