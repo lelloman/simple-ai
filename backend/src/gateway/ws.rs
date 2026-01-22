@@ -110,6 +110,14 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     // Derive HTTP base URL from socket address and registered port
     let http_base_url = format!("http://{}:{}", addr.ip(), registration.http_port);
 
+    // Look up MAC address from ARP cache
+    let mac_address = crate::arp::lookup_mac(&addr.ip());
+    if let Some(ref mac) = mac_address {
+        tracing::info!("Discovered MAC {} for runner {} ({})", mac, registration.runner_id, addr.ip());
+    } else {
+        tracing::debug!("No MAC address found in ARP cache for {} - WOL will not be available", addr.ip());
+    }
+
     // Register the runner
     state
         .registry
@@ -120,7 +128,7 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
             registration.status.clone(),
             Some(http_base_url),
             tx,
-            registration.mac_address.clone(),
+            mac_address.clone(),
         )
         .await;
 
@@ -128,7 +136,7 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     if let Err(e) = state.audit_logger.upsert_runner(
         &registration.runner_id,
         &registration.runner_name,
-        registration.mac_address.as_deref(),
+        mac_address.as_deref(),
         registration.machine_type.as_deref(),
     ) {
         tracing::warn!("Failed to persist runner {}: {}", registration.runner_id, e);

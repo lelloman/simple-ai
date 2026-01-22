@@ -8,6 +8,7 @@ pub mod logging;
 pub mod gateway;
 pub mod test_util;
 pub mod wol;
+pub mod arp;
 
 pub use config::{Config, WolConfig};
 pub use auth::JwksClient;
