@@ -85,12 +85,16 @@ pub struct GatewayConfig {
 /// Wake-on-LAN configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WolConfig {
-    /// Broadcast address for WOL packets.
+    /// Broadcast address for WOL packets (used when sending directly).
     #[serde(default = "default_wol_broadcast")]
     pub broadcast_address: String,
     /// UDP port for WOL packets (typically 9 or 7).
     #[serde(default = "default_wol_port")]
     pub port: u16,
+    /// URL of WOL bouncer service. If set, WOL packets are sent via this service
+    /// instead of directly. This is useful when running in Docker.
+    #[serde(default)]
+    pub bouncer_url: Option<String>,
 }
 
 // Defaults
@@ -155,6 +159,7 @@ impl Default for WolConfig {
         Self {
             broadcast_address: default_wol_broadcast(),
             port: default_wol_port(),
+            bouncer_url: None,
         }
     }
 }

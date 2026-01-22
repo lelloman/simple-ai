@@ -388,8 +388,14 @@ async fn wake_runner(
         ));
     };
 
-    // Send WOL packet
-    match wol::send_wol(&mac, &state.wol_config.broadcast_address, state.wol_config.port) {
+    // Send WOL packet - via bouncer if configured, otherwise directly
+    let result = if let Some(ref bouncer_url) = state.wol_config.bouncer_url {
+        wol::send_wol_via_bouncer(bouncer_url, &mac, &state.wol_config.broadcast_address).await
+    } else {
+        wol::send_wol(&mac, &state.wol_config.broadcast_address, state.wol_config.port)
+    };
+
+    match result {
         Ok(()) => {
             tracing::info!("Sent WOL packet for runner {} (MAC: {})", runner_id, mac);
             Ok(Json(WakeResponse {

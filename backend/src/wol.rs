@@ -1,6 +1,7 @@
 //! Wake-on-LAN (WOL) implementation.
 //!
 //! Sends magic packets to wake up offline machines.
+//! Supports direct UDP broadcast or sending via a bouncer service (for Docker).
 
 use std::net::UdpSocket;
 
@@ -11,6 +12,8 @@ pub enum WolError {
     InvalidMacAddress(String),
     #[error("Network error: {0}")]
     NetworkError(String),
+    #[error("Bouncer error: {0}")]
+    BouncerError(String),
 }
 
 /// Parse a MAC address string (AA:BB:CC:DD:EE:FF) into bytes.
@@ -90,6 +93,38 @@ pub fn send_wol(mac_address: &str, broadcast_addr: &str, port: u16) -> Result<()
         broadcast_addr,
         port
     );
+
+    Ok(())
+}
+
+/// Send WOL via bouncer service (TCP).
+///
+/// # Arguments
+/// * `bouncer_addr` - Address of the bouncer service (e.g., "localhost:9999")
+/// * `mac_address` - Target MAC address in format AA:BB:CC:DD:EE:FF
+pub async fn send_wol_via_bouncer(
+    bouncer_addr: &str,
+    mac_address: &str,
+    _broadcast_addr: &str,
+) -> Result<(), WolError> {
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpStream;
+
+    // Strip protocol prefix if present
+    let addr = bouncer_addr
+        .trim_start_matches("tcp://")
+        .trim_start_matches("http://");
+
+    let mut stream = TcpStream::connect(addr)
+        .await
+        .map_err(|e| WolError::BouncerError(format!("Failed to connect to bouncer at {}: {}", addr, e)))?;
+
+    stream
+        .write_all(format!("{}\n", mac_address).as_bytes())
+        .await
+        .map_err(|e| WolError::BouncerError(format!("Failed to send MAC to bouncer: {}", e)))?;
+
+    tracing::info!("Sent WOL via bouncer for MAC {}", mac_address);
 
     Ok(())
 }
