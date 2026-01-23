@@ -7,7 +7,9 @@ host = "0.0.0.0"
 port = 8080
 
 [ollama]
+# Direct Ollama URL (used when gateway mode is disabled)
 base_url = "http://localhost:11434"
+# Default model for users with model:specific role
 model = "llama3.2"
 
 [oidc]
@@ -24,3 +26,41 @@ level = "info"
 
 [cors]
 origins = "*"
+
+[gateway]
+# Enable gateway mode to route requests to connected inference runners
+enabled = false
+# Authentication token for runner WebSocket connections
+auth_token = "change-me-in-production"
+# Timeout for stale runner removal (seconds)
+runner_timeout_secs = 60
+# Enable wake-on-demand when no runners available
+auto_wake_enabled = false
+# Timeout waiting for runner to wake (seconds)
+wake_timeout_secs = 90
+# URL of idle-manager service (optional, for orchestrated wake)
+# idle_manager_url = "http://idle-manager:8090"
+
+[wol]
+# Broadcast address for WOL packets
+broadcast_address = "255.255.255.255"
+# UDP port for WOL packets
+port = 9
+# URL of WOL bouncer service (for Docker environments)
+# bouncer_url = "tcp://host.docker.internal:9999"
+
+[models]
+# Model classification for routing and permissions.
+# Users with "model:specific" role can request exact models.
+# Users without it can only request classes: "class:fast" or "class:big".
+# Models not in either list are not available for class-based requests.
+big = [
+    "llama3:70b",
+    "qwen2:72b",
+    "deepseek:67b",
+]
+fast = [
+    "llama3:8b",
+    "mistral:7b",
+    "phi3:mini",
+]
