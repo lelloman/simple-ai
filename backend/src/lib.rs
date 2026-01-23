@@ -10,7 +10,7 @@ pub mod test_util;
 pub mod wol;
 pub mod arp;
 
-pub use config::{Config, WolConfig};
+pub use config::{Config, GatewayConfig, WolConfig};
 pub use auth::JwksClient;
 pub use llm::OllamaClient;
 pub use audit::AuditLogger;
@@ -19,6 +19,7 @@ pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
 pub use auth::AuthUser;
 pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
 pub use gateway::{InferenceRouter, RunnerRegistry};
+pub use wol::WakeService;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -37,4 +38,6 @@ pub struct AppState {
     pub inference_router: Arc<InferenceRouter>,
     /// Wake-on-LAN configuration.
     pub wol_config: WolConfig,
+    /// Wake service for on-demand runner waking.
+    pub wake_service: Arc<WakeService>,
 }

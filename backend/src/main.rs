@@ -6,6 +6,7 @@ use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::llm::OllamaClient;
 use simple_ai_backend::audit::AuditLogger;
 use simple_ai_backend::gateway::{ws_handler, InferenceRouter, RunnerRegistry, WsState};
+use simple_ai_backend::wol::WakeService;
 use simple_ai_backend::AppState;
 
 #[tokio::main]
@@ -36,8 +37,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runner_registry = Arc::new(RunnerRegistry::new());
     let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
 
+    // Initialize wake service for on-demand runner waking
+    let wake_service = Arc::new(WakeService::new(
+        runner_registry.clone(),
+        audit_logger.clone(),
+        config.gateway.clone(),
+        config.wol.clone(),
+    ));
+
     if config.gateway.enabled {
         tracing::info!("Gateway mode enabled - will accept runner connections");
+        if config.gateway.auto_wake_enabled {
+            tracing::info!(
+                "Auto-wake enabled - will wake runners on demand (timeout: {}s)",
+                config.gateway.wake_timeout_secs
+            );
+        }
     } else {
         tracing::info!("Gateway mode disabled - using direct Ollama connection");
     }
@@ -51,6 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         runner_registry: runner_registry.clone(),
         inference_router,
         wol_config: config.wol.clone(),
+        wake_service,
     });
 
     let cors = tower_http::cors::CorsLayer::new()

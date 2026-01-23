@@ -1,9 +1,19 @@
-//! Wake-on-LAN (WOL) implementation.
+//! Wake-on-LAN (WOL) implementation and WakeService.
 //!
 //! Sends magic packets to wake up offline machines.
 //! Supports direct UDP broadcast or sending via a bouncer service (for Docker).
+//! WakeService provides wake-on-demand functionality for the gateway.
 
 use std::net::UdpSocket;
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::sync::broadcast;
+use tokio::time::timeout;
+
+use crate::audit::{AuditLogger, RunnerRecord};
+use crate::config::{GatewayConfig, WolConfig};
+use crate::gateway::RunnerRegistry;
 
 /// Errors that can occur during WOL operations.
 #[derive(Debug, thiserror::Error)]
@@ -206,5 +216,279 @@ mod tests {
 
         let err = WolError::NetworkError("test".to_string());
         assert!(err.to_string().contains("Network error"));
+    }
+}
+
+// ============================================================================
+// WakeService - Wake-on-demand functionality
+// ============================================================================
+
+/// Errors that can occur during wake operations.
+#[derive(Debug, thiserror::Error)]
+pub enum WakeError {
+    #[error("No wakeable runners configured")]
+    NoWakeableRunners,
+    #[error("Failed to wake runners: {0}")]
+    WakeFailed(String),
+    #[error("Timeout waiting for runner to connect after {0}s")]
+    Timeout(u64),
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    #[error("Idle manager error: {0}")]
+    IdleManagerError(String),
+}
+
+/// Result of a successful wake operation.
+#[derive(Debug)]
+pub struct WakeResult {
+    /// ID of the runner that connected.
+    pub runner_id: String,
+    /// How long we waited for the runner to connect.
+    pub wait_duration: Duration,
+    /// Number of runners we attempted to wake.
+    pub runners_woken: usize,
+}
+
+/// Service for waking offline runners on demand.
+pub struct WakeService {
+    registry: Arc<RunnerRegistry>,
+    audit_logger: Arc<AuditLogger>,
+    gateway_config: GatewayConfig,
+    wol_config: WolConfig,
+    http_client: reqwest::Client,
+}
+
+impl WakeService {
+    /// Create a new WakeService.
+    pub fn new(
+        registry: Arc<RunnerRegistry>,
+        audit_logger: Arc<AuditLogger>,
+        gateway_config: GatewayConfig,
+        wol_config: WolConfig,
+    ) -> Self {
+        Self {
+            registry,
+            audit_logger,
+            gateway_config,
+            wol_config,
+            http_client: reqwest::Client::new(),
+        }
+    }
+
+    /// Check if auto-wake is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.gateway_config.auto_wake_enabled
+    }
+
+    /// Find runners that are offline but have MAC addresses (wakeable).
+    ///
+    /// Returns runners from the database that:
+    /// 1. Have a MAC address configured
+    /// 2. Are NOT currently connected (not in live registry)
+    pub async fn find_wakeable_runners(&self) -> Result<Vec<RunnerRecord>, WakeError> {
+        // Get all runners from the database
+        let all_runners = self
+            .audit_logger
+            .get_all_runners()
+            .map_err(|e| WakeError::DatabaseError(e.to_string()))?;
+
+        // Get currently connected runner IDs
+        let connected = self.registry.all().await;
+        let connected_ids: std::collections::HashSet<_> =
+            connected.iter().map(|r| r.id.as_str()).collect();
+
+        // Filter to runners that are offline and have MAC addresses
+        let wakeable: Vec<RunnerRecord> = all_runners
+            .into_iter()
+            .filter(|r| r.mac_address.is_some() && !connected_ids.contains(r.id.as_str()))
+            .collect();
+
+        Ok(wakeable)
+    }
+
+    /// Wake a single runner by MAC address.
+    ///
+    /// Tries idle-manager first (if configured), falls back to direct WOL.
+    async fn wake_runner(&self, runner: &RunnerRecord) -> Result<(), WakeError> {
+        let mac = runner
+            .mac_address
+            .as_ref()
+            .ok_or_else(|| WakeError::WakeFailed("No MAC address".to_string()))?;
+
+        // Try idle-manager first if configured
+        if let Some(ref idle_manager_url) = self.gateway_config.idle_manager_url {
+            match self.wake_via_idle_manager(idle_manager_url, &runner.id).await {
+                Ok(()) => {
+                    tracing::info!(
+                        "Woke runner {} via idle-manager",
+                        runner.id
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to wake {} via idle-manager ({}), falling back to direct WOL",
+                        runner.id,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Fall back to direct WOL
+        if let Some(ref bouncer_url) = self.wol_config.bouncer_url {
+            send_wol_via_bouncer(bouncer_url, mac, &self.wol_config.broadcast_address)
+                .await
+                .map_err(|e| WakeError::WakeFailed(e.to_string()))?;
+        } else {
+            send_wol(mac, &self.wol_config.broadcast_address, self.wol_config.port)
+                .map_err(|e| WakeError::WakeFailed(e.to_string()))?;
+        }
+
+        tracing::info!("Sent WOL packet to runner {} (MAC: {})", runner.id, mac);
+        Ok(())
+    }
+
+    /// Wake runner via idle-manager service.
+    async fn wake_via_idle_manager(
+        &self,
+        idle_manager_url: &str,
+        runner_id: &str,
+    ) -> Result<(), WakeError> {
+        let url = format!("{}/wake/{}", idle_manager_url.trim_end_matches('/'), runner_id);
+
+        let response = self
+            .http_client
+            .post(&url)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| WakeError::IdleManagerError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(WakeError::IdleManagerError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Wake all offline runners and wait for one to connect.
+    ///
+    /// This is the main entry point for wake-on-demand.
+    ///
+    /// # Algorithm:
+    /// 1. Find all wakeable runners (offline with MAC addresses)
+    /// 2. Subscribe to registry connection events BEFORE waking
+    /// 3. Wake all runners (best-effort)
+    /// 4. Wait for any runner to connect or timeout
+    pub async fn wake_and_wait(&self) -> Result<WakeResult, WakeError> {
+        let start = std::time::Instant::now();
+
+        // 1. Find wakeable runners
+        let wakeable = self.find_wakeable_runners().await?;
+        if wakeable.is_empty() {
+            return Err(WakeError::NoWakeableRunners);
+        }
+
+        tracing::info!(
+            "Found {} wakeable runners: {:?}",
+            wakeable.len(),
+            wakeable.iter().map(|r| &r.id).collect::<Vec<_>>()
+        );
+
+        // 2. Subscribe BEFORE waking to avoid race conditions
+        let mut rx = self.registry.subscribe_runner_connected();
+
+        // 3. Wake all runners (best-effort, continue on individual failures)
+        let mut wake_count = 0;
+        for runner in &wakeable {
+            match self.wake_runner(runner).await {
+                Ok(()) => wake_count += 1,
+                Err(e) => {
+                    tracing::warn!("Failed to wake runner {}: {}", runner.id, e);
+                }
+            }
+        }
+
+        if wake_count == 0 {
+            return Err(WakeError::WakeFailed(
+                "All wake attempts failed".to_string(),
+            ));
+        }
+
+        tracing::info!("Sent wake signals to {} runners, waiting for connection...", wake_count);
+
+        // 4. Wait for a runner to connect
+        let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
+        let runner_id = timeout(timeout_duration, async {
+            loop {
+                match rx.recv().await {
+                    Ok(id) => {
+                        tracing::info!("Runner {} connected after wake", id);
+                        return id;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        // Missed some events, continue waiting
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Channel closed, shouldn't happen
+                        break String::new();
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|_| WakeError::Timeout(self.gateway_config.wake_timeout_secs))?;
+
+        if runner_id.is_empty() {
+            return Err(WakeError::Timeout(self.gateway_config.wake_timeout_secs));
+        }
+
+        let wait_duration = start.elapsed();
+        tracing::info!(
+            "Runner {} connected after {:.1}s",
+            runner_id,
+            wait_duration.as_secs_f64()
+        );
+
+        Ok(WakeResult {
+            runner_id,
+            wait_duration,
+            runners_woken: wake_count,
+        })
+    }
+}
+
+#[cfg(test)]
+mod wake_service_tests {
+    use super::*;
+
+    #[test]
+    fn test_wake_error_display() {
+        let err = WakeError::NoWakeableRunners;
+        assert!(err.to_string().contains("No wakeable runners"));
+
+        let err = WakeError::Timeout(90);
+        assert!(err.to_string().contains("90s"));
+
+        let err = WakeError::WakeFailed("test".to_string());
+        assert!(err.to_string().contains("test"));
+    }
+
+    #[test]
+    fn test_wake_result_struct() {
+        let result = WakeResult {
+            runner_id: "runner-1".to_string(),
+            wait_duration: Duration::from_secs(5),
+            runners_woken: 2,
+        };
+        assert_eq!(result.runner_id, "runner-1");
+        assert_eq!(result.runners_woken, 2);
     }
 }

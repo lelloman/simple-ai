@@ -7,9 +7,9 @@
 //! - Request proxying to runners
 
 mod registry;
-mod router;
+pub mod router;
 mod ws;
 
 pub use registry::{ConnectedRunner, RunnerRegistry};
-pub use router::InferenceRouter;
+pub use router::{InferenceRouter, RouterError};
 pub use ws::{ws_handler, WsState};

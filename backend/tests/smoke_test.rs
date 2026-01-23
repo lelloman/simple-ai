@@ -1,4 +1,4 @@
-use simple_ai_backend::{routes, AppState, Config, InferenceRouter, RunnerRegistry};
+use simple_ai_backend::{routes, AppState, Config, InferenceRouter, RunnerRegistry, WakeService};
 use simple_ai_backend::auth::{JwksClient, AuthError};
 use simple_ai_backend::llm::OllamaClient;
 use simple_ai_backend::audit::AuditLogger;
@@ -75,6 +75,12 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
     let runner_registry = Arc::new(RunnerRegistry::new());
     let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
     let wol_config = config.wol.clone();
+    let wake_service = Arc::new(WakeService::new(
+        runner_registry.clone(),
+        audit_logger.clone(),
+        config.gateway.clone(),
+        config.wol.clone(),
+    ));
 
     Ok(Arc::new(AppState {
         config,
@@ -85,6 +91,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         runner_registry,
         inference_router,
         wol_config,
+        wake_service,
     }))
 }
 

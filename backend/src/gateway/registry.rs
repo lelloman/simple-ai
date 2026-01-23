@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 
 use simple_ai_common::{GatewayMessage, RunnerStatus};
 
@@ -55,17 +55,41 @@ impl ConnectedRunner {
 }
 
 /// Registry of connected inference runners.
-#[derive(Debug, Default)]
 pub struct RunnerRegistry {
     runners: RwLock<HashMap<String, ConnectedRunner>>,
+    /// Broadcast channel for runner connection events.
+    runner_connected_tx: broadcast::Sender<String>,
+}
+
+impl Default for RunnerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for RunnerRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunnerRegistry")
+            .field("runners", &"<RwLock<...>>")
+            .field("runner_connected_tx", &"<broadcast::Sender>")
+            .finish()
+    }
 }
 
 impl RunnerRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
+        let (tx, _) = broadcast::channel(16);
         Self {
             runners: RwLock::new(HashMap::new()),
+            runner_connected_tx: tx,
         }
+    }
+
+    /// Subscribe to runner connection events.
+    /// Returns a receiver that will receive runner IDs when runners connect.
+    pub fn subscribe_runner_connected(&self) -> broadcast::Receiver<String> {
+        self.runner_connected_tx.subscribe()
     }
 
     /// Register a new runner.
@@ -91,7 +115,11 @@ impl RunnerRegistry {
             tx,
             mac_address,
         };
-        self.runners.write().await.insert(id, runner);
+        self.runners.write().await.insert(id.clone(), runner);
+
+        // Notify subscribers that a runner connected
+        // Ignore send errors (no active subscribers)
+        let _ = self.runner_connected_tx.send(id);
     }
 
     /// Remove a runner from the registry.

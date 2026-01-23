@@ -12,6 +12,7 @@ use crate::llm::OllamaClient;
 use crate::audit::AuditLogger;
 use crate::auth::JwksClient;
 use crate::gateway::{InferenceRouter, RunnerRegistry};
+use crate::wol::WakeService;
 
 pub fn test_config() -> Config {
     Config {
@@ -50,6 +51,12 @@ pub async fn create_test_state() -> AppState {
     let runner_registry = Arc::new(RunnerRegistry::new());
     let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
     let wol_config = config.wol.clone();
+    let wake_service = Arc::new(WakeService::new(
+        runner_registry.clone(),
+        audit_logger.clone(),
+        config.gateway.clone(),
+        config.wol.clone(),
+    ));
 
     AppState {
         config,
@@ -60,6 +67,7 @@ pub async fn create_test_state() -> AppState {
         runner_registry,
         inference_router,
         wol_config,
+        wake_service,
     }
 }
 

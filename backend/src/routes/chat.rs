@@ -9,8 +9,10 @@ use axum::{
 use axum::http::HeaderMap;
 
 use crate::AppState;
+use crate::gateway::RouterError;
 use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
 use crate::models::request::{Request, Response};
+use crate::wol::WakeError;
 
 /// POST /v1/chat/completions - OpenAI-compatible chat endpoint
 async fn chat_completions(
@@ -49,11 +51,49 @@ async fn chat_completions(
 
     // Forward to appropriate backend (gateway or direct Ollama)
     let result = if state.config.gateway.enabled {
-        state
-            .inference_router
-            .chat_completion(&model, &request)
-            .await
-            .map_err(|e| crate::llm::OllamaError::ConnectionFailed(e.to_string()))
+        // Try gateway routing
+        match state.inference_router.chat_completion(&model, &request).await {
+            Ok(resp) => Ok(resp),
+            Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
+                // No runners available, try wake-on-demand
+                tracing::info!("No runners available, attempting wake-on-demand");
+
+                match state.wake_service.wake_and_wait().await {
+                    Ok(wake_result) => {
+                        tracing::info!(
+                            "Runner {} connected after {:.1}s, retrying request",
+                            wake_result.runner_id,
+                            wake_result.wait_duration.as_secs_f64()
+                        );
+                        // Retry the request now that a runner is available
+                        state
+                            .inference_router
+                            .chat_completion(&model, &request)
+                            .await
+                            .map_err(|e| crate::llm::OllamaError::ConnectionFailed(e.to_string()))
+                    }
+                    Err(WakeError::NoWakeableRunners) => {
+                        Err(crate::llm::OllamaError::ConnectionFailed(
+                            "No runners available and no wakeable runners configured".to_string(),
+                        ))
+                    }
+                    Err(WakeError::Timeout(secs)) => {
+                        Err(crate::llm::OllamaError::ConnectionFailed(format!(
+                            "No runners available after waiting {}s for wake",
+                            secs
+                        )))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Wake-on-demand failed: {}", e);
+                        Err(crate::llm::OllamaError::ConnectionFailed(format!(
+                            "Failed to wake inference runners: {}",
+                            e
+                        )))
+                    }
+                }
+            }
+            Err(e) => Err(crate::llm::OllamaError::ConnectionFailed(e.to_string())),
+        }
     } else {
         state.ollama_client.chat(&request, &model).await
     };

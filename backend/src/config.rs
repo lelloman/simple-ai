@@ -80,6 +80,16 @@ pub struct GatewayConfig {
     /// Timeout for stale runner removal (seconds).
     #[serde(default = "default_runner_timeout")]
     pub runner_timeout_secs: u64,
+    /// URL of idle-manager service (e.g., "http://idle-manager:8090").
+    /// If set, WOL requests are sent to idle-manager instead of direct WOL.
+    #[serde(default)]
+    pub idle_manager_url: Option<String>,
+    /// Timeout for waiting for runners to wake (seconds). Default: 90
+    #[serde(default = "default_wake_timeout")]
+    pub wake_timeout_secs: u64,
+    /// Whether to auto-wake runners when no runners available. Default: false
+    #[serde(default)]
+    pub auto_wake_enabled: bool,
 }
 
 /// Wake-on-LAN configuration.
@@ -108,6 +118,7 @@ fn default_cors_origins() -> String { "*".to_string() }
 fn default_language_model_path() -> String { "/data/lid.176.ftz".to_string() }
 fn default_gateway_auth_token() -> String { "change-me-in-production".to_string() }
 fn default_runner_timeout() -> u64 { 90 }
+fn default_wake_timeout() -> u64 { 90 }
 fn default_wol_broadcast() -> String { "255.255.255.255".to_string() }
 fn default_wol_port() -> u16 { 9 }
 
@@ -150,6 +161,9 @@ impl Default for GatewayConfig {
             enabled: false,
             auth_token: default_gateway_auth_token(),
             runner_timeout_secs: default_runner_timeout(),
+            idle_manager_url: None,
+            wake_timeout_secs: default_wake_timeout(),
+            auto_wake_enabled: false,
         }
     }
 }
@@ -194,6 +208,8 @@ impl Config {
             .set_default("gateway.enabled", false)?
             .set_default("gateway.auth_token", default_gateway_auth_token())?
             .set_default("gateway.runner_timeout_secs", default_runner_timeout() as i64)?
+            .set_default("gateway.wake_timeout_secs", default_wake_timeout() as i64)?
+            .set_default("gateway.auto_wake_enabled", false)?
             .set_default("wol.broadcast_address", default_wol_broadcast())?
             .set_default("wol.port", default_wol_port() as i64)?
             // Load from config.toml if it exists
@@ -323,5 +339,8 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.auth_token, "change-me-in-production");
         assert_eq!(config.runner_timeout_secs, 90);
+        assert_eq!(config.wake_timeout_secs, 90);
+        assert!(!config.auto_wake_enabled);
+        assert!(config.idle_manager_url.is_none());
     }
 }
