@@ -13,7 +13,8 @@ use tokio::time::timeout;
 
 use crate::audit::{AuditLogger, RunnerRecord};
 use crate::config::{GatewayConfig, WolConfig};
-use crate::gateway::RunnerRegistry;
+use crate::config::ModelsConfig;
+use crate::gateway::{classify_model, ModelRequest, RunnerRegistry};
 
 /// Errors that can occur during WOL operations.
 #[derive(Debug, thiserror::Error)]
@@ -255,6 +256,7 @@ pub struct WakeService {
     audit_logger: Arc<AuditLogger>,
     gateway_config: GatewayConfig,
     wol_config: WolConfig,
+    models_config: ModelsConfig,
     http_client: reqwest::Client,
 }
 
@@ -265,12 +267,14 @@ impl WakeService {
         audit_logger: Arc<AuditLogger>,
         gateway_config: GatewayConfig,
         wol_config: WolConfig,
+        models_config: ModelsConfig,
     ) -> Self {
         Self {
             registry,
             audit_logger,
             gateway_config,
             wol_config,
+            models_config,
             http_client: reqwest::Client::new(),
         }
     }
@@ -285,7 +289,11 @@ impl WakeService {
     /// Returns runners from the database that:
     /// 1. Have a MAC address configured
     /// 2. Are NOT currently connected (not in live registry)
-    pub async fn find_wakeable_runners(&self) -> Result<Vec<RunnerRecord>, WakeError> {
+    /// 3. Have models matching the requested model/class (if specified)
+    pub async fn find_wakeable_runners(
+        &self,
+        model_request: Option<&ModelRequest>,
+    ) -> Result<Vec<RunnerRecord>, WakeError> {
         // Get all runners from the database
         let all_runners = self
             .audit_logger
@@ -298,12 +306,54 @@ impl WakeService {
             connected.iter().map(|r| r.id.as_str()).collect();
 
         // Filter to runners that are offline and have MAC addresses
-        let wakeable: Vec<RunnerRecord> = all_runners
+        let mut wakeable: Vec<RunnerRecord> = all_runners
             .into_iter()
             .filter(|r| r.mac_address.is_some() && !connected_ids.contains(r.id.as_str()))
             .collect();
 
+        // Further filter by model request if specified
+        if let Some(request) = model_request {
+            wakeable = wakeable
+                .into_iter()
+                .filter(|r| self.runner_matches_request(r, request))
+                .collect();
+        }
+
+        // Sort by last_seen_at descending (most recently seen first)
+        wakeable.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
+
         Ok(wakeable)
+    }
+
+    /// Check if a runner has models matching the request.
+    fn runner_matches_request(&self, runner: &RunnerRecord, request: &ModelRequest) -> bool {
+        match request {
+            ModelRequest::Specific(model_id) => {
+                // Check if runner has this specific model
+                runner.available_models.iter().any(|m| m == model_id)
+            }
+            ModelRequest::Class(class) => {
+                // Check if runner has any model of this class
+                runner
+                    .available_models
+                    .iter()
+                    .any(|m| classify_model(m, &self.models_config) == Some(*class))
+            }
+        }
+    }
+
+    /// Find the best runner to wake for a model request.
+    ///
+    /// Returns the most recently seen runner that:
+    /// 1. Is offline
+    /// 2. Has a MAC address
+    /// 3. Has models matching the request
+    pub async fn find_best_runner_to_wake(
+        &self,
+        model_request: &ModelRequest,
+    ) -> Result<Option<RunnerRecord>, WakeError> {
+        let wakeable = self.find_wakeable_runners(Some(model_request)).await?;
+        Ok(wakeable.into_iter().next())
     }
 
     /// Wake a single runner by MAC address.
@@ -377,51 +427,38 @@ impl WakeService {
         Ok(())
     }
 
-    /// Wake all offline runners and wait for one to connect.
+    /// Wake a runner that can handle the model request and wait for it to connect.
     ///
     /// This is the main entry point for wake-on-demand.
     ///
     /// # Algorithm:
-    /// 1. Find all wakeable runners (offline with MAC addresses)
+    /// 1. Find the best wakeable runner for the model request
     /// 2. Subscribe to registry connection events BEFORE waking
-    /// 3. Wake all runners (best-effort)
-    /// 4. Wait for any runner to connect or timeout
-    pub async fn wake_and_wait(&self) -> Result<WakeResult, WakeError> {
+    /// 3. Wake the runner
+    /// 4. Wait for it to connect or timeout
+    pub async fn wake_and_wait(&self, model_request: &ModelRequest) -> Result<WakeResult, WakeError> {
         let start = std::time::Instant::now();
 
-        // 1. Find wakeable runners
-        let wakeable = self.find_wakeable_runners().await?;
-        if wakeable.is_empty() {
-            return Err(WakeError::NoWakeableRunners);
-        }
+        // 1. Find the best runner for this request
+        let runner = self
+            .find_best_runner_to_wake(model_request)
+            .await?
+            .ok_or(WakeError::NoWakeableRunners)?;
 
         tracing::info!(
-            "Found {} wakeable runners: {:?}",
-            wakeable.len(),
-            wakeable.iter().map(|r| &r.id).collect::<Vec<_>>()
+            "Found wakeable runner {} for {:?} (models: {:?})",
+            runner.id,
+            model_request,
+            runner.available_models
         );
 
         // 2. Subscribe BEFORE waking to avoid race conditions
         let mut rx = self.registry.subscribe_runner_connected();
 
-        // 3. Wake all runners (best-effort, continue on individual failures)
-        let mut wake_count = 0;
-        for runner in &wakeable {
-            match self.wake_runner(runner).await {
-                Ok(()) => wake_count += 1,
-                Err(e) => {
-                    tracing::warn!("Failed to wake runner {}: {}", runner.id, e);
-                }
-            }
-        }
+        // 3. Wake the runner
+        self.wake_runner(&runner).await?;
 
-        if wake_count == 0 {
-            return Err(WakeError::WakeFailed(
-                "All wake attempts failed".to_string(),
-            ));
-        }
-
-        tracing::info!("Sent wake signals to {} runners, waiting for connection...", wake_count);
+        tracing::info!("Sent wake signal to runner {}, waiting for connection...", runner.id);
 
         // 4. Wait for a runner to connect
         let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
@@ -460,7 +497,7 @@ impl WakeService {
         Ok(WakeResult {
             runner_id,
             wait_duration,
-            runners_woken: wake_count,
+            runners_woken: 1,
         })
     }
 }

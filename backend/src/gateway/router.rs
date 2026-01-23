@@ -8,6 +8,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::config::ModelsConfig;
+use super::model_class::{classify_model, ModelClass, ModelRequest};
 use super::{ConnectedRunner, RunnerRegistry};
 
 /// Errors from the inference router.
@@ -17,6 +19,8 @@ pub enum RouterError {
     NoRunners,
     #[error("No runners have model '{0}' loaded")]
     ModelNotLoaded(String),
+    #[error("No runners have models of class '{0}'")]
+    NoModelsOfClass(String),
     #[error("Failed to connect to runner: {0}")]
     ConnectionFailed(String),
     #[error("Runner returned error: {0}")]
@@ -37,17 +41,26 @@ pub enum LoadBalanceStrategy {
     PreferMachineType,
 }
 
+/// Result of runner selection, includes the resolved model name.
+#[derive(Debug)]
+struct SelectedRunner {
+    runner: ConnectedRunner,
+    /// The actual model to use (resolved from class if needed).
+    resolved_model: String,
+}
+
 /// Router for distributing inference requests to runners.
 pub struct InferenceRouter {
     registry: Arc<RunnerRegistry>,
     http_client: Client,
     strategy: LoadBalanceStrategy,
     round_robin_counter: AtomicUsize,
+    models_config: ModelsConfig,
 }
 
 impl InferenceRouter {
     /// Create a new router.
-    pub fn new(registry: Arc<RunnerRegistry>) -> Self {
+    pub fn new(registry: Arc<RunnerRegistry>, models_config: ModelsConfig) -> Self {
         Self {
             registry,
             http_client: Client::builder()
@@ -56,11 +69,12 @@ impl InferenceRouter {
                 .expect("Failed to create HTTP client"),
             strategy: LoadBalanceStrategy::RoundRobin,
             round_robin_counter: AtomicUsize::new(0),
+            models_config,
         }
     }
 
     /// Create a router with a specific strategy.
-    pub fn with_strategy(registry: Arc<RunnerRegistry>, strategy: LoadBalanceStrategy) -> Self {
+    pub fn with_strategy(registry: Arc<RunnerRegistry>, strategy: LoadBalanceStrategy, models_config: ModelsConfig) -> Self {
         Self {
             registry,
             http_client: Client::builder()
@@ -69,36 +83,73 @@ impl InferenceRouter {
                 .expect("Failed to create HTTP client"),
             strategy,
             round_robin_counter: AtomicUsize::new(0),
+            models_config,
         }
     }
 
     /// Route a chat completion request to an appropriate runner.
+    ///
+    /// The model parameter can be:
+    /// - A specific model ID (e.g., "llama3:8b")
+    /// - A class request (e.g., "class:fast" or "class:big")
     pub async fn chat_completion<Req, Resp>(
         &self,
         model: &str,
         request: &Req,
     ) -> Result<Resp, RouterError>
     where
-        Req: Serialize,
+        Req: Serialize + Clone,
         Resp: DeserializeOwned,
     {
-        let runner = self.select_runner(Some(model)).await?;
-        self.proxy_request(&runner, "/v1/chat/completions", request)
-            .await
+        let selection = self.select_runner_for_model(model).await?;
+
+        // If it was a class request, we need to modify the request to use the resolved model
+        let model_request = ModelRequest::parse(model);
+        if model_request.is_class_request() {
+            // Clone and modify the request to use the resolved model
+            // We need to serialize, modify, and re-serialize
+            let mut request_value = serde_json::to_value(request)
+                .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+            if let Some(obj) = request_value.as_object_mut() {
+                obj.insert("model".to_string(), serde_json::Value::String(selection.resolved_model.clone()));
+            }
+            self.proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
+                .await
+        } else {
+            self.proxy_request(&selection.runner, "/v1/chat/completions", request)
+                .await
+        }
     }
 
     /// Route a chat completion request and return the raw response for streaming.
+    ///
+    /// The model parameter can be:
+    /// - A specific model ID (e.g., "llama3:8b")
+    /// - A class request (e.g., "class:fast" or "class:big")
     pub async fn chat_completion_raw<Req>(
         &self,
         model: &str,
         request: &Req,
     ) -> Result<reqwest::Response, RouterError>
     where
-        Req: Serialize,
+        Req: Serialize + Clone,
     {
-        let runner = self.select_runner(Some(model)).await?;
-        self.proxy_request_raw(&runner, "/v1/chat/completions", request)
-            .await
+        let selection = self.select_runner_for_model(model).await?;
+
+        // If it was a class request, we need to modify the request to use the resolved model
+        let model_request = ModelRequest::parse(model);
+        if model_request.is_class_request() {
+            let mut request_value = serde_json::to_value(request)
+                .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+            if let Some(obj) = request_value.as_object_mut() {
+                obj.insert("model".to_string(), serde_json::Value::String(selection.resolved_model.clone()));
+            }
+            self.proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
+                .await
+        } else {
+            self.proxy_request_raw(&selection.runner, "/v1/chat/completions", request)
+                .await
+        }
     }
 
     /// Get models from all runners.
@@ -119,7 +170,107 @@ impl InferenceRouter {
         Ok(self.registry.all_models().await)
     }
 
-    /// Select a runner for the request.
+    /// Select a runner for the given model string.
+    ///
+    /// Handles both specific model requests and class requests.
+    async fn select_runner_for_model(&self, model: &str) -> Result<SelectedRunner, RouterError> {
+        let model_request = ModelRequest::parse(model);
+
+        match model_request {
+            ModelRequest::Specific(model_id) => {
+                let runner = self.select_runner_for_specific(&model_id).await?;
+                Ok(SelectedRunner {
+                    runner,
+                    resolved_model: model_id,
+                })
+            }
+            ModelRequest::Class(class) => {
+                self.select_runner_for_class(class).await
+            }
+        }
+    }
+
+    /// Select a runner for a specific model.
+    async fn select_runner_for_specific(&self, model_id: &str) -> Result<ConnectedRunner, RouterError> {
+        let with_model = self.registry.with_model(model_id).await;
+        if with_model.is_empty() {
+            // Check if any runner is operational
+            let operational = self.registry.operational().await;
+            if operational.is_empty() {
+                return Err(RouterError::NoRunners);
+            }
+            // Model not loaded on any runner - return first operational
+            // The runner will load the model on demand
+            return Ok(self.select_from_candidates(&operational));
+        }
+        Ok(self.select_from_candidates(&with_model))
+    }
+
+    /// Select a runner for a model class.
+    ///
+    /// Finds runners that have models of the requested class and picks one.
+    async fn select_runner_for_class(&self, class: ModelClass) -> Result<SelectedRunner, RouterError> {
+        let operational = self.registry.operational().await;
+        if operational.is_empty() {
+            return Err(RouterError::NoRunners);
+        }
+
+        // Find runners with models of the requested class
+        let mut candidates_with_models: Vec<(ConnectedRunner, String)> = Vec::new();
+
+        for runner in &operational {
+            // Get models from this runner that match the class
+            for model in &runner.status.engines.iter()
+                .flat_map(|e| e.available_models.iter())
+                .collect::<Vec<_>>()
+            {
+                if classify_model(&model.id, &self.models_config) == Some(class) {
+                    candidates_with_models.push((runner.clone(), model.id.clone()));
+                    break; // One model per runner is enough
+                }
+            }
+        }
+
+        if candidates_with_models.is_empty() {
+            return Err(RouterError::NoModelsOfClass(class.to_string()));
+        }
+
+        // Select using load balancing
+        let idx = match self.strategy {
+            LoadBalanceStrategy::RoundRobin => {
+                self.round_robin_counter.fetch_add(1, Ordering::Relaxed) % candidates_with_models.len()
+            }
+            LoadBalanceStrategy::Random => {
+                use std::collections::hash_map::RandomState;
+                use std::hash::{BuildHasher, Hasher};
+                let hasher = RandomState::new().build_hasher();
+                hasher.finish() as usize % candidates_with_models.len()
+            }
+            LoadBalanceStrategy::PreferMachineType => {
+                // Prefer GPU runners for big models
+                candidates_with_models
+                    .iter()
+                    .position(|(r, _)| r.machine_type.as_deref() == Some("gpu-server"))
+                    .unwrap_or(0)
+            }
+        };
+
+        let (runner, resolved_model) = candidates_with_models.into_iter().nth(idx).unwrap();
+        tracing::info!(
+            "Selected runner {} with model {} for class:{}",
+            runner.id,
+            resolved_model,
+            class
+        );
+
+        Ok(SelectedRunner {
+            runner,
+            resolved_model,
+        })
+    }
+
+    /// Select a runner for the request (legacy method for backward compatibility).
+    #[allow(dead_code)]
     async fn select_runner(&self, model: Option<&str>) -> Result<ConnectedRunner, RouterError> {
         let candidates = if let Some(model_id) = model {
             let with_model = self.registry.with_model(model_id).await;
@@ -251,6 +402,83 @@ impl InferenceRouter {
 
         Ok(response)
     }
+
+    /// Proxy a request with a JSON Value body and deserialize the response.
+    async fn proxy_request_value<Resp>(
+        &self,
+        runner: &ConnectedRunner,
+        path: &str,
+        request: serde_json::Value,
+    ) -> Result<Resp, RouterError>
+    where
+        Resp: DeserializeOwned,
+    {
+        let base_url = runner
+            .http_base_url
+            .as_ref()
+            .ok_or_else(|| RouterError::ConnectionFailed("Runner has no HTTP URL".to_string()))?;
+
+        let url = format!("{}{}", base_url, path);
+        tracing::debug!("Proxying request to {} (runner: {})", url, runner.id);
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(RouterError::RunnerError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        response.json().await.map_err(RouterError::RequestFailed)
+    }
+
+    /// Proxy a request with a JSON Value body and return the raw response (for streaming).
+    async fn proxy_request_raw_value(
+        &self,
+        runner: &ConnectedRunner,
+        path: &str,
+        request: serde_json::Value,
+    ) -> Result<reqwest::Response, RouterError> {
+        let base_url = runner
+            .http_base_url
+            .as_ref()
+            .ok_or_else(|| RouterError::ConnectionFailed("Runner has no HTTP URL".to_string()))?;
+
+        let url = format!("{}{}", base_url, path);
+        tracing::debug!(
+            "Proxying streaming request to {} (runner: {})",
+            url,
+            runner.id
+        );
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(RouterError::RunnerError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        Ok(response)
+    }
 }
 
 /// Model entry for /v1/models response.
@@ -298,7 +526,7 @@ mod tests {
     #[tokio::test]
     async fn test_select_runner_no_runners() {
         let registry = Arc::new(RunnerRegistry::new());
-        let router = InferenceRouter::new(registry);
+        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
 
         let result = router.select_runner(Some("model")).await;
         assert!(matches!(result, Err(RouterError::NoRunners)));
@@ -321,7 +549,7 @@ mod tests {
             )
             .await;
 
-        let router = InferenceRouter::new(registry);
+        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
         let result = router.select_runner(Some("llama3")).await;
 
         assert!(result.is_ok());
@@ -359,7 +587,7 @@ mod tests {
             )
             .await;
 
-        let router = InferenceRouter::new(registry);
+        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
 
         // Round-robin should alternate
         let r1 = router.select_runner(Some("model")).await.unwrap();
@@ -400,7 +628,7 @@ mod tests {
             )
             .await;
 
-        let router = InferenceRouter::new(registry);
+        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
         let models = router.list_models().await.unwrap();
 
         assert_eq!(models.len(), 3);

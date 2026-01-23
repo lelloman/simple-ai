@@ -35,7 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize gateway components
     let runner_registry = Arc::new(RunnerRegistry::new());
-    let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
+    let inference_router = Arc::new(InferenceRouter::new(
+        runner_registry.clone(),
+        config.models.clone(),
+    ));
 
     // Initialize wake service for on-demand runner waking
     let wake_service = Arc::new(WakeService::new(
@@ -43,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         audit_logger.clone(),
         config.gateway.clone(),
         config.wol.clone(),
+        config.models.clone(),
     ));
 
     if config.gateway.enabled {

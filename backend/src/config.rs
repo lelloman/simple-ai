@@ -25,6 +25,9 @@ pub struct Config {
     /// Wake-on-LAN configuration.
     #[serde(default)]
     pub wol: WolConfig,
+    /// Model classification configuration.
+    #[serde(default)]
+    pub models: ModelsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,6 +108,58 @@ pub struct WolConfig {
     /// instead of directly. This is useful when running in Docker.
     #[serde(default)]
     pub bouncer_url: Option<String>,
+}
+
+/// Model classification configuration.
+///
+/// Models are classified into classes for routing and permissions:
+/// - `big`: Large models (70B+ parameters) - slower but more capable
+/// - `fast`: Smaller models - faster inference
+///
+/// Models not listed in either list are not available for class-based requests.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelsConfig {
+    /// Models classified as "big" (large/capable).
+    /// Exact model IDs (case-insensitive).
+    #[serde(default)]
+    pub big: Vec<String>,
+    /// Models classified as "fast" (small/quick).
+    /// Exact model IDs (case-insensitive).
+    #[serde(default)]
+    pub fast: Vec<String>,
+}
+
+impl Default for ModelsConfig {
+    fn default() -> Self {
+        Self {
+            big: vec![],
+            fast: vec![],
+        }
+    }
+}
+
+impl ModelsConfig {
+    /// Classify a model ID into a class name.
+    ///
+    /// Returns Some("big") if in the `big` list, Some("fast") if in the `fast` list,
+    /// or None if the model is not configured in either list.
+    pub fn classify(&self, model_id: &str) -> Option<&'static str> {
+        let lower = model_id.to_lowercase();
+
+        for id in &self.big {
+            if lower == id.to_lowercase() {
+                return Some("big");
+            }
+        }
+
+        for id in &self.fast {
+            if lower == id.to_lowercase() {
+                return Some("fast");
+            }
+        }
+
+        None
+    }
 }
 
 // Defaults

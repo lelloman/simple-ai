@@ -139,12 +139,21 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
         )
         .await;
 
+    // Extract available models from runner status
+    let available_models: Vec<String> = registration
+        .status
+        .engines
+        .iter()
+        .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
+        .collect();
+
     // Persist runner to database for WOL and offline tracking
     if let Err(e) = state.audit_logger.upsert_runner(
         &registration.runner_id,
         &registration.runner_name,
         mac_address.as_deref(),
         registration.machine_type.as_deref(),
+        Some(&available_models),
     ) {
         tracing::warn!("Failed to persist runner {}: {}", registration.runner_id, e);
     }

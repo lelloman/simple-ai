@@ -104,10 +104,17 @@ impl AuditLogger {
                 name TEXT NOT NULL,
                 mac_address TEXT,
                 machine_type TEXT,
-                last_seen_at TEXT NOT NULL
+                last_seen_at TEXT NOT NULL,
+                available_models TEXT
             )",
             [],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Migration: add available_models column if it doesn't exist
+        let _ = conn.execute(
+            "ALTER TABLE runners ADD COLUMN available_models TEXT",
+            [],
+        ); // Ignore error if column already exists
 
         tracing::info!("Audit logger initialized with database: {}", path);
 
@@ -492,6 +499,8 @@ pub struct RunnerRecord {
     pub mac_address: Option<String>,
     pub machine_type: Option<String>,
     pub last_seen_at: String,
+    /// Available models on this runner (JSON array of model IDs).
+    pub available_models: Vec<String>,
 }
 
 impl AuditLogger {
@@ -502,24 +511,27 @@ impl AuditLogger {
         name: &str,
         mac_address: Option<&str>,
         machine_type: Option<&str>,
+        available_models: Option<&[String]>,
     ) -> Result<(), AuditError> {
         let conn = self.conn.lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let now = Utc::now().to_rfc3339();
+        let models_json = available_models.map(|m| serde_json::to_string(m).unwrap_or_default());
 
         conn.execute(
-            "INSERT INTO runners (id, name, mac_address, machine_type, last_seen_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO runners (id, name, mac_address, machine_type, last_seen_at, available_models)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 mac_address = COALESCE(excluded.mac_address, runners.mac_address),
                 machine_type = COALESCE(excluded.machine_type, runners.machine_type),
-                last_seen_at = excluded.last_seen_at",
-            params![id, name, mac_address, machine_type, now],
+                last_seen_at = excluded.last_seen_at,
+                available_models = COALESCE(excluded.available_models, runners.available_models)",
+            params![id, name, mac_address, machine_type, now, models_json],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        tracing::debug!("Upserted runner: {}", id);
+        tracing::debug!("Upserted runner: {} with {} models", id, available_models.map(|m| m.len()).unwrap_or(0));
         Ok(())
     }
 
@@ -529,15 +541,22 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let result = conn.query_row(
-            "SELECT id, name, mac_address, machine_type, last_seen_at FROM runners WHERE id = ?1",
+            "SELECT id, name, mac_address, machine_type, last_seen_at, available_models FROM runners WHERE id = ?1",
             params![id],
-            |row| Ok(RunnerRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                mac_address: row.get(2)?,
-                machine_type: row.get(3)?,
-                last_seen_at: row.get(4)?,
-            }),
+            |row| {
+                let models_json: Option<String> = row.get(5)?;
+                let available_models = models_json
+                    .and_then(|j| serde_json::from_str(&j).ok())
+                    .unwrap_or_default();
+                Ok(RunnerRecord {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    mac_address: row.get(2)?,
+                    machine_type: row.get(3)?,
+                    last_seen_at: row.get(4)?,
+                    available_models,
+                })
+            },
         );
 
         match result {
@@ -553,16 +572,21 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, mac_address, machine_type, last_seen_at FROM runners ORDER BY last_seen_at DESC"
+            "SELECT id, name, mac_address, machine_type, last_seen_at, available_models FROM runners ORDER BY last_seen_at DESC"
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let rows = stmt.query_map([], |row| {
+            let models_json: Option<String> = row.get(5)?;
+            let available_models = models_json
+                .and_then(|j| serde_json::from_str(&j).ok())
+                .unwrap_or_default();
             Ok(RunnerRecord {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 mac_address: row.get(2)?,
                 machine_type: row.get(3)?,
                 last_seen_at: row.get(4)?,
+                available_models,
             })
         }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -571,6 +595,32 @@ impl AuditLogger {
             runners.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
         }
         Ok(runners)
+    }
+
+    /// Get runners that have a model of the specified class.
+    pub fn get_runners_by_model_class(
+        &self,
+        class: crate::gateway::ModelClass,
+        models_config: &crate::config::ModelsConfig,
+    ) -> Result<Vec<RunnerRecord>, AuditError> {
+        let all = self.get_all_runners()?;
+        Ok(all
+            .into_iter()
+            .filter(|r| {
+                r.available_models
+                    .iter()
+                    .any(|m| crate::gateway::classify_model(m, models_config) == Some(class))
+            })
+            .collect())
+    }
+
+    /// Get runners that have a specific model.
+    pub fn get_runners_by_model(&self, model_id: &str) -> Result<Vec<RunnerRecord>, AuditError> {
+        let all = self.get_all_runners()?;
+        Ok(all
+            .into_iter()
+            .filter(|r| r.available_models.iter().any(|m| m == model_id))
+            .collect())
     }
 }
 
@@ -909,11 +959,13 @@ mod tests {
     #[test]
     fn test_upsert_runner_new() {
         let logger = create_test_logger();
+        let models = vec!["llama3:8b".to_string(), "mistral:7b".to_string()];
         logger.upsert_runner(
             "runner-1",
             "Test Runner",
             Some("AA:BB:CC:DD:EE:FF"),
             Some("gpu-server"),
+            Some(&models),
         ).unwrap();
 
         let runner = logger.get_runner("runner-1").unwrap().unwrap();
@@ -921,6 +973,7 @@ mod tests {
         assert_eq!(runner.name, "Test Runner");
         assert_eq!(runner.mac_address, Some("AA:BB:CC:DD:EE:FF".to_string()));
         assert_eq!(runner.machine_type, Some("gpu-server".to_string()));
+        assert_eq!(runner.available_models, models);
     }
 
     #[test]
@@ -928,25 +981,28 @@ mod tests {
         let logger = create_test_logger();
 
         // Initial insert
-        logger.upsert_runner("runner-1", "Old Name", Some("AA:BB:CC:DD:EE:FF"), None).unwrap();
+        let models = vec!["llama3:8b".to_string()];
+        logger.upsert_runner("runner-1", "Old Name", Some("AA:BB:CC:DD:EE:FF"), None, Some(&models)).unwrap();
 
-        // Update with new name, keeps MAC address
-        logger.upsert_runner("runner-1", "New Name", None, Some("cpu-server")).unwrap();
+        // Update with new name, keeps MAC address and models
+        logger.upsert_runner("runner-1", "New Name", None, Some("cpu-server"), None).unwrap();
 
         let runner = logger.get_runner("runner-1").unwrap().unwrap();
         assert_eq!(runner.name, "New Name");
         assert_eq!(runner.mac_address, Some("AA:BB:CC:DD:EE:FF".to_string())); // Preserved
         assert_eq!(runner.machine_type, Some("cpu-server".to_string()));
+        assert_eq!(runner.available_models, models); // Preserved
     }
 
     #[test]
     fn test_upsert_runner_without_mac() {
         let logger = create_test_logger();
-        logger.upsert_runner("runner-1", "Test Runner", None, None).unwrap();
+        logger.upsert_runner("runner-1", "Test Runner", None, None, None).unwrap();
 
         let runner = logger.get_runner("runner-1").unwrap().unwrap();
         assert_eq!(runner.id, "runner-1");
         assert!(runner.mac_address.is_none());
+        assert!(runner.available_models.is_empty());
     }
 
     #[test]
@@ -966,9 +1022,9 @@ mod tests {
     #[test]
     fn test_get_all_runners() {
         let logger = create_test_logger();
-        logger.upsert_runner("runner-1", "Runner 1", Some("AA:BB:CC:DD:EE:01"), None).unwrap();
-        logger.upsert_runner("runner-2", "Runner 2", Some("AA:BB:CC:DD:EE:02"), None).unwrap();
-        logger.upsert_runner("runner-3", "Runner 3", None, None).unwrap();
+        logger.upsert_runner("runner-1", "Runner 1", Some("AA:BB:CC:DD:EE:01"), None, None).unwrap();
+        logger.upsert_runner("runner-2", "Runner 2", Some("AA:BB:CC:DD:EE:02"), None, None).unwrap();
+        logger.upsert_runner("runner-3", "Runner 3", None, None, None).unwrap();
 
         let runners = logger.get_all_runners().unwrap();
         assert_eq!(runners.len(), 3);
@@ -982,8 +1038,60 @@ mod tests {
             mac_address: Some("AA:BB:CC:DD:EE:FF".to_string()),
             machine_type: Some("gpu-server".to_string()),
             last_seen_at: "2024-01-01T00:00:00Z".to_string(),
+            available_models: vec!["llama3:8b".to_string()],
         };
         assert_eq!(record.id, "runner-1");
         assert!(record.mac_address.is_some());
+        assert_eq!(record.available_models.len(), 1);
+    }
+
+    #[test]
+    fn test_get_runners_by_model_class() {
+        let logger = create_test_logger();
+
+        // Runner with big model
+        let big_models = vec!["llama3:70b".to_string()];
+        logger.upsert_runner("runner-big", "Big Runner", Some("AA:BB:CC:DD:EE:01"), None, Some(&big_models)).unwrap();
+
+        // Runner with fast model
+        let fast_models = vec!["llama3:8b".to_string(), "mistral:7b".to_string()];
+        logger.upsert_runner("runner-fast", "Fast Runner", Some("AA:BB:CC:DD:EE:02"), None, Some(&fast_models)).unwrap();
+
+        // Query by class with config
+        use crate::gateway::ModelClass;
+        use crate::config::ModelsConfig;
+
+        let models_config = ModelsConfig {
+            big: vec!["llama3:70b".to_string()],
+            fast: vec!["llama3:8b".to_string(), "mistral:7b".to_string()],
+        };
+
+        let big_runners = logger.get_runners_by_model_class(ModelClass::Big, &models_config).unwrap();
+        assert_eq!(big_runners.len(), 1);
+        assert_eq!(big_runners[0].id, "runner-big");
+
+        let fast_runners = logger.get_runners_by_model_class(ModelClass::Fast, &models_config).unwrap();
+        assert_eq!(fast_runners.len(), 1);
+        assert_eq!(fast_runners[0].id, "runner-fast");
+    }
+
+    #[test]
+    fn test_get_runners_by_model() {
+        let logger = create_test_logger();
+
+        let models1 = vec!["llama3:8b".to_string(), "mistral:7b".to_string()];
+        logger.upsert_runner("runner-1", "Runner 1", None, None, Some(&models1)).unwrap();
+
+        let models2 = vec!["llama3:8b".to_string()];
+        logger.upsert_runner("runner-2", "Runner 2", None, None, Some(&models2)).unwrap();
+
+        // Both have llama3:8b
+        let llama_runners = logger.get_runners_by_model("llama3:8b").unwrap();
+        assert_eq!(llama_runners.len(), 2);
+
+        // Only runner-1 has mistral
+        let mistral_runners = logger.get_runners_by_model("mistral:7b").unwrap();
+        assert_eq!(mistral_runners.len(), 1);
+        assert_eq!(mistral_runners[0].id, "runner-1");
     }
 }

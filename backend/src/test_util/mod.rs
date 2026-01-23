@@ -3,7 +3,7 @@ pub mod mock_ollama;
 use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
 use chrono::{Duration, Utc};
 use crate::auth::AuthUser;
-use crate::config::{Config, OllamaConfig, OidcConfig, DatabaseConfig, LoggingConfig, LanguageConfig, CorsConfig, GatewayConfig, WolConfig};
+use crate::config::{Config, OllamaConfig, OidcConfig, DatabaseConfig, LoggingConfig, LanguageConfig, CorsConfig, GatewayConfig, WolConfig, ModelsConfig};
 use tokio::sync::Mutex;
 use fasttext::FastText;
 use std::sync::Arc;
@@ -38,6 +38,7 @@ pub fn test_config() -> Config {
         },
         gateway: GatewayConfig::default(),
         wol: WolConfig::default(),
+        models: ModelsConfig::default(),
     }
 }
 
@@ -49,13 +50,14 @@ pub async fn create_test_state() -> AppState {
     let lang_detector = Mutex::new(FastText::default());
 
     let runner_registry = Arc::new(RunnerRegistry::new());
-    let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone()));
+    let inference_router = Arc::new(InferenceRouter::new(runner_registry.clone(), config.models.clone()));
     let wol_config = config.wol.clone();
     let wake_service = Arc::new(WakeService::new(
         runner_registry.clone(),
         audit_logger.clone(),
         config.gateway.clone(),
         config.wol.clone(),
+        config.models.clone(),
     ));
 
     AppState {

@@ -10,7 +10,7 @@ pub mod test_util;
 pub mod wol;
 pub mod arp;
 
-pub use config::{Config, GatewayConfig, WolConfig};
+pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
 pub use auth::JwksClient;
 pub use llm::OllamaClient;
 pub use audit::AuditLogger;

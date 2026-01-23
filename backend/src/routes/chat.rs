@@ -9,7 +9,7 @@ use axum::{
 use axum::http::HeaderMap;
 
 use crate::AppState;
-use crate::gateway::RouterError;
+use crate::gateway::{can_request_model, ModelRequest, RouterError};
 use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
 use crate::models::request::{Request, Response};
 use crate::wol::WakeError;
@@ -37,9 +37,36 @@ async fn chat_completions(
         return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
     }
 
-    // Get model (from request or default)
-    let model = request.model.clone()
-        .unwrap_or_else(|| state.config.ollama.model.clone());
+    // Parse and validate model request
+    let model_request = match &request.model {
+        Some(model_str) => ModelRequest::parse(model_str),
+        None => {
+            // Default: users without model:specific get class:fast
+            // users with model:specific get the configured default model
+            if auth_user.has_role("model:specific") {
+                ModelRequest::Specific(state.config.ollama.model.clone())
+            } else {
+                ModelRequest::Class(crate::gateway::ModelClass::Fast)
+            }
+        }
+    };
+
+    // Check permissions
+    if !can_request_model(&auth_user.roles, &model_request) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Permission denied: cannot request specific models. Use class:fast or class:big.".to_string(),
+        ));
+    }
+
+    // Get model string for routing
+    let model = match &model_request {
+        ModelRequest::Specific(m) => m.clone(),
+        ModelRequest::Class(class) => {
+            // For class requests, use a placeholder that the router will interpret
+            format!("class:{}", class)
+        }
+    };
 
     // Log request BEFORE calling Ollama
     let mut req_log = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
@@ -56,9 +83,9 @@ async fn chat_completions(
             Ok(resp) => Ok(resp),
             Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
                 // No runners available, try wake-on-demand
-                tracing::info!("No runners available, attempting wake-on-demand");
+                tracing::info!("No runners available, attempting wake-on-demand for {:?}", model_request);
 
-                match state.wake_service.wake_and_wait().await {
+                match state.wake_service.wake_and_wait(&model_request).await {
                     Ok(wake_result) => {
                         tracing::info!(
                             "Runner {} connected after {:.1}s, retrying request",
