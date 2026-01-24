@@ -143,7 +143,8 @@
         let userInfo = null;
         let currentPage = null;
         let refreshInterval = null;
-        const REFRESH_INTERVAL_MS = 5000; // Auto-refresh every 5 seconds
+        let runnerEventSource = null;
+        const REFRESH_INTERVAL_MS = 5000; // Auto-refresh every 5 seconds (for non-SSE pages)
 
         // Token refresh state
         let refreshToken = null;
@@ -441,6 +442,12 @@
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('login-required').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
+
+            // Start SSE connection for real-time runner events
+            if (!runnerEventSource) {
+                runnerEventSource = new RunnerEventSource();
+                runnerEventSource.connect();
+            }
         }
 
         async function login() {
@@ -463,6 +470,12 @@
         }
 
         function logout() {
+            // Disconnect SSE
+            if (runnerEventSource) {
+                runnerEventSource.disconnect();
+                runnerEventSource = null;
+            }
+
             localStorage.removeItem('access_token');
             localStorage.removeItem('refresh_token');
             localStorage.removeItem('token_expires_at');
@@ -509,6 +522,351 @@
             return response.json();
         }
 
+        // =================================================================
+        // Utility functions
+        // =================================================================
+
+        // Escape HTML special characters to prevent XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Escape string for use in HTML attributes
+        function escapeAttr(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, c => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[c]);
+        }
+
+        // =================================================================
+        // Runner EventSource - Real-time SSE connection for runner events
+        // =================================================================
+        class RunnerEventSource {
+            constructor() {
+                this.eventSource = null;
+                this.reconnectDelay = 1000;
+                this.maxReconnectDelay = 30000;
+                this.reconnectAttempts = 0;
+            }
+
+            async connect() {
+                // Close existing connection if any
+                this.disconnect();
+
+                try {
+                    const token = await getValidAccessToken();
+                    if (!token) {
+                        console.error('No token available for SSE connection');
+                        return;
+                    }
+
+                    const url = `/admin/runners/events?token=${encodeURIComponent(token)}`;
+                    this.eventSource = new EventSource(url);
+
+                    this.eventSource.onopen = () => {
+                        console.log('SSE connection established');
+                        this.reconnectDelay = 1000;
+                        this.reconnectAttempts = 0;
+                        this.updateConnectionBadge(true);
+                    };
+
+                    this.eventSource.onerror = async (event) => {
+                        console.error('SSE connection error', event);
+                        this.updateConnectionBadge(false);
+
+                        // EventSource will auto-reconnect, but we need to handle token refresh
+                        if (this.eventSource.readyState === EventSource.CLOSED) {
+                            this.eventSource = null;
+                            await this.scheduleReconnect();
+                        }
+                    };
+
+                    // Handle runner events
+                    this.eventSource.addEventListener('runner_connected', (event) => {
+                        const data = JSON.parse(event.data);
+                        console.log('Runner connected:', data);
+                        this.handleRunnerConnected(data);
+                    });
+
+                    this.eventSource.addEventListener('runner_disconnected', (event) => {
+                        const data = JSON.parse(event.data);
+                        console.log('Runner disconnected:', data);
+                        this.handleRunnerDisconnected(data);
+                    });
+
+                    this.eventSource.addEventListener('runner_status_changed', (event) => {
+                        const data = JSON.parse(event.data);
+                        console.log('Runner status changed:', data);
+                        this.handleRunnerStatusChanged(data);
+                    });
+                } catch (e) {
+                    console.error('Failed to establish SSE connection:', e);
+                    await this.scheduleReconnect();
+                }
+            }
+
+            async scheduleReconnect() {
+                this.reconnectAttempts++;
+                const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
+                console.log(`Scheduling SSE reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
+                // Try to refresh token before reconnecting
+                if (refreshToken) {
+                    try {
+                        await refreshTokens();
+                    } catch (e) {
+                        console.error('Token refresh failed before SSE reconnect:', e);
+                    }
+                }
+
+                setTimeout(() => this.connect(), delay);
+            }
+
+            disconnect() {
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
+                }
+                this.updateConnectionBadge(false);
+            }
+
+            updateConnectionBadge(connected) {
+                const badge = document.getElementById('auto-refresh-badge');
+                if (badge) {
+                    if (connected) {
+                        badge.textContent = 'Live';
+                        badge.classList.remove('bg-yellow-100', 'text-yellow-800', 'bg-gray-100', 'text-gray-600');
+                        badge.classList.add('bg-green-100', 'text-green-800');
+                    } else {
+                        badge.textContent = 'Reconnecting...';
+                        badge.classList.remove('bg-green-100', 'text-green-800', 'bg-gray-100', 'text-gray-600');
+                        badge.classList.add('bg-yellow-100', 'text-yellow-800');
+                    }
+                }
+            }
+
+            async handleRunnerConnected(data) {
+                // Fetch full runner data to get mac_address, http_base_url, etc.
+                try {
+                    const runnersData = await apiFetch('/admin/runners');
+                    const fullRunner = runnersData.runners.find(r => r.id === data.runner_id);
+                    if (fullRunner) {
+                        upsertRunnerCard(data.runner_id, fullRunner);
+                    } else {
+                        // Fallback to event data if runner not found in list
+                        const runner = {
+                            id: data.runner_id,
+                            name: data.name,
+                            machine_type: data.machine_type,
+                            health: data.health,
+                            loaded_models: data.loaded_models,
+                            is_online: true,
+                            connected_at: new Date().toISOString(),
+                            last_heartbeat: new Date().toISOString(),
+                            mac_address: null,
+                            http_base_url: null
+                        };
+                        upsertRunnerCard(data.runner_id, runner);
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch runner details:', e);
+                    // Use event data as fallback
+                    const runner = {
+                        id: data.runner_id,
+                        name: data.name,
+                        machine_type: data.machine_type,
+                        health: data.health,
+                        loaded_models: data.loaded_models,
+                        is_online: true,
+                        connected_at: new Date().toISOString(),
+                        last_heartbeat: new Date().toISOString(),
+                        mac_address: null,
+                        http_base_url: null
+                    };
+                    upsertRunnerCard(data.runner_id, runner);
+                }
+
+                // Reload dashboard if currently viewing it
+                if (currentPage === 'dashboard') {
+                    loadDashboard();
+                }
+            }
+
+            handleRunnerDisconnected(data) {
+                markRunnerOffline(data.runner_id);
+
+                // Reload dashboard if currently viewing it
+                if (currentPage === 'dashboard') {
+                    loadDashboard();
+                }
+            }
+
+            handleRunnerStatusChanged(data) {
+                updateRunnerCard(data.runner_id, {
+                    health: data.health,
+                    loaded_models: data.loaded_models
+                });
+            }
+        }
+
+        // Helper function to render a single runner card
+        function renderRunnerCard(runner) {
+            const safeId = escapeAttr(runner.id);
+            const safeName = escapeHtml(runner.name);
+            const safeHealth = escapeHtml(runner.health);
+            const safeMachineType = escapeHtml(runner.machine_type || 'N/A');
+            const safeMacAddress = escapeHtml(runner.mac_address || 'N/A');
+            const safeHttpUrl = escapeHtml(runner.http_base_url || 'N/A');
+
+            return `
+                <div id="runner-card-${safeId}" class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}" data-runner-id="${safeId}" data-is-online="${runner.is_online}">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-medium ${runner.is_online ? 'text-gray-900' : 'text-gray-500'}">${safeName}</h3>
+                            <p class="text-sm text-gray-500">${safeId}</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            ${!runner.is_online && runner.mac_address ? `
+                                <button onclick="wakeRunner('${safeId}')"
+                                        class="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                        id="wake-btn-${safeId}">
+                                    Wake
+                                </button>
+                            ` : ''}
+                            <span class="runner-health-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
+                                runner.health === 'Healthy' ? 'bg-green-100 text-green-800' :
+                                runner.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
+                                runner.health === 'Offline' ? 'bg-gray-100 text-gray-600' :
+                                'bg-red-100 text-red-800'
+                            }">${safeHealth}</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-500">Machine Type:</span>
+                            <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${safeMachineType}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">MAC Address:</span>
+                            <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${safeMacAddress}</span>
+                        </div>
+                        ${runner.is_online ? `
+                            <div>
+                                <span class="text-gray-500">HTTP URL:</span>
+                                <span class="ml-2 text-gray-900">${safeHttpUrl}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-500">Connected:</span>
+                                <span class="ml-2 text-gray-900">${runner.connected_at ? new Date(runner.connected_at).toLocaleString() : 'N/A'}</span>
+                            </div>
+                        ` : ''}
+                        <div>
+                            <span class="text-gray-500">${runner.is_online ? 'Last Heartbeat' : 'Last Seen'}:</span>
+                            <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.last_heartbeat ? new Date(runner.last_heartbeat).toLocaleString() : 'N/A'}</span>
+                        </div>
+                    </div>
+                    <div class="runner-models-section mt-4 ${runner.loaded_models && runner.loaded_models.length > 0 ? '' : 'hidden'}">
+                        <span class="text-sm text-gray-500">Loaded Models:</span>
+                        <div class="runner-models mt-1 flex flex-wrap gap-2">
+                            ${(runner.loaded_models || []).map(m => `<span class="inline-flex items-center rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700">${escapeHtml(m)}</span>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Upsert (insert or update) a runner card
+        function upsertRunnerCard(runnerId, runner) {
+            const container = document.getElementById('runners-list');
+            if (!container) return;
+
+            const existingCard = document.getElementById(`runner-card-${runnerId}`);
+            if (existingCard) {
+                // Replace existing card
+                existingCard.outerHTML = renderRunnerCard(runner);
+            } else {
+                // Check if we have the "No runners" message
+                const noRunnersMsg = container.querySelector('.text-gray-500.text-center');
+                if (noRunnersMsg) {
+                    container.innerHTML = '';
+                }
+                // Insert new card at the top
+                container.insertAdjacentHTML('afterbegin', renderRunnerCard(runner));
+            }
+        }
+
+        // Mark a runner as offline (grey out and change badge)
+        function markRunnerOffline(runnerId) {
+            const card = document.getElementById(`runner-card-${runnerId}`);
+            if (!card) return;
+
+            // Update styling
+            card.classList.remove('bg-white');
+            card.classList.add('bg-gray-50', 'border', 'border-gray-200');
+            card.dataset.isOnline = 'false';
+
+            // Update name styling
+            const nameEl = card.querySelector('h3');
+            if (nameEl) {
+                nameEl.classList.remove('text-gray-900');
+                nameEl.classList.add('text-gray-500');
+            }
+
+            // Update health badge to Offline
+            const badge = card.querySelector('.runner-health-badge');
+            if (badge) {
+                badge.className = 'runner-health-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-gray-100 text-gray-600';
+                badge.textContent = 'Offline';
+            }
+
+            // Hide loaded models section
+            const modelsSection = card.querySelector('.runner-models-section');
+            if (modelsSection) {
+                modelsSection.classList.add('hidden');
+            }
+        }
+
+        // Update a runner card's health and loaded models
+        function updateRunnerCard(runnerId, updates) {
+            const card = document.getElementById(`runner-card-${runnerId}`);
+            if (!card) return;
+
+            if (updates.health) {
+                const badge = card.querySelector('.runner-health-badge');
+                if (badge) {
+                    badge.className = 'runner-health-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ' +
+                        (updates.health === 'Healthy' ? 'bg-green-100 text-green-800' :
+                         updates.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
+                         updates.health === 'Offline' ? 'bg-gray-100 text-gray-600' :
+                         'bg-red-100 text-red-800');
+                    badge.textContent = updates.health;
+                }
+            }
+
+            if (updates.loaded_models !== undefined) {
+                const modelsSection = card.querySelector('.runner-models-section');
+                const modelsContainer = card.querySelector('.runner-models');
+                if (modelsSection && modelsContainer) {
+                    if (updates.loaded_models.length > 0) {
+                        modelsSection.classList.remove('hidden');
+                        modelsContainer.innerHTML = updates.loaded_models
+                            .map(m => `<span class="inline-flex items-center rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700">${escapeHtml(m)}</span>`)
+                            .join('');
+                    } else {
+                        modelsSection.classList.add('hidden');
+                    }
+                }
+            }
+        }
+
         function showPage(page) {
             // Stop any existing refresh interval
             if (refreshInterval) {
@@ -547,7 +905,8 @@
             loadPageData(page);
 
             // Set up auto-refresh for pages that benefit from it
-            if (['dashboard', 'runners', 'models'].includes(page)) {
+            // Note: 'runners' page uses SSE for real-time updates, not polling
+            if (['dashboard', 'models'].includes(page)) {
                 refreshInterval = setInterval(() => loadPageData(page), REFRESH_INTERVAL_MS);
             }
         }
@@ -560,6 +919,13 @@
             const badge = document.getElementById('auto-refresh-badge');
             if (['dashboard', 'runners', 'models'].includes(page)) {
                 badge.classList.remove('hidden');
+                // For runners page, badge text is controlled by SSE connection state
+                // For other pages, show "Auto-refresh" badge
+                if (page !== 'runners') {
+                    badge.textContent = 'Auto-refresh';
+                    badge.classList.remove('bg-yellow-100', 'text-yellow-800');
+                    badge.classList.add('bg-green-100', 'text-green-800');
+                }
             } else {
                 badge.classList.add('hidden');
             }
@@ -597,63 +963,7 @@
                     return;
                 }
 
-                container.innerHTML = data.runners.map(runner => `
-                    <div class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}">
-                        <div class="flex items-center justify-between mb-4">
-                            <div>
-                                <h3 class="text-lg font-medium ${runner.is_online ? 'text-gray-900' : 'text-gray-500'}">${runner.name}</h3>
-                                <p class="text-sm text-gray-500">${runner.id}</p>
-                            </div>
-                            <div class="flex items-center space-x-2">
-                                ${!runner.is_online && runner.mac_address ? `
-                                    <button onclick="wakeRunner('${runner.id}')"
-                                            class="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                            id="wake-btn-${runner.id}">
-                                        Wake
-                                    </button>
-                                ` : ''}
-                                <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                                    runner.health === 'Healthy' ? 'bg-green-100 text-green-800' :
-                                    runner.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
-                                    runner.health === 'Offline' ? 'bg-gray-100 text-gray-600' :
-                                    'bg-red-100 text-red-800'
-                                }">${runner.health}</span>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <span class="text-gray-500">Machine Type:</span>
-                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.machine_type || 'N/A'}</span>
-                            </div>
-                            <div>
-                                <span class="text-gray-500">MAC Address:</span>
-                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.mac_address || 'N/A'}</span>
-                            </div>
-                            ${runner.is_online ? `
-                                <div>
-                                    <span class="text-gray-500">HTTP URL:</span>
-                                    <span class="ml-2 text-gray-900">${runner.http_base_url || 'N/A'}</span>
-                                </div>
-                                <div>
-                                    <span class="text-gray-500">Connected:</span>
-                                    <span class="ml-2 text-gray-900">${runner.connected_at ? new Date(runner.connected_at).toLocaleString() : 'N/A'}</span>
-                                </div>
-                            ` : ''}
-                            <div>
-                                <span class="text-gray-500">${runner.is_online ? 'Last Heartbeat' : 'Last Seen'}:</span>
-                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.last_heartbeat ? new Date(runner.last_heartbeat).toLocaleString() : 'N/A'}</span>
-                            </div>
-                        </div>
-                        ${runner.loaded_models && runner.loaded_models.length > 0 ? `
-                            <div class="mt-4">
-                                <span class="text-sm text-gray-500">Loaded Models:</span>
-                                <div class="mt-1 flex flex-wrap gap-2">
-                                    ${runner.loaded_models.map(m => `<span class="inline-flex items-center rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700">${m}</span>`).join('')}
-                                </div>
-                            </div>
-                        ` : ''}
-                    </div>
-                `).join('');
+                container.innerHTML = data.runners.map(runner => renderRunnerCard(runner)).join('');
             } catch (e) {
                 console.error('Failed to load runners:', e);
             }

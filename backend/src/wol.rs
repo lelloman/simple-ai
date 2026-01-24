@@ -14,7 +14,7 @@ use tokio::time::timeout;
 use crate::audit::{AuditLogger, RunnerRecord};
 use crate::config::{GatewayConfig, WolConfig};
 use crate::config::ModelsConfig;
-use crate::gateway::{classify_model, ModelRequest, RunnerRegistry};
+use crate::gateway::{classify_model, ModelRequest, RunnerEvent, RunnerRegistry};
 
 /// Errors that can occur during WOL operations.
 #[derive(Debug, thiserror::Error)]
@@ -453,21 +453,25 @@ impl WakeService {
         );
 
         // 2. Subscribe BEFORE waking to avoid race conditions
-        let mut rx = self.registry.subscribe_runner_connected();
+        let mut rx = self.registry.subscribe_events();
 
         // 3. Wake the runner
         self.wake_runner(&runner).await?;
 
         tracing::info!("Sent wake signal to runner {}, waiting for connection...", runner.id);
 
-        // 4. Wait for a runner to connect
+        // 4. Wait for a runner to connect (filter for Connected events only)
         let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
         let runner_id = timeout(timeout_duration, async {
             loop {
                 match rx.recv().await {
-                    Ok(id) => {
-                        tracing::info!("Runner {} connected after wake", id);
-                        return id;
+                    Ok(RunnerEvent::Connected { runner_id, .. }) => {
+                        tracing::info!("Runner {} connected after wake", runner_id);
+                        return runner_id;
+                    }
+                    Ok(_) => {
+                        // Ignore other events (Disconnected, StatusChanged)
+                        continue;
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {
                         // Missed some events, continue waiting

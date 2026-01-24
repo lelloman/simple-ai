@@ -49,6 +49,9 @@ fasttext = "0.7"
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 
+# SSE streaming
+tokio-stream = { version = "0.1", features = ["sync"] }
+
 [dev-dependencies]
 tower = "0.5"
 tower-test = "0.4"

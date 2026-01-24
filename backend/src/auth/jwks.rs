@@ -154,7 +154,14 @@ impl JwksClient {
         }
 
         let token = &auth_header[7..];
+        self.validate_token(token).await
+    }
 
+    /// Validate a JWT token string directly.
+    ///
+    /// This is useful for SSE endpoints where the token is passed as a query parameter
+    /// instead of an Authorization header.
+    pub async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError> {
         // Decode header to get kid
         let header = decode_header(token)
             .map_err(|e| AuthError::InvalidToken(e.to_string()))?;

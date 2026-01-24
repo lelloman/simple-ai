@@ -4,22 +4,31 @@
 //! - Dashboard (`/admin`) - Overview with stats
 //! - Users (`/admin/users`) - User management
 //! - Requests (`/admin/requests`) - Request history
+//! - SSE endpoint for real-time runner events (`/admin/runners/events`)
 
+use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Duration;
 
 use askama::Template;
 use axum::{
     extract::{Path, Query, Request, State},
     http::StatusCode,
     middleware::{self, Next},
-    response::{Html, IntoResponse, Redirect, Response},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        Html, IntoResponse, Redirect, Response,
+    },
     routing::{get, post},
     Json, Router,
 };
-
+use futures_util::stream::Stream;
 use serde::Serialize;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::StreamExt;
 
 use crate::audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
+use crate::gateway::RunnerEvent;
 use crate::wol;
 use crate::AppState;
 
@@ -416,9 +425,66 @@ async fn wake_runner(
     }
 }
 
+/// Query parameters for SSE authentication.
+#[derive(serde::Deserialize)]
+pub struct SseAuthQuery {
+    token: String,
+}
+
+/// GET /admin/runners/events - SSE stream for real-time runner events.
+///
+/// Authentication is done via query parameter since EventSource doesn't support headers.
+async fn runner_events(
+    State(state): State<Arc<AppState>>,
+    Query(auth): Query<SseAuthQuery>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    // Validate JWT from query parameter
+    let user = state
+        .jwks_client
+        .validate_token(&auth.token)
+        .await
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    if !user.is_admin() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Subscribe to registry events
+    let rx = state.runner_registry.subscribe_events();
+
+    // Convert broadcast receiver to stream
+    let stream = BroadcastStream::new(rx).filter_map(|result| {
+        match result {
+            Ok(event) => {
+                // Determine event type name for SSE
+                let event_type = match &event {
+                    RunnerEvent::Connected { .. } => "runner_connected",
+                    RunnerEvent::Disconnected { .. } => "runner_disconnected",
+                    RunnerEvent::StatusChanged { .. } => "runner_status_changed",
+                };
+
+                // Serialize event data
+                match serde_json::to_string(&event) {
+                    Ok(data) => Some(Ok(Event::default().event(event_type).data(data))),
+                    Err(_) => None,
+                }
+            }
+            Err(_) => None, // Skip lagged errors
+        }
+    });
+
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
 /// Build the admin router.
 pub fn router(state: Arc<AppState>) -> Router {
-    Router::new()
+    // SSE endpoint with query-based auth (separate from middleware-protected routes)
+    let sse_routes = Router::new()
+        .route("/runners/events", get(runner_events))
+        .with_state(state.clone());
+
+    // Regular admin routes with middleware authentication
+    let admin_routes = Router::new()
         .route("/", get(dashboard))
         .route("/users", get(users_list))
         .route("/users/:id/disable", post(disable_user))
@@ -428,7 +494,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/runners/:id/wake", post(wake_runner))
         .route("/models", get(list_models))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
-        .with_state(state)
+        .with_state(state);
+
+    // Merge routes: SSE first (more specific path), then admin routes
+    sse_routes.merge(admin_routes)
 }
 
 #[cfg(test)]

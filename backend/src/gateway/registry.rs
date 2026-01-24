@@ -3,9 +3,32 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
 use simple_ai_common::{GatewayMessage, RunnerStatus};
+
+/// Event emitted when runner state changes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RunnerEvent {
+    /// A runner has connected to the gateway.
+    Connected {
+        runner_id: String,
+        name: String,
+        machine_type: Option<String>,
+        health: String,
+        loaded_models: Vec<String>,
+    },
+    /// A runner has disconnected from the gateway.
+    Disconnected { runner_id: String },
+    /// A runner's status has changed (health or loaded models).
+    StatusChanged {
+        runner_id: String,
+        health: String,
+        loaded_models: Vec<String>,
+    },
+}
 
 /// Information about a connected runner.
 #[derive(Debug, Clone)]
@@ -57,8 +80,8 @@ impl ConnectedRunner {
 /// Registry of connected inference runners.
 pub struct RunnerRegistry {
     runners: RwLock<HashMap<String, ConnectedRunner>>,
-    /// Broadcast channel for runner connection events.
-    runner_connected_tx: broadcast::Sender<String>,
+    /// Broadcast channel for runner events (connect, disconnect, status changes).
+    event_tx: broadcast::Sender<RunnerEvent>,
 }
 
 impl Default for RunnerRegistry {
@@ -71,7 +94,7 @@ impl std::fmt::Debug for RunnerRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RunnerRegistry")
             .field("runners", &"<RwLock<...>>")
-            .field("runner_connected_tx", &"<broadcast::Sender>")
+            .field("event_tx", &"<broadcast::Sender>")
             .finish()
     }
 }
@@ -79,17 +102,17 @@ impl std::fmt::Debug for RunnerRegistry {
 impl RunnerRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
-        let (tx, _) = broadcast::channel(16);
+        let (tx, _) = broadcast::channel(64);
         Self {
             runners: RwLock::new(HashMap::new()),
-            runner_connected_tx: tx,
+            event_tx: tx,
         }
     }
 
-    /// Subscribe to runner connection events.
-    /// Returns a receiver that will receive runner IDs when runners connect.
-    pub fn subscribe_runner_connected(&self) -> broadcast::Receiver<String> {
-        self.runner_connected_tx.subscribe()
+    /// Subscribe to runner events (connect, disconnect, status changes).
+    /// Returns a receiver that will receive RunnerEvent when runner state changes.
+    pub fn subscribe_events(&self) -> broadcast::Receiver<RunnerEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Register a new runner.
@@ -104,10 +127,17 @@ impl RunnerRegistry {
         mac_address: Option<String>,
     ) {
         let now = Utc::now();
+        let health = format!("{:?}", status.health);
+        let loaded_models: Vec<String> = status
+            .engines
+            .iter()
+            .flat_map(|e| e.loaded_models.clone())
+            .collect();
+
         let runner = ConnectedRunner {
             id: id.clone(),
-            name,
-            machine_type,
+            name: name.clone(),
+            machine_type: machine_type.clone(),
             status,
             connected_at: now,
             last_heartbeat: now,
@@ -119,19 +149,54 @@ impl RunnerRegistry {
 
         // Notify subscribers that a runner connected
         // Ignore send errors (no active subscribers)
-        let _ = self.runner_connected_tx.send(id);
+        let _ = self.event_tx.send(RunnerEvent::Connected {
+            runner_id: id,
+            name,
+            machine_type,
+            health,
+            loaded_models,
+        });
     }
 
     /// Remove a runner from the registry.
     pub async fn unregister(&self, id: &str) -> Option<ConnectedRunner> {
-        self.runners.write().await.remove(id)
+        let removed = self.runners.write().await.remove(id);
+        if removed.is_some() {
+            // Notify subscribers that a runner disconnected
+            let _ = self.event_tx.send(RunnerEvent::Disconnected {
+                runner_id: id.to_string(),
+            });
+        }
+        removed
     }
 
     /// Update a runner's status.
     pub async fn update_status(&self, id: &str, status: RunnerStatus) {
-        if let Some(runner) = self.runners.write().await.get_mut(id) {
+        let mut runners = self.runners.write().await;
+        if let Some(runner) = runners.get_mut(id) {
+            // Check if health or loaded_models changed
+            let old_health = format!("{:?}", runner.status.health);
+            let new_health = format!("{:?}", status.health);
+            let old_models: Vec<String> = runner.loaded_models();
+            let new_models: Vec<String> = status
+                .engines
+                .iter()
+                .flat_map(|e| e.loaded_models.clone())
+                .collect();
+
+            let changed = old_health != new_health || old_models != new_models;
+
             runner.status = status;
             runner.last_heartbeat = Utc::now();
+
+            if changed {
+                // Notify subscribers of the status change
+                let _ = self.event_tx.send(RunnerEvent::StatusChanged {
+                    runner_id: id.to_string(),
+                    health: new_health,
+                    loaded_models: new_models,
+                });
+            }
         }
     }
 
@@ -249,6 +314,16 @@ impl RunnerRegistry {
                 true
             }
         });
+
+        // Drop the lock before sending events to avoid holding it during broadcast
+        drop(runners);
+
+        // Notify subscribers of disconnections
+        for id in &removed {
+            let _ = self.event_tx.send(RunnerEvent::Disconnected {
+                runner_id: id.clone(),
+            });
+        }
 
         removed
     }
