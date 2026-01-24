@@ -727,7 +727,7 @@
             const safeHttpUrl = escapeHtml(runner.http_base_url || 'N/A');
 
             return `
-                <div id="runner-card-${safeId}" class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}" data-runner-id="${safeId}" data-is-online="${runner.is_online}">
+                <div id="runner-card-${safeId}" class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}" data-runner-id="${safeId}" data-is-online="${runner.is_online}" data-mac-address="${escapeAttr(runner.mac_address || '')}">
                     <div class="flex items-center justify-between mb-4">
                         <div>
                             <h3 class="text-lg font-medium ${runner.is_online ? 'text-gray-900' : 'text-gray-500'}">${safeName}</h3>
@@ -825,6 +825,19 @@
             if (badge) {
                 badge.className = 'runner-health-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-gray-100 text-gray-600';
                 badge.textContent = 'Offline';
+
+                // Add Wake button if runner has MAC address and button doesn't exist
+                const macAddress = card.dataset.macAddress;
+                const existingWakeBtn = card.querySelector(`#wake-btn-${runnerId}`);
+                if (macAddress && !existingWakeBtn) {
+                    const safeId = escapeAttr(runnerId);
+                    const wakeBtn = `<button onclick="wakeRunner('${safeId}')"
+                            class="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            id="wake-btn-${safeId}">
+                        Wake
+                    </button>`;
+                    badge.insertAdjacentHTML('beforebegin', wakeBtn);
+                }
             }
 
             // Hide loaded models section
