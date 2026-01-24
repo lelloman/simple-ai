@@ -522,6 +522,23 @@
             return response.json();
         }
 
+        // Fetch API without triggering logout on auth failure (for background operations)
+        async function apiFetchSilent(endpoint) {
+            const token = await getValidAccessToken();
+            if (!token) {
+                throw new Error('No valid token');
+            }
+
+            const response = await fetch(endpoint, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            return response.json();
+        }
+
         // =================================================================
         // Utility functions
         // =================================================================
@@ -655,58 +672,45 @@
 
             async handleRunnerConnected(data) {
                 // Fetch full runner data to get mac_address, http_base_url, etc.
+                // Use silent fetch to avoid triggering logout on auth errors
                 try {
-                    const runnersData = await apiFetch('/admin/runners');
+                    const runnersData = await apiFetchSilent('/admin/runners');
                     const fullRunner = runnersData.runners.find(r => r.id === data.runner_id);
                     if (fullRunner) {
                         upsertRunnerCard(data.runner_id, fullRunner);
                     } else {
                         // Fallback to event data if runner not found in list
-                        const runner = {
-                            id: data.runner_id,
-                            name: data.name,
-                            machine_type: data.machine_type,
-                            health: data.health,
-                            loaded_models: data.loaded_models,
-                            is_online: true,
-                            connected_at: new Date().toISOString(),
-                            last_heartbeat: new Date().toISOString(),
-                            mac_address: null,
-                            http_base_url: null
-                        };
-                        upsertRunnerCard(data.runner_id, runner);
+                        this.upsertWithEventData(data);
                     }
                 } catch (e) {
                     console.error('Failed to fetch runner details:', e);
                     // Use event data as fallback
-                    const runner = {
-                        id: data.runner_id,
-                        name: data.name,
-                        machine_type: data.machine_type,
-                        health: data.health,
-                        loaded_models: data.loaded_models,
-                        is_online: true,
-                        connected_at: new Date().toISOString(),
-                        last_heartbeat: new Date().toISOString(),
-                        mac_address: null,
-                        http_base_url: null
-                    };
-                    upsertRunnerCard(data.runner_id, runner);
+                    this.upsertWithEventData(data);
                 }
 
-                // Reload dashboard if currently viewing it
-                if (currentPage === 'dashboard') {
-                    loadDashboard();
-                }
+                // Update dashboard runner count if viewing dashboard
+                // (dashboard polls so it will update on next refresh)
+            }
+
+            upsertWithEventData(data) {
+                const runner = {
+                    id: data.runner_id,
+                    name: data.name,
+                    machine_type: data.machine_type,
+                    health: data.health,
+                    loaded_models: data.loaded_models,
+                    is_online: true,
+                    connected_at: new Date().toISOString(),
+                    last_heartbeat: new Date().toISOString(),
+                    mac_address: null,
+                    http_base_url: null
+                };
+                upsertRunnerCard(data.runner_id, runner);
             }
 
             handleRunnerDisconnected(data) {
                 markRunnerOffline(data.runner_id);
-
-                // Reload dashboard if currently viewing it
-                if (currentPage === 'dashboard') {
-                    loadDashboard();
-                }
+                // Dashboard polls so it will update on next refresh
             }
 
             handleRunnerStatusChanged(data) {
