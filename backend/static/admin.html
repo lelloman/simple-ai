@@ -145,6 +145,15 @@
         let refreshInterval = null;
         const REFRESH_INTERVAL_MS = 5000; // Auto-refresh every 5 seconds
 
+        // Token refresh state
+        let refreshToken = null;
+        let tokenExpiresAt = null;
+        let inFlightRefresh = null;
+        let lastRefreshTime = 0;
+        let rateLimitedUntil = 0;
+        const REFRESH_DEBOUNCE_MS = 5000;
+        const TOKEN_REFRESH_BUFFER_SECONDS = 30;
+
         // PKCE helpers
         function generateRandomString(length) {
             const array = new Uint8Array(length);
@@ -169,6 +178,127 @@
         async function generateCodeChallenge(verifier) {
             const hash = await sha256(verifier);
             return base64urlEncode(hash);
+        }
+
+        // Token expiry helpers
+        function parseTokenExpiry(token) {
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.exp) {
+                    return payload.exp * 1000; // Convert to milliseconds
+                }
+            } catch (e) {
+                console.error('Failed to parse token expiry:', e);
+            }
+            return null;
+        }
+
+        function isTokenExpired() {
+            if (!tokenExpiresAt) return true;
+            return Date.now() >= tokenExpiresAt;
+        }
+
+        function isTokenExpiringSoon() {
+            if (!tokenExpiresAt) return true;
+            return Date.now() >= tokenExpiresAt - (TOKEN_REFRESH_BUFFER_SECONDS * 1000);
+        }
+
+        // Token refresh logic with coalescing and debouncing
+        async function performRefresh() {
+            if (!refreshToken) {
+                throw new Error('No refresh token available');
+            }
+
+            const response = await fetch(`${OIDC_ISSUER}/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    client_id: OIDC_CLIENT_ID,
+                    refresh_token: refreshToken,
+                })
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Token refresh failed: ${response.status} ${text}`);
+            }
+
+            const tokens = await response.json();
+
+            // Update tokens
+            accessToken = tokens.access_token;
+            localStorage.setItem('access_token', accessToken);
+
+            if (tokens.refresh_token) {
+                refreshToken = tokens.refresh_token;
+                localStorage.setItem('refresh_token', refreshToken);
+            }
+
+            // Calculate expiry from response or parse from token
+            if (tokens.expires_in) {
+                tokenExpiresAt = Date.now() + (tokens.expires_in * 1000);
+            } else {
+                tokenExpiresAt = parseTokenExpiry(accessToken);
+            }
+            if (tokenExpiresAt) {
+                localStorage.setItem('token_expires_at', tokenExpiresAt.toString());
+            }
+
+            return accessToken;
+        }
+
+        async function refreshTokens() {
+            // Check rate limiting
+            if (Date.now() < rateLimitedUntil) {
+                throw new Error('Rate limited');
+            }
+
+            // Debounce rapid refresh attempts
+            if (Date.now() - lastRefreshTime < REFRESH_DEBOUNCE_MS) {
+                if (accessToken && !isTokenExpired()) {
+                    return accessToken;
+                }
+            }
+
+            // Coalesce concurrent refresh requests
+            if (inFlightRefresh) {
+                return inFlightRefresh;
+            }
+
+            inFlightRefresh = performRefresh()
+                .then(token => {
+                    lastRefreshTime = Date.now();
+                    inFlightRefresh = null;
+                    return token;
+                })
+                .catch(err => {
+                    inFlightRefresh = null;
+                    // Set rate limit backoff on failure (30 seconds)
+                    rateLimitedUntil = Date.now() + 30000;
+                    throw err;
+                });
+
+            return inFlightRefresh;
+        }
+
+        async function getValidAccessToken() {
+            // If token is valid and not expiring soon, return it
+            if (accessToken && !isTokenExpiringSoon()) {
+                return accessToken;
+            }
+
+            // Try to refresh if we have a refresh token
+            if (refreshToken) {
+                try {
+                    return await refreshTokens();
+                } catch (e) {
+                    console.error('Token refresh failed:', e);
+                    return null;
+                }
+            }
+
+            return accessToken;
         }
 
         // Check for authorization code in URL (after OIDC redirect)
@@ -203,6 +333,22 @@
                             const tokens = await tokenResponse.json();
                             accessToken = tokens.access_token;
                             localStorage.setItem('access_token', accessToken);
+
+                            // Store refresh token if provided
+                            if (tokens.refresh_token) {
+                                refreshToken = tokens.refresh_token;
+                                localStorage.setItem('refresh_token', refreshToken);
+                            }
+
+                            // Calculate and store token expiry
+                            if (tokens.expires_in) {
+                                tokenExpiresAt = Date.now() + (tokens.expires_in * 1000);
+                            } else {
+                                tokenExpiresAt = parseTokenExpiry(accessToken);
+                            }
+                            if (tokenExpiresAt) {
+                                localStorage.setItem('token_expires_at', tokenExpiresAt.toString());
+                            }
                         } else {
                             console.error('Token exchange failed:', await tokenResponse.text());
                         }
@@ -212,6 +358,20 @@
                 }
             } else {
                 accessToken = localStorage.getItem('access_token');
+                refreshToken = localStorage.getItem('refresh_token');
+                const storedExpiry = localStorage.getItem('token_expires_at');
+                if (storedExpiry) {
+                    tokenExpiresAt = parseInt(storedExpiry, 10);
+                }
+            }
+
+            // Proactively refresh if token is expiring soon
+            if (accessToken && isTokenExpiringSoon() && refreshToken) {
+                try {
+                    await refreshTokens();
+                } catch (e) {
+                    console.error('Proactive token refresh failed:', e);
+                }
             }
 
             if (accessToken) {
@@ -230,8 +390,32 @@
                         showPage(getPageFromHash());
                         return;
                     } else if (response.status === 401 || response.status === 403) {
+                        // Try to refresh token before giving up
+                        if (refreshToken) {
+                            try {
+                                await refreshTokens();
+                                // Retry the validation after refresh
+                                const retryResponse = await fetch('/admin/runners', {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                                });
+                                if (retryResponse.ok) {
+                                    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                                    userInfo = payload;
+                                    document.getElementById('user-email').textContent = payload.email || payload.sub;
+                                    showApp();
+                                    showPage(getPageFromHash());
+                                    return;
+                                }
+                            } catch (e) {
+                                console.error('Token refresh during init failed:', e);
+                            }
+                        }
                         localStorage.removeItem('access_token');
+                        localStorage.removeItem('refresh_token');
+                        localStorage.removeItem('token_expires_at');
                         accessToken = null;
+                        refreshToken = null;
+                        tokenExpiresAt = null;
                     }
                 } catch (e) {
                     console.error('Token validation failed:', e);
@@ -271,7 +455,7 @@
                 response_type: 'code',
                 client_id: OIDC_CLIENT_ID,
                 redirect_uri: REDIRECT_URI,
-                scope: 'openid email profile',
+                scope: 'openid email profile offline_access',
                 code_challenge: codeChallenge,
                 code_challenge_method: 'S256',
             });
@@ -280,16 +464,43 @@
 
         function logout() {
             localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('token_expires_at');
             accessToken = null;
+            refreshToken = null;
+            tokenExpiresAt = null;
+            inFlightRefresh = null;
+            lastRefreshTime = 0;
+            rateLimitedUntil = 0;
             showLoginRequired();
         }
 
-        async function apiFetch(endpoint) {
+        async function apiFetch(endpoint, retried = false) {
+            // Get valid token (proactively refreshes if expiring soon)
+            const token = await getValidAccessToken();
+            if (!token) {
+                logout();
+                throw new Error('No valid token');
+            }
+
             const response = await fetch(endpoint, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
+                headers: { 'Authorization': `Bearer ${token}` }
             });
+
             if (!response.ok) {
-                if (response.status === 401) {
+                if (response.status === 401 && !retried) {
+                    // Token might have expired, try to refresh
+                    if (refreshToken) {
+                        try {
+                            await refreshTokens();
+                            // Retry the request with new token
+                            return apiFetch(endpoint, true);
+                        } catch (e) {
+                            console.error('Token refresh failed during API call:', e);
+                            logout();
+                            throw new Error('Session expired');
+                        }
+                    }
                     logout();
                     throw new Error('Unauthorized');
                 }
@@ -456,10 +667,27 @@
             }
 
             try {
+                const token = await getValidAccessToken();
+                if (!token) {
+                    logout();
+                    return;
+                }
+
                 const response = await fetch(`/admin/runners/${encodeURIComponent(runnerId)}/wake`, {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
+
+                // Handle 401 with retry
+                if (response.status === 401 && refreshToken) {
+                    try {
+                        await refreshTokens();
+                        return wakeRunner(runnerId); // Retry
+                    } catch (e) {
+                        logout();
+                        return;
+                    }
+                }
 
                 const result = await response.json();
 
