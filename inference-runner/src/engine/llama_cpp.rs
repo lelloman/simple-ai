@@ -72,10 +72,6 @@ impl ServerInstance {
         *self.last_used.write().await = Instant::now();
     }
 
-    async fn last_used(&self) -> Instant {
-        *self.last_used.read().await
-    }
-
     /// Check if the server process is still alive.
     async fn is_process_alive(&self) -> bool {
         let mut process = self.process.write().await;
@@ -332,34 +328,17 @@ impl LlamaCppEngine {
         }
     }
 
-    /// Ensure we don't exceed max_servers by unloading the least recently used model.
-    async fn enforce_server_limit(&self) -> Result<()> {
-        let servers = self.servers.read().await;
-        if servers.len() < self.config.max_servers {
-            return Ok(());
-        }
+    /// Unload all currently loaded models to free GPU memory before loading a new one.
+    /// This ensures only one model is loaded at a time, preventing OOM crashes.
+    async fn unload_all_models(&self) -> Result<()> {
+        let model_ids: Vec<String> = {
+            let servers = self.servers.read().await;
+            servers.keys().cloned().collect()
+        };
 
-        // Find LRU server
-        let mut oldest: Option<(String, Instant)> = None;
-        for (model_id, instance) in servers.iter() {
-            let last_used = instance.last_used().await;
-            match &oldest {
-                None => oldest = Some((model_id.clone(), last_used)),
-                Some((_, oldest_time)) if last_used < *oldest_time => {
-                    oldest = Some((model_id.clone(), last_used));
-                }
-                _ => {}
-            }
-        }
-        drop(servers);
-
-        if let Some((model_to_unload, _)) = oldest {
-            tracing::info!(
-                "Unloading LRU model {} to make room (max_servers={})",
-                model_to_unload,
-                self.config.max_servers
-            );
-            self.unload_model(&model_to_unload).await?;
+        for model_id in model_ids {
+            tracing::info!("Unloading model {} to free GPU memory", model_id);
+            self.unload_model(&model_id).await?;
         }
 
         Ok(())
@@ -488,8 +467,8 @@ impl LlamaCppEngine {
             }
         }
 
-        // Enforce server limit
-        self.enforce_server_limit().await?;
+        // Unload all models before loading new one to prevent OOM
+        self.unload_all_models().await?;
 
         // Remove any stale entry
         {
