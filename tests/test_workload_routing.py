@@ -34,7 +34,7 @@ import requests
 import common
 from common import (
     TestConfig, APIClient, LogLevel,
-    log_info, log_success, log_error, log_verbose, log_debug,
+    log_info, log_success, log_error, log_verbose, log_debug, log_warning,
     set_log_level, extract_model_from_response, format_duration
 )
 

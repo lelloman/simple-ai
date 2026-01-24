@@ -153,7 +153,8 @@ class TokenManager:
                 capture_output=True,
                 text=True,
                 timeout=30,
-                check=True
+                check=True,
+                env={**os.environ, 'HOME': os.path.expanduser('~')}
             )
             token = result.stdout.strip()
             if not token:
