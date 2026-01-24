@@ -183,6 +183,13 @@ impl JwksClient {
         let token_data = decode::<Claims>(token, key, &validation)
             .map_err(|e| AuthError::InvalidToken(e.to_string()))?;
 
+        tracing::debug!(
+            "JWT validated: sub={}, email={:?}, roles={:?}",
+            token_data.claims.sub,
+            token_data.claims.email,
+            token_data.claims.roles
+        );
+
         Ok(AuthUser {
             sub: token_data.claims.sub,
             email: token_data.claims.email,
