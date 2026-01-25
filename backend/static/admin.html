@@ -143,8 +143,8 @@
         let userInfo = null;
         let currentPage = null;
         let refreshInterval = null;
-        let runnerEventSource = null;
-        const REFRESH_INTERVAL_MS = 5000; // Auto-refresh every 5 seconds (for non-SSE pages)
+        let runnerWebSocket = null;
+        const REFRESH_INTERVAL_MS = 5000; // Auto-refresh every 5 seconds (for non-WebSocket pages)
 
         // Token refresh state
         let refreshToken = null;
@@ -267,6 +267,11 @@
             }
             if (tokenExpiresAt) {
                 localStorage.setItem('token_expires_at', tokenExpiresAt.toString());
+            }
+
+            // Notify WebSocket of new token (re-authenticate mid-connection)
+            if (runnerWebSocket?.ws?.readyState === WebSocket.OPEN) {
+                runnerWebSocket.refreshAuth();
             }
 
             return accessToken;
@@ -466,10 +471,10 @@
             document.getElementById('login-required').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
 
-            // Start SSE connection for real-time runner events
-            if (!runnerEventSource) {
-                runnerEventSource = new RunnerEventSource();
-                runnerEventSource.connect();
+            // Start WebSocket connection for real-time runner events
+            if (!runnerWebSocket) {
+                runnerWebSocket = new RunnerWebSocket();
+                runnerWebSocket.connect();
             }
         }
 
@@ -493,10 +498,10 @@
         }
 
         function logout() {
-            // Disconnect SSE
-            if (runnerEventSource) {
-                runnerEventSource.disconnect();
-                runnerEventSource = null;
+            // Disconnect WebSocket
+            if (runnerWebSocket) {
+                runnerWebSocket.disconnect();
+                runnerWebSocket = null;
             }
 
             localStorage.removeItem('access_token');
@@ -587,14 +592,17 @@
         }
 
         // =================================================================
-        // Runner EventSource - Real-time SSE connection for runner events
+        // Runner WebSocket - Real-time WebSocket connection for runner events
+        // Supports token refresh mid-connection without reconnecting
         // =================================================================
-        class RunnerEventSource {
+        class RunnerWebSocket {
             constructor() {
-                this.eventSource = null;
+                this.ws = null;
+                this.authenticated = false;
                 this.reconnectDelay = 1000;
                 this.maxReconnectDelay = 30000;
                 this.reconnectAttempts = 0;
+                this.reconnectTimer = null;
             }
 
             async connect() {
@@ -602,89 +610,155 @@
                 this.disconnect();
 
                 try {
-                    const token = await getValidAccessToken();
-                    if (!token) {
-                        console.error('No token available for SSE connection');
-                        return;
-                    }
+                    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    this.ws = new WebSocket(`${protocol}//${location.host}/admin/ws`);
 
-                    const url = `/admin/runners/events?token=${encodeURIComponent(token)}`;
-                    this.eventSource = new EventSource(url);
+                    this.ws.onopen = async () => {
+                        console.log('WebSocket connection established, sending auth...');
+                        this.updateConnectionBadge('connecting');
 
-                    this.eventSource.onopen = () => {
-                        console.log('SSE connection established');
-                        this.reconnectDelay = 1000;
-                        this.reconnectAttempts = 0;
-                        this.updateConnectionBadge(true);
+                        // Send auth message immediately
+                        const token = await getValidAccessToken();
+                        if (!token) {
+                            console.error('No token available for WebSocket auth');
+                            this.ws.close();
+                            return;
+                        }
+                        this.ws.send(JSON.stringify({ type: 'auth', token }));
                     };
 
-                    this.eventSource.onerror = async (event) => {
-                        console.error('SSE connection error', event);
-                        this.updateConnectionBadge(false);
-
-                        // EventSource will auto-reconnect, but we need to handle token refresh
-                        if (this.eventSource.readyState === EventSource.CLOSED) {
-                            this.eventSource = null;
-                            await this.scheduleReconnect();
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const msg = JSON.parse(event.data);
+                            this.handleMessage(msg);
+                        } catch (e) {
+                            console.error('Failed to parse WebSocket message:', e);
                         }
                     };
 
-                    // Handle runner events
-                    this.eventSource.addEventListener('runner_connected', (event) => {
-                        const data = JSON.parse(event.data);
-                        console.log('Runner connected:', data);
-                        this.handleRunnerConnected(data);
-                    });
+                    this.ws.onerror = (event) => {
+                        console.error('WebSocket error:', event);
+                    };
 
-                    this.eventSource.addEventListener('runner_disconnected', (event) => {
-                        const data = JSON.parse(event.data);
-                        console.log('Runner disconnected:', data);
-                        this.handleRunnerDisconnected(data);
-                    });
+                    this.ws.onclose = async (event) => {
+                        console.log('WebSocket closed:', event.code, event.reason);
+                        this.authenticated = false;
+                        this.updateConnectionBadge(false);
 
-                    this.eventSource.addEventListener('runner_status_changed', (event) => {
-                        const data = JSON.parse(event.data);
-                        console.log('Runner status changed:', data);
-                        this.handleRunnerStatusChanged(data);
-                    });
+                        // Don't reconnect if we closed intentionally (code 1000)
+                        // or if logout was triggered
+                        if (event.code !== 1000 && accessToken) {
+                            await this.scheduleReconnect();
+                        }
+                    };
                 } catch (e) {
-                    console.error('Failed to establish SSE connection:', e);
+                    console.error('Failed to establish WebSocket connection:', e);
                     await this.scheduleReconnect();
                 }
             }
 
+            handleMessage(msg) {
+                switch (msg.type) {
+                    case 'auth_ok':
+                        console.log('WebSocket authenticated');
+                        this.authenticated = true;
+                        this.reconnectDelay = 1000;
+                        this.reconnectAttempts = 0;
+                        this.updateConnectionBadge(true);
+                        break;
+
+                    case 'auth_error':
+                        console.error('WebSocket auth error:', msg.message);
+                        this.authenticated = false;
+                        this.updateConnectionBadge(false);
+                        // If initial auth fails, try to refresh token and reconnect
+                        if (refreshToken) {
+                            this.scheduleReconnect();
+                        }
+                        break;
+
+                    case 'runner_connected':
+                        console.log('Runner connected:', msg);
+                        this.handleRunnerConnected(msg);
+                        break;
+
+                    case 'runner_disconnected':
+                        console.log('Runner disconnected:', msg);
+                        this.handleRunnerDisconnected(msg);
+                        break;
+
+                    case 'runner_status_changed':
+                        console.log('Runner status changed:', msg);
+                        this.handleRunnerStatusChanged(msg);
+                        break;
+
+                    default:
+                        console.log('Unknown WebSocket message type:', msg.type);
+                }
+            }
+
             async scheduleReconnect() {
+                // Clear any existing reconnect timer
+                if (this.reconnectTimer) {
+                    clearTimeout(this.reconnectTimer);
+                }
+
                 this.reconnectAttempts++;
                 const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
-                console.log(`Scheduling SSE reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
+                console.log(`Scheduling WebSocket reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
                 // Try to refresh token before reconnecting
                 if (refreshToken) {
                     try {
                         await refreshTokens();
                     } catch (e) {
-                        console.error('Token refresh failed before SSE reconnect:', e);
+                        console.error('Token refresh failed before WebSocket reconnect:', e);
                     }
                 }
 
-                setTimeout(() => this.connect(), delay);
+                this.reconnectTimer = setTimeout(() => {
+                    this.reconnectTimer = null;
+                    this.connect();
+                }, delay);
+            }
+
+            // Re-authenticate with new token (called when token is refreshed)
+            async refreshAuth() {
+                if (this.ws?.readyState === WebSocket.OPEN) {
+                    const token = await getValidAccessToken();
+                    if (token) {
+                        console.log('Sending re-auth message to WebSocket');
+                        this.ws.send(JSON.stringify({ type: 'auth', token }));
+                    }
+                }
             }
 
             disconnect() {
-                if (this.eventSource) {
-                    this.eventSource.close();
-                    this.eventSource = null;
+                // Clear reconnect timer
+                if (this.reconnectTimer) {
+                    clearTimeout(this.reconnectTimer);
+                    this.reconnectTimer = null;
                 }
+
+                if (this.ws) {
+                    this.ws.close(1000, 'Client disconnect');
+                    this.ws = null;
+                }
+                this.authenticated = false;
                 this.updateConnectionBadge(false);
             }
 
             updateConnectionBadge(connected) {
                 const badge = document.getElementById('auto-refresh-badge');
                 if (badge) {
-                    if (connected) {
+                    if (connected === true) {
                         badge.textContent = 'Live';
                         badge.classList.remove('bg-yellow-100', 'text-yellow-800', 'bg-gray-100', 'text-gray-600');
                         badge.classList.add('bg-green-100', 'text-green-800');
+                    } else if (connected === 'connecting') {
+                        badge.textContent = 'Connecting...';
+                        badge.classList.remove('bg-green-100', 'text-green-800', 'bg-gray-100', 'text-gray-600');
+                        badge.classList.add('bg-yellow-100', 'text-yellow-800');
                     } else {
                         badge.textContent = 'Reconnecting...';
                         badge.classList.remove('bg-green-100', 'text-green-800', 'bg-gray-100', 'text-gray-600');
@@ -710,9 +784,6 @@
                     // Use event data as fallback
                     this.upsertWithEventData(data);
                 }
-
-                // Update dashboard runner count if viewing dashboard
-                // (dashboard polls so it will update on next refresh)
             }
 
             upsertWithEventData(data) {
@@ -733,7 +804,6 @@
 
             handleRunnerDisconnected(data) {
                 markRunnerOffline(data.runner_id);
-                // Dashboard polls so it will update on next refresh
             }
 
             handleRunnerStatusChanged(data) {
@@ -945,7 +1015,7 @@
             loadPageData(page);
 
             // Set up auto-refresh for pages that benefit from it
-            // Note: 'runners' page uses SSE for real-time updates, not polling
+            // Note: 'runners' page uses WebSocket for real-time updates, not polling
             if (['dashboard', 'models'].includes(page)) {
                 refreshInterval = setInterval(() => loadPageData(page), REFRESH_INTERVAL_MS);
             }
@@ -959,7 +1029,7 @@
             const badge = document.getElementById('auto-refresh-badge');
             if (['dashboard', 'runners', 'models'].includes(page)) {
                 badge.classList.remove('hidden');
-                // For runners page, badge text is controlled by SSE connection state
+                // For runners page, badge text is controlled by WebSocket connection state
                 // For other pages, show "Auto-refresh" badge
                 if (page !== 'runners') {
                     badge.textContent = 'Auto-refresh';

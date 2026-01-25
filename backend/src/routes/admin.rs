@@ -5,6 +5,7 @@
 //! - Users (`/admin/users`) - User management
 //! - Requests (`/admin/requests`) - Request history
 //! - SSE endpoint for real-time runner events (`/admin/runners/events`)
+//! - WebSocket endpoint for real-time runner events with token refresh (`/admin/ws`)
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -12,7 +13,10 @@ use std::time::Duration;
 
 use askama::Template;
 use axum::{
-    extract::{Path, Query, Request, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Path, Query, Request, State,
+    },
     http::StatusCode,
     middleware::{self, Next},
     response::{
@@ -22,10 +26,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use futures_util::stream::Stream;
-use serde::Serialize;
+use futures_util::{stream::Stream, SinkExt, StreamExt as FuturesStreamExt};
+use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
+use tokio_stream::StreamExt as TokioStreamExt;
 
 use crate::audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
 use crate::gateway::RunnerEvent;
@@ -431,9 +435,286 @@ pub struct SseAuthQuery {
     token: String,
 }
 
+// ========== WebSocket Admin Client Messages ==========
+
+/// Messages sent from admin client to server.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AdminClientMessage {
+    /// Authentication message with JWT token.
+    Auth { token: String },
+}
+
+/// Messages sent from server to admin client.
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum AdminServerMessage {
+    /// Authentication succeeded.
+    AuthOk,
+    /// Authentication failed.
+    AuthError { message: String },
+    /// A runner connected.
+    RunnerConnected {
+        runner_id: String,
+        name: String,
+        machine_type: Option<String>,
+        health: String,
+        loaded_models: Vec<String>,
+    },
+    /// A runner disconnected.
+    RunnerDisconnected { runner_id: String },
+    /// A runner's status changed.
+    RunnerStatusChanged {
+        runner_id: String,
+        health: String,
+        loaded_models: Vec<String>,
+    },
+}
+
+impl From<RunnerEvent> for AdminServerMessage {
+    fn from(event: RunnerEvent) -> Self {
+        match event {
+            RunnerEvent::Connected {
+                runner_id,
+                name,
+                machine_type,
+                health,
+                loaded_models,
+            } => AdminServerMessage::RunnerConnected {
+                runner_id,
+                name,
+                machine_type,
+                health,
+                loaded_models,
+            },
+            RunnerEvent::Disconnected { runner_id } => {
+                AdminServerMessage::RunnerDisconnected { runner_id }
+            }
+            RunnerEvent::StatusChanged {
+                runner_id,
+                health,
+                loaded_models,
+            } => AdminServerMessage::RunnerStatusChanged {
+                runner_id,
+                health,
+                loaded_models,
+            },
+        }
+    }
+}
+
+/// GET /admin/ws - WebSocket endpoint for real-time runner events.
+///
+/// Protocol:
+/// - Client sends `{ "type": "auth", "token": "<jwt>" }` to authenticate
+/// - Server responds with `{ "type": "auth_ok" }` or `{ "type": "auth_error", "message": "..." }`
+/// - After auth, server sends runner events as they occur
+/// - Client can send auth message again to refresh token mid-connection
+async fn admin_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_admin_ws(socket, state))
+}
+
+/// Handle an admin WebSocket connection.
+async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
+    let (mut ws_tx, mut ws_rx) = socket.split();
+
+    // Wait for initial auth message within 10 seconds
+    let auth_timeout = Duration::from_secs(10);
+    let initial_auth = match tokio::time::timeout(auth_timeout, FuturesStreamExt::next(&mut ws_rx)).await {
+        Ok(Some(Ok(Message::Text(text)))) => {
+            match serde_json::from_str::<AdminClientMessage>(&text) {
+                Ok(AdminClientMessage::Auth { token }) => token,
+                Err(e) => {
+                    let _ = send_admin_message(
+                        &mut ws_tx,
+                        &AdminServerMessage::AuthError {
+                            message: format!("Invalid message format: {}", e),
+                        },
+                    )
+                    .await;
+                    return;
+                }
+            }
+        }
+        Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {
+            tracing::debug!("Admin WS client disconnected before auth");
+            return;
+        }
+        Ok(Some(Ok(_))) => {
+            let _ = send_admin_message(
+                &mut ws_tx,
+                &AdminServerMessage::AuthError {
+                    message: "Expected text message with auth".to_string(),
+                },
+            )
+            .await;
+            return;
+        }
+        Ok(Some(Err(e))) => {
+            tracing::warn!("Admin WS error during auth: {}", e);
+            return;
+        }
+        Err(_) => {
+            let _ = send_admin_message(
+                &mut ws_tx,
+                &AdminServerMessage::AuthError {
+                    message: "Authentication timeout".to_string(),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+
+    // Validate initial token
+    if let Err(msg) = validate_admin_token(&state, &initial_auth).await {
+        let _ = send_admin_message(
+            &mut ws_tx,
+            &AdminServerMessage::AuthError { message: msg },
+        )
+        .await;
+        return;
+    }
+
+    // Auth successful
+    if send_admin_message(&mut ws_tx, &AdminServerMessage::AuthOk)
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    tracing::debug!("Admin WS client authenticated");
+
+    // Subscribe to runner events
+    let event_rx = state.runner_registry.subscribe_events();
+    let mut event_stream = BroadcastStream::new(event_rx);
+
+    // Ping interval for keep-alive (30 seconds)
+    let mut ping_interval = tokio::time::interval(Duration::from_secs(30));
+    ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        tokio::select! {
+            // Handle runner events from registry
+            Some(event_result) = TokioStreamExt::next(&mut event_stream) => {
+                match event_result {
+                    Ok(event) => {
+                        let msg = AdminServerMessage::from(event);
+                        if send_admin_message(&mut ws_tx, &msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                        tracing::warn!("Admin WS client lagged, skipped {} events", n);
+                    }
+                }
+            }
+
+            // Handle incoming messages from client
+            Some(msg_result) = FuturesStreamExt::next(&mut ws_rx) => {
+                match msg_result {
+                    Ok(Message::Text(text)) => {
+                        // Handle re-auth messages
+                        match serde_json::from_str::<AdminClientMessage>(&text) {
+                            Ok(AdminClientMessage::Auth { token }) => {
+                                match validate_admin_token(&state, &token).await {
+                                    Ok(()) => {
+                                        tracing::debug!("Admin WS client re-authenticated");
+                                        if send_admin_message(&mut ws_tx, &AdminServerMessage::AuthOk)
+                                            .await
+                                            .is_err()
+                                        {
+                                            break;
+                                        }
+                                    }
+                                    Err(msg) => {
+                                        // Don't disconnect on re-auth failure, just report the error
+                                        // The client can try again with a valid token
+                                        let _ = send_admin_message(
+                                            &mut ws_tx,
+                                            &AdminServerMessage::AuthError { message: msg },
+                                        )
+                                        .await;
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                // Ignore malformed messages
+                                tracing::debug!("Admin WS received malformed message");
+                            }
+                        }
+                    }
+                    Ok(Message::Ping(data)) => {
+                        if ws_tx.send(Message::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(Message::Pong(_)) => {
+                        // Client responded to our ping, connection is alive
+                    }
+                    Ok(Message::Close(_)) => {
+                        tracing::debug!("Admin WS client sent close frame");
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("Admin WS error: {}", e);
+                        break;
+                    }
+                }
+            }
+
+            // Send ping for keep-alive
+            _ = ping_interval.tick() => {
+                if ws_tx.send(Message::Ping(vec![])).await.is_err() {
+                    break;
+                }
+            }
+
+            else => break,
+        }
+    }
+
+    tracing::debug!("Admin WS client disconnected");
+}
+
+/// Validate a JWT token for admin access.
+async fn validate_admin_token(state: &AppState, token: &str) -> Result<(), String> {
+    let user = state
+        .jwks_client
+        .validate_token(token)
+        .await
+        .map_err(|e| format!("Invalid token: {}", e))?;
+
+    if !user.is_admin() {
+        return Err("Admin access required".to_string());
+    }
+
+    Ok(())
+}
+
+/// Send an AdminServerMessage over WebSocket.
+async fn send_admin_message<S>(
+    sink: &mut S,
+    msg: &AdminServerMessage,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    S: SinkExt<Message> + Unpin,
+    S::Error: std::error::Error + Send + Sync + 'static,
+{
+    let json = serde_json::to_string(msg)?;
+    sink.send(Message::Text(json)).await?;
+    Ok(())
+}
+
 /// GET /admin/runners/events - SSE stream for real-time runner events.
 ///
 /// Authentication is done via query parameter since EventSource doesn't support headers.
+/// Note: Prefer WebSocket endpoint (/admin/ws) for new clients - it supports token refresh.
 async fn runner_events(
     State(state): State<Arc<AppState>>,
     Query(auth): Query<SseAuthQuery>,
@@ -453,7 +734,7 @@ async fn runner_events(
     let rx = state.runner_registry.subscribe_events();
 
     // Convert broadcast receiver to stream
-    let stream = BroadcastStream::new(rx).filter_map(|result| {
+    let stream = TokioStreamExt::filter_map(BroadcastStream::new(rx), |result| {
         match result {
             Ok(event) => {
                 // Determine event type name for SSE
@@ -479,8 +760,14 @@ async fn runner_events(
 /// Build the admin router.
 pub fn router(state: Arc<AppState>) -> Router {
     // SSE endpoint with query-based auth (separate from middleware-protected routes)
+    // Note: SSE is kept for backward compatibility, prefer WebSocket for new clients
     let sse_routes = Router::new()
         .route("/runners/events", get(runner_events))
+        .with_state(state.clone());
+
+    // WebSocket endpoint with message-based auth (supports token refresh mid-connection)
+    let ws_routes = Router::new()
+        .route("/ws", get(admin_ws))
         .with_state(state.clone());
 
     // Regular admin routes with middleware authentication
@@ -496,8 +783,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);
 
-    // Merge routes: SSE first (more specific path), then admin routes
-    sse_routes.merge(admin_routes)
+    // Merge routes: SSE and WS first (more specific paths), then admin routes
+    sse_routes.merge(ws_routes).merge(admin_routes)
 }
 
 #[cfg(test)]
