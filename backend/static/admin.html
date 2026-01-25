@@ -144,7 +144,10 @@
         let currentPage = null;
         let refreshInterval = null;
         let runnerWebSocket = null;
-        const REFRESH_INTERVAL_MS = 5000; // Auto-refresh every 5 seconds (for non-WebSocket pages)
+
+        // Reactive state (populated via WebSocket)
+        let runnersState = [];
+        let modelsState = [];
 
         // Token refresh state
         let refreshToken = null;
@@ -677,6 +680,13 @@
                         }
                         break;
 
+                    case 'state_snapshot':
+                        console.log('Received state snapshot:', msg.runners.length, 'runners,', msg.models.length, 'models');
+                        runnersState = msg.runners;
+                        modelsState = msg.models;
+                        renderCurrentPage();
+                        break;
+
                     case 'runner_connected':
                         console.log('Runner connected:', msg);
                         this.handleRunnerConnected(msg);
@@ -690,6 +700,12 @@
                     case 'runner_status_changed':
                         console.log('Runner status changed:', msg);
                         this.handleRunnerStatusChanged(msg);
+                        break;
+
+                    case 'models_updated':
+                        console.log('Models updated:', msg.models.length, 'models');
+                        modelsState = msg.models;
+                        renderModelsIfVisible();
                         break;
 
                     default:
@@ -767,26 +783,9 @@
                 }
             }
 
-            async handleRunnerConnected(data) {
-                // Fetch full runner data to get mac_address, http_base_url, etc.
-                // Use silent fetch to avoid triggering logout on auth errors
-                try {
-                    const runnersData = await apiFetchSilent('/admin/runners');
-                    const fullRunner = runnersData.runners.find(r => r.id === data.runner_id);
-                    if (fullRunner) {
-                        upsertRunnerCard(data.runner_id, fullRunner);
-                    } else {
-                        // Fallback to event data if runner not found in list
-                        this.upsertWithEventData(data);
-                    }
-                } catch (e) {
-                    console.error('Failed to fetch runner details:', e);
-                    // Use event data as fallback
-                    this.upsertWithEventData(data);
-                }
-            }
-
-            upsertWithEventData(data) {
+            handleRunnerConnected(data) {
+                // Update local state
+                const existingIndex = runnersState.findIndex(r => r.id === data.runner_id);
                 const runner = {
                     id: data.runner_id,
                     name: data.name,
@@ -796,17 +795,48 @@
                     is_online: true,
                     connected_at: new Date().toISOString(),
                     last_heartbeat: new Date().toISOString(),
-                    mac_address: null,
+                    mac_address: existingIndex >= 0 ? runnersState[existingIndex].mac_address : null,
                     http_base_url: null
                 };
+
+                if (existingIndex >= 0) {
+                    // Preserve mac_address from existing offline runner
+                    runner.mac_address = runnersState[existingIndex].mac_address;
+                    runnersState[existingIndex] = runner;
+                } else {
+                    runnersState.push(runner);
+                }
+
+                // Update UI
                 upsertRunnerCard(data.runner_id, runner);
+                renderDashboardStats();
             }
 
             handleRunnerDisconnected(data) {
+                // Update local state
+                const runner = runnersState.find(r => r.id === data.runner_id);
+                if (runner) {
+                    runner.is_online = false;
+                    runner.health = 'Offline';
+                    runner.loaded_models = [];
+                    runner.last_heartbeat = new Date().toISOString();
+                }
+
+                // Update UI
                 markRunnerOffline(data.runner_id);
+                renderDashboardStats();
             }
 
             handleRunnerStatusChanged(data) {
+                // Update local state
+                const runner = runnersState.find(r => r.id === data.runner_id);
+                if (runner) {
+                    runner.health = data.health;
+                    runner.loaded_models = data.loaded_models;
+                    runner.last_heartbeat = new Date().toISOString();
+                }
+
+                // Update UI
                 updateRunnerCard(data.runner_id, {
                     health: data.health,
                     loaded_models: data.loaded_models
@@ -1011,71 +1041,101 @@
             document.querySelectorAll('.page').forEach(el => el.classList.add('hidden'));
             document.getElementById(`page-${page}`).classList.remove('hidden');
 
-            // Load data
-            loadPageData(page);
-
-            // Set up auto-refresh for pages that benefit from it
-            // Note: 'runners' page uses WebSocket for real-time updates, not polling
-            if (['dashboard', 'models'].includes(page)) {
-                refreshInterval = setInterval(() => loadPageData(page), REFRESH_INTERVAL_MS);
-            }
+            // Render current page from local state
+            renderCurrentPage();
         }
 
-        function loadPageData(page) {
+        // Render the current page from local state (called on state updates)
+        function renderCurrentPage() {
+            if (!currentPage) return;
+
             // Update last-updated timestamp
             document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
 
-            // Show/hide auto-refresh badge based on page
+            // Show/hide auto-refresh badge - all data now comes via WebSocket
             const badge = document.getElementById('auto-refresh-badge');
-            if (['dashboard', 'runners', 'models'].includes(page)) {
+            if (['dashboard', 'runners', 'models'].includes(currentPage)) {
                 badge.classList.remove('hidden');
-                // For runners page, badge text is controlled by WebSocket connection state
-                // For other pages, show "Auto-refresh" badge
-                if (page !== 'runners') {
-                    badge.textContent = 'Auto-refresh';
-                    badge.classList.remove('bg-yellow-100', 'text-yellow-800');
-                    badge.classList.add('bg-green-100', 'text-green-800');
-                }
+                // Badge text is controlled by WebSocket connection state
             } else {
                 badge.classList.add('hidden');
             }
 
-            if (page === 'dashboard') loadDashboard();
-            else if (page === 'runners') loadRunners();
-            else if (page === 'models') loadModels();
-            else if (page === 'users') loadUsers();
-            else if (page === 'requests') loadRequests();
+            if (currentPage === 'dashboard') renderDashboard();
+            else if (currentPage === 'runners') renderRunners();
+            else if (currentPage === 'models') renderModels();
+            else if (currentPage === 'users') loadUsers();
+            else if (currentPage === 'requests') loadRequests();
         }
 
-        async function loadDashboard() {
-            try {
-                const [runnersData] = await Promise.all([
-                    apiFetch('/admin/runners')
-                ]);
-                document.getElementById('stat-runners').textContent = runnersData.total;
+        // Render dashboard stats from local state
+        function renderDashboard() {
+            renderDashboardStats();
+        }
 
-                // Try to load stats (may not have dedicated endpoint)
-                document.getElementById('stat-users').textContent = '-';
-                document.getElementById('stat-requests').textContent = '-';
-                document.getElementById('stat-requests-24h').textContent = '-';
-            } catch (e) {
-                console.error('Failed to load dashboard:', e);
+        // Update dashboard stats counters
+        function renderDashboardStats() {
+            const onlineCount = runnersState.filter(r => r.is_online).length;
+            document.getElementById('stat-runners').textContent = onlineCount;
+
+            // These stats would need a separate endpoint or WS message
+            document.getElementById('stat-users').textContent = '-';
+            document.getElementById('stat-requests').textContent = '-';
+            document.getElementById('stat-requests-24h').textContent = '-';
+        }
+
+        // Render runners list from local state
+        function renderRunners() {
+            const container = document.getElementById('runners-list');
+
+            if (runnersState.length === 0) {
+                container.innerHTML = '<div class="bg-white rounded-lg shadow p-6 text-gray-500 text-center">No runners registered</div>';
+                return;
             }
+
+            container.innerHTML = runnersState.map(runner => renderRunnerCard(runner)).join('');
         }
 
-        async function loadRunners() {
-            try {
-                const data = await apiFetch('/admin/runners');
-                const container = document.getElementById('runners-list');
+        // Render models list from local state
+        function renderModels() {
+            const ul = document.getElementById('models-ul');
 
-                if (data.runners.length === 0) {
-                    container.innerHTML = '<div class="bg-white rounded-lg shadow p-6 text-gray-500 text-center">No runners registered</div>';
-                    return;
-                }
+            if (modelsState.length === 0) {
+                ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No models available</li>';
+                return;
+            }
 
-                container.innerHTML = data.runners.map(runner => renderRunnerCard(runner)).join('');
-            } catch (e) {
-                console.error('Failed to load runners:', e);
+            ul.innerHTML = modelsState.map(model => `
+                <li class="px-4 py-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">${escapeHtml(model.id)}</p>
+                            <p class="text-xs text-gray-500">
+                                ${model.quantization ? `Quant: ${escapeHtml(model.quantization)}` : ''}
+                                ${model.context_length ? ` | Context: ${model.context_length}` : ''}
+                                ${model.size_bytes ? ` | Size: ${(model.size_bytes / 1024 / 1024 / 1024).toFixed(1)} GB` : ''}
+                            </p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                model.loaded ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                            }">${model.loaded ? 'Loaded' : 'Not loaded'}</span>
+                            <span class="text-xs text-gray-500" title="Runners with model in memory">${model.runners.length} loaded</span>
+                            <span class="text-xs text-gray-400" title="Runners with model on disk">${model.available_on ? model.available_on.length : 0} available</span>
+                        </div>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        // Render models if currently viewing models page
+        function renderModelsIfVisible() {
+            if (currentPage === 'models') {
+                renderModels();
+            }
+            // Also update dashboard since model count might be relevant
+            if (currentPage === 'dashboard') {
+                renderDashboardStats();
             }
         }
 
@@ -1117,8 +1177,7 @@
                         btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                         btn.classList.add('bg-green-600');
                     }
-                    // Refresh runners list after a short delay
-                    setTimeout(() => loadRunners(), 2000);
+                    // Runner will appear via WebSocket when it connects
                 } else {
                     alert(`Failed to wake runner: ${result.message}`);
                     if (btn) {
@@ -1133,42 +1192,6 @@
                     btn.disabled = false;
                     btn.textContent = 'Wake';
                 }
-            }
-        }
-
-        async function loadModels() {
-            try {
-                const data = await apiFetch('/admin/models');
-                const ul = document.getElementById('models-ul');
-
-                if (data.models.length === 0) {
-                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No models available</li>';
-                    return;
-                }
-
-                ul.innerHTML = data.models.map(model => `
-                    <li class="px-4 py-4">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-sm font-medium text-gray-900">${model.id}</p>
-                                <p class="text-xs text-gray-500">
-                                    ${model.quantization ? `Quant: ${model.quantization}` : ''}
-                                    ${model.context_length ? ` | Context: ${model.context_length}` : ''}
-                                    ${model.size_bytes ? ` | Size: ${(model.size_bytes / 1024 / 1024 / 1024).toFixed(1)} GB` : ''}
-                                </p>
-                            </div>
-                            <div class="flex items-center space-x-3">
-                                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                    model.loaded ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                                }">${model.loaded ? 'Loaded' : 'Not loaded'}</span>
-                                <span class="text-xs text-gray-500" title="Runners with model in memory">${model.runners.length} loaded</span>
-                                <span class="text-xs text-gray-400" title="Runners with model on disk">${model.available_on ? model.available_on.length : 0} available</span>
-                            </div>
-                        </div>
-                    </li>
-                `).join('');
-            } catch (e) {
-                console.error('Failed to load models:', e);
             }
         }
 

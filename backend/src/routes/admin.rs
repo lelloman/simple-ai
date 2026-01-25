@@ -453,6 +453,11 @@ enum AdminServerMessage {
     AuthOk,
     /// Authentication failed.
     AuthError { message: String },
+    /// Full state snapshot (sent after auth and on request).
+    StateSnapshot {
+        runners: Vec<RunnerInfo>,
+        models: Vec<AdminModelInfo>,
+    },
     /// A runner connected.
     RunnerConnected {
         runner_id: String,
@@ -469,6 +474,8 @@ enum AdminServerMessage {
         health: String,
         loaded_models: Vec<String>,
     },
+    /// Models list updated (sent after runner connect/disconnect/status change).
+    ModelsUpdated { models: Vec<AdminModelInfo> },
 }
 
 impl From<RunnerEvent> for AdminServerMessage {
@@ -589,6 +596,16 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
 
     tracing::debug!("Admin WS client authenticated");
 
+    // Send initial state snapshot
+    let runners = get_runners_snapshot(&state).await;
+    let models = get_models_snapshot(&state).await;
+    if send_admin_message(&mut ws_tx, &AdminServerMessage::StateSnapshot { runners, models })
+        .await
+        .is_err()
+    {
+        return;
+    }
+
     // Subscribe to runner events
     let event_rx = state.runner_registry.subscribe_events();
     let mut event_stream = BroadcastStream::new(event_rx);
@@ -603,8 +620,14 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
             Some(event_result) = TokioStreamExt::next(&mut event_stream) => {
                 match event_result {
                     Ok(event) => {
+                        // Send the runner event
                         let msg = AdminServerMessage::from(event);
                         if send_admin_message(&mut ws_tx, &msg).await.is_err() {
+                            break;
+                        }
+                        // Also send updated models (since model availability depends on runners)
+                        let models = get_models_snapshot(&state).await;
+                        if send_admin_message(&mut ws_tx, &AdminServerMessage::ModelsUpdated { models }).await.is_err() {
                             break;
                         }
                     }
@@ -680,6 +703,78 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     }
 
     tracing::debug!("Admin WS client disconnected");
+}
+
+/// Get current runners list (connected + offline from DB).
+async fn get_runners_snapshot(state: &AppState) -> Vec<RunnerInfo> {
+    use std::collections::HashSet;
+
+    let connected_runners = state.runner_registry.all().await;
+    let connected_ids: HashSet<String> = connected_runners.iter().map(|r| r.id.clone()).collect();
+
+    let mut runners: Vec<RunnerInfo> = connected_runners
+        .into_iter()
+        .map(|r| {
+            let loaded_models = r.loaded_models();
+            RunnerInfo {
+                id: r.id,
+                name: r.name,
+                machine_type: r.machine_type,
+                health: format!("{:?}", r.status.health),
+                loaded_models,
+                connected_at: r.connected_at.to_rfc3339(),
+                last_heartbeat: r.last_heartbeat.to_rfc3339(),
+                http_base_url: r.http_base_url,
+                mac_address: r.mac_address,
+                is_online: true,
+            }
+        })
+        .collect();
+
+    // Add offline runners from database
+    if let Ok(db_runners) = state.audit_logger.get_all_runners() {
+        for db_runner in db_runners {
+            if !connected_ids.contains(&db_runner.id) {
+                runners.push(RunnerInfo {
+                    id: db_runner.id,
+                    name: db_runner.name,
+                    machine_type: db_runner.machine_type,
+                    health: "Offline".to_string(),
+                    loaded_models: vec![],
+                    connected_at: "".to_string(),
+                    last_heartbeat: db_runner.last_seen_at,
+                    http_base_url: None,
+                    mac_address: db_runner.mac_address,
+                    is_online: false,
+                });
+            }
+        }
+    }
+
+    runners
+}
+
+/// Get current models list.
+async fn get_models_snapshot(state: &AppState) -> Vec<AdminModelInfo> {
+    state
+        .inference_router
+        .list_models_with_details()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| AdminModelInfo {
+            id: m.id,
+            name: m.name,
+            size_bytes: m.size_bytes,
+            parameter_count: m.parameter_count,
+            context_length: m.context_length,
+            quantization: m.quantization,
+            modified_at: m.modified_at,
+            loaded: m.loaded,
+            runners: m.runners,
+            available_on: m.available_on,
+        })
+        .collect()
 }
 
 /// Validate a JWT token for admin access.
