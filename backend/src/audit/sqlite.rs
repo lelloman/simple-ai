@@ -1273,4 +1273,168 @@ mod tests {
         assert_eq!(mistral_runners.len(), 1);
         assert_eq!(mistral_runners[0].id, "runner-1");
     }
+
+    // ==================== API Key Tests ====================
+
+    #[test]
+    fn test_create_api_key() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+
+        let (key, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+
+        assert!(!key.id.is_empty());
+        assert_eq!(key.user_id, "user123");
+        assert_eq!(key.name, "Test Key");
+        assert_eq!(key.user_email, Some("user@example.com".to_string()));
+        assert!(!key.revoked);
+        assert!(key.last_used_at.is_none());
+
+        // Secret should be in sk-<hex> format
+        assert!(secret.starts_with("sk-"));
+        assert_eq!(secret.len(), 35); // "sk-" + 32 hex chars
+    }
+
+    #[test]
+    fn test_validate_api_key_valid() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+
+        let (_, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+
+        // Validate the key
+        let result = logger.validate_api_key(&secret).unwrap();
+        assert!(result.is_some());
+
+        let (user_id, email) = result.unwrap();
+        assert_eq!(user_id, "user123");
+        assert_eq!(email, Some("user@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_validate_api_key_invalid() {
+        let logger = create_test_logger();
+
+        // Try to validate a key that doesn't exist
+        let result = logger.validate_api_key("sk-invalidkey12345678901234567890").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_validate_api_key_wrong_prefix() {
+        let logger = create_test_logger();
+
+        // Keys not starting with sk- should return None immediately
+        let result = logger.validate_api_key("invalid-key").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_validate_api_key_revoked() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+
+        let (key, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+
+        // Validate before revocation - should work
+        let result = logger.validate_api_key(&secret).unwrap();
+        assert!(result.is_some());
+
+        // Revoke the key
+        let revoked = logger.revoke_api_key(&key.id).unwrap();
+        assert!(revoked);
+
+        // Validate after revocation - should fail
+        let result = logger.validate_api_key(&secret).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_validate_api_key_updates_last_used() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+
+        let (_, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+
+        // Validate the key
+        logger.validate_api_key(&secret).unwrap();
+
+        // Check that last_used_at was updated
+        let keys = logger.list_api_keys().unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys[0].last_used_at.is_some());
+    }
+
+    #[test]
+    fn test_list_api_keys_empty() {
+        let logger = create_test_logger();
+        let keys = logger.list_api_keys().unwrap();
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn test_list_api_keys() {
+        let logger = create_test_logger();
+        let user1 = logger.find_or_create_user("user1", Some("user1@example.com")).unwrap();
+        let user2 = logger.find_or_create_user("user2", Some("user2@example.com")).unwrap();
+
+        logger.create_api_key(&user1.id, "Key 1").unwrap();
+        logger.create_api_key(&user1.id, "Key 2").unwrap();
+        logger.create_api_key(&user2.id, "Key 3").unwrap();
+
+        let keys = logger.list_api_keys().unwrap();
+        assert_eq!(keys.len(), 3);
+
+        // Should include user emails
+        assert!(keys.iter().any(|k| k.user_email == Some("user1@example.com".to_string())));
+        assert!(keys.iter().any(|k| k.user_email == Some("user2@example.com".to_string())));
+    }
+
+    #[test]
+    fn test_revoke_api_key() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+
+        let (key, _) = logger.create_api_key(&user.id, "Test Key").unwrap();
+
+        // Revoke the key
+        let revoked = logger.revoke_api_key(&key.id).unwrap();
+        assert!(revoked);
+
+        // Check it's marked as revoked
+        let keys = logger.list_api_keys().unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys[0].revoked);
+    }
+
+    #[test]
+    fn test_revoke_api_key_not_found() {
+        let logger = create_test_logger();
+
+        // Try to revoke a key that doesn't exist
+        let revoked = logger.revoke_api_key("nonexistent-id").unwrap();
+        assert!(!revoked);
+    }
+
+    #[test]
+    fn test_api_key_struct() {
+        let key = ApiKey {
+            id: "key-123".to_string(),
+            key_hash: "hash123".to_string(),
+            user_id: "user-456".to_string(),
+            user_email: Some("user@example.com".to_string()),
+            name: "Test Key".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            last_used_at: Some("2024-01-02T00:00:00Z".to_string()),
+            revoked: false,
+        };
+        assert_eq!(key.id, "key-123");
+        assert_eq!(key.name, "Test Key");
+        assert!(!key.revoked);
+
+        // Verify key_hash is not serialized
+        let json = serde_json::to_string(&key).unwrap();
+        assert!(!json.contains("hash123"));
+        assert!(!json.contains("key_hash"));
+    }
 }

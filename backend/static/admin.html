@@ -1068,7 +1068,8 @@
                 runners: 'Runners',
                 models: 'Models',
                 users: 'Users',
-                requests: 'Requests'
+                requests: 'Requests',
+                apikeys: 'API Keys'
             };
             document.getElementById('page-title').textContent = titles[page] || page;
 
@@ -1378,7 +1379,7 @@
                             <div class="flex items-center space-x-3 ml-4">
                                 ${key.revoked
                                     ? '<span class="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800">Revoked</span>'
-                                    : `<button onclick="revokeApiKey('${key.id}')" class="text-sm text-red-600 hover:text-red-800">Revoke</button>`
+                                    : `<button onclick="revokeApiKey('${escapeAttr(key.id)}')" class="text-sm text-red-600 hover:text-red-800">Revoke</button>`
                                 }
                             </div>
                         </div>
