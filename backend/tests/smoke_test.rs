@@ -96,6 +96,8 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         config.models.clone(),
     ));
 
+    let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
+
     Ok(Arc::new(AppState {
         config,
         jwks_client,
@@ -106,6 +108,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         inference_router,
         wol_config,
         wake_service,
+        request_events: request_events_tx,
     }))
 }
 

@@ -63,6 +63,8 @@ pub async fn create_test_state() -> AppState {
         config.models.clone(),
     ));
 
+    let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
+
     AppState {
         config,
         jwks_client,
@@ -73,6 +75,7 @@ pub async fn create_test_state() -> AppState {
         inference_router,
         wol_config,
         wake_service,
+        request_events: request_events_tx,
     }
 }
 

@@ -9,7 +9,7 @@ use axum::{
 };
 use axum::http::HeaderMap;
 
-use crate::AppState;
+use crate::{AppState, RequestEvent};
 use crate::auth::AuthUser;
 use crate::gateway::{can_request_model, ModelRequest, RouterError};
 use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
@@ -221,14 +221,49 @@ async fn chat_completions(
             let mut resp_log = Response::new(request_id, 500);
             resp_log.response_body = e.to_string();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
-            resp_log.runner_id = runner_id;
+            resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
             let _ = state.audit_logger.log_response(&resp_log);
+
+            // Emit request event for admin dashboard (error case)
+            let _ = state.request_events.send(RequestEvent {
+                id: req_log.id.clone(),
+                timestamp: req_log.timestamp.to_rfc3339(),
+                user_id: req_log.user_id.clone(),
+                user_email: auth_user.email.clone(),
+                request_path: req_log.request_path.clone(),
+                model: req_log.model.clone(),
+                client_ip: req_log.client_ip.clone(),
+                status: Some(500),
+                latency_ms: Some(resp_log.latency_ms as i64),
+                tokens_prompt: None,
+                tokens_completion: None,
+                runner_id,
+                wol_sent,
+            });
+
             return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     };
 
     let _ = state.audit_logger.log_response(&resp_log);
+
+    // Emit request event for admin dashboard
+    let _ = state.request_events.send(RequestEvent {
+        id: req_log.id.clone(),
+        timestamp: req_log.timestamp.to_rfc3339(),
+        user_id: req_log.user_id.clone(),
+        user_email: auth_user.email.clone(),
+        request_path: req_log.request_path.clone(),
+        model: req_log.model.clone(),
+        client_ip: req_log.client_ip.clone(),
+        status: Some(resp_log.status as i32),
+        latency_ms: Some(resp_log.latency_ms as i64),
+        tokens_prompt: resp_log.tokens_prompt.map(|v| v as i64),
+        tokens_completion: resp_log.tokens_completion.map(|v| v as i64),
+        runner_id: resp_log.runner_id.clone(),
+        wol_sent: resp_log.wol_sent,
+    });
 
     Ok(Json(response))
 }

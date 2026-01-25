@@ -607,6 +607,22 @@ enum AdminServerMessage {
     },
     /// Models list updated (sent after runner connect/disconnect/status change).
     ModelsUpdated { models: Vec<AdminModelInfo> },
+    /// A new request was completed.
+    NewRequest {
+        id: String,
+        timestamp: String,
+        user_id: String,
+        user_email: Option<String>,
+        request_path: String,
+        model: Option<String>,
+        client_ip: Option<String>,
+        status: Option<i32>,
+        latency_ms: Option<i64>,
+        tokens_prompt: Option<i64>,
+        tokens_completion: Option<i64>,
+        runner_id: Option<String>,
+        wol_sent: bool,
+    },
 }
 
 impl From<RunnerEvent> for AdminServerMessage {
@@ -742,6 +758,10 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     let event_rx = state.runner_registry.subscribe_events();
     let mut event_stream = BroadcastStream::new(event_rx);
 
+    // Subscribe to request events
+    let request_rx = state.request_events.subscribe();
+    let mut request_stream = BroadcastStream::new(request_rx);
+
     // Ping interval for keep-alive (30 seconds)
     let mut ping_interval = tokio::time::interval(Duration::from_secs(30));
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -765,6 +785,35 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
                     }
                     Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
                         tracing::warn!("Admin WS client lagged, skipped {} events", n);
+                    }
+                }
+            }
+
+            // Handle request events
+            Some(request_result) = TokioStreamExt::next(&mut request_stream) => {
+                match request_result {
+                    Ok(req_event) => {
+                        let msg = AdminServerMessage::NewRequest {
+                            id: req_event.id,
+                            timestamp: req_event.timestamp,
+                            user_id: req_event.user_id,
+                            user_email: req_event.user_email,
+                            request_path: req_event.request_path,
+                            model: req_event.model,
+                            client_ip: req_event.client_ip,
+                            status: req_event.status,
+                            latency_ms: req_event.latency_ms,
+                            tokens_prompt: req_event.tokens_prompt,
+                            tokens_completion: req_event.tokens_completion,
+                            runner_id: req_event.runner_id,
+                            wol_sent: req_event.wol_sent,
+                        };
+                        if send_admin_message(&mut ws_tx, &msg).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                        tracing::warn!("Admin WS client lagged, skipped {} request events", n);
                     }
                 }
             }

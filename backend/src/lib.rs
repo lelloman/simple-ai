@@ -22,8 +22,27 @@ pub use gateway::{InferenceRouter, RunnerRegistry};
 pub use wol::WakeService;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use fasttext::FastText;
+use serde::Serialize;
+
+/// Event emitted when a new request is completed.
+#[derive(Debug, Clone, Serialize)]
+pub struct RequestEvent {
+    pub id: String,
+    pub timestamp: String,
+    pub user_id: String,
+    pub user_email: Option<String>,
+    pub request_path: String,
+    pub model: Option<String>,
+    pub client_ip: Option<String>,
+    pub status: Option<i32>,
+    pub latency_ms: Option<i64>,
+    pub tokens_prompt: Option<i64>,
+    pub tokens_completion: Option<i64>,
+    pub runner_id: Option<String>,
+    pub wol_sent: bool,
+}
 
 /// Shared application state.
 pub struct AppState {
@@ -40,4 +59,6 @@ pub struct AppState {
     pub wol_config: WolConfig,
     /// Wake service for on-demand runner waking.
     pub wake_service: Arc<WakeService>,
+    /// Broadcast channel for request events (for admin dashboard).
+    pub request_events: broadcast::Sender<RequestEvent>,
 }

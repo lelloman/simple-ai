@@ -61,6 +61,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Gateway mode disabled - using direct Ollama connection");
     }
 
+    // Create broadcast channel for request events (admin dashboard)
+    let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
+
     let state = Arc::new(AppState {
         config: config.clone(),
         jwks_client,
@@ -71,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         inference_router,
         wol_config: config.wol.clone(),
         wake_service,
+        request_events: request_events_tx,
     });
 
     let cors = tower_http::cors::CorsLayer::new()

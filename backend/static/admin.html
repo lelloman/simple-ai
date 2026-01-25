@@ -766,6 +766,11 @@
                         renderModelsIfVisible();
                         break;
 
+                    case 'new_request':
+                        console.log('New request:', msg);
+                        this.handleNewRequest(msg);
+                        break;
+
                     default:
                         console.log('Unknown WebSocket message type:', msg.type);
                 }
@@ -899,6 +904,19 @@
                     health: data.health,
                     loaded_models: data.loaded_models
                 });
+            }
+
+            handleNewRequest(data) {
+                // If we're on the requests page, prepend the new request to the list
+                if (currentPage === 'requests') {
+                    prependNewRequest(data);
+                }
+                // Update dashboard stats (increment request count)
+                if (statsState) {
+                    statsState.total_requests = (statsState.total_requests || 0) + 1;
+                    statsState.requests_24h = (statsState.requests_24h || 0) + 1;
+                    renderDashboardStats();
+                }
             }
         }
 
@@ -1372,6 +1390,65 @@
                 console.error('Failed to load requests:', e);
                 ul.innerHTML = '<li class="px-4 py-8 text-center text-red-500">Failed to load requests</li>';
             }
+        }
+
+        // Prepend a new request to the requests list (for live updates)
+        function prependNewRequest(req) {
+            const ul = document.getElementById('requests-ul');
+            if (!ul) return;
+
+            // Check if we're showing "No requests found" or loading message
+            const existingContent = ul.innerHTML;
+            if (existingContent.includes('No requests found') || existingContent.includes('Loading')) {
+                ul.innerHTML = '';
+            }
+
+            // Create the new request HTML
+            const li = document.createElement('li');
+            li.className = 'px-4 py-4 bg-green-50'; // Highlight new request
+            li.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(req.request_path)}</p>
+                        <p class="text-xs text-gray-500">
+                            ${req.user_email ? escapeHtml(req.user_email) : escapeHtml(req.user_id.substring(0, 8) + '...')}
+                            ${req.client_ip ? `<span class="text-gray-400">from</span> ${escapeHtml(req.client_ip)}` : ''}
+                            <span class="text-gray-400">at</span> ${new Date(req.timestamp).toLocaleString()}
+                        </p>
+                        <p class="text-xs text-gray-400">
+                            ${req.model ? `Model: ${escapeHtml(req.model)}` : ''}
+                            ${req.runner_id ? ` <span class="text-gray-400">on</span> ${escapeHtml(req.runner_id)}` : ''}
+                            ${req.wol_sent ? ' <span class="text-blue-500" title="Wake-on-LAN sent">WOL</span>' : ''}
+                        </p>
+                    </div>
+                    <div class="flex items-center space-x-3 ml-4">
+                        ${req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
+                        ${req.tokens_prompt !== null || req.tokens_completion !== null ? `
+                            <span class="text-xs text-gray-500" title="Prompt / Completion tokens">
+                                ${req.tokens_prompt || 0} / ${req.tokens_completion || 0} tokens
+                            </span>
+                        ` : ''}
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                            req.status === 200 ? 'bg-green-100 text-green-800' :
+                            req.status >= 400 ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-600'
+                        }">${req.status || 'pending'}</span>
+                    </div>
+                </div>
+            `;
+
+            // Insert at the top (after any pagination if present)
+            const firstItem = ul.querySelector('li:not(.bg-gray-50)');
+            if (firstItem) {
+                ul.insertBefore(li, firstItem);
+            } else {
+                ul.insertBefore(li, ul.firstChild);
+            }
+
+            // Remove highlight after 3 seconds
+            setTimeout(() => {
+                li.classList.remove('bg-green-50');
+            }, 3000);
         }
 
         // ========== User Detail & API Keys ==========
