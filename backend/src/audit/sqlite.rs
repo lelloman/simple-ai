@@ -60,10 +60,14 @@ impl AuditLogger {
                 request_path TEXT NOT NULL,
                 request_body TEXT,
                 model TEXT,
+                client_ip TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
             [],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Migration: add client_ip column if it doesn't exist (for existing databases)
+        let _ = conn.execute("ALTER TABLE requests ADD COLUMN client_ip TEXT", []);
 
         // Create responses table
         conn.execute(
@@ -191,8 +195,8 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
-            "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model, client_ip)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 request.id,
                 request.timestamp.to_rfc3339(),
@@ -200,6 +204,7 @@ impl AuditLogger {
                 request.request_path,
                 request.request_body,
                 request.model,
+                request.client_ip,
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -379,11 +384,12 @@ impl AuditLogger {
         let total_pages = ((total as u32) + per_page - 1) / per_page;
         let offset = (page.saturating_sub(1)) * per_page;
 
-        // Get requests
+        // Get requests with user email
         let query_sql = format!(
-            "SELECT r.id, r.timestamp, r.user_id, r.request_path, r.model,
+            "SELECT r.id, r.timestamp, r.user_id, u.email, r.request_path, r.model, r.client_ip,
                     resp.status, resp.latency_ms, resp.tokens_prompt, resp.tokens_completion
              FROM requests r
+             LEFT JOIN users u ON u.id = r.user_id
              LEFT JOIN responses resp ON resp.request_id = r.id
              {}
              ORDER BY r.timestamp DESC
@@ -403,12 +409,14 @@ impl AuditLogger {
                 id: row.get(0)?,
                 timestamp: row.get(1)?,
                 user_id: row.get(2)?,
-                request_path: row.get(3)?,
-                model: row.get(4)?,
-                status: row.get(5)?,
-                latency_ms: row.get(6)?,
-                tokens_prompt: row.get(7)?,
-                tokens_completion: row.get(8)?,
+                user_email: row.get(3)?,
+                request_path: row.get(4)?,
+                model: row.get(5)?,
+                client_ip: row.get(6)?,
+                status: row.get(7)?,
+                latency_ms: row.get(8)?,
+                tokens_prompt: row.get(9)?,
+                tokens_completion: row.get(10)?,
             })
         }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -483,8 +491,10 @@ pub struct RequestWithResponse {
     pub id: String,
     pub timestamp: String,
     pub user_id: String,
+    pub user_email: Option<String>,
     pub request_path: String,
     pub model: Option<String>,
+    pub client_ip: Option<String>,
     pub status: Option<i32>,
     pub latency_ms: Option<i64>,
     pub tokens_prompt: Option<i64>,
@@ -921,8 +931,10 @@ mod tests {
             id: "req123".to_string(),
             timestamp: "2024-01-01T00:00:00Z".to_string(),
             user_id: "user123".to_string(),
+            user_email: Some("user@example.com".to_string()),
             request_path: "/v1/chat/completions".to_string(),
             model: Some("llama2".to_string()),
+            client_ip: Some("192.168.1.100".to_string()),
             status: Some(200),
             latency_ms: Some(150),
             tokens_prompt: Some(10),
@@ -930,6 +942,8 @@ mod tests {
         };
         assert_eq!(req_with_resp.status, Some(200));
         assert_eq!(req_with_resp.latency_ms, Some(150));
+        assert_eq!(req_with_resp.client_ip, Some("192.168.1.100".to_string()));
+        assert_eq!(req_with_resp.user_email, Some("user@example.com".to_string()));
     }
 
     #[test]

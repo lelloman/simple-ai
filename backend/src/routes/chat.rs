@@ -1,7 +1,8 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 use axum::{
-    extract::State,
+    extract::{ConnectInfo, State},
     http::StatusCode,
     routing::post,
     Json, Router,
@@ -14,9 +15,26 @@ use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
 use crate::models::request::{Request, Response};
 use crate::wol::WakeError;
 
+/// Extract client IP from headers (X-Forwarded-For, X-Real-IP) or connection info.
+fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> Option<String> {
+    // Check X-Forwarded-For first (may contain multiple IPs, take the first)
+    if let Some(forwarded) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        if let Some(first_ip) = forwarded.split(',').next() {
+            return Some(first_ip.trim().to_string());
+        }
+    }
+    // Check X-Real-IP
+    if let Some(real_ip) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
+        return Some(real_ip.to_string());
+    }
+    // Fall back to connection address
+    addr.map(|a| a.ip().to_string())
+}
+
 /// POST /v1/chat/completions - OpenAI-compatible chat endpoint
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<Json<ChatCompletionResponse>, (StatusCode, String)> {
@@ -72,6 +90,7 @@ async fn chat_completions(
     let mut req_log = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
     req_log.request_body = serde_json::to_string(&request).unwrap_or_default();
     req_log.model = Some(model.clone());
+    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
 
     let request_id = state.audit_logger.log_request(&req_log)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

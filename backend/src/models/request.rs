@@ -10,6 +10,7 @@ pub struct Request {
     pub request_path: String,
     pub request_body: String,
     pub model: Option<String>,
+    pub client_ip: Option<String>,
 }
 
 impl Request {
@@ -21,6 +22,7 @@ impl Request {
             request_path,
             request_body: String::new(),
             model: None,
+            client_ip: None,
         }
     }
 }
@@ -66,7 +68,15 @@ mod tests {
         assert_eq!(req.request_path, "/v1/chat/completions");
         assert!(req.request_body.is_empty());
         assert!(req.model.is_none());
+        assert!(req.client_ip.is_none());
         assert!(!req.timestamp.to_string().is_empty());
+    }
+
+    #[test]
+    fn test_request_with_client_ip() {
+        let mut req = Request::new("user123".to_string(), "/v1/chat/completions".to_string());
+        req.client_ip = Some("192.168.1.100".to_string());
+        assert_eq!(req.client_ip, Some("192.168.1.100".to_string()));
     }
 
     #[test]

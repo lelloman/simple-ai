@@ -1248,9 +1248,12 @@
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(req.request_path)}</p>
                                 <p class="text-xs text-gray-500">
-                                    ${escapeHtml(req.user_id)}
-                                    | ${new Date(req.timestamp).toLocaleString()}
-                                    ${req.model ? `| Model: ${escapeHtml(req.model)}` : ''}
+                                    ${req.user_email ? escapeHtml(req.user_email) : escapeHtml(req.user_id.substring(0, 8) + '...')}
+                                    ${req.client_ip ? `<span class="text-gray-400">from</span> ${escapeHtml(req.client_ip)}` : ''}
+                                    <span class="text-gray-400">at</span> ${new Date(req.timestamp).toLocaleString()}
+                                </p>
+                                <p class="text-xs text-gray-400">
+                                    ${req.model ? `Model: ${escapeHtml(req.model)}` : ''}
                                 </p>
                             </div>
                             <div class="flex items-center space-x-3 ml-4">
