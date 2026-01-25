@@ -55,7 +55,6 @@
                                 <a href="#models" onclick="showPage('models')" id="nav-models" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Models</a>
                                 <a href="#users" onclick="showPage('users')" id="nav-users" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Users</a>
                                 <a href="#requests" onclick="showPage('requests')" id="nav-requests" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Requests</a>
-                                <a href="#apikeys" onclick="showPage('apikeys')" id="nav-apikeys" class="nav-link rounded-md px-3 py-2 text-sm font-medium">API Keys</a>
                             </div>
                         </div>
                         <div class="flex items-center space-x-4">
@@ -123,50 +122,61 @@
                         </div>
                     </div>
 
-                    <!-- Requests page -->
-                    <div id="page-requests" class="page hidden">
-                        <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
-                            <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
+                    <!-- User Detail page -->
+                    <div id="page-user-detail" class="page hidden">
+                        <div class="mb-4">
+                            <button onclick="showPage('users')" class="text-sm text-primary-600 hover:text-primary-800">&larr; Back to Users</button>
                         </div>
-                    </div>
 
-                    <!-- API Keys page -->
-                    <div id="page-apikeys" class="page hidden">
-                        <!-- Create API Key Form -->
+                        <!-- User Info Card -->
                         <div class="bg-white shadow sm:rounded-lg mb-6">
                             <div class="px-4 py-5 sm:p-6">
-                                <h3 class="text-lg font-medium leading-6 text-gray-900">Create API Key</h3>
-                                <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                    <div>
-                                        <label for="api-key-user" class="block text-sm font-medium text-gray-700">User</label>
-                                        <select id="api-key-user" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2">
-                                            <option value="">Select a user...</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label for="api-key-name" class="block text-sm font-medium text-gray-700">Key Name</label>
-                                        <input type="text" id="api-key-name" placeholder="e.g., Chrome Extension" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2">
-                                    </div>
-                                    <div class="flex items-end">
-                                        <button onclick="createApiKey()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">
-                                            Create Key
-                                        </button>
-                                    </div>
-                                </div>
-                                <!-- Show newly created key -->
-                                <div id="new-key-display" class="hidden mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                                    <p class="text-sm font-medium text-yellow-800">Copy your API key now - it won't be shown again!</p>
-                                    <div class="mt-2 flex items-center space-x-2">
-                                        <code id="new-key-value" class="flex-1 p-2 bg-white border rounded text-sm font-mono"></code>
-                                        <button onclick="copyApiKey()" class="px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm">Copy</button>
-                                    </div>
+                                <h3 id="user-detail-title" class="text-lg font-medium leading-6 text-gray-900">User Details</h3>
+                                <div id="user-detail-info" class="mt-4 grid grid-cols-2 gap-4 text-sm">
+                                    <!-- Filled by JavaScript -->
                                 </div>
                             </div>
                         </div>
 
-                        <!-- API Keys List -->
-                        <div id="apikeys-list" class="overflow-hidden bg-white shadow sm:rounded-md">
-                            <ul role="list" class="divide-y divide-gray-200" id="apikeys-ul"></ul>
+                        <!-- API Keys Section -->
+                        <div class="bg-white shadow sm:rounded-lg">
+                            <div class="px-4 py-5 sm:p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-lg font-medium leading-6 text-gray-900">API Keys</h3>
+                                </div>
+
+                                <!-- Create API Key Form -->
+                                <div class="flex items-end gap-4 mb-4 pb-4 border-b">
+                                    <div class="flex-1">
+                                        <label for="api-key-name" class="block text-sm font-medium text-gray-700">Key Name</label>
+                                        <input type="text" id="api-key-name" placeholder="e.g., Chrome Extension" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2">
+                                    </div>
+                                    <button onclick="createApiKey()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">
+                                        Create Key
+                                    </button>
+                                </div>
+
+                                <!-- Show newly created key -->
+                                <div id="new-key-display" class="hidden mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                                    <p class="text-sm font-medium text-yellow-800">Copy your API key now - it won't be shown again!</p>
+                                    <div class="mt-2 flex items-center space-x-2">
+                                        <code id="new-key-value" class="flex-1 p-2 bg-white border rounded text-sm font-mono select-all"></code>
+                                        <button onclick="copyApiKey()" class="px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm">Copy</button>
+                                    </div>
+                                </div>
+
+                                <!-- API Keys List -->
+                                <div id="user-apikeys-list">
+                                    <ul role="list" class="divide-y divide-gray-200" id="user-apikeys-ul"></ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Requests page -->
+                    <div id="page-requests" class="page hidden">
+                        <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
+                            <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
                         </div>
                     </div>
                 </div>
@@ -535,7 +545,7 @@
             showLoginRequired();
         }
 
-        async function apiFetch(endpoint, retried = false) {
+        async function apiFetch(endpoint, options = {}, retried = false) {
             // Get valid token (proactively refreshes if expiring soon)
             const token = await getValidAccessToken();
             if (!token) {
@@ -543,9 +553,17 @@
                 throw new Error('No valid token');
             }
 
-            const response = await fetch(endpoint, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const fetchOptions = {
+                method: options.method || 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+                    ...options.headers
+                },
+                ...(options.body ? { body: options.body } : {})
+            };
+
+            const response = await fetch(endpoint, fetchOptions);
 
             if (!response.ok) {
                 if (response.status === 401 && !retried) {
@@ -554,7 +572,7 @@
                         try {
                             await refreshTokens();
                             // Retry the request with new token
-                            return apiFetch(endpoint, true);
+                            return apiFetch(endpoint, options, true);
                         } catch (e) {
                             console.error('Token refresh failed during API call:', e);
                             logout();
@@ -565,6 +583,11 @@
                     throw new Error('Unauthorized');
                 }
                 throw new Error(`API error: ${response.status}`);
+            }
+
+            // Handle 204 No Content (e.g., DELETE)
+            if (response.status === 204) {
+                return null;
             }
             return response.json();
         }
@@ -1051,12 +1074,13 @@
 
             currentPage = page;
 
-            // Update nav
+            // Update nav (user-detail highlights the Users nav)
             document.querySelectorAll('.nav-link').forEach(el => {
                 el.classList.remove('bg-gray-900', 'text-white');
                 el.classList.add('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
             });
-            const activeNav = document.getElementById(`nav-${page}`);
+            const navId = page === 'user-detail' ? 'nav-users' : `nav-${page}`;
+            const activeNav = document.getElementById(navId);
             if (activeNav) {
                 activeNav.classList.add('bg-gray-900', 'text-white');
                 activeNav.classList.remove('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
@@ -1068,8 +1092,8 @@
                 runners: 'Runners',
                 models: 'Models',
                 users: 'Users',
-                requests: 'Requests',
-                apikeys: 'API Keys'
+                'user-detail': 'User Details',
+                requests: 'Requests'
             };
             document.getElementById('page-title').textContent = titles[page] || page;
 
@@ -1102,7 +1126,7 @@
             else if (currentPage === 'models') renderModels();
             else if (currentPage === 'users') loadUsers();
             else if (currentPage === 'requests') loadRequests();
-            else if (currentPage === 'apikeys') loadApiKeys();
+            // user-detail page is handled by showUserDetail()
         }
 
         // Render dashboard stats from local state
@@ -1230,12 +1254,16 @@
             }
         }
 
+        // Store users data for detail view
+        let usersData = [];
+
         async function loadUsers() {
             const ul = document.getElementById('users-ul');
             ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Loading users...</li>';
 
             try {
                 const data = await apiFetch('/admin/api/users');
+                usersData = data.users;
 
                 if (data.users.length === 0) {
                     ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No users found</li>';
@@ -1243,7 +1271,7 @@
                 }
 
                 ul.innerHTML = data.users.map(user => `
-                    <li class="px-4 py-4">
+                    <li class="px-4 py-4 hover:bg-gray-50 cursor-pointer" onclick="showUserDetail('${escapeAttr(user.id)}')">
                         <div class="flex items-center justify-between">
                             <div>
                                 <p class="text-sm font-medium text-gray-900">${escapeHtml(user.email || user.id)}</p>
@@ -1258,6 +1286,7 @@
                                 <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                                     user.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                                 }">${user.is_enabled ? 'Enabled' : 'Disabled'}</span>
+                                <span class="text-gray-400">&rarr;</span>
                             </div>
                         </div>
                     </li>
@@ -1343,37 +1372,69 @@
             }
         }
 
-        // ========== API Keys ==========
+        // ========== User Detail & API Keys ==========
 
-        let apiKeysLoaded = false;
+        let selectedUserId = null;
 
-        async function loadApiKeys() {
-            const ul = document.getElementById('apikeys-ul');
+        async function showUserDetail(userId) {
+            selectedUserId = userId;
+
+            // Find user in cached data
+            const user = usersData.find(u => u.id === userId);
+            if (!user) {
+                console.error('User not found:', userId);
+                return;
+            }
+
+            // Update page title
+            document.getElementById('page-title').textContent = user.email || 'User Details';
+
+            // Fill in user info
+            document.getElementById('user-detail-title').textContent = user.email || user.id;
+            document.getElementById('user-detail-info').innerHTML = `
+                <div><span class="text-gray-500">ID:</span> <span class="ml-2 font-mono text-xs">${escapeHtml(user.id)}</span></div>
+                <div><span class="text-gray-500">Email:</span> <span class="ml-2">${escapeHtml(user.email || 'N/A')}</span></div>
+                <div><span class="text-gray-500">Created:</span> <span class="ml-2">${new Date(user.created_at).toLocaleString()}</span></div>
+                <div><span class="text-gray-500">Last seen:</span> <span class="ml-2">${new Date(user.last_seen_at).toLocaleString()}</span></div>
+                <div><span class="text-gray-500">Requests:</span> <span class="ml-2">${user.request_count}</span></div>
+                <div><span class="text-gray-500">Status:</span> <span class="ml-2 inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                    user.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }">${user.is_enabled ? 'Enabled' : 'Disabled'}</span></div>
+            `;
+
+            // Hide the "new key" display
+            document.getElementById('new-key-display').classList.add('hidden');
+
+            // Show user detail page
+            showPage('user-detail');
+
+            // Load API keys for this user
+            await loadUserApiKeys();
+        }
+
+        async function loadUserApiKeys() {
+            const ul = document.getElementById('user-apikeys-ul');
             ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Loading API keys...</li>';
 
             try {
-                // Load users for the dropdown (if not already loaded)
-                if (!apiKeysLoaded) {
-                    await populateUserDropdown();
-                    apiKeysLoaded = true;
-                }
-
                 const data = await apiFetch('/admin/api/keys');
 
-                if (data.keys.length === 0) {
-                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No API keys found. Create one above.</li>';
+                // Filter keys for this user
+                const userKeys = data.keys.filter(k => k.user_id === selectedUserId);
+
+                if (userKeys.length === 0) {
+                    ul.innerHTML = '<li class="px-4 py-4 text-center text-gray-500">No API keys for this user. Create one above.</li>';
                     return;
                 }
 
-                const keysHtml = data.keys.map(key => `
+                ul.innerHTML = userKeys.map(key => `
                     <li class="px-4 py-4">
                         <div class="flex items-center justify-between">
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-medium text-gray-900">${escapeHtml(key.name)}</p>
                                 <p class="text-xs text-gray-500">
-                                    ${key.user_email ? escapeHtml(key.user_email) : escapeHtml(key.user_id.substring(0, 8) + '...')}
-                                    <span class="text-gray-400">|</span> Created: ${new Date(key.created_at).toLocaleDateString()}
-                                    ${key.last_used_at ? `<span class="text-gray-400">|</span> Last used: ${new Date(key.last_used_at).toLocaleString()}` : ''}
+                                    Created: ${new Date(key.created_at).toLocaleDateString()}
+                                    ${key.last_used_at ? ` | Last used: ${new Date(key.last_used_at).toLocaleString()}` : ' | Never used'}
                                 </p>
                             </div>
                             <div class="flex items-center space-x-3 ml-4">
@@ -1385,38 +1446,19 @@
                         </div>
                     </li>
                 `).join('');
-
-                ul.innerHTML = keysHtml;
             } catch (e) {
                 console.error('Failed to load API keys:', e);
                 ul.innerHTML = '<li class="px-4 py-8 text-center text-red-500">Failed to load API keys</li>';
             }
         }
 
-        async function populateUserDropdown() {
-            try {
-                const data = await apiFetch('/admin/api/users');
-                const select = document.getElementById('api-key-user');
-                select.innerHTML = '<option value="">Select a user...</option>';
-                data.users.forEach(user => {
-                    const option = document.createElement('option');
-                    option.value = user.id;
-                    option.textContent = user.email || user.id.substring(0, 8) + '...';
-                    select.appendChild(option);
-                });
-            } catch (e) {
-                console.error('Failed to load users for dropdown:', e);
-            }
-        }
-
         async function createApiKey() {
-            const userId = document.getElementById('api-key-user').value;
-            const name = document.getElementById('api-key-name').value.trim();
-
-            if (!userId) {
-                alert('Please select a user');
+            if (!selectedUserId) {
+                alert('No user selected');
                 return;
             }
+
+            const name = document.getElementById('api-key-name').value.trim();
             if (!name) {
                 alert('Please enter a key name');
                 return;
@@ -1425,7 +1467,7 @@
             try {
                 const data = await apiFetch('/admin/api/keys', {
                     method: 'POST',
-                    body: JSON.stringify({ user_id: userId, name: name }),
+                    body: JSON.stringify({ user_id: selectedUserId, name: name }),
                 });
 
                 // Show the secret key (only shown once!)
@@ -1433,11 +1475,10 @@
                 document.getElementById('new-key-display').classList.remove('hidden');
 
                 // Clear the form
-                document.getElementById('api-key-user').value = '';
                 document.getElementById('api-key-name').value = '';
 
                 // Reload the list
-                loadApiKeys();
+                await loadUserApiKeys();
             } catch (e) {
                 console.error('Failed to create API key:', e);
                 alert('Failed to create API key: ' + e.message);
@@ -1460,7 +1501,7 @@
 
             try {
                 await apiFetch(`/admin/api/keys/${keyId}`, { method: 'DELETE' });
-                loadApiKeys();
+                await loadUserApiKeys();
             } catch (e) {
                 console.error('Failed to revoke API key:', e);
                 alert('Failed to revoke API key: ' + e.message);
@@ -1470,7 +1511,7 @@
         // Handle hash-based navigation
         function getPageFromHash() {
             const hash = window.location.hash.slice(1); // Remove the #
-            const validPages = ['dashboard', 'runners', 'models', 'users', 'requests', 'apikeys'];
+            const validPages = ['dashboard', 'runners', 'models', 'users', 'user-detail', 'requests'];
             return validPages.includes(hash) ? hash : 'dashboard';
         }
 
