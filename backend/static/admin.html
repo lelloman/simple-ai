@@ -148,6 +148,7 @@
         // Reactive state (populated via WebSocket)
         let runnersState = [];
         let modelsState = [];
+        let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0 };
 
         // Token refresh state
         let refreshToken = null;
@@ -407,50 +408,24 @@
             }
 
             if (accessToken) {
-                // Validate token by making a request
+                // We have tokens - show the app and let WebSocket handle authentication.
+                // If WebSocket auth fails, it will trigger logout.
                 try {
-                    const response = await fetch('/admin/runners', {
-                        headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-
-                    if (response.ok) {
-                        // Parse JWT to get user info
-                        const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                        userInfo = payload;
-                        document.getElementById('user-email').textContent = payload.email || payload.sub;
-                        showApp();
-                        showPage(getPageFromHash());
-                        return;
-                    } else if (response.status === 401 || response.status === 403) {
-                        // Try to refresh token before giving up
-                        if (refreshToken) {
-                            try {
-                                await refreshTokens();
-                                // Retry the validation after refresh
-                                const retryResponse = await fetch('/admin/runners', {
-                                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                                });
-                                if (retryResponse.ok) {
-                                    const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                                    userInfo = payload;
-                                    document.getElementById('user-email').textContent = payload.email || payload.sub;
-                                    showApp();
-                                    showPage(getPageFromHash());
-                                    return;
-                                }
-                            } catch (e) {
-                                console.error('Token refresh during init failed:', e);
-                            }
-                        }
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('refresh_token');
-                        localStorage.removeItem('token_expires_at');
-                        accessToken = null;
-                        refreshToken = null;
-                        tokenExpiresAt = null;
-                    }
+                    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                    userInfo = payload;
+                    document.getElementById('user-email').textContent = payload.email || payload.sub;
+                    showApp();
+                    showPage(getPageFromHash());
+                    return;
                 } catch (e) {
-                    console.error('Token validation failed:', e);
+                    // Token is malformed - clear it
+                    console.error('Failed to parse token:', e);
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('token_expires_at');
+                    accessToken = null;
+                    refreshToken = null;
+                    tokenExpiresAt = null;
                 }
             }
 
@@ -620,8 +595,13 @@
                         console.log('WebSocket connection established, sending auth...');
                         this.updateConnectionBadge('connecting');
 
-                        // Send auth message immediately
-                        const token = await getValidAccessToken();
+                        // Send auth message - try to get fresh token, fall back to existing
+                        let token = await getValidAccessToken();
+                        if (!token) {
+                            // getValidAccessToken failed (refresh error) - use existing token anyway
+                            // Server will tell us if it's invalid via auth_error
+                            token = accessToken;
+                        }
                         if (!token) {
                             console.error('No token available for WebSocket auth');
                             this.ws.close();
@@ -630,12 +610,12 @@
                         this.ws.send(JSON.stringify({ type: 'auth', token }));
                     };
 
-                    this.ws.onmessage = (event) => {
+                    this.ws.onmessage = async (event) => {
                         try {
                             const msg = JSON.parse(event.data);
-                            this.handleMessage(msg);
+                            await this.handleMessage(msg);
                         } catch (e) {
-                            console.error('Failed to parse WebSocket message:', e);
+                            console.error('Failed to handle WebSocket message:', e);
                         }
                     };
 
@@ -660,7 +640,7 @@
                 }
             }
 
-            handleMessage(msg) {
+            async handleMessage(msg) {
                 switch (msg.type) {
                     case 'auth_ok':
                         console.log('WebSocket authenticated');
@@ -674,8 +654,21 @@
                         console.error('WebSocket auth error:', msg.message);
                         this.authenticated = false;
                         this.updateConnectionBadge(false);
-                        // If initial auth fails, try to refresh token and reconnect
+                        // Don't logout - just try to refresh and reconnect.
+                        // Server might have temporary issues (JWKS cache cold after restart).
+                        // Only manual logout or page refresh with truly invalid tokens should logout.
                         if (refreshToken) {
+                            try {
+                                await refreshTokens();
+                                // Try again with refreshed token
+                                this.refreshAuth();
+                            } catch (e) {
+                                console.error('Token refresh failed, will retry on reconnect:', e);
+                                // Schedule reconnect - don't logout, token might still be valid
+                                this.scheduleReconnect();
+                            }
+                        } else {
+                            // No refresh token - keep trying to reconnect anyway
                             this.scheduleReconnect();
                         }
                         break;
@@ -684,6 +677,7 @@
                         console.log('Received state snapshot:', msg.runners.length, 'runners,', msg.models.length, 'models');
                         runnersState = msg.runners;
                         modelsState = msg.models;
+                        statsState = msg.stats;
                         renderCurrentPage();
                         break;
 
@@ -1077,11 +1071,9 @@
         function renderDashboardStats() {
             const onlineCount = runnersState.filter(r => r.is_online).length;
             document.getElementById('stat-runners').textContent = onlineCount;
-
-            // These stats would need a separate endpoint or WS message
-            document.getElementById('stat-users').textContent = '-';
-            document.getElementById('stat-requests').textContent = '-';
-            document.getElementById('stat-requests-24h').textContent = '-';
+            document.getElementById('stat-users').textContent = statsState.total_users;
+            document.getElementById('stat-requests').textContent = statsState.total_requests;
+            document.getElementById('stat-requests-24h').textContent = statsState.requests_24h;
         }
 
         // Render runners list from local state

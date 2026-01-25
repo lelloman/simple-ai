@@ -334,6 +334,15 @@ pub struct AdminModelsResponse {
     pub total: usize,
 }
 
+/// Dashboard stats for WebSocket state snapshot.
+#[derive(Debug, Clone, Serialize)]
+pub struct DashboardStatsInfo {
+    pub total_users: u64,
+    pub total_requests: u64,
+    pub requests_24h: u64,
+    pub total_tokens: u64,
+}
+
 /// GET /admin/models - List all models with loaded status (JSON API)
 async fn list_models(State(state): State<Arc<AppState>>) -> Json<AdminModelsResponse> {
     let models = state.inference_router.list_models_with_details().await.unwrap_or_default();
@@ -457,6 +466,7 @@ enum AdminServerMessage {
     StateSnapshot {
         runners: Vec<RunnerInfo>,
         models: Vec<AdminModelInfo>,
+        stats: DashboardStatsInfo,
     },
     /// A runner connected.
     RunnerConnected {
@@ -599,7 +609,8 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     // Send initial state snapshot
     let runners = get_runners_snapshot(&state).await;
     let models = get_models_snapshot(&state).await;
-    if send_admin_message(&mut ws_tx, &AdminServerMessage::StateSnapshot { runners, models })
+    let stats = get_stats_snapshot(&state);
+    if send_admin_message(&mut ws_tx, &AdminServerMessage::StateSnapshot { runners, models, stats })
         .await
         .is_err()
     {
@@ -775,6 +786,23 @@ async fn get_models_snapshot(state: &AppState) -> Vec<AdminModelInfo> {
             available_on: m.available_on,
         })
         .collect()
+}
+
+/// Get current dashboard stats.
+fn get_stats_snapshot(state: &AppState) -> DashboardStatsInfo {
+    let stats = state.audit_logger.get_stats().unwrap_or(DashboardStats {
+        total_users: 0,
+        total_requests: 0,
+        requests_24h: 0,
+        total_tokens: 0,
+    });
+
+    DashboardStatsInfo {
+        total_users: stats.total_users,
+        total_requests: stats.total_requests,
+        requests_24h: stats.requests_24h,
+        total_tokens: stats.total_tokens,
+    }
 }
 
 /// Validate a JWT token for admin access.
