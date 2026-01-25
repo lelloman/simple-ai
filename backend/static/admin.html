@@ -779,6 +779,11 @@
                         this.handleNewRequest(msg);
                         break;
 
+                    case 'stats_updated':
+                        statsState = msg.stats;
+                        renderDashboardStats();
+                        break;
+
                     default:
                         console.log('Unknown WebSocket message type:', msg.type);
                 }

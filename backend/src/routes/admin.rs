@@ -469,6 +469,8 @@ enum AdminServerMessage {
         runner_id: Option<String>,
         wol_sent: bool,
     },
+    /// Dashboard stats updated.
+    StatsUpdated { stats: DashboardStatsInfo },
 }
 
 impl From<RunnerEvent> for AdminServerMessage {
@@ -655,6 +657,11 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
                             wol_sent: req_event.wol_sent,
                         };
                         if send_admin_message(&mut ws_tx, &msg).await.is_err() {
+                            break;
+                        }
+                        // Send updated stats after each request
+                        let stats = get_stats_snapshot(&state);
+                        if send_admin_message(&mut ws_tx, &AdminServerMessage::StatsUpdated { stats }).await.is_err() {
                             break;
                         }
                     }
