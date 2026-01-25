@@ -334,20 +334,24 @@ impl AuditLogger {
             )
             .unwrap_or(0);
 
-        // Total tokens
-        let total_tokens: i64 = conn
+        // Token counts
+        let (tokens_prompt, tokens_completion): (i64, i64) = conn
             .query_row(
-                "SELECT COALESCE(SUM(COALESCE(tokens_prompt, 0) + COALESCE(tokens_completion, 0)), 0) FROM responses",
+                "SELECT COALESCE(SUM(COALESCE(tokens_prompt, 0)), 0), COALESCE(SUM(COALESCE(tokens_completion, 0)), 0) FROM responses",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .unwrap_or(0);
+            .unwrap_or((0, 0));
+
+        let total_tokens = tokens_prompt + tokens_completion;
 
         Ok(DashboardStats {
             total_users: total_users as u64,
             total_requests: total_requests as u64,
             requests_24h: requests_24h as u64,
             total_tokens: total_tokens as u64,
+            tokens_prompt: tokens_prompt as u64,
+            tokens_completion: tokens_completion as u64,
         })
     }
 
@@ -674,6 +678,8 @@ pub struct DashboardStats {
     pub total_requests: u64,
     pub requests_24h: u64,
     pub total_tokens: u64,
+    pub tokens_prompt: u64,
+    pub tokens_completion: u64,
 }
 
 /// Request summary for dashboard.
@@ -1208,6 +1214,8 @@ mod tests {
             total_requests: 100,
             requests_24h: 25,
             total_tokens: 5000,
+            tokens_prompt: 2000,
+            tokens_completion: 3000,
         };
         assert_eq!(stats.total_users, 10);
         assert_eq!(stats.total_requests, 100);

@@ -83,7 +83,7 @@
                 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                     <!-- Dashboard page -->
                     <div id="page-dashboard" class="page">
-                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
                                 <dt class="truncate text-sm font-medium text-gray-500">Total Users</dt>
                                 <dd id="stat-users" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
@@ -97,8 +97,12 @@
                                 <dd id="stat-requests-24h" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
                             </div>
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Total Tokens</dt>
-                                <dd id="stat-tokens" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                                <dt class="truncate text-sm font-medium text-gray-500">Tokens In</dt>
+                                <dd id="stat-tokens-prompt" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                            </div>
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Tokens Out</dt>
+                                <dd id="stat-tokens-completion" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
                             </div>
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
                                 <dt class="truncate text-sm font-medium text-gray-500">Connected Runners</dt>
@@ -203,7 +207,7 @@
         // Reactive state (populated via WebSocket)
         let runnersState = [];
         let modelsState = [];
-        let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0 };
+        let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0, tokens_prompt: 0, tokens_completion: 0 };
 
         // Token refresh state
         let refreshToken = null;
@@ -1163,7 +1167,8 @@
             document.getElementById('stat-users').textContent = statsState.total_users;
             document.getElementById('stat-requests').textContent = statsState.total_requests;
             document.getElementById('stat-requests-24h').textContent = statsState.requests_24h;
-            document.getElementById('stat-tokens').textContent = statsState.total_tokens.toLocaleString();
+            document.getElementById('stat-tokens-prompt').textContent = (statsState.tokens_prompt || 0).toLocaleString();
+            document.getElementById('stat-tokens-completion').textContent = (statsState.tokens_completion || 0).toLocaleString();
         }
 
         // Render runners list from local state

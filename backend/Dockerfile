@@ -19,7 +19,6 @@ RUN rm -rf simple-ai-common/src backend/src inference-runner/src
 # Copy actual source
 COPY simple-ai-common/src ./simple-ai-common/src
 COPY backend/src ./backend/src
-COPY backend/templates ./backend/templates
 COPY backend/static ./backend/static
 
 # Build for release (touch both to ensure cargo rebuilds with actual sources)
