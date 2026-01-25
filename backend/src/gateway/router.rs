@@ -49,6 +49,17 @@ struct SelectedRunner {
     resolved_model: String,
 }
 
+/// Result of a routed request, includes metadata about routing.
+#[derive(Debug)]
+pub struct RoutedResponse<T> {
+    /// The response from the runner.
+    pub response: T,
+    /// ID of the runner that handled the request.
+    pub runner_id: String,
+    /// The resolved model name (may differ from requested if class was used).
+    pub resolved_model: String,
+}
+
 /// Router for distributing inference requests to runners.
 pub struct InferenceRouter {
     registry: Arc<RunnerRegistry>,
@@ -92,20 +103,24 @@ impl InferenceRouter {
     /// The model parameter can be:
     /// - A specific model ID (e.g., "llama3:8b")
     /// - A class request (e.g., "class:fast" or "class:big")
+    ///
+    /// Returns a RoutedResponse containing the response and routing metadata.
     pub async fn chat_completion<Req, Resp>(
         &self,
         model: &str,
         request: &Req,
-    ) -> Result<Resp, RouterError>
+    ) -> Result<RoutedResponse<Resp>, RouterError>
     where
         Req: Serialize + Clone,
         Resp: DeserializeOwned,
     {
         let selection = self.select_runner_for_model(model).await?;
+        let runner_id = selection.runner.id.clone();
+        let resolved_model = selection.resolved_model.clone();
 
         // If it was a class request, we need to modify the request to use the resolved model
         let model_request = ModelRequest::parse(model);
-        if model_request.is_class_request() {
+        let response = if model_request.is_class_request() {
             // Clone and modify the request to use the resolved model
             // We need to serialize, modify, and re-serialize
             let mut request_value = serde_json::to_value(request)
@@ -114,11 +129,17 @@ impl InferenceRouter {
                 obj.insert("model".to_string(), serde_json::Value::String(selection.resolved_model.clone()));
             }
             self.proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
-                .await
+                .await?
         } else {
             self.proxy_request(&selection.runner, "/v1/chat/completions", request)
-                .await
-        }
+                .await?
+        };
+
+        Ok(RoutedResponse {
+            response,
+            runner_id,
+            resolved_model,
+        })
     }
 
     /// Route a chat completion request and return the raw response for streaming.

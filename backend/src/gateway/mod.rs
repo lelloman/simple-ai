@@ -14,5 +14,5 @@ mod ws;
 
 pub use model_class::{classify_model, can_request_model, ModelClass, ModelRequest};
 pub use registry::{ConnectedRunner, RunnerEvent, RunnerRegistry};
-pub use router::{InferenceRouter, RouterError};
+pub use router::{InferenceRouter, RouterError, RoutedResponse};
 pub use ws::{ws_handler, WsState};

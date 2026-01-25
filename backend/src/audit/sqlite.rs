@@ -85,6 +85,10 @@ impl AuditLogger {
             [],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        // Migration: add runner_id and wol_sent columns to responses
+        let _ = conn.execute("ALTER TABLE responses ADD COLUMN runner_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE responses ADD COLUMN wol_sent INTEGER NOT NULL DEFAULT 0", []);
+
         // Create API keys table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS api_keys (
@@ -233,8 +237,8 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
-            "INSERT INTO responses (id, request_id, timestamp, status, response_body, latency_ms, tokens_prompt, tokens_completion)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO responses (id, request_id, timestamp, status, response_body, latency_ms, tokens_prompt, tokens_completion, runner_id, wol_sent)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 response.id,
                 response.request_id,
@@ -244,6 +248,8 @@ impl AuditLogger {
                 response.latency_ms as i64,
                 response.tokens_prompt.map(|v| v as i64),
                 response.tokens_completion.map(|v| v as i64),
+                response.runner_id,
+                response.wol_sent as i32,
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -402,7 +408,8 @@ impl AuditLogger {
         // Get requests with user email
         let query_sql = format!(
             "SELECT r.id, r.timestamp, r.user_id, u.email, r.request_path, r.model, r.client_ip,
-                    resp.status, resp.latency_ms, resp.tokens_prompt, resp.tokens_completion
+                    resp.status, resp.latency_ms, resp.tokens_prompt, resp.tokens_completion,
+                    resp.runner_id, COALESCE(resp.wol_sent, 0)
              FROM requests r
              LEFT JOIN users u ON u.id = r.user_id
              LEFT JOIN responses resp ON resp.request_id = r.id
@@ -432,6 +439,8 @@ impl AuditLogger {
                 latency_ms: row.get(8)?,
                 tokens_prompt: row.get(9)?,
                 tokens_completion: row.get(10)?,
+                runner_id: row.get(11)?,
+                wol_sent: row.get::<_, i32>(12)? != 0,
             })
         }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -650,6 +659,8 @@ pub struct RequestWithResponse {
     pub latency_ms: Option<i64>,
     pub tokens_prompt: Option<i64>,
     pub tokens_completion: Option<i64>,
+    pub runner_id: Option<String>,
+    pub wol_sent: bool,
 }
 
 /// API key for programmatic access.
@@ -1104,11 +1115,15 @@ mod tests {
             latency_ms: Some(150),
             tokens_prompt: Some(10),
             tokens_completion: Some(5),
+            runner_id: Some("gpu-server".to_string()),
+            wol_sent: true,
         };
         assert_eq!(req_with_resp.status, Some(200));
         assert_eq!(req_with_resp.latency_ms, Some(150));
         assert_eq!(req_with_resp.client_ip, Some("192.168.1.100".to_string()));
         assert_eq!(req_with_resp.user_email, Some("user@example.com".to_string()));
+        assert_eq!(req_with_resp.runner_id, Some("gpu-server".to_string()));
+        assert!(req_with_resp.wol_sent);
     }
 
     #[test]

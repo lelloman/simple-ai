@@ -1326,6 +1326,8 @@
                                 </p>
                                 <p class="text-xs text-gray-400">
                                     ${req.model ? `Model: ${escapeHtml(req.model)}` : ''}
+                                    ${req.runner_id ? ` <span class="text-gray-400">on</span> ${escapeHtml(req.runner_id)}` : ''}
+                                    ${req.wol_sent ? ' <span class="text-blue-500" title="Wake-on-LAN sent">WOL</span>' : ''}
                                 </p>
                             </div>
                             <div class="flex items-center space-x-3 ml-4">

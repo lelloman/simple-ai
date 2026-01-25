@@ -38,6 +38,10 @@ pub struct Response {
     pub latency_ms: u64,
     pub tokens_prompt: Option<u32>,
     pub tokens_completion: Option<u32>,
+    /// ID of the runner that handled the request.
+    pub runner_id: Option<String>,
+    /// Whether a WOL packet was sent to wake a runner.
+    pub wol_sent: bool,
 }
 
 impl Response {
@@ -51,6 +55,8 @@ impl Response {
             latency_ms: 0,
             tokens_prompt: None,
             tokens_completion: None,
+            runner_id: None,
+            wol_sent: false,
         }
     }
 }

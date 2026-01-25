@@ -144,14 +144,22 @@ async fn chat_completions(
     let request_id = state.audit_logger.log_request(&req_log)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // Track routing metadata
+    let mut runner_id: Option<String> = None;
+    let mut wol_sent = false;
+
     // Forward to appropriate backend (gateway or direct Ollama)
     let result = if state.config.gateway.enabled {
         // Try gateway routing
         match state.inference_router.chat_completion(&model, &request).await {
-            Ok(resp) => Ok(resp),
+            Ok(routed) => {
+                runner_id = Some(routed.runner_id);
+                Ok(routed.response)
+            }
             Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
                 // No runners available, try wake-on-demand
                 tracing::info!("No runners available, attempting wake-on-demand for {:?}", model_request);
+                wol_sent = true;
 
                 match state.wake_service.wake_and_wait(&model_request).await {
                     Ok(wake_result) => {
@@ -161,11 +169,13 @@ async fn chat_completions(
                             wake_result.wait_duration.as_secs_f64()
                         );
                         // Retry the request now that a runner is available
-                        state
-                            .inference_router
-                            .chat_completion(&model, &request)
-                            .await
-                            .map_err(|e| crate::llm::OllamaError::ConnectionFailed(e.to_string()))
+                        match state.inference_router.chat_completion(&model, &request).await {
+                            Ok(routed) => {
+                                runner_id = Some(routed.runner_id);
+                                Ok(routed.response)
+                            }
+                            Err(e) => Err(crate::llm::OllamaError::ConnectionFailed(e.to_string())),
+                        }
                     }
                     Err(WakeError::NoWakeableRunners) => {
                         Err(crate::llm::OllamaError::ConnectionFailed(
@@ -199,6 +209,8 @@ async fn chat_completions(
             let mut resp_log = Response::new(request_id, 200);
             resp_log.response_body = serde_json::to_string(&resp).unwrap_or_default();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
+            resp_log.runner_id = runner_id;
+            resp_log.wol_sent = wol_sent;
             if let Some(ref usage) = resp.usage {
                 resp_log.tokens_prompt = Some(usage.prompt_tokens);
                 resp_log.tokens_completion = Some(usage.completion_tokens);
@@ -209,6 +221,8 @@ async fn chat_completions(
             let mut resp_log = Response::new(request_id, 500);
             resp_log.response_body = e.to_string();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
+            resp_log.runner_id = runner_id;
+            resp_log.wol_sent = wol_sent;
             let _ = state.audit_logger.log_response(&resp_log);
             return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
