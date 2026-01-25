@@ -1392,21 +1392,10 @@
             }
         }
 
-        // Prepend a new request to the requests list (for live updates)
-        function prependNewRequest(req) {
-            const ul = document.getElementById('requests-ul');
-            if (!ul) return;
-
-            // Check if we're showing "No requests found" or loading message
-            const existingContent = ul.innerHTML;
-            if (existingContent.includes('No requests found') || existingContent.includes('Loading')) {
-                ul.innerHTML = '';
-            }
-
-            // Create the new request HTML
-            const li = document.createElement('li');
-            li.className = 'px-4 py-4 bg-green-50'; // Highlight new request
-            li.innerHTML = `
+        // Render a request item HTML
+        function renderRequestHtml(req) {
+            const isPending = req.status === null || req.status === undefined;
+            return `
                 <div class="flex items-center justify-between">
                     <div class="flex-1 min-w-0">
                         <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(req.request_path)}</p>
@@ -1422,20 +1411,61 @@
                         </p>
                     </div>
                     <div class="flex items-center space-x-3 ml-4">
-                        ${req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
-                        ${req.tokens_prompt !== null || req.tokens_completion !== null ? `
+                        ${!isPending && req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
+                        ${!isPending && (req.tokens_prompt !== null || req.tokens_completion !== null) ? `
                             <span class="text-xs text-gray-500" title="Prompt / Completion tokens">
                                 ${req.tokens_prompt || 0} / ${req.tokens_completion || 0} tokens
                             </span>
                         ` : ''}
-                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                            req.status === 200 ? 'bg-green-100 text-green-800' :
-                            req.status >= 400 ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-600'
-                        }">${req.status || 'pending'}</span>
+                        ${isPending ? `
+                            <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                                <svg class="animate-spin -ml-0.5 mr-1.5 h-3 w-3 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                pending
+                            </span>
+                        ` : `
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                req.status === 200 ? 'bg-green-100 text-green-800' :
+                                req.status >= 400 ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-600'
+                            }">${req.status}</span>
+                        `}
                     </div>
                 </div>
             `;
+        }
+
+        // Prepend a new request or update an existing one
+        function prependNewRequest(req) {
+            const ul = document.getElementById('requests-ul');
+            if (!ul) return;
+
+            // Check if this request already exists (update case)
+            const existingLi = ul.querySelector(`li[data-request-id="${escapeAttr(req.id)}"]`);
+            if (existingLi) {
+                // Update existing request
+                existingLi.innerHTML = renderRequestHtml(req);
+                existingLi.classList.remove('bg-yellow-50');
+                if (req.status !== null) {
+                    existingLi.classList.add('bg-green-50');
+                    setTimeout(() => existingLi.classList.remove('bg-green-50'), 3000);
+                }
+                return;
+            }
+
+            // Check if we're showing "No requests found" or loading message
+            const existingContent = ul.innerHTML;
+            if (existingContent.includes('No requests found') || existingContent.includes('Loading')) {
+                ul.innerHTML = '';
+            }
+
+            // Create the new request HTML
+            const li = document.createElement('li');
+            li.className = req.status === null ? 'px-4 py-4 bg-yellow-50' : 'px-4 py-4 bg-green-50';
+            li.setAttribute('data-request-id', req.id);
+            li.innerHTML = renderRequestHtml(req);
 
             // Insert at the top (after any pagination if present)
             const firstItem = ul.querySelector('li:not(.bg-gray-50)');
@@ -1445,10 +1475,12 @@
                 ul.insertBefore(li, ul.firstChild);
             }
 
-            // Remove highlight after 3 seconds
-            setTimeout(() => {
-                li.classList.remove('bg-green-50');
-            }, 3000);
+            // Remove highlight after 3 seconds (only for completed requests)
+            if (req.status !== null) {
+                setTimeout(() => {
+                    li.classList.remove('bg-green-50');
+                }, 3000);
+            }
         }
 
         // ========== User Detail & API Keys ==========

@@ -144,6 +144,23 @@ async fn chat_completions(
     let request_id = state.audit_logger.log_request(&req_log)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // Emit pending request event for admin dashboard
+    let _ = state.request_events.send(RequestEvent {
+        id: req_log.id.clone(),
+        timestamp: req_log.timestamp.to_rfc3339(),
+        user_id: req_log.user_id.clone(),
+        user_email: auth_user.email.clone(),
+        request_path: req_log.request_path.clone(),
+        model: req_log.model.clone(),
+        client_ip: req_log.client_ip.clone(),
+        status: None, // Pending
+        latency_ms: None,
+        tokens_prompt: None,
+        tokens_completion: None,
+        runner_id: None,
+        wol_sent: false,
+    });
+
     // Track routing metadata
     let mut runner_id: Option<String> = None;
     let mut wol_sent = false;
