@@ -42,6 +42,25 @@ pub struct OllamaConfig {
 pub struct OidcConfig {
     pub issuer: String,
     pub audience: String,
+    /// Path to roles in JWT claims (e.g., "roles", "realm_access.roles").
+    /// Supports dot-separated paths. Default: "roles"
+    #[serde(default = "default_role_claim_path")]
+    pub role_claim_path: String,
+    /// Name of the admin role. Default: "admin"
+    #[serde(default = "default_admin_role")]
+    pub admin_role: String,
+    /// Explicit list of user subject IDs who are always admins.
+    /// Useful when OIDC provider doesn't include roles in tokens.
+    #[serde(default)]
+    pub admin_users: Vec<String>,
+}
+
+fn default_role_claim_path() -> String {
+    "roles".to_string()
+}
+
+fn default_admin_role() -> String {
+    "admin".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -330,6 +349,9 @@ mod tests {
         let config = OidcConfig {
             issuer: "".to_string(),
             audience: "test".to_string(),
+            role_claim_path: default_role_claim_path(),
+            admin_role: default_admin_role(),
+            admin_users: vec![],
         };
         assert!(config.issuer.is_empty());
     }
@@ -339,9 +361,32 @@ mod tests {
         let config = OidcConfig {
             issuer: "https://auth.example.com".to_string(),
             audience: "my-app".to_string(),
+            role_claim_path: default_role_claim_path(),
+            admin_role: default_admin_role(),
+            admin_users: vec![],
         };
         assert_eq!(config.issuer, "https://auth.example.com");
         assert_eq!(config.audience, "my-app");
+    }
+
+    #[test]
+    fn test_oidc_config_defaults() {
+        assert_eq!(default_role_claim_path(), "roles");
+        assert_eq!(default_admin_role(), "admin");
+    }
+
+    #[test]
+    fn test_oidc_config_with_admin_users() {
+        let config = OidcConfig {
+            issuer: "https://auth.example.com".to_string(),
+            audience: "my-app".to_string(),
+            role_claim_path: "realm_access.roles".to_string(),
+            admin_role: "super-admin".to_string(),
+            admin_users: vec!["user-1".to_string(), "user-2".to_string()],
+        };
+        assert_eq!(config.role_claim_path, "realm_access.roles");
+        assert_eq!(config.admin_role, "super-admin");
+        assert_eq!(config.admin_users.len(), 2);
     }
 
     #[test]

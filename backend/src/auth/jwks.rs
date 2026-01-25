@@ -3,8 +3,11 @@ use axum::http::HeaderMap;
 use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
+
+use crate::config::OidcConfig as AppOidcConfig;
 
 /// Authenticated user information extracted from JWT.
 #[derive(Debug, Clone)]
@@ -13,12 +16,52 @@ pub struct AuthUser {
     pub email: Option<String>,
     /// Per-app roles from the OIDC provider.
     pub roles: Vec<String>,
+    /// The configured admin role name.
+    admin_role: String,
+    /// Explicit list of admin user IDs.
+    admin_users: Vec<String>,
 }
 
 impl AuthUser {
-    /// Check if the user has the "admin" role.
+    /// Create a new AuthUser for testing purposes.
+    #[cfg(test)]
+    pub fn new_for_test(
+        sub: String,
+        email: Option<String>,
+        roles: Vec<String>,
+        admin_role: String,
+        admin_users: Vec<String>,
+    ) -> Self {
+        Self {
+            sub,
+            email,
+            roles,
+            admin_role,
+            admin_users,
+        }
+    }
+
+    /// Create a new AuthUser with default admin configuration.
+    ///
+    /// Used for testing and when creating mock users.
+    pub fn new(sub: String, email: Option<String>, roles: Vec<String>) -> Self {
+        Self {
+            sub,
+            email,
+            roles,
+            admin_role: "admin".to_string(),
+            admin_users: vec![],
+        }
+    }
+
+    /// Check if the user has admin access.
+    ///
+    /// Returns true if either:
+    /// - The user has the configured admin role
+    /// - The user's subject ID is in the explicit admin_users list
     pub fn is_admin(&self) -> bool {
-        self.roles.iter().any(|r| r == "admin")
+        self.roles.iter().any(|r| r == &self.admin_role)
+            || self.admin_users.iter().any(|id| id == &self.sub)
     }
 
     /// Check if the user has a specific role.
@@ -64,11 +107,12 @@ struct Claims {
     #[serde(default)]
     email: Option<String>,
     #[serde(default)]
-    roles: Vec<String>,
-    #[serde(default)]
-    aud: serde_json::Value,
+    aud: Value,
     exp: u64,
     iat: u64,
+    /// Capture all other claims for flexible role extraction.
+    #[serde(flatten)]
+    extra: HashMap<String, Value>,
 }
 
 /// Client for fetching and caching JWKS keys.
@@ -77,15 +121,24 @@ pub struct JwksClient {
     jwks_uri: String,
     keys: Arc<RwLock<HashMap<String, DecodingKey>>>,
     issuer: String,
+    /// Path to roles in JWT claims (e.g., "roles", "realm_access.roles").
+    role_claim_path: String,
+    /// Name of the admin role.
+    admin_role: String,
+    /// Explicit list of admin user IDs.
+    admin_users: Vec<String>,
 }
 
 impl JwksClient {
-    pub async fn new(issuer: &str) -> Result<Self, AuthError> {
+    pub async fn new(config: &AppOidcConfig) -> Result<Self, AuthError> {
         let http_client = Client::new();
 
         // Fetch OIDC configuration to get JWKS URI
-        let config_url = format!("{}/.well-known/openid-configuration", issuer.trim_end_matches('/'));
-        let config: OidcConfig = http_client
+        let config_url = format!(
+            "{}/.well-known/openid-configuration",
+            config.issuer.trim_end_matches('/')
+        );
+        let oidc_discovery: OidcDiscovery = http_client
             .get(&config_url)
             .send()
             .await
@@ -96,15 +149,42 @@ impl JwksClient {
 
         let client = Self {
             http_client,
-            jwks_uri: config.jwks_uri,
+            jwks_uri: oidc_discovery.jwks_uri,
             keys: Arc::new(RwLock::new(HashMap::new())),
-            issuer: issuer.to_string(),
+            issuer: config.issuer.clone(),
+            role_claim_path: config.role_claim_path.clone(),
+            admin_role: config.admin_role.clone(),
+            admin_users: config.admin_users.clone(),
         };
 
         // Fetch keys initially
         client.refresh_keys().await?;
 
         Ok(client)
+    }
+
+    /// Extract roles from a nested claim path (e.g., "realm_access.roles").
+    fn extract_roles(extra: &HashMap<String, Value>, path: &str) -> Vec<String> {
+        let parts: Vec<&str> = path.split('.').collect();
+        let mut current: Option<&Value> = None;
+
+        for (i, part) in parts.iter().enumerate() {
+            if i == 0 {
+                current = extra.get(*part);
+            } else if let Some(Value::Object(obj)) = current {
+                current = obj.get(*part);
+            } else {
+                return vec![];
+            }
+        }
+
+        match current {
+            Some(Value::Array(arr)) => arr
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            _ => vec![],
+        }
     }
 
     async fn refresh_keys(&self) -> Result<(), AuthError> {
@@ -183,23 +263,29 @@ impl JwksClient {
         let token_data = decode::<Claims>(token, key, &validation)
             .map_err(|e| AuthError::InvalidToken(e.to_string()))?;
 
+        // Extract roles from the configured claim path
+        let roles = Self::extract_roles(&token_data.claims.extra, &self.role_claim_path);
+
         tracing::debug!(
-            "JWT validated: sub={}, email={:?}, roles={:?}",
+            "JWT validated: sub={}, email={:?}, roles={:?}, admin_users={:?}",
             token_data.claims.sub,
             token_data.claims.email,
-            token_data.claims.roles
+            roles,
+            self.admin_users
         );
 
         Ok(AuthUser {
             sub: token_data.claims.sub,
             email: token_data.claims.email,
-            roles: token_data.claims.roles,
+            roles,
+            admin_role: self.admin_role.clone(),
+            admin_users: self.admin_users.clone(),
         })
     }
 }
 
 #[derive(Debug, Deserialize)]
-struct OidcConfig {
+struct OidcDiscovery {
     jwks_uri: String,
 }
 
@@ -219,43 +305,102 @@ mod tests {
         headers
     }
 
+    /// Helper to create AuthUser with default admin config.
+    fn make_user(sub: &str, email: Option<&str>, roles: Vec<&str>) -> AuthUser {
+        AuthUser::new_for_test(
+            sub.to_string(),
+            email.map(|e| e.to_string()),
+            roles.into_iter().map(|r| r.to_string()).collect(),
+            "admin".to_string(),
+            vec![],
+        )
+    }
+
+    /// Helper to create AuthUser with explicit admin users.
+    fn make_user_with_admin_users(
+        sub: &str,
+        email: Option<&str>,
+        roles: Vec<&str>,
+        admin_users: Vec<&str>,
+    ) -> AuthUser {
+        AuthUser::new_for_test(
+            sub.to_string(),
+            email.map(|e| e.to_string()),
+            roles.into_iter().map(|r| r.to_string()).collect(),
+            "admin".to_string(),
+            admin_users.into_iter().map(|u| u.to_string()).collect(),
+        )
+    }
+
     #[test]
     fn test_auth_user_is_admin_with_admin_role() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: Some("user@example.com".to_string()),
-            roles: vec!["admin".to_string(), "user".to_string()],
-        };
+        let user = make_user("user123", Some("user@example.com"), vec!["admin", "user"]);
         assert!(user.is_admin());
     }
 
     #[test]
     fn test_auth_user_is_admin_without_admin_role() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: None,
-            roles: vec!["user".to_string()],
-        };
+        let user = make_user("user123", None, vec!["user"]);
         assert!(!user.is_admin());
     }
 
     #[test]
     fn test_auth_user_is_admin_with_empty_roles() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: None,
-            roles: vec![],
-        };
+        let user = make_user("user123", None, vec![]);
+        assert!(!user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_is_admin_via_admin_users_list() {
+        let user = make_user_with_admin_users(
+            "user123",
+            None,
+            vec![],
+            vec!["user123"],
+        );
+        assert!(user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_is_admin_via_admin_users_list_no_match() {
+        let user = make_user_with_admin_users(
+            "user123",
+            None,
+            vec![],
+            vec!["other-user"],
+        );
+        assert!(!user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_is_admin_with_custom_role_name() {
+        // User has "super-admin" role, and admin_role is configured as "super-admin"
+        let user = AuthUser::new_for_test(
+            "user123".to_string(),
+            None,
+            vec!["super-admin".to_string()],
+            "super-admin".to_string(),
+            vec![],
+        );
+        assert!(user.is_admin());
+    }
+
+    #[test]
+    fn test_auth_user_is_not_admin_when_role_name_mismatch() {
+        // User has "admin" role, but admin_role is configured as "super-admin"
+        let user = AuthUser::new_for_test(
+            "user123".to_string(),
+            None,
+            vec!["admin".to_string()],
+            "super-admin".to_string(),
+            vec![],
+        );
         assert!(!user.is_admin());
     }
 
     #[test]
     fn test_auth_user_has_role_exact_match() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: None,
-            roles: vec!["moderator".to_string(), "viewer".to_string()],
-        };
+        let user = make_user("user123", None, vec!["moderator", "viewer"]);
         assert!(user.has_role("moderator"));
         assert!(user.has_role("viewer"));
         assert!(!user.has_role("admin"));
@@ -263,43 +408,27 @@ mod tests {
 
     #[test]
     fn test_auth_user_has_role_case_sensitive() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: None,
-            roles: vec!["Admin".to_string()],
-        };
+        let user = make_user("user123", None, vec!["Admin"]);
         assert!(!user.has_role("admin"));
         assert!(user.has_role("Admin"));
     }
 
     #[test]
     fn test_auth_user_has_role_with_empty_roles() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: None,
-            roles: vec![],
-        };
+        let user = make_user("user123", None, vec![]);
         assert!(!user.has_role("any"));
     }
 
     #[test]
     fn test_auth_user_sub_and_email() {
-        let user = AuthUser {
-            sub: "auth0|123456".to_string(),
-            email: Some("test@auth0.com".to_string()),
-            roles: vec![],
-        };
+        let user = make_user("auth0|123456", Some("test@auth0.com"), vec![]);
         assert_eq!(user.sub, "auth0|123456");
         assert_eq!(user.email, Some("test@auth0.com".to_string()));
     }
 
     #[test]
     fn test_auth_user_without_email() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: None,
-            roles: vec![],
-        };
+        let user = make_user("user123", None, vec![]);
         assert!(user.email.is_none());
     }
 
@@ -350,11 +479,7 @@ mod tests {
 
     #[test]
     fn test_auth_user_clone() {
-        let original = AuthUser {
-            sub: "user123".to_string(),
-            email: Some("user@example.com".to_string()),
-            roles: vec!["admin".to_string()],
-        };
+        let original = make_user("user123", Some("user@example.com"), vec!["admin"]);
         let cloned = original.clone();
         assert_eq!(cloned.sub, original.sub);
         assert_eq!(cloned.email, original.email);
@@ -363,11 +488,7 @@ mod tests {
 
     #[test]
     fn test_auth_user_debug_format() {
-        let user = AuthUser {
-            sub: "user123".to_string(),
-            email: Some("user@example.com".to_string()),
-            roles: vec!["admin".to_string()],
-        };
+        let user = make_user("user123", Some("user@example.com"), vec!["admin"]);
         let debug = format!("{:?}", user);
         assert!(debug.contains("user123"));
         assert!(debug.contains("user@example.com"));
@@ -394,5 +515,69 @@ mod tests {
     fn test_empty_headers_has_no_auth() {
         let headers = empty_headers();
         assert!(headers.get("authorization").is_none());
+    }
+
+    // Tests for role extraction from claim paths
+
+    #[test]
+    fn test_extract_roles_simple_path() {
+        let mut extra = HashMap::new();
+        extra.insert(
+            "roles".to_string(),
+            serde_json::json!(["admin", "user"]),
+        );
+        let roles = JwksClient::extract_roles(&extra, "roles");
+        assert_eq!(roles, vec!["admin", "user"]);
+    }
+
+    #[test]
+    fn test_extract_roles_nested_path() {
+        let mut extra = HashMap::new();
+        extra.insert(
+            "realm_access".to_string(),
+            serde_json::json!({
+                "roles": ["admin", "user"]
+            }),
+        );
+        let roles = JwksClient::extract_roles(&extra, "realm_access.roles");
+        assert_eq!(roles, vec!["admin", "user"]);
+    }
+
+    #[test]
+    fn test_extract_roles_deeply_nested_path() {
+        let mut extra = HashMap::new();
+        extra.insert(
+            "resource_access".to_string(),
+            serde_json::json!({
+                "my-app": {
+                    "roles": ["editor", "viewer"]
+                }
+            }),
+        );
+        let roles = JwksClient::extract_roles(&extra, "resource_access.my-app.roles");
+        assert_eq!(roles, vec!["editor", "viewer"]);
+    }
+
+    #[test]
+    fn test_extract_roles_missing_path() {
+        let extra = HashMap::new();
+        let roles = JwksClient::extract_roles(&extra, "roles");
+        assert!(roles.is_empty());
+    }
+
+    #[test]
+    fn test_extract_roles_path_not_array() {
+        let mut extra = HashMap::new();
+        extra.insert("roles".to_string(), serde_json::json!("not-an-array"));
+        let roles = JwksClient::extract_roles(&extra, "roles");
+        assert!(roles.is_empty());
+    }
+
+    #[test]
+    fn test_extract_roles_intermediate_not_object() {
+        let mut extra = HashMap::new();
+        extra.insert("realm_access".to_string(), serde_json::json!("not-an-object"));
+        let roles = JwksClient::extract_roles(&extra, "realm_access.roles");
+        assert!(roles.is_empty());
     }
 }

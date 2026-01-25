@@ -25,6 +25,9 @@ pub fn test_config() -> Config {
         oidc: OidcConfig {
             issuer: "https://test-issuer".to_string(),
             audience: "test-audience".to_string(),
+            role_claim_path: "roles".to_string(),
+            admin_role: "admin".to_string(),
+            admin_users: vec![],
         },
         database: DatabaseConfig {
             url: "sqlite:memory".to_string(),
@@ -44,7 +47,7 @@ pub fn test_config() -> Config {
 
 pub async fn create_test_state() -> AppState {
     let config = test_config();
-    let jwks_client = JwksClient::new(&config.oidc.issuer).await.unwrap();
+    let jwks_client = JwksClient::new(&config.oidc).await.unwrap();
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
     let audit_logger = Arc::new(AuditLogger::new(&config.database.url).unwrap());
     let lang_detector = Mutex::new(FastText::default());
@@ -134,10 +137,10 @@ pub fn generate_expired_jwt(
 }
 
 pub fn test_auth_user(sub: &str, email: Option<&str>, roles: Vec<&str>) -> AuthUser {
-    AuthUser {
-        sub: sub.to_string(),
-        email: email.map(String::from),
-        roles: roles.iter().map(|s| s.to_string()).collect(),
-    }
+    AuthUser::new(
+        sub.to_string(),
+        email.map(String::from),
+        roles.iter().map(|s| s.to_string()).collect(),
+    )
 }
 

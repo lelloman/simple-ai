@@ -23,6 +23,9 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         oidc: simple_ai_backend::config::OidcConfig {
             issuer: "https://example.com".to_string(),
             audience: "".to_string(),
+            role_claim_path: "roles".to_string(),
+            admin_role: "admin".to_string(),
+            admin_users: vec![],
         },
         database: simple_ai_backend::config::DatabaseConfig {
             url: ":memory:".to_string(),
@@ -70,7 +73,16 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         .mount(&mock_server)
         .await;
 
-    let jwks_client = JwksClient::new(&format!("{}/", mock_server.uri())).await?;
+    // Create OIDC config with mock server as issuer
+    let mock_oidc_config = simple_ai_backend::config::OidcConfig {
+        issuer: format!("{}/", mock_server.uri()),
+        audience: "test".to_string(),
+        role_claim_path: "roles".to_string(),
+        admin_role: "admin".to_string(),
+        admin_users: vec![],
+    };
+
+    let jwks_client = JwksClient::new(&mock_oidc_config).await?;
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
     let audit_logger = Arc::new(AuditLogger::new(&config.database.url).unwrap());
     let runner_registry = Arc::new(RunnerRegistry::new());

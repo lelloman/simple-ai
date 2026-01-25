@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Starting SimpleAI API Gateway");
 
-    let jwks_client = JwksClient::new(&config.oidc.issuer).await?;
+    let jwks_client = JwksClient::new(&config.oidc).await?;
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
     let audit_logger = Arc::new(AuditLogger::new(&config.database.url)?);
 
