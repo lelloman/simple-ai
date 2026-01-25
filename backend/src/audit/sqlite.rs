@@ -139,6 +139,27 @@ impl AuditLogger {
             [],
         ); // Ignore error if column already exists
 
+        // Migration: add model_class column to responses
+        let _ = conn.execute(
+            "ALTER TABLE responses ADD COLUMN model_class TEXT",
+            [],
+        );
+
+        // Create runner_metrics table for tracking boot time and inference latency
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS runner_metrics (
+                runner_id TEXT NOT NULL,
+                model_class TEXT NOT NULL,
+                sample_count INTEGER NOT NULL DEFAULT 0,
+                total_ms INTEGER NOT NULL DEFAULT 0,
+                min_ms INTEGER,
+                max_ms INTEGER,
+                last_updated_at TEXT NOT NULL,
+                PRIMARY KEY (runner_id, model_class)
+            )",
+            [],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
         tracing::info!("Audit logger initialized with database: {}", path);
 
         Ok(Self {
@@ -237,8 +258,8 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
-            "INSERT INTO responses (id, request_id, timestamp, status, response_body, latency_ms, tokens_prompt, tokens_completion, runner_id, wol_sent)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO responses (id, request_id, timestamp, status, response_body, latency_ms, tokens_prompt, tokens_completion, runner_id, wol_sent, model_class)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 response.id,
                 response.request_id,
@@ -250,10 +271,41 @@ impl AuditLogger {
                 response.tokens_completion.map(|v| v as i64),
                 response.runner_id,
                 response.wol_sent as i32,
+                response.model_class,
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        // Record inference metrics if we have runner_id and model_class
+        if let (Some(ref runner_id), Some(ref model_class)) = (&response.runner_id, &response.model_class) {
+            // Use a separate connection lock scope - ignore errors from metrics recording
+            drop(conn);
+            let _ = self.record_metric(runner_id, model_class, response.latency_ms);
+        }
+
         tracing::debug!("Logged response for request: {}", response.request_id);
+        Ok(())
+    }
+
+    /// Record a metric sample (boot time or inference latency).
+    pub fn record_metric(&self, runner_id: &str, model_class: &str, ms: u64) -> Result<(), AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO runner_metrics (runner_id, model_class, sample_count, total_ms, min_ms, max_ms, last_updated_at)
+             VALUES (?1, ?2, 1, ?3, ?3, ?3, ?4)
+             ON CONFLICT(runner_id, model_class) DO UPDATE SET
+                sample_count = sample_count + 1,
+                total_ms = total_ms + ?3,
+                min_ms = MIN(min_ms, ?3),
+                max_ms = MAX(max_ms, ?3),
+                last_updated_at = ?4",
+            params![runner_id, model_class, ms as i64, now],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        tracing::debug!("Recorded {} metric for runner {}: {}ms", model_class, runner_id, ms);
         Ok(())
     }
 
@@ -689,6 +741,29 @@ pub struct RunnerRecord {
     pub available_models: Vec<String>,
 }
 
+/// Runner metrics for boot time or inference latency.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RunnerMetricRow {
+    pub runner_id: String,
+    pub model_class: String,
+    pub sample_count: u64,
+    pub total_ms: u64,
+    pub min_ms: Option<u64>,
+    pub max_ms: Option<u64>,
+    pub last_updated_at: String,
+}
+
+impl RunnerMetricRow {
+    /// Calculate the average latency in milliseconds.
+    pub fn avg_ms(&self) -> Option<f64> {
+        if self.sample_count > 0 {
+            Some(self.total_ms as f64 / self.sample_count as f64)
+        } else {
+            None
+        }
+    }
+}
+
 impl AuditLogger {
     /// Insert or update a runner record.
     pub fn upsert_runner(
@@ -807,6 +882,70 @@ impl AuditLogger {
             .into_iter()
             .filter(|r| r.available_models.iter().any(|m| m == model_id))
             .collect())
+    }
+
+    /// Get all metrics for a specific runner.
+    pub fn get_runner_metrics(&self, runner_id: &str) -> Result<Vec<RunnerMetricRow>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT runner_id, model_class, sample_count, total_ms, min_ms, max_ms, last_updated_at
+             FROM runner_metrics WHERE runner_id = ?1 ORDER BY model_class"
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt.query_map(params![runner_id], |row| {
+            Ok(RunnerMetricRow {
+                runner_id: row.get(0)?,
+                model_class: row.get(1)?,
+                sample_count: row.get::<_, i64>(2)? as u64,
+                total_ms: row.get::<_, i64>(3)? as u64,
+                min_ms: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                max_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                last_updated_at: row.get(6)?,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut metrics = Vec::new();
+        for row in rows {
+            metrics.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+        Ok(metrics)
+    }
+
+    /// Get all metrics across all runners.
+    pub fn get_all_metrics(&self) -> Result<Vec<RunnerMetricRow>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT runner_id, model_class, sample_count, total_ms, min_ms, max_ms, last_updated_at
+             FROM runner_metrics ORDER BY runner_id, model_class"
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(RunnerMetricRow {
+                runner_id: row.get(0)?,
+                model_class: row.get(1)?,
+                sample_count: row.get::<_, i64>(2)? as u64,
+                total_ms: row.get::<_, i64>(3)? as u64,
+                min_ms: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                max_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                last_updated_at: row.get(6)?,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut metrics = Vec::new();
+        for row in rows {
+            metrics.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+        Ok(metrics)
+    }
+
+    /// Get boot time metrics for a specific runner.
+    pub fn get_boot_metrics(&self, runner_id: &str) -> Result<Option<RunnerMetricRow>, AuditError> {
+        let metrics = self.get_runner_metrics(runner_id)?;
+        Ok(metrics.into_iter().find(|m| m.model_class == "boot"))
     }
 }
 
@@ -1451,5 +1590,136 @@ mod tests {
         let json = serde_json::to_string(&key).unwrap();
         assert!(!json.contains("hash123"));
         assert!(!json.contains("key_hash"));
+    }
+
+    // ==================== Runner Metrics Tests ====================
+
+    #[test]
+    fn test_record_metric_new() {
+        let logger = create_test_logger();
+        logger.record_metric("runner-1", "fast", 100).unwrap();
+
+        let metrics = logger.get_runner_metrics("runner-1").unwrap();
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].runner_id, "runner-1");
+        assert_eq!(metrics[0].model_class, "fast");
+        assert_eq!(metrics[0].sample_count, 1);
+        assert_eq!(metrics[0].total_ms, 100);
+        assert_eq!(metrics[0].min_ms, Some(100));
+        assert_eq!(metrics[0].max_ms, Some(100));
+    }
+
+    #[test]
+    fn test_record_metric_accumulates() {
+        let logger = create_test_logger();
+        logger.record_metric("runner-1", "fast", 100).unwrap();
+        logger.record_metric("runner-1", "fast", 200).unwrap();
+        logger.record_metric("runner-1", "fast", 150).unwrap();
+
+        let metrics = logger.get_runner_metrics("runner-1").unwrap();
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].sample_count, 3);
+        assert_eq!(metrics[0].total_ms, 450); // 100 + 200 + 150
+        assert_eq!(metrics[0].min_ms, Some(100));
+        assert_eq!(metrics[0].max_ms, Some(200));
+    }
+
+    #[test]
+    fn test_record_metric_multiple_classes() {
+        let logger = create_test_logger();
+        logger.record_metric("runner-1", "fast", 100).unwrap();
+        logger.record_metric("runner-1", "big", 500).unwrap();
+        logger.record_metric("runner-1", "boot", 5000).unwrap();
+
+        let metrics = logger.get_runner_metrics("runner-1").unwrap();
+        assert_eq!(metrics.len(), 3);
+
+        let fast = metrics.iter().find(|m| m.model_class == "fast").unwrap();
+        assert_eq!(fast.total_ms, 100);
+
+        let big = metrics.iter().find(|m| m.model_class == "big").unwrap();
+        assert_eq!(big.total_ms, 500);
+
+        let boot = metrics.iter().find(|m| m.model_class == "boot").unwrap();
+        assert_eq!(boot.total_ms, 5000);
+    }
+
+    #[test]
+    fn test_get_all_metrics() {
+        let logger = create_test_logger();
+        logger.record_metric("runner-1", "fast", 100).unwrap();
+        logger.record_metric("runner-2", "fast", 200).unwrap();
+        logger.record_metric("runner-1", "big", 500).unwrap();
+
+        let all_metrics = logger.get_all_metrics().unwrap();
+        assert_eq!(all_metrics.len(), 3);
+    }
+
+    #[test]
+    fn test_get_boot_metrics() {
+        let logger = create_test_logger();
+        logger.record_metric("runner-1", "boot", 5000).unwrap();
+        logger.record_metric("runner-1", "fast", 100).unwrap();
+
+        let boot = logger.get_boot_metrics("runner-1").unwrap();
+        assert!(boot.is_some());
+        assert_eq!(boot.unwrap().total_ms, 5000);
+    }
+
+    #[test]
+    fn test_get_boot_metrics_not_found() {
+        let logger = create_test_logger();
+        logger.record_metric("runner-1", "fast", 100).unwrap();
+
+        let boot = logger.get_boot_metrics("runner-1").unwrap();
+        assert!(boot.is_none());
+    }
+
+    #[test]
+    fn test_runner_metric_row_avg_ms() {
+        let metric = RunnerMetricRow {
+            runner_id: "runner-1".to_string(),
+            model_class: "fast".to_string(),
+            sample_count: 4,
+            total_ms: 400,
+            min_ms: Some(50),
+            max_ms: Some(150),
+            last_updated_at: "2024-01-01T00:00:00Z".to_string(),
+        };
+        assert_eq!(metric.avg_ms(), Some(100.0));
+    }
+
+    #[test]
+    fn test_runner_metric_row_avg_ms_zero_samples() {
+        let metric = RunnerMetricRow {
+            runner_id: "runner-1".to_string(),
+            model_class: "fast".to_string(),
+            sample_count: 0,
+            total_ms: 0,
+            min_ms: None,
+            max_ms: None,
+            last_updated_at: "2024-01-01T00:00:00Z".to_string(),
+        };
+        assert_eq!(metric.avg_ms(), None);
+    }
+
+    #[test]
+    fn test_log_response_with_model_class() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+
+        let mut response = Response::new(request_id, 200);
+        response.latency_ms = 150;
+        response.runner_id = Some("runner-1".to_string());
+        response.model_class = Some("fast".to_string());
+        logger.log_response(&response).unwrap();
+
+        // Verify metrics were recorded
+        let metrics = logger.get_runner_metrics("runner-1").unwrap();
+        assert_eq!(metrics.len(), 1);
+        assert_eq!(metrics[0].model_class, "fast");
+        assert_eq!(metrics[0].total_ms, 150);
     }
 }

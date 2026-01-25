@@ -42,6 +42,8 @@ pub struct Response {
     pub runner_id: Option<String>,
     /// Whether a WOL packet was sent to wake a runner.
     pub wol_sent: bool,
+    /// Model class (fast, big) for metrics tracking.
+    pub model_class: Option<String>,
 }
 
 impl Response {
@@ -57,6 +59,7 @@ impl Response {
             tokens_completion: None,
             runner_id: None,
             wol_sent: false,
+            model_class: None,
         }
     }
 }

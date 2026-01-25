@@ -220,6 +220,11 @@ async fn chat_completions(
         state.ollama_client.chat(&request, &model).await
     };
 
+    // Compute model class for metrics tracking
+    let model_class_str = model_request
+        .effective_class(&state.config.models)
+        .map(|c| c.as_str().to_string());
+
     // Log response
     let (response, resp_log) = match result {
         Ok(resp) => {
@@ -228,6 +233,7 @@ async fn chat_completions(
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id;
             resp_log.wol_sent = wol_sent;
+            resp_log.model_class = model_class_str.clone();
             if let Some(ref usage) = resp.usage {
                 resp_log.tokens_prompt = Some(usage.prompt_tokens);
                 resp_log.tokens_completion = Some(usage.completion_tokens);
@@ -240,6 +246,7 @@ async fn chat_completions(
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
+            resp_log.model_class = model_class_str.clone();
             let _ = state.audit_logger.log_response(&resp_log);
 
             // Emit request event for admin dashboard (error case)

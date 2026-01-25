@@ -498,6 +498,9 @@ impl WakeService {
             wait_duration.as_secs_f64()
         );
 
+        // Record boot time metric (ignore errors)
+        let _ = self.audit_logger.record_metric(&runner_id, "boot", wait_duration.as_millis() as u64);
+
         Ok(WakeResult {
             runner_id,
             wait_duration,
