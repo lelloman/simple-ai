@@ -10,9 +10,11 @@ use axum::{
 use axum::http::HeaderMap;
 
 use crate::AppState;
+use crate::auth::AuthUser;
 use crate::gateway::{can_request_model, ModelRequest, RouterError};
 use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
 use crate::models::request::{Request, Response};
+use crate::models::user::User;
 use crate::wol::WakeError;
 
 /// Extract client IP from headers (X-Forwarded-For, X-Real-IP) or connection info.
@@ -31,17 +33,49 @@ fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> Option<St
     addr.map(|a| a.ip().to_string())
 }
 
-/// POST /v1/chat/completions - OpenAI-compatible chat endpoint
-async fn chat_completions(
-    State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    headers: HeaderMap,
-    Json(request): Json<ChatCompletionRequest>,
-) -> Result<Json<ChatCompletionResponse>, (StatusCode, String)> {
-    let start = Instant::now();
+/// Authenticate a request using API key or JWT.
+/// Returns (AuthUser, User) on success.
+async fn authenticate_request(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(AuthUser, User), (StatusCode, String)> {
+    // Extract the Authorization header
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
 
-    // Authenticate user
-    let auth_user = state.jwks_client.authenticate(&headers).await
+    // Check for API key (sk-...) first
+    if let Some(token) = auth_header.strip_prefix("Bearer ") {
+        if token.starts_with("sk-") {
+            // Validate API key
+            match state.audit_logger.validate_api_key(token) {
+                Ok(Some((user_id, email))) => {
+                    // Find or create the user
+                    let user = state.audit_logger.find_or_create_user(&user_id, email.as_deref())
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+                    // Check if user is enabled
+                    if !user.is_enabled {
+                        return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
+                    }
+
+                    // Create AuthUser for API key users (no roles, but can use the API)
+                    let auth_user = AuthUser::new(user_id, email, vec![]);
+                    return Ok((auth_user, user));
+                }
+                Ok(None) => {
+                    return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
+                }
+                Err(e) => {
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                }
+            }
+        }
+    }
+
+    // Fall back to JWT authentication
+    let auth_user = state.jwks_client.authenticate(headers).await
         .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
 
     // Find or create user in database
@@ -54,6 +88,21 @@ async fn chat_completions(
     if !user.is_enabled {
         return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
     }
+
+    Ok((auth_user, user))
+}
+
+/// POST /v1/chat/completions - OpenAI-compatible chat endpoint
+async fn chat_completions(
+    State(state): State<Arc<AppState>>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+    Json(request): Json<ChatCompletionRequest>,
+) -> Result<Json<ChatCompletionResponse>, (StatusCode, String)> {
+    let start = Instant::now();
+
+    // Authenticate user - try API key first, then fall back to JWT
+    let (auth_user, user) = authenticate_request(&state, &headers).await?;
 
     // Parse and validate model request
     let model_request = match &request.model {

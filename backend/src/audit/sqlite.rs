@@ -85,6 +85,21 @@ impl AuditLogger {
             [],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        // Create API keys table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY,
+                key_hash TEXT NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT,
+                revoked INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )",
+            [],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
         // Create indexes
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)",
@@ -453,6 +468,142 @@ impl AuditLogger {
 
         Ok(())
     }
+
+    // ==================== API Key Management ====================
+
+    /// Create a new API key. Returns the plaintext key (only shown once).
+    pub fn create_api_key(&self, user_id: &str, name: &str) -> Result<(ApiKey, String), AuditError> {
+        use sha2::{Sha256, Digest};
+
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Generate a random key: sk-<32 hex chars>
+        let raw_key: [u8; 16] = rand::random();
+        let plaintext_key = format!("sk-{}", hex::encode(raw_key));
+
+        // Hash the key for storage
+        let mut hasher = Sha256::new();
+        hasher.update(plaintext_key.as_bytes());
+        let key_hash = hex::encode(hasher.finalize());
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO api_keys (id, key_hash, user_id, name, created_at, revoked)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0)",
+            params![id, key_hash, user_id, name, now],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Get user email for the response
+        let user_email: Option<String> = conn.query_row(
+            "SELECT email FROM users WHERE id = ?1",
+            params![user_id],
+            |row| row.get(0),
+        ).ok();
+
+        let api_key = ApiKey {
+            id,
+            key_hash,
+            user_id: user_id.to_string(),
+            user_email,
+            name: name.to_string(),
+            created_at: now,
+            last_used_at: None,
+            revoked: false,
+        };
+
+        Ok((api_key, plaintext_key))
+    }
+
+    /// Validate an API key and return the associated user info.
+    /// Updates last_used_at on successful validation.
+    pub fn validate_api_key(&self, plaintext_key: &str) -> Result<Option<(String, Option<String>)>, AuditError> {
+        use sha2::{Sha256, Digest};
+
+        if !plaintext_key.starts_with("sk-") {
+            return Ok(None);
+        }
+
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Hash the provided key
+        let mut hasher = Sha256::new();
+        hasher.update(plaintext_key.as_bytes());
+        let key_hash = hex::encode(hasher.finalize());
+
+        // Look up the key
+        let result: Result<(String, String, Option<String>), _> = conn.query_row(
+            "SELECT ak.id, ak.user_id, u.email
+             FROM api_keys ak
+             LEFT JOIN users u ON u.id = ak.user_id
+             WHERE ak.key_hash = ?1 AND ak.revoked = 0",
+            params![key_hash],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        );
+
+        match result {
+            Ok((key_id, user_id, email)) => {
+                // Update last_used_at
+                let now = chrono::Utc::now().to_rfc3339();
+                let _ = conn.execute(
+                    "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2",
+                    params![now, key_id],
+                );
+                Ok(Some((user_id, email)))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AuditError::DatabaseError(e.to_string())),
+        }
+    }
+
+    /// List all API keys (for admin).
+    pub fn list_api_keys(&self) -> Result<Vec<ApiKey>, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT ak.id, ak.key_hash, ak.user_id, u.email, ak.name, ak.created_at, ak.last_used_at, ak.revoked
+             FROM api_keys ak
+             LEFT JOIN users u ON u.id = ak.user_id
+             ORDER BY ak.created_at DESC"
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(ApiKey {
+                id: row.get(0)?,
+                key_hash: row.get(1)?,
+                user_id: row.get(2)?,
+                user_email: row.get(3)?,
+                name: row.get(4)?,
+                created_at: row.get(5)?,
+                last_used_at: row.get(6)?,
+                revoked: row.get::<_, i32>(7)? != 0,
+            })
+        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut keys = Vec::new();
+        for row in rows {
+            keys.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+
+        Ok(keys)
+    }
+
+    /// Revoke an API key.
+    pub fn revoke_api_key(&self, key_id: &str) -> Result<bool, AuditError> {
+        let conn = self.conn.lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows_affected = conn.execute(
+            "UPDATE api_keys SET revoked = 1 WHERE id = ?1",
+            params![key_id],
+        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        Ok(rows_affected > 0)
+    }
 }
 
 /// Dashboard statistics.
@@ -499,6 +650,20 @@ pub struct RequestWithResponse {
     pub latency_ms: Option<i64>,
     pub tokens_prompt: Option<i64>,
     pub tokens_completion: Option<i64>,
+}
+
+/// API key for programmatic access.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ApiKey {
+    pub id: String,
+    #[serde(skip_serializing)]
+    pub key_hash: String,
+    pub user_id: String,
+    pub user_email: Option<String>,
+    pub name: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+    pub revoked: bool,
 }
 
 /// Persistent runner record for WOL and offline tracking.

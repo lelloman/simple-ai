@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 
-use crate::audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
+use crate::audit::{ApiKey, DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
 use crate::gateway::RunnerEvent;
 use crate::wol;
 use crate::AppState;
@@ -496,6 +496,67 @@ async fn api_requests_list(
         per_page,
         total_pages,
     })
+}
+
+// ========== API Key Endpoints ==========
+
+/// Response for /admin/api/keys endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApiKeysResponse {
+    pub keys: Vec<ApiKey>,
+    pub total: usize,
+}
+
+/// GET /admin/api/keys - List all API keys
+async fn api_keys_list(State(state): State<Arc<AppState>>) -> Json<ApiKeysResponse> {
+    let keys = state.audit_logger.list_api_keys().unwrap_or_default();
+    let total = keys.len();
+    Json(ApiKeysResponse { keys, total })
+}
+
+/// Request body for creating an API key.
+#[derive(Deserialize)]
+struct CreateApiKeyRequest {
+    user_id: String,
+    name: String,
+}
+
+/// Response for creating an API key (includes the plaintext key, shown only once).
+#[derive(Serialize)]
+struct CreateApiKeyResponse {
+    key: ApiKey,
+    /// The plaintext API key - only shown once!
+    secret: String,
+}
+
+/// POST /admin/api/keys - Create a new API key
+async fn api_keys_create(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateApiKeyRequest>,
+) -> Result<Json<CreateApiKeyResponse>, (StatusCode, String)> {
+    // Verify the user exists
+    let user = state.audit_logger.find_or_create_user(&body.user_id, None)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("User not found: {}", e)))?;
+
+    let (key, secret) = state.audit_logger.create_api_key(&user.id, &body.name)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(CreateApiKeyResponse { key, secret }))
+}
+
+/// DELETE /admin/api/keys/:id - Revoke an API key
+async fn api_keys_revoke(
+    State(state): State<Arc<AppState>>,
+    Path(key_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let revoked = state.audit_logger.revoke_api_key(&key_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if revoked {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((StatusCode::NOT_FOUND, "API key not found".to_string()))
+    }
 }
 
 /// Query parameters for SSE authentication.
@@ -966,6 +1027,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         // JSON API endpoints (for SPA dashboard)
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
+        .route("/api/keys", get(api_keys_list).post(api_keys_create))
+        .route("/api/keys/:id", axum::routing::delete(api_keys_revoke))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);
 

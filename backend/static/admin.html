@@ -55,6 +55,7 @@
                                 <a href="#models" onclick="showPage('models')" id="nav-models" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Models</a>
                                 <a href="#users" onclick="showPage('users')" id="nav-users" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Users</a>
                                 <a href="#requests" onclick="showPage('requests')" id="nav-requests" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Requests</a>
+                                <a href="#apikeys" onclick="showPage('apikeys')" id="nav-apikeys" class="nav-link rounded-md px-3 py-2 text-sm font-medium">API Keys</a>
                             </div>
                         </div>
                         <div class="flex items-center space-x-4">
@@ -126,6 +127,46 @@
                     <div id="page-requests" class="page hidden">
                         <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
                             <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
+                        </div>
+                    </div>
+
+                    <!-- API Keys page -->
+                    <div id="page-apikeys" class="page hidden">
+                        <!-- Create API Key Form -->
+                        <div class="bg-white shadow sm:rounded-lg mb-6">
+                            <div class="px-4 py-5 sm:p-6">
+                                <h3 class="text-lg font-medium leading-6 text-gray-900">Create API Key</h3>
+                                <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                    <div>
+                                        <label for="api-key-user" class="block text-sm font-medium text-gray-700">User</label>
+                                        <select id="api-key-user" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2">
+                                            <option value="">Select a user...</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="api-key-name" class="block text-sm font-medium text-gray-700">Key Name</label>
+                                        <input type="text" id="api-key-name" placeholder="e.g., Chrome Extension" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <button onclick="createApiKey()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">
+                                            Create Key
+                                        </button>
+                                    </div>
+                                </div>
+                                <!-- Show newly created key -->
+                                <div id="new-key-display" class="hidden mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                                    <p class="text-sm font-medium text-yellow-800">Copy your API key now - it won't be shown again!</p>
+                                    <div class="mt-2 flex items-center space-x-2">
+                                        <code id="new-key-value" class="flex-1 p-2 bg-white border rounded text-sm font-mono"></code>
+                                        <button onclick="copyApiKey()" class="px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm">Copy</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- API Keys List -->
+                        <div id="apikeys-list" class="overflow-hidden bg-white shadow sm:rounded-md">
+                            <ul role="list" class="divide-y divide-gray-200" id="apikeys-ul"></ul>
                         </div>
                     </div>
                 </div>
@@ -1060,6 +1101,7 @@
             else if (currentPage === 'models') renderModels();
             else if (currentPage === 'users') loadUsers();
             else if (currentPage === 'requests') loadRequests();
+            else if (currentPage === 'apikeys') loadApiKeys();
         }
 
         // Render dashboard stats from local state
@@ -1300,10 +1342,134 @@
             }
         }
 
+        // ========== API Keys ==========
+
+        let apiKeysLoaded = false;
+
+        async function loadApiKeys() {
+            const ul = document.getElementById('apikeys-ul');
+            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Loading API keys...</li>';
+
+            try {
+                // Load users for the dropdown (if not already loaded)
+                if (!apiKeysLoaded) {
+                    await populateUserDropdown();
+                    apiKeysLoaded = true;
+                }
+
+                const data = await apiFetch('/admin/api/keys');
+
+                if (data.keys.length === 0) {
+                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No API keys found. Create one above.</li>';
+                    return;
+                }
+
+                const keysHtml = data.keys.map(key => `
+                    <li class="px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900">${escapeHtml(key.name)}</p>
+                                <p class="text-xs text-gray-500">
+                                    ${key.user_email ? escapeHtml(key.user_email) : escapeHtml(key.user_id.substring(0, 8) + '...')}
+                                    <span class="text-gray-400">|</span> Created: ${new Date(key.created_at).toLocaleDateString()}
+                                    ${key.last_used_at ? `<span class="text-gray-400">|</span> Last used: ${new Date(key.last_used_at).toLocaleString()}` : ''}
+                                </p>
+                            </div>
+                            <div class="flex items-center space-x-3 ml-4">
+                                ${key.revoked
+                                    ? '<span class="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800">Revoked</span>'
+                                    : `<button onclick="revokeApiKey('${key.id}')" class="text-sm text-red-600 hover:text-red-800">Revoke</button>`
+                                }
+                            </div>
+                        </div>
+                    </li>
+                `).join('');
+
+                ul.innerHTML = keysHtml;
+            } catch (e) {
+                console.error('Failed to load API keys:', e);
+                ul.innerHTML = '<li class="px-4 py-8 text-center text-red-500">Failed to load API keys</li>';
+            }
+        }
+
+        async function populateUserDropdown() {
+            try {
+                const data = await apiFetch('/admin/api/users');
+                const select = document.getElementById('api-key-user');
+                select.innerHTML = '<option value="">Select a user...</option>';
+                data.users.forEach(user => {
+                    const option = document.createElement('option');
+                    option.value = user.id;
+                    option.textContent = user.email || user.id.substring(0, 8) + '...';
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                console.error('Failed to load users for dropdown:', e);
+            }
+        }
+
+        async function createApiKey() {
+            const userId = document.getElementById('api-key-user').value;
+            const name = document.getElementById('api-key-name').value.trim();
+
+            if (!userId) {
+                alert('Please select a user');
+                return;
+            }
+            if (!name) {
+                alert('Please enter a key name');
+                return;
+            }
+
+            try {
+                const data = await apiFetch('/admin/api/keys', {
+                    method: 'POST',
+                    body: JSON.stringify({ user_id: userId, name: name }),
+                });
+
+                // Show the secret key (only shown once!)
+                document.getElementById('new-key-value').textContent = data.secret;
+                document.getElementById('new-key-display').classList.remove('hidden');
+
+                // Clear the form
+                document.getElementById('api-key-user').value = '';
+                document.getElementById('api-key-name').value = '';
+
+                // Reload the list
+                loadApiKeys();
+            } catch (e) {
+                console.error('Failed to create API key:', e);
+                alert('Failed to create API key: ' + e.message);
+            }
+        }
+
+        function copyApiKey() {
+            const key = document.getElementById('new-key-value').textContent;
+            navigator.clipboard.writeText(key).then(() => {
+                alert('API key copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        async function revokeApiKey(keyId) {
+            if (!confirm('Are you sure you want to revoke this API key? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                await apiFetch(`/admin/api/keys/${keyId}`, { method: 'DELETE' });
+                loadApiKeys();
+            } catch (e) {
+                console.error('Failed to revoke API key:', e);
+                alert('Failed to revoke API key: ' + e.message);
+            }
+        }
+
         // Handle hash-based navigation
         function getPageFromHash() {
             const hash = window.location.hash.slice(1); // Remove the #
-            const validPages = ['dashboard', 'runners', 'models', 'users', 'requests'];
+            const validPages = ['dashboard', 'runners', 'models', 'users', 'requests', 'apikeys'];
             return validPages.includes(hash) ? hash : 'dashboard';
         }
 
