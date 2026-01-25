@@ -89,6 +89,10 @@ impl AuditLogger {
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN runner_id TEXT", []);
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN wol_sent INTEGER NOT NULL DEFAULT 0", []);
 
+        // Migration: add tokens_prompt and tokens_completion columns to responses (for existing databases)
+        let _ = conn.execute("ALTER TABLE responses ADD COLUMN tokens_prompt INTEGER", []);
+        let _ = conn.execute("ALTER TABLE responses ADD COLUMN tokens_completion INTEGER", []);
+
         // Create API keys table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS api_keys (

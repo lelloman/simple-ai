@@ -185,6 +185,8 @@ pub struct DashboardStatsInfo {
     pub total_requests: u64,
     pub requests_24h: u64,
     pub total_tokens: u64,
+    pub tokens_prompt: u64,
+    pub tokens_completion: u64,
 }
 
 /// GET /admin/models - List all models with loaded status (JSON API)
@@ -818,6 +820,8 @@ fn get_stats_snapshot(state: &AppState) -> DashboardStatsInfo {
         total_requests: stats.total_requests,
         requests_24h: stats.requests_24h,
         total_tokens: stats.total_tokens,
+        tokens_prompt: stats.tokens_prompt,
+        tokens_completion: stats.tokens_completion,
     }
 }
 
