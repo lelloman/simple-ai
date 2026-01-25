@@ -1189,12 +1189,112 @@
 
         async function loadUsers() {
             const ul = document.getElementById('users-ul');
-            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">User list requires server-side rendering (use /admin/users with token)</li>';
+            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Loading users...</li>';
+
+            try {
+                const data = await apiFetch('/admin/api/users');
+
+                if (data.users.length === 0) {
+                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No users found</li>';
+                    return;
+                }
+
+                ul.innerHTML = data.users.map(user => `
+                    <li class="px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-gray-900">${escapeHtml(user.email || user.id)}</p>
+                                <p class="text-xs text-gray-500">
+                                    ID: ${escapeHtml(user.id)}
+                                    | Created: ${new Date(user.created_at).toLocaleDateString()}
+                                    | Last seen: ${new Date(user.last_seen_at).toLocaleDateString()}
+                                </p>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <span class="text-sm text-gray-600">${user.request_count} requests</span>
+                                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                    user.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }">${user.is_enabled ? 'Enabled' : 'Disabled'}</span>
+                            </div>
+                        </div>
+                    </li>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load users:', e);
+                ul.innerHTML = '<li class="px-4 py-8 text-center text-red-500">Failed to load users</li>';
+            }
         }
 
-        async function loadRequests() {
+        let requestsPage = 1;
+        let requestsTotalPages = 1;
+
+        async function loadRequests(page = 1) {
             const ul = document.getElementById('requests-ul');
-            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Request list requires server-side rendering (use /admin/requests with token)</li>';
+            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Loading requests...</li>';
+
+            try {
+                const data = await apiFetch(`/admin/api/requests?page=${page}&per_page=50`);
+                requestsPage = data.page;
+                requestsTotalPages = data.total_pages;
+
+                if (data.requests.length === 0) {
+                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No requests found</li>';
+                    return;
+                }
+
+                const requestsHtml = data.requests.map(req => `
+                    <li class="px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(req.request_path)}</p>
+                                <p class="text-xs text-gray-500">
+                                    ${escapeHtml(req.user_id)}
+                                    | ${new Date(req.timestamp).toLocaleString()}
+                                    ${req.model ? `| Model: ${escapeHtml(req.model)}` : ''}
+                                </p>
+                            </div>
+                            <div class="flex items-center space-x-3 ml-4">
+                                ${req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
+                                ${req.tokens_prompt !== null || req.tokens_completion !== null ? `
+                                    <span class="text-xs text-gray-500" title="Prompt / Completion tokens">
+                                        ${req.tokens_prompt || 0} / ${req.tokens_completion || 0} tokens
+                                    </span>
+                                ` : ''}
+                                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                    req.status === 200 ? 'bg-green-100 text-green-800' :
+                                    req.status >= 400 ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-600'
+                                }">${req.status || 'pending'}</span>
+                            </div>
+                        </div>
+                    </li>
+                `).join('');
+
+                // Add pagination controls if needed
+                let paginationHtml = '';
+                if (requestsTotalPages > 1) {
+                    paginationHtml = `
+                        <li class="px-4 py-3 bg-gray-50 flex items-center justify-between border-t">
+                            <button onclick="loadRequests(${Math.max(1, requestsPage - 1)})"
+                                    class="px-3 py-1 text-sm rounded ${requestsPage <= 1 ? 'text-gray-400 cursor-not-allowed' : 'text-primary-600 hover:bg-primary-50'}"
+                                    ${requestsPage <= 1 ? 'disabled' : ''}>
+                                Previous
+                            </button>
+                            <span class="text-sm text-gray-600">Page ${requestsPage} of ${requestsTotalPages}</span>
+                            <button onclick="loadRequests(${Math.min(requestsTotalPages, requestsPage + 1)})"
+                                    class="px-3 py-1 text-sm rounded ${requestsPage >= requestsTotalPages ? 'text-gray-400 cursor-not-allowed' : 'text-primary-600 hover:bg-primary-50'}"
+                                    ${requestsPage >= requestsTotalPages ? 'disabled' : ''}>
+                                Next
+                            </button>
+                        </li>
+                    `;
+                }
+
+                ul.innerHTML = requestsHtml + paginationHtml;
+            } catch (e) {
+                console.error('Failed to load requests:', e);
+                ul.innerHTML = '<li class="px-4 py-8 text-center text-red-500">Failed to load requests</li>';
+            }
         }
 
         // Handle hash-based navigation

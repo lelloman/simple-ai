@@ -438,6 +438,66 @@ async fn wake_runner(
     }
 }
 
+// ========== JSON API Endpoints ==========
+
+/// Response for /admin/api/users endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct UsersApiResponse {
+    pub users: Vec<UserWithStats>,
+    pub total: usize,
+}
+
+/// GET /admin/api/users - List all users with stats (JSON API)
+async fn api_users_list(State(state): State<Arc<AppState>>) -> Json<UsersApiResponse> {
+    let users = state.audit_logger.get_users_with_stats().unwrap_or_default();
+    let total = users.len();
+    Json(UsersApiResponse { users, total })
+}
+
+/// Query parameters for requests API.
+#[derive(serde::Deserialize)]
+struct RequestsApiQuery {
+    user_id: Option<String>,
+    model: Option<String>,
+    page: Option<u32>,
+    per_page: Option<u32>,
+}
+
+/// Response for /admin/api/requests endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct RequestsApiResponse {
+    pub requests: Vec<RequestWithResponse>,
+    pub page: u32,
+    pub per_page: u32,
+    pub total_pages: u32,
+}
+
+/// GET /admin/api/requests - List requests with pagination (JSON API)
+async fn api_requests_list(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<RequestsApiQuery>,
+) -> Json<RequestsApiResponse> {
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(50).min(100);
+
+    let (requests, total_pages) = state
+        .audit_logger
+        .get_requests_paginated(
+            query.user_id.as_deref(),
+            query.model.as_deref(),
+            page,
+            per_page,
+        )
+        .unwrap_or_default();
+
+    Json(RequestsApiResponse {
+        requests,
+        page,
+        per_page,
+        total_pages,
+    })
+}
+
 /// Query parameters for SSE authentication.
 #[derive(serde::Deserialize)]
 pub struct SseAuthQuery {
@@ -903,6 +963,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/runners", get(list_runners))
         .route("/runners/:id/wake", post(wake_runner))
         .route("/models", get(list_models))
+        // JSON API endpoints (for SPA dashboard)
+        .route("/api/users", get(api_users_list))
+        .route("/api/requests", get(api_requests_list))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);
 

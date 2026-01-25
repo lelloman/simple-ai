@@ -467,7 +467,7 @@ pub struct RequestSummary {
 }
 
 /// User with request count.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct UserWithStats {
     pub id: String,
     pub email: Option<String>,
@@ -478,7 +478,7 @@ pub struct UserWithStats {
 }
 
 /// Request with response details.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RequestWithResponse {
     pub id: String,
     pub timestamp: String,
