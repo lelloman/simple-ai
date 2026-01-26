@@ -183,6 +183,17 @@
 
                     <!-- Requests page -->
                     <div id="page-requests" class="page hidden">
+                        <!-- Batch Queue Panel -->
+                        <div id="batch-queue-panel" class="mb-6 bg-white shadow rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                                <h3 class="text-sm font-medium text-gray-900">Request Queue</h3>
+                                <span id="batch-status-badge" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Disabled</span>
+                            </div>
+                            <div id="batch-queue-content" class="p-4">
+                                <p class="text-sm text-gray-500">Batching is disabled</p>
+                            </div>
+                        </div>
+
                         <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
                             <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
                         </div>
@@ -208,6 +219,7 @@
         let runnersState = [];
         let modelsState = [];
         let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0, tokens_prompt: 0, tokens_completion: 0 };
+        let batchQueueState = { enabled: false, timeout_ms: 0, min_batch_size: 0, queues: {} };
 
         // Token refresh state
         let refreshToken = null;
@@ -750,6 +762,7 @@
                         runnersState = msg.runners;
                         modelsState = msg.models;
                         statsState = msg.stats;
+                        batchQueueState = msg.batch_queue;
                         renderCurrentPage();
                         break;
 
@@ -782,6 +795,11 @@
                     case 'stats_updated':
                         statsState = msg.stats;
                         renderDashboardStats();
+                        break;
+
+                    case 'batch_queue_updated':
+                        batchQueueState = msg.batch_queue;
+                        renderBatchQueue();
                         break;
 
                     default:
@@ -1190,7 +1208,10 @@
             else if (currentPage === 'runners') renderRunners();
             else if (currentPage === 'models') renderModels();
             else if (currentPage === 'users') loadUsers();
-            else if (currentPage === 'requests') loadRequests();
+            else if (currentPage === 'requests') {
+                loadRequests();
+                renderBatchQueue();
+            }
             // user-detail page is handled by showUserDetail()
         }
 
@@ -1263,6 +1284,44 @@
             if (currentPage === 'dashboard') {
                 renderDashboardStats();
             }
+        }
+
+        // Render batch queue panel on requests page
+        function renderBatchQueue() {
+            const panel = document.getElementById('batch-queue-content');
+            const badge = document.getElementById('batch-status-badge');
+
+            if (!panel || !badge) return;
+
+            if (!batchQueueState.enabled) {
+                badge.className = 'px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600';
+                badge.textContent = 'Disabled';
+                panel.innerHTML = '<p class="text-sm text-gray-500">Batching is disabled</p>';
+                return;
+            }
+
+            badge.className = 'px-2 py-1 text-xs rounded-full bg-green-100 text-green-800';
+            badge.textContent = `Enabled (${batchQueueState.timeout_ms}ms)`;
+
+            const queues = Object.entries(batchQueueState.queues);
+            if (queues.length === 0) {
+                panel.innerHTML = '<p class="text-sm text-gray-500">No pending requests</p>';
+                return;
+            }
+
+            panel.innerHTML = queues.map(([model, stats]) => `
+                <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                    <span class="text-sm font-medium text-gray-900">${escapeHtml(model)}</span>
+                    <div class="flex items-center gap-4">
+                        <span class="px-2 py-0.5 text-xs rounded-full ${
+                            stats.pending > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'
+                        }">${stats.pending} pending</span>
+                        <span class="text-xs text-gray-500">${
+                            stats.oldest_age_ms ? `oldest: ${stats.oldest_age_ms}ms` : '-'
+                        }</span>
+                    </div>
+                </div>
+            `).join('');
         }
 
         async function wakeRunner(runnerId) {

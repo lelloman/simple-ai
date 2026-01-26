@@ -16,7 +16,7 @@ pub mod router;
 mod ws;
 
 pub use batch_dispatcher::BatchDispatcher;
-pub use batch_queue::{BatchQueue, BatchQueueConfig, BatchedResponse};
+pub use batch_queue::{BatchQueue, BatchQueueConfig, BatchedResponse, ModelQueueStats};
 pub use model_class::{classify_model, can_request_model, ModelClass, ModelRequest};
 pub use registry::{ConnectedRunner, RunnerEvent, RunnerRegistry};
 pub use router::{InferenceRouter, RouterError, RoutedResponse};

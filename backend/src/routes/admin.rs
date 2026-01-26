@@ -7,6 +7,7 @@
 //! - SSE endpoint for real-time runner events (`/admin/runners/events`)
 //! - WebSocket endpoint for real-time runner events with token refresh (`/admin/ws`)
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,7 +32,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 
 use crate::audit::{ApiKey, DashboardStats, RequestWithResponse, UserWithStats};
-use crate::gateway::RunnerEvent;
+use crate::gateway::{ModelQueueStats, RunnerEvent};
 use crate::wol;
 use crate::AppState;
 
@@ -191,6 +192,15 @@ pub struct DashboardStatsInfo {
     pub total_tokens: u64,
     pub tokens_prompt: u64,
     pub tokens_completion: u64,
+}
+
+/// Batch queue info for WebSocket state snapshot.
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchQueueInfo {
+    pub enabled: bool,
+    pub timeout_ms: u64,
+    pub min_batch_size: u32,
+    pub queues: HashMap<String, ModelQueueStats>,
 }
 
 /// GET /admin/models - List all models with loaded status (JSON API)
@@ -591,6 +601,7 @@ enum AdminServerMessage {
         runners: Vec<RunnerInfo>,
         models: Vec<AdminModelInfo>,
         stats: DashboardStatsInfo,
+        batch_queue: BatchQueueInfo,
     },
     /// A runner connected.
     RunnerConnected {
@@ -630,6 +641,8 @@ enum AdminServerMessage {
     },
     /// Dashboard stats updated.
     StatsUpdated { stats: DashboardStatsInfo },
+    /// Batch queue updated (sent periodically when batching is enabled).
+    BatchQueueUpdated { batch_queue: BatchQueueInfo },
 }
 
 impl From<RunnerEvent> for AdminServerMessage {
@@ -758,7 +771,8 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     let runners = get_runners_snapshot(&state).await;
     let models = get_models_snapshot(&state).await;
     let stats = get_stats_snapshot(&state);
-    if send_admin_message(&mut ws_tx, &AdminServerMessage::StateSnapshot { runners, models, stats })
+    let batch_queue = get_batch_queue_snapshot(&state).await;
+    if send_admin_message(&mut ws_tx, &AdminServerMessage::StateSnapshot { runners, models, stats, batch_queue })
         .await
         .is_err()
     {
@@ -776,6 +790,11 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     // Ping interval for keep-alive (30 seconds)
     let mut ping_interval = tokio::time::interval(Duration::from_secs(30));
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    // Batch queue update interval (500ms, only if batching is enabled)
+    let batching_enabled = state.batch_queue.is_some();
+    let mut batch_queue_interval = tokio::time::interval(Duration::from_millis(500));
+    batch_queue_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         tokio::select! {
@@ -895,6 +914,14 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
                 }
             }
 
+            // Send batch queue updates periodically (if batching is enabled)
+            _ = batch_queue_interval.tick(), if batching_enabled => {
+                let batch_queue = get_batch_queue_snapshot(&state).await;
+                if send_admin_message(&mut ws_tx, &AdminServerMessage::BatchQueueUpdated { batch_queue }).await.is_err() {
+                    break;
+                }
+            }
+
             else => break,
         }
     }
@@ -995,6 +1022,26 @@ fn get_stats_snapshot(state: &AppState) -> DashboardStatsInfo {
         total_tokens: stats.total_tokens,
         tokens_prompt: stats.tokens_prompt,
         tokens_completion: stats.tokens_completion,
+    }
+}
+
+/// Get current batch queue info.
+async fn get_batch_queue_snapshot(state: &AppState) -> BatchQueueInfo {
+    if let Some(ref batch_queue) = state.batch_queue {
+        let config = batch_queue.config();
+        BatchQueueInfo {
+            enabled: true,
+            timeout_ms: config.batch_timeout.as_millis() as u64,
+            min_batch_size: config.min_batch_size,
+            queues: batch_queue.get_stats().await,
+        }
+    } else {
+        BatchQueueInfo {
+            enabled: false,
+            timeout_ms: 0,
+            min_batch_size: 0,
+            queues: HashMap::new(),
+        }
     }
 }
 

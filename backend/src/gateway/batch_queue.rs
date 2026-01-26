@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use serde::Serialize;
 use tokio::sync::{oneshot, RwLock, Notify};
 
 use simple_ai_common::ChatCompletionRequest;
@@ -38,6 +39,13 @@ impl Default for BatchQueueConfig {
             min_batch_size: 1,
         }
     }
+}
+
+/// Stats for a single model's queue (for admin dashboard).
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelQueueStats {
+    pub pending: usize,
+    pub oldest_age_ms: Option<u64>,
 }
 
 /// A queued request waiting to be dispatched.
@@ -250,6 +258,25 @@ impl BatchQueue {
         let queues = self.queues.read().await;
         queues.get(model).and_then(|q| q.age())
     }
+
+    /// Get a reference to the batch queue configuration.
+    pub fn config(&self) -> &BatchQueueConfig {
+        &self.config
+    }
+
+    /// Get stats for all queues (for admin dashboard).
+    pub async fn get_stats(&self) -> HashMap<String, ModelQueueStats> {
+        let queues = self.queues.read().await;
+        queues
+            .iter()
+            .map(|(model, queue)| {
+                (model.clone(), ModelQueueStats {
+                    pending: queue.len(),
+                    oldest_age_ms: queue.age().map(|d| d.as_millis() as u64),
+                })
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -375,5 +402,42 @@ mod tests {
 
         // Now should dispatch
         assert!(queue.should_dispatch("model-a", 8).await);
+    }
+
+    #[tokio::test]
+    async fn test_get_stats() {
+        let queue = BatchQueue::new(BatchQueueConfig::default());
+
+        // Initially empty
+        let stats = queue.get_stats().await;
+        assert!(stats.is_empty());
+
+        // Enqueue requests for two models
+        let _rx1 = queue.enqueue("model-a".to_string(), create_test_request()).await;
+        let _rx2 = queue.enqueue("model-a".to_string(), create_test_request()).await;
+        let _rx3 = queue.enqueue("model-b".to_string(), create_test_request()).await;
+
+        let stats = queue.get_stats().await;
+        assert_eq!(stats.len(), 2);
+
+        let model_a_stats = stats.get("model-a").unwrap();
+        assert_eq!(model_a_stats.pending, 2);
+        assert!(model_a_stats.oldest_age_ms.is_some());
+
+        let model_b_stats = stats.get("model-b").unwrap();
+        assert_eq!(model_b_stats.pending, 1);
+        assert!(model_b_stats.oldest_age_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_config_accessor() {
+        let config = BatchQueueConfig {
+            batch_timeout: Duration::from_millis(100),
+            min_batch_size: 5,
+        };
+        let queue = BatchQueue::new(config);
+
+        assert_eq!(queue.config().batch_timeout, Duration::from_millis(100));
+        assert_eq!(queue.config().min_batch_size, 5);
     }
 }
