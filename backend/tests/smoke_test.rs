@@ -117,6 +117,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         wake_service,
         request_events: request_events_tx,
         batch_queue: None,
+        batch_dispatcher: None,
     }))
 }
 

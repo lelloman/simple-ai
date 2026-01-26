@@ -63,4 +63,6 @@ pub struct AppState {
     pub request_events: broadcast::Sender<RequestEvent>,
     /// Batch queue for request batching (if enabled).
     pub batch_queue: Option<Arc<BatchQueue>>,
+    /// Batch dispatcher for cache invalidation (if enabled).
+    pub batch_dispatcher: Option<Arc<BatchDispatcher>>,
 }

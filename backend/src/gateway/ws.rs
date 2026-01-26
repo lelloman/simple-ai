@@ -17,13 +17,15 @@ use tokio::time::{timeout, Duration};
 use simple_ai_common::{GatewayMessage, RunnerMessage, RunnerRegistration, PROTOCOL_VERSION};
 
 use crate::audit::AuditLogger;
-use super::RunnerRegistry;
+use super::{BatchDispatcher, RunnerRegistry};
 
 /// Shared state for WebSocket connections.
 pub struct WsState {
     pub registry: Arc<RunnerRegistry>,
     pub auth_token: String,
     pub audit_logger: Arc<AuditLogger>,
+    /// Optional batch dispatcher for cache invalidation on runner changes.
+    pub batch_dispatcher: Option<Arc<BatchDispatcher>>,
 }
 
 /// WebSocket upgrade handler.
@@ -139,6 +141,11 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
         )
         .await;
 
+    // Invalidate batch size cache since a new runner connected
+    if let Some(ref dispatcher) = state.batch_dispatcher {
+        dispatcher.invalidate_cache().await;
+    }
+
     // Extract available models from runner status
     let available_models: Vec<String> = registration
         .status
@@ -203,6 +210,12 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
 
     // Unregister the runner
     state.registry.unregister(&runner_id).await;
+
+    // Invalidate batch size cache since a runner disconnected
+    if let Some(ref dispatcher) = state.batch_dispatcher {
+        dispatcher.invalidate_cache().await;
+    }
+
     tracing::info!("Runner {} disconnected", runner_id);
 }
 

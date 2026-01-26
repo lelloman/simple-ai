@@ -81,17 +81,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
 
     // Initialize batch queue if batching is enabled
-    let batch_queue = if config.gateway.enabled && config.gateway.batching_enabled {
+    let (batch_queue, batch_dispatcher) = if config.gateway.enabled && config.gateway.batching_enabled {
         let queue_config = BatchQueueConfig::new(
             config.gateway.batch_timeout_ms,
             config.gateway.min_batch_size,
         );
         let queue = Arc::new(BatchQueue::new(queue_config));
 
-        // Spawn batch dispatcher
-        let dispatcher = BatchDispatcher::new(queue.clone(), runner_registry.clone());
+        // Create and spawn batch dispatcher (keep Arc for cache invalidation)
+        let dispatcher = Arc::new(BatchDispatcher::new(queue.clone(), runner_registry.clone()));
+        let dispatcher_clone = dispatcher.clone();
         tokio::spawn(async move {
-            dispatcher.run().await;
+            dispatcher_clone.run().await;
         });
 
         tracing::info!(
@@ -100,9 +101,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.gateway.min_batch_size
         );
 
-        Some(queue)
+        (Some(queue), Some(dispatcher))
     } else {
-        None
+        (None, None)
     };
 
     let state = Arc::new(AppState {
@@ -117,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wake_service,
         request_events: request_events_tx,
         batch_queue,
+        batch_dispatcher,
     });
 
     let cors = tower_http::cors::CorsLayer::new()
@@ -129,6 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         registry: runner_registry.clone(),
         auth_token: config.gateway.auth_token.clone(),
         audit_logger: audit_logger.clone(),
+        batch_dispatcher: state.batch_dispatcher.clone(),
     });
 
     // Static admin UI HTML

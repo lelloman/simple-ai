@@ -84,6 +84,7 @@ pub async fn create_test_state() -> AppState {
         wake_service,
         request_events: request_events_tx,
         batch_queue: None,
+        batch_dispatcher: None,
     }
 }
 
