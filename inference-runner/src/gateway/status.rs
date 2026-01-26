@@ -23,6 +23,19 @@ impl StatusCollector {
         }
     }
 
+    /// Resolve a local engine model name to its canonical alias name.
+    /// If an alias maps to this local name, returns the canonical name.
+    /// Otherwise returns the original local name.
+    fn resolve_to_canonical(&self, local_name: &str) -> String {
+        // Reverse lookup: find alias key where value == local_name
+        for (canonical, local) in &self.config.aliases.mappings {
+            if local == local_name {
+                return canonical.clone();
+            }
+        }
+        local_name.to_string()
+    }
+
     /// Collect current status from all engines.
     pub async fn collect(&self) -> RunnerStatus {
         let engines = self.collect_engine_status().await;
@@ -47,27 +60,39 @@ impl StatusCollector {
             let status = match engine.health_check().await {
                 Ok(health) => {
                     // Get all available models from this engine
+                    // Map local engine names to canonical alias names where configured
                     let available_models = match engine.list_models().await {
                         Ok(models) => models
                             .into_iter()
-                            .map(|m| ModelInfo {
-                                id: m.id,
-                                name: m.name,
-                                size_bytes: m.size_bytes,
-                                parameter_count: m.parameter_count,
-                                context_length: m.context_length,
-                                quantization: m.quantization,
-                                modified_at: m.modified_at,
+                            .map(|m| {
+                                let canonical_id = self.resolve_to_canonical(&m.id);
+                                let canonical_name = self.resolve_to_canonical(&m.name);
+                                ModelInfo {
+                                    id: canonical_id,
+                                    name: canonical_name,
+                                    size_bytes: m.size_bytes,
+                                    parameter_count: m.parameter_count,
+                                    context_length: m.context_length,
+                                    quantization: m.quantization,
+                                    modified_at: m.modified_at,
+                                }
                             })
                             .collect(),
                         Err(_) => vec![],
                     };
 
+                    // Map loaded model names to canonical aliases too
+                    let loaded_models: Vec<String> = health
+                        .models_loaded
+                        .iter()
+                        .map(|m| self.resolve_to_canonical(m))
+                        .collect();
+
                     EngineStatus {
                         engine_type: engine.engine_type().to_string(),
                         is_healthy: health.is_healthy,
                         version: health.version,
-                        loaded_models: health.models_loaded,
+                        loaded_models,
                         available_models,
                         error: None,
                     }

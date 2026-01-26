@@ -64,3 +64,13 @@ max_loaded_models = 3
 # "llama3.2:3b" = ["fast_chat"]
 # "qwen2.5:72b" = ["large_chat"]
 # "nomic-embed-text" = ["embeddings"]
+
+# Model aliases map canonical (user-facing) names to local engine names.
+# This allows clients to request "gemma-3-4b" while the runner uses
+# the engine's internal naming convention (e.g., "google_gemma-3-4b-it-Q4_K_M").
+# Useful when engine names are verbose or inconsistent across runners.
+#
+# [aliases.mappings]
+# "gemma-3-4b" = "google_gemma-3-4b-it-Q4_K_M"
+# "llama3-8b" = "meta_llama-3-8b-instruct-Q4_K_M"
+# "mistral-7b" = "mistral-7b-instruct-v0.3-Q4_K_M"
