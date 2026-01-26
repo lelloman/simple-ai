@@ -1,0 +1,32 @@
+# Fleet deployment configuration for simple-ai-runner
+# Copy this file to deploy-hosts.toml and customize for your setup.
+#
+# Usage:
+#   ./deploy-fleet.sh              - Deploy to all hosts
+#   ./deploy-fleet.sh --build      - Build binary before deploying
+#   ./deploy-fleet.sh --hosts h1,h2 - Deploy to specific hosts
+#   ./deploy-fleet.sh --dry-run    - Show what would be done
+#   ./deploy-fleet.sh --parallel   - Deploy to hosts in parallel
+#   ./deploy-fleet.sh --continue-on-error - Don't stop on failures
+
+# Default values applied to all hosts (can be overridden per-host)
+[defaults]
+ssh_user = "lelloman"
+deploy_dir = "/home/lelloman"
+service_port = 8080
+
+# Define each host in a [[hosts]] section
+# Required fields: name, hostname, config_file
+# Optional fields: ssh_user, deploy_dir, service_port (override defaults)
+
+[[hosts]]
+name = "gpu-server-01"
+hostname = "192.168.1.103"
+config_file = "configs/gpu-server-01.toml"
+
+[[hosts]]
+name = "halo-01"
+hostname = "halo01.local"
+ssh_user = "admin"
+deploy_dir = "/home/admin"
+config_file = "configs/halo-01.toml"

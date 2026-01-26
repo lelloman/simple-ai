@@ -1,2 +1,6 @@
 .idea/
 target
+
+# Fleet deployment configs (contain host-specific settings)
+scripts/deploy-hosts.toml
+scripts/configs/*.toml
