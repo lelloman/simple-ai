@@ -44,16 +44,19 @@ enum ServerState {
 struct ServerInstance {
     model_id: String,
     port: u16,
+    /// Estimated VRAM usage in GB for this model.
+    memory_gb: f32,
     state: RwLock<ServerState>,
     process: RwLock<Option<Child>>,
     last_used: RwLock<Instant>,
 }
 
 impl ServerInstance {
-    fn new(model_id: String, port: u16, process: Child) -> Self {
+    fn new(model_id: String, port: u16, memory_gb: f32, process: Child) -> Self {
         Self {
             model_id,
             port,
+            memory_gb,
             state: RwLock::new(ServerState::Starting),
             process: RwLock::new(Some(process)),
             last_used: RwLock::new(Instant::now()),
@@ -328,24 +331,173 @@ impl LlamaCppEngine {
         }
     }
 
-    /// Unload all currently loaded models to free GPU memory before loading a new one.
-    /// This ensures only one model is loaded at a time, preventing OOM crashes.
-    async fn unload_all_models(&self) -> Result<()> {
-        let model_ids: Vec<String> = {
-            let servers = self.servers.read().await;
-            servers.keys().cloned().collect()
-        };
-
-        for model_id in model_ids {
-            tracing::info!("Unloading model {} to free GPU memory", model_id);
-            self.unload_model(&model_id).await?;
+    /// Get the memory footprint for a model in GB.
+    /// Uses config override if available, otherwise estimates from file size.
+    async fn get_model_memory_gb(&self, model_id: &str) -> f32 {
+        // Check config override first
+        if let Some(&memory) = self.config.model_memory_gb.get(model_id) {
+            return memory;
         }
 
-        Ok(())
+        // Fall back to file size estimation
+        if let Some(path) = self.model_path(model_id).await {
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                let size_gb = metadata.len() as f32 / (1024.0 * 1024.0 * 1024.0);
+                // Add ~10% overhead for runtime allocations
+                return size_gb * 1.1;
+            }
+        }
+
+        // Default fallback if we can't determine size
+        4.0
+    }
+
+    /// Calculate total VRAM currently used by loaded servers.
+    async fn get_used_vram_gb(&self) -> f32 {
+        let servers = self.servers.read().await;
+        let mut total = 0.0;
+        for instance in servers.values() {
+            let state = instance.state().await;
+            // Count memory for servers that are running or starting
+            if state != ServerState::ShuttingDown && state != ServerState::Stopped {
+                total += instance.memory_gb;
+            }
+        }
+        total
+    }
+
+    /// Find the least recently used server to evict, excluding a specific model.
+    /// Returns None if there are no servers to evict.
+    async fn find_lru_server(&self, exclude_model: &str) -> Option<(String, f32)> {
+        let servers = self.servers.read().await;
+        let mut oldest: Option<(String, f32, Instant)> = None;
+
+        for (model_id, instance) in servers.iter() {
+            // Skip the model we're trying to load
+            if model_id == exclude_model {
+                continue;
+            }
+
+            // Skip servers that are not in a state we can evict
+            let state = instance.state().await;
+            if state == ServerState::ShuttingDown || state == ServerState::Starting {
+                continue;
+            }
+
+            let last_used = *instance.last_used.read().await;
+
+            match &oldest {
+                None => oldest = Some((model_id.clone(), instance.memory_gb, last_used)),
+                Some((_, _, oldest_time)) if last_used < *oldest_time => {
+                    oldest = Some((model_id.clone(), instance.memory_gb, last_used));
+                }
+                _ => {}
+            }
+        }
+
+        oldest.map(|(model_id, memory, _)| (model_id, memory))
+    }
+
+    /// Evict servers to make room for a new model based on memory constraints.
+    /// Uses max_vram_gb if configured, otherwise falls back to max_servers count.
+    async fn ensure_capacity(&self, model_to_load: &str, required_memory_gb: f32) -> Result<()> {
+        // If max_vram_gb is configured, use memory-based eviction
+        if let Some(max_vram) = self.config.max_vram_gb {
+            loop {
+                let used_vram = self.get_used_vram_gb().await;
+                let available = max_vram - used_vram;
+
+                if available >= required_memory_gb {
+                    tracing::debug!(
+                        "Memory check passed: need {:.2}GB, available {:.2}GB (used {:.2}GB / max {:.2}GB)",
+                        required_memory_gb,
+                        available,
+                        used_vram,
+                        max_vram
+                    );
+                    return Ok(());
+                }
+
+                // Need to evict - find LRU server
+                let lru = self.find_lru_server(model_to_load).await;
+
+                match lru {
+                    Some((model_id, memory)) => {
+                        tracing::info!(
+                            "Evicting LRU model {} ({:.2}GB) to free memory for {} ({:.2}GB needed, {:.2}GB available)",
+                            model_id,
+                            memory,
+                            model_to_load,
+                            required_memory_gb,
+                            available
+                        );
+                        self.unload_model(&model_id).await?;
+                    }
+                    None => {
+                        // Distinguish between "model too large" and "no models to evict"
+                        if required_memory_gb > max_vram {
+                            return Err(Error::Internal(format!(
+                                "Cannot load model {}: requires {:.2}GB but max_vram_gb is only {:.2}GB",
+                                model_to_load,
+                                required_memory_gb,
+                                max_vram
+                            )));
+                        }
+                        return Err(Error::Internal(format!(
+                            "Cannot load model {}: requires {:.2}GB but only {:.2}GB available and no models to evict",
+                            model_to_load,
+                            required_memory_gb,
+                            available
+                        )));
+                    }
+                }
+            }
+        } else {
+            // Fall back to count-based limiting using max_servers
+            loop {
+                let current_count = {
+                    let servers = self.servers.read().await;
+                    let mut count = 0;
+                    for instance in servers.values() {
+                        let state = instance.state().await;
+                        if state != ServerState::ShuttingDown && state != ServerState::Stopped {
+                            count += 1;
+                        }
+                    }
+                    count
+                };
+
+                if current_count < self.config.max_servers {
+                    return Ok(());
+                }
+
+                // Need to evict - find LRU server
+                let lru = self.find_lru_server(model_to_load).await;
+
+                match lru {
+                    Some((model_id, _)) => {
+                        tracing::info!(
+                            "Evicting LRU model {} to make room (current: {}, max: {})",
+                            model_id,
+                            current_count,
+                            self.config.max_servers
+                        );
+                        self.unload_model(&model_id).await?;
+                    }
+                    None => {
+                        return Err(Error::Internal(format!(
+                            "Cannot make room for model {}: at capacity ({}) with no evictable servers",
+                            model_to_load,
+                            self.config.max_servers
+                        )));
+                    }
+                }
+            }
+        }
     }
 
     /// Start a llama-server process for a model.
-    async fn start_server(&self, model_id: &str) -> Result<Arc<ServerInstance>> {
+    async fn start_server(&self, model_id: &str, memory_gb: f32) -> Result<Arc<ServerInstance>> {
         // Look up model path from cache
         let model_path = self.model_path(model_id).await.ok_or_else(|| {
             Error::ModelNotFound(format!("Model not found: {}", model_id))
@@ -410,13 +562,14 @@ impl LlamaCppEngine {
         })?;
 
         tracing::info!(
-            "Spawned llama-server for {} on port {} (pid: {:?})",
+            "Spawned llama-server for {} on port {} (pid: {:?}, memory: {:.2}GB)",
             model_id,
             port,
-            process.id()
+            process.id(),
+            memory_gb
         );
 
-        let instance = Arc::new(ServerInstance::new(model_id.to_string(), port, process));
+        let instance = Arc::new(ServerInstance::new(model_id.to_string(), port, memory_gb, process));
 
         // Wait for server to be ready
         if let Err(e) = self.wait_for_ready(&instance).await {
@@ -467,8 +620,11 @@ impl LlamaCppEngine {
             }
         }
 
-        // Unload all models before loading new one to prevent OOM
-        self.unload_all_models().await?;
+        // Get model memory requirement for capacity planning
+        let memory_gb = self.get_model_memory_gb(model_id).await;
+
+        // Ensure we have capacity for a new server (evict LRU if needed)
+        self.ensure_capacity(model_id, memory_gb).await?;
 
         // Remove any stale entry
         {
@@ -481,7 +637,7 @@ impl LlamaCppEngine {
         }
 
         // Start new server
-        let instance = self.start_server(model_id).await?;
+        let instance = self.start_server(model_id, memory_gb).await?;
 
         // Store in map
         {
@@ -789,6 +945,8 @@ mod tests {
             context_size: Some(4096),
             base_port: None,
             max_servers: 2,
+            max_vram_gb: None,
+            model_memory_gb: HashMap::new(),
             startup_timeout_secs: 120,
             shutdown_timeout_secs: 10,
             log_server_output: false,
@@ -975,6 +1133,85 @@ mod tests {
         // First allocation should get base port
         let port1 = engine.allocate_port().await.unwrap();
         assert_eq!(port1, 10000);
+    }
+
+    #[tokio::test]
+    async fn test_get_model_memory_gb_from_config() {
+        let mut config = test_config();
+        config.model_memory_gb.insert("test-model".to_string(), 8.5);
+        let engine = LlamaCppEngine::new(config);
+
+        let memory = engine.get_model_memory_gb("test-model").await;
+        assert!((memory - 8.5).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn test_get_model_memory_gb_fallback() {
+        let config = test_config();
+        let engine = LlamaCppEngine::new(config);
+
+        // Model not in config and file doesn't exist, should return default 4.0
+        let memory = engine.get_model_memory_gb("nonexistent").await;
+        assert!((memory - 4.0).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn test_get_used_vram_empty() {
+        let config = test_config();
+        let engine = LlamaCppEngine::new(config);
+
+        let used = engine.get_used_vram_gb().await;
+        assert!((used - 0.0).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn test_find_lru_server_empty() {
+        let config = test_config();
+        let engine = LlamaCppEngine::new(config);
+
+        let lru = engine.find_lru_server("any-model").await;
+        assert!(lru.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_capacity_with_vram_limit_empty() {
+        let mut config = test_config();
+        config.max_vram_gb = Some(24.0);
+        let engine = LlamaCppEngine::new(config);
+
+        // Should succeed when no models loaded and within limit
+        let result = engine.ensure_capacity("new-model", 8.0).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ensure_capacity_model_too_large() {
+        let mut config = test_config();
+        config.max_vram_gb = Some(8.0);
+        let engine = LlamaCppEngine::new(config);
+
+        // Model requires more than max_vram_gb allows
+        let result = engine.ensure_capacity("huge-model", 12.0).await;
+        assert!(result.is_err());
+
+        // Check error message mentions the size issue
+        if let Err(Error::Internal(msg)) = result {
+            assert!(msg.contains("max_vram_gb is only"));
+        } else {
+            panic!("Expected Internal error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ensure_capacity_count_based_empty() {
+        let mut config = test_config();
+        config.max_servers = 2;
+        config.max_vram_gb = None; // Use count-based
+        let engine = LlamaCppEngine::new(config);
+
+        // Should succeed when no models loaded
+        let result = engine.ensure_capacity("new-model", 8.0).await;
+        assert!(result.is_ok());
     }
 
 }

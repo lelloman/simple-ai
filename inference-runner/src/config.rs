@@ -123,6 +123,15 @@ pub struct LlamaCppEngineConfig {
     /// Maximum number of concurrent model servers (default: 2).
     #[serde(default = "default_max_servers")]
     pub max_servers: usize,
+    /// Maximum VRAM available for loading models (in GB).
+    /// If not set, falls back to max_servers count-based limiting.
+    #[serde(default)]
+    pub max_vram_gb: Option<f32>,
+    /// Per-model memory overrides (in GB).
+    /// Maps model_id to its VRAM footprint. If not specified for a model,
+    /// the file size is used as an estimate.
+    #[serde(default)]
+    pub model_memory_gb: HashMap<String, f32>,
     /// Server startup timeout in seconds (default: 120).
     #[serde(default = "default_startup_timeout")]
     pub startup_timeout_secs: u64,
