@@ -165,10 +165,21 @@ async fn chat_completions(
     let mut runner_id: Option<String> = None;
     let mut wol_sent = false;
 
+    // Check if batching should be used (enabled, non-streaming, has batch queue)
+    let use_batching = state.batch_queue.is_some()
+        && !request.stream.unwrap_or(false);
+
     // Forward to appropriate backend (gateway or direct Ollama)
     let result = if state.config.gateway.enabled {
-        // Try gateway routing
-        match state.inference_router.chat_completion(&model, &request).await {
+        // Try gateway routing (batched or standard)
+        let initial_result = if use_batching {
+            let batch_queue = state.batch_queue.as_ref().unwrap();
+            state.inference_router.chat_completion_batched(&model, &request, batch_queue).await
+        } else {
+            state.inference_router.chat_completion(&model, &request).await
+        };
+
+        match initial_result {
             Ok(routed) => {
                 runner_id = Some(routed.runner_id);
                 Ok(routed.response)
@@ -186,7 +197,13 @@ async fn chat_completions(
                             wake_result.wait_duration.as_secs_f64()
                         );
                         // Retry the request now that a runner is available
-                        match state.inference_router.chat_completion(&model, &request).await {
+                        let retry_result = if use_batching {
+                            let batch_queue = state.batch_queue.as_ref().unwrap();
+                            state.inference_router.chat_completion_batched(&model, &request, batch_queue).await
+                        } else {
+                            state.inference_router.chat_completion(&model, &request).await
+                        };
+                        match retry_result {
                             Ok(routed) => {
                                 runner_id = Some(routed.runner_id);
                                 Ok(routed.response)
@@ -314,6 +331,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tools: None,
+            stream: None,
         }
     }
 
@@ -333,6 +351,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tools: None,
+            stream: None,
         };
         assert!(req.messages.is_empty());
         assert!(req.model.is_none());
@@ -363,6 +382,7 @@ mod tests {
             temperature: Some(0.5),
             max_tokens: Some(100),
             tools: None,
+            stream: None,
         };
         assert_eq!(req.model, Some("custom-model".to_string()));
         assert_eq!(req.temperature, Some(0.5));

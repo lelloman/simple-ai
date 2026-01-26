@@ -724,6 +724,10 @@ impl InferenceEngine for LlamaCppEngine {
         "llama_cpp"
     }
 
+    fn batch_size(&self) -> u32 {
+        self.config.batch_size
+    }
+
     async fn health_check(&self) -> Result<EngineHealth> {
         // Check if model directory exists
         let model_dir = PathBuf::from(&self.config.model_dir);
@@ -951,6 +955,7 @@ mod tests {
             shutdown_timeout_secs: 10,
             log_server_output: false,
             extra_args: vec![],
+            batch_size: 1,
         }
     }
 

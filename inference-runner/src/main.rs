@@ -63,9 +63,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Register enabled engines
     if let Some(ref ollama_config) = config.engines.ollama {
         if ollama_config.enabled {
-            let engine = Arc::new(OllamaEngine::new(&ollama_config.base_url));
+            let engine = Arc::new(OllamaEngine::with_batch_size(
+                &ollama_config.base_url,
+                ollama_config.batch_size,
+            ));
             registry.register(engine).await;
-            tracing::info!("Registered Ollama engine at {}", ollama_config.base_url);
+            tracing::info!(
+                "Registered Ollama engine at {} (batch_size={})",
+                ollama_config.base_url,
+                ollama_config.batch_size
+            );
         }
     }
 

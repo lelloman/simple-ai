@@ -91,6 +91,9 @@ pub struct OllamaEngineConfig {
     pub enabled: bool,
     #[serde(default = "default_ollama_url")]
     pub base_url: String,
+    /// Maximum batch size for concurrent inference (default: 1 = no batching).
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u32,
 }
 
 /// llama.cpp engine configuration (Phase 3).
@@ -145,6 +148,9 @@ pub struct LlamaCppEngineConfig {
     /// Use this for flags like `["--flash-attn", "on", "--no-mmap"]`
     #[serde(default)]
     pub extra_args: Vec<String>,
+    /// Maximum batch size for concurrent inference (default: 1 = no batching).
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u32,
 }
 
 /// Capability configuration (Phase 2).
@@ -208,6 +214,9 @@ fn default_max_loaded() -> usize {
 }
 fn default_true() -> bool {
     true
+}
+fn default_batch_size() -> u32 {
+    1
 }
 fn default_max_servers() -> usize {
     2

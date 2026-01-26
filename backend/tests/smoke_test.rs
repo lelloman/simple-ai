@@ -116,6 +116,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        batch_queue: None,
     }))
 }
 
@@ -154,6 +155,7 @@ async fn test_chat_completions_requires_auth() {
         temperature: None,
         max_tokens: None,
         tools: None,
+        stream: None,
     };
 
     let body = Bytes::from(serde_json::to_string(&request).unwrap());

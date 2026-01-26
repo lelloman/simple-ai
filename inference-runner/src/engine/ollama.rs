@@ -16,13 +16,19 @@ use crate::error::{Error, Result};
 pub struct OllamaEngine {
     http_client: Client,
     base_url: String,
+    batch_size: u32,
 }
 
 impl OllamaEngine {
     pub fn new(base_url: &str) -> Self {
+        Self::with_batch_size(base_url, 1)
+    }
+
+    pub fn with_batch_size(base_url: &str, batch_size: u32) -> Self {
         Self {
             http_client: Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
+            batch_size,
         }
     }
 }
@@ -137,6 +143,10 @@ struct OllamaGenerateRequest {
 impl InferenceEngine for OllamaEngine {
     fn engine_type(&self) -> &'static str {
         "ollama"
+    }
+
+    fn batch_size(&self) -> u32 {
+        self.batch_size
     }
 
     async fn health_check(&self) -> Result<EngineHealth> {

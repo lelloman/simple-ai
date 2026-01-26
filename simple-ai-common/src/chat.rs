@@ -14,6 +14,9 @@ pub struct ChatCompletionRequest {
     pub temperature: Option<f32>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    /// Whether to stream the response.
+    #[serde(default)]
+    pub stream: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,6 +125,7 @@ mod tests {
             model: Some("gpt-4".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(100),
+            stream: Some(false),
         };
         assert_eq!(req.messages.len(), 1);
         assert_eq!(req.model, Some("gpt-4".to_string()));
@@ -251,6 +255,7 @@ mod tests {
             temperature: Some(0.5),
             max_tokens: Some(50),
             tools: None,
+            stream: None,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: ChatCompletionRequest = serde_json::from_str(&json).unwrap();

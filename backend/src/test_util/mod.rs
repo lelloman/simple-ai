@@ -83,6 +83,7 @@ pub async fn create_test_state() -> AppState {
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        batch_queue: None,
     }
 }
 

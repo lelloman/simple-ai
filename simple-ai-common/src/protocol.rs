@@ -168,6 +168,13 @@ pub struct EngineStatus {
     /// Error message if unhealthy.
     #[serde(default)]
     pub error: Option<String>,
+    /// Maximum batch size for concurrent inference (default: 1 = no batching).
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u32,
+}
+
+fn default_batch_size() -> u32 {
+    1
 }
 
 /// System metrics for the runner.
@@ -308,6 +315,7 @@ mod tests {
             loaded_models: vec!["llama3.2:3b".to_string()],
             available_models: vec![],
             error: None,
+            batch_size: 1,
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains(r#""engine_type":"ollama""#));
@@ -407,6 +415,7 @@ mod tests {
                 loaded_models: vec!["llama3.2:3b".to_string()],
                 available_models: vec![],
                 error: None,
+                batch_size: 1,
             }],
             metrics: Some(RunnerMetrics {
                 requests_processed: 100,

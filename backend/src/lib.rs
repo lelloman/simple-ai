@@ -18,7 +18,7 @@ pub use models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessag
 pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
 pub use auth::AuthUser;
 pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
-pub use gateway::{InferenceRouter, RunnerRegistry};
+pub use gateway::{BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RunnerRegistry};
 pub use wol::WakeService;
 
 use std::sync::Arc;
@@ -61,4 +61,6 @@ pub struct AppState {
     pub wake_service: Arc<WakeService>,
     /// Broadcast channel for request events (for admin dashboard).
     pub request_events: broadcast::Sender<RequestEvent>,
+    /// Batch queue for request batching (if enabled).
+    pub batch_queue: Option<Arc<BatchQueue>>,
 }

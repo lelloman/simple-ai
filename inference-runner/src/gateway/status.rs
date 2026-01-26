@@ -95,6 +95,7 @@ impl StatusCollector {
                         loaded_models,
                         available_models,
                         error: None,
+                        batch_size: engine.batch_size(),
                     }
                 }
                 Err(e) => EngineStatus {
@@ -104,6 +105,7 @@ impl StatusCollector {
                     loaded_models: vec![],
                     available_models: vec![],
                     error: Some(e.to_string()),
+                    batch_size: engine.batch_size(),
                 },
             };
             statuses.push(status);
@@ -218,6 +220,7 @@ mod tests {
             loaded_models: vec!["llama3.2:3b".to_string()],
             available_models: vec![],
             error: None,
+            batch_size: 1,
         }];
 
         let capabilities = collector.collect_capabilities(&engines).await;
@@ -247,6 +250,7 @@ mod tests {
             loaded_models: vec!["some-model".to_string()],
             available_models: vec![],
             error: None,
+            batch_size: 1,
         }];
 
         let capabilities = collector.collect_capabilities(&engines).await;
@@ -270,6 +274,7 @@ mod tests {
             loaded_models: vec![],
             available_models: vec![],
             error: None,
+            batch_size: 1,
         }];
 
         let capabilities = collector.collect_capabilities(&engines).await;
@@ -288,6 +293,7 @@ mod tests {
                 loaded_models: vec![],
                 available_models: vec![],
                 error: None,
+                batch_size: 1,
             },
             EngineStatus {
                 engine_type: "llama_cpp".to_string(),
@@ -296,6 +302,7 @@ mod tests {
                 loaded_models: vec![],
                 available_models: vec![],
                 error: None,
+                batch_size: 1,
             },
         ];
         assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Healthy);
@@ -311,6 +318,7 @@ mod tests {
                 loaded_models: vec![],
                 available_models: vec![],
                 error: None,
+                batch_size: 1,
             },
             EngineStatus {
                 engine_type: "llama_cpp".to_string(),
@@ -319,6 +327,7 @@ mod tests {
                 loaded_models: vec![],
                 available_models: vec![],
                 error: Some("Connection failed".to_string()),
+                batch_size: 1,
             },
         ];
         assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Degraded);
@@ -333,6 +342,7 @@ mod tests {
             loaded_models: vec![],
             available_models: vec![],
             error: Some("Down".to_string()),
+            batch_size: 1,
         }];
         assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Unhealthy);
     }

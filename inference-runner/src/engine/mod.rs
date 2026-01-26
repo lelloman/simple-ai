@@ -65,6 +65,11 @@ pub trait InferenceEngine: Send + Sync {
     /// Unique identifier for this engine type (e.g., "ollama", "llama_cpp").
     fn engine_type(&self) -> &'static str;
 
+    /// Maximum batch size for concurrent inference (default: 1 = no batching).
+    fn batch_size(&self) -> u32 {
+        1
+    }
+
     /// Check if the engine is available and responding (Phase 2).
     async fn health_check(&self) -> Result<EngineHealth>;
 

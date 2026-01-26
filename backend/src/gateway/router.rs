@@ -8,8 +8,11 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
+use simple_ai_common::ChatCompletionRequest;
+
 use crate::audit::{AuditLogger, RunnerMetricRow};
 use crate::config::{ModelsConfig, RoutingConfig};
+use super::batch_queue::BatchQueue;
 use super::model_class::{classify_model, ModelClass, ModelRequest};
 use super::{ConnectedRunner, RunnerRegistry};
 
@@ -18,6 +21,8 @@ use super::{ConnectedRunner, RunnerRegistry};
 pub enum RouterError {
     #[error("No runners available")]
     NoRunners,
+    #[error("Unknown model: {0}")]
+    UnknownModel(String),
     #[error("No runners have model '{0}' loaded")]
     ModelNotLoaded(String),
     #[error("No runners have models of class '{0}'")]
@@ -170,6 +175,46 @@ impl InferenceRouter {
         })
     }
 
+    /// Route a chat completion request through the batch queue.
+    ///
+    /// This method enqueues the request and waits for it to be processed
+    /// as part of a batch. The batch dispatcher will handle the actual
+    /// routing and response delivery.
+    pub async fn chat_completion_batched(
+        &self,
+        model: &str,
+        request: &ChatCompletionRequest,
+        batch_queue: &BatchQueue,
+    ) -> Result<RoutedResponse<simple_ai_common::ChatCompletionResponse>, RouterError> {
+        // Resolve model class if needed
+        let resolved_model = if model.starts_with("class:") {
+            let class = match model {
+                "class:fast" => ModelClass::Fast,
+                "class:big" => ModelClass::Big,
+                _ => return Err(RouterError::UnknownModel(model.to_string())),
+            };
+
+            // Find a model for this class
+            self.resolve_class_to_model(class).await?
+        } else {
+            model.to_string()
+        };
+
+        // Enqueue the request and wait for the response
+        let rx = batch_queue.enqueue(resolved_model.clone(), request.clone()).await;
+
+        // Wait for the batched response
+        let batched = rx.await.map_err(|_| {
+            RouterError::ConnectionFailed("Batch queue response channel closed".to_string())
+        })??;
+
+        Ok(RoutedResponse {
+            response: batched.response,
+            runner_id: batched.runner_id,
+            resolved_model: batched.resolved_model,
+        })
+    }
+
     /// Route a chat completion request and return the raw response for streaming.
     ///
     /// The model parameter can be:
@@ -266,6 +311,29 @@ impl InferenceRouter {
             return Ok(self.select_from_candidates(&operational));
         }
         Ok(self.select_from_candidates(&with_model))
+    }
+
+    /// Resolve a model class to a specific model ID.
+    ///
+    /// Finds any available model of the requested class.
+    async fn resolve_class_to_model(&self, class: ModelClass) -> Result<String, RouterError> {
+        let operational = self.registry.operational().await;
+        if operational.is_empty() {
+            return Err(RouterError::NoRunners);
+        }
+
+        // Find any model of the requested class
+        for runner in &operational {
+            for model in runner.status.engines.iter()
+                .flat_map(|e| e.available_models.iter())
+            {
+                if classify_model(&model.id, &self.models_config) == Some(class) {
+                    return Ok(model.id.clone());
+                }
+            }
+        }
+
+        Err(RouterError::NoModelsOfClass(class.to_string()))
     }
 
     /// Select a runner for a model class.
@@ -614,6 +682,7 @@ mod tests {
                     })
                     .collect(),
                 error: None,
+                batch_size: 1,
             }],
             metrics: None,
             model_aliases: std::collections::HashMap::new(),

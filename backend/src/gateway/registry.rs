@@ -473,6 +473,7 @@ mod tests {
                     })
                     .collect(),
                 error: None,
+                batch_size: 1,
             }],
             metrics: None,
             model_aliases: std::collections::HashMap::new(),

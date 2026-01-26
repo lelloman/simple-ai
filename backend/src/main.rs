@@ -5,7 +5,9 @@ use simple_ai_backend::config::Config;
 use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::llm::OllamaClient;
 use simple_ai_backend::audit::AuditLogger;
-use simple_ai_backend::gateway::{ws_handler, InferenceRouter, RunnerRegistry, WsState};
+use simple_ai_backend::gateway::{
+    ws_handler, BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RunnerRegistry, WsState,
+};
 use simple_ai_backend::wol::WakeService;
 use simple_ai_backend::AppState;
 
@@ -78,6 +80,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create broadcast channel for request events (admin dashboard)
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
 
+    // Initialize batch queue if batching is enabled
+    let batch_queue = if config.gateway.enabled && config.gateway.batching_enabled {
+        let queue_config = BatchQueueConfig::new(
+            config.gateway.batch_timeout_ms,
+            config.gateway.min_batch_size,
+        );
+        let queue = Arc::new(BatchQueue::new(queue_config));
+
+        // Spawn batch dispatcher
+        let dispatcher = BatchDispatcher::new(queue.clone(), runner_registry.clone());
+        tokio::spawn(async move {
+            dispatcher.run().await;
+        });
+
+        tracing::info!(
+            "Request batching enabled (timeout={}ms, min_batch_size={})",
+            config.gateway.batch_timeout_ms,
+            config.gateway.min_batch_size
+        );
+
+        Some(queue)
+    } else {
+        None
+    };
+
     let state = Arc::new(AppState {
         config: config.clone(),
         jwks_client,
@@ -89,6 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wol_config: config.wol.clone(),
         wake_service,
         request_events: request_events_tx,
+        batch_queue,
     });
 
     let cors = tower_http::cors::CorsLayer::new()

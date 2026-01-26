@@ -117,6 +117,15 @@ pub struct GatewayConfig {
     /// Whether to auto-wake runners when no runners available. Default: false
     #[serde(default)]
     pub auto_wake_enabled: bool,
+    /// Enable request batching for non-streaming requests.
+    #[serde(default)]
+    pub batching_enabled: bool,
+    /// Maximum time to wait for batch to fill (milliseconds). Default: 50
+    #[serde(default = "default_batch_timeout_ms")]
+    pub batch_timeout_ms: u64,
+    /// Minimum batch size before sending (if timeout not reached). Default: 1
+    #[serde(default = "default_min_batch_size")]
+    pub min_batch_size: u32,
 }
 
 /// Wake-on-LAN configuration.
@@ -219,6 +228,8 @@ pub struct RoutingConfig {
 
 fn default_queue_weight() -> f64 { 0.5 }
 fn default_latency_weight() -> f64 { 0.3 }
+fn default_batch_timeout_ms() -> u64 { 50 }
+fn default_min_batch_size() -> u32 { 1 }
 
 impl Default for RoutingConfig {
     fn default() -> Self {
@@ -289,6 +300,9 @@ impl Default for GatewayConfig {
             idle_manager_url: None,
             wake_timeout_secs: default_wake_timeout(),
             auto_wake_enabled: false,
+            batching_enabled: false,
+            batch_timeout_ms: default_batch_timeout_ms(),
+            min_batch_size: default_min_batch_size(),
         }
     }
 }
@@ -335,6 +349,9 @@ impl Config {
             .set_default("gateway.runner_timeout_secs", default_runner_timeout() as i64)?
             .set_default("gateway.wake_timeout_secs", default_wake_timeout() as i64)?
             .set_default("gateway.auto_wake_enabled", false)?
+            .set_default("gateway.batching_enabled", false)?
+            .set_default("gateway.batch_timeout_ms", default_batch_timeout_ms() as i64)?
+            .set_default("gateway.min_batch_size", default_min_batch_size() as i64)?
             .set_default("wol.broadcast_address", default_wol_broadcast())?
             .set_default("wol.port", default_wol_port() as i64)?
             .set_default("routing.queue_weight", default_queue_weight())?
@@ -496,6 +513,9 @@ mod tests {
         assert_eq!(config.wake_timeout_secs, 90);
         assert!(!config.auto_wake_enabled);
         assert!(config.idle_manager_url.is_none());
+        assert!(!config.batching_enabled);
+        assert_eq!(config.batch_timeout_ms, 50);
+        assert_eq!(config.min_batch_size, 1);
     }
 
     #[test]
