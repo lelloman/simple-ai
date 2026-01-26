@@ -51,6 +51,8 @@ pub struct ConnectedRunner {
     pub tx: mpsc::Sender<GatewayMessage>,
     /// MAC address for Wake-on-LAN (format: AA:BB:CC:DD:EE:FF).
     pub mac_address: Option<String>,
+    /// Model aliases: maps canonical names to local engine names.
+    pub model_aliases: HashMap<String, String>,
 }
 
 impl ConnectedRunner {
@@ -74,6 +76,25 @@ impl ConnectedRunner {
             .engines
             .iter()
             .any(|e| e.loaded_models.iter().any(|m| m == model_id))
+    }
+
+    /// Resolve a canonical model name to the local engine name.
+    /// Returns the local name if an alias exists, otherwise returns the original name.
+    pub fn resolve_model_alias(&self, canonical: &str) -> String {
+        self.model_aliases
+            .get(canonical)
+            .cloned()
+            .unwrap_or_else(|| canonical.to_string())
+    }
+
+    /// Check if the runner has a model or an alias for it.
+    pub fn has_model_or_alias(&self, model_id: &str) -> bool {
+        self.has_model(model_id)
+            || self
+                .model_aliases
+                .get(model_id)
+                .map(|local| self.has_model(local))
+                .unwrap_or(false)
     }
 }
 
@@ -133,6 +154,7 @@ impl RunnerRegistry {
             .iter()
             .flat_map(|e| e.loaded_models.clone())
             .collect();
+        let model_aliases = status.model_aliases.clone();
 
         let runner = ConnectedRunner {
             id: id.clone(),
@@ -144,6 +166,7 @@ impl RunnerRegistry {
             http_base_url,
             tx,
             mac_address,
+            model_aliases,
         };
         self.runners.write().await.insert(id.clone(), runner);
 
@@ -186,6 +209,8 @@ impl RunnerRegistry {
 
             let changed = old_health != new_health || old_models != new_models;
 
+            // Update model aliases from status
+            runner.model_aliases = status.model_aliases.clone();
             runner.status = status;
             runner.last_heartbeat = Utc::now();
 
@@ -221,13 +246,13 @@ impl RunnerRegistry {
             .collect()
     }
 
-    /// Get runners that have a specific model loaded.
+    /// Get runners that have a specific model loaded (or an alias for it).
     pub async fn with_model(&self, model_id: &str) -> Vec<ConnectedRunner> {
         self.runners
             .read()
             .await
             .values()
-            .filter(|r| r.is_operational() && r.has_model(model_id))
+            .filter(|r| r.is_operational() && r.has_model_or_alias(model_id))
             .cloned()
             .collect()
     }
@@ -383,6 +408,7 @@ mod tests {
                 error: None,
             }],
             metrics: None,
+            model_aliases: std::collections::HashMap::new(),
         }
     }
 
@@ -580,5 +606,124 @@ mod tests {
 
         let runner = registry.get("runner-1").await.unwrap();
         assert!(runner.has_model("new-model"));
+    }
+
+    #[test]
+    fn test_resolve_model_alias_with_alias() {
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("canonical-model".to_string(), "local-model".to_string());
+
+        let runner = ConnectedRunner {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            machine_type: None,
+            status: create_test_status(vec!["local-model".to_string()]),
+            connected_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+            http_base_url: None,
+            tx: mpsc::channel(1).0,
+            mac_address: None,
+            model_aliases: aliases,
+        };
+
+        assert_eq!(runner.resolve_model_alias("canonical-model"), "local-model");
+    }
+
+    #[test]
+    fn test_resolve_model_alias_without_alias() {
+        let runner = ConnectedRunner {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            machine_type: None,
+            status: create_test_status(vec!["some-model".to_string()]),
+            connected_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+            http_base_url: None,
+            tx: mpsc::channel(1).0,
+            mac_address: None,
+            model_aliases: std::collections::HashMap::new(),
+        };
+
+        // Should return original name when no alias exists
+        assert_eq!(runner.resolve_model_alias("some-model"), "some-model");
+    }
+
+    #[test]
+    fn test_has_model_or_alias_direct_match() {
+        let runner = ConnectedRunner {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            machine_type: None,
+            status: create_test_status(vec!["model-a".to_string()]),
+            connected_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+            http_base_url: None,
+            tx: mpsc::channel(1).0,
+            mac_address: None,
+            model_aliases: std::collections::HashMap::new(),
+        };
+
+        assert!(runner.has_model_or_alias("model-a"));
+        assert!(!runner.has_model_or_alias("model-b"));
+    }
+
+    #[test]
+    fn test_has_model_or_alias_via_alias() {
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("canonical-name".to_string(), "local-name".to_string());
+
+        let runner = ConnectedRunner {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            machine_type: None,
+            status: create_test_status(vec!["local-name".to_string()]),
+            connected_at: Utc::now(),
+            last_heartbeat: Utc::now(),
+            http_base_url: None,
+            tx: mpsc::channel(1).0,
+            mac_address: None,
+            model_aliases: aliases,
+        };
+
+        // Should find via alias
+        assert!(runner.has_model_or_alias("canonical-name"));
+        // Should also find direct match
+        assert!(runner.has_model_or_alias("local-name"));
+        // Should not find non-existent
+        assert!(!runner.has_model_or_alias("other-model"));
+    }
+
+    #[tokio::test]
+    async fn test_with_model_finds_via_alias() {
+        let registry = RunnerRegistry::new();
+        let (tx, _) = mpsc::channel(32);
+
+        let mut status = create_test_status(vec!["local-model-name".to_string()]);
+        status.model_aliases.insert(
+            "canonical-model-name".to_string(),
+            "local-model-name".to_string(),
+        );
+
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                status,
+                None,
+                tx,
+                None,
+            )
+            .await;
+
+        // Should find by canonical name via alias
+        let with_canonical = registry.with_model("canonical-model-name").await;
+        assert_eq!(with_canonical.len(), 1);
+        assert_eq!(with_canonical[0].id, "runner-1");
+
+        // Should also find by local name directly
+        let with_local = registry.with_model("local-model-name").await;
+        assert_eq!(with_local.len(), 1);
+        assert_eq!(with_local[0].id, "runner-1");
     }
 }

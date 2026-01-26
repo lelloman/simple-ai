@@ -35,6 +35,7 @@ impl StatusCollector {
             engines,
             // TODO: Implement actual metrics collection (request counts, latency, GPU/CPU usage)
             metrics: None,
+            model_aliases: self.config.aliases.mappings.clone(),
         }
     }
 
@@ -151,7 +152,7 @@ impl StatusCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig};
+    use crate::config::{AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig};
     use std::collections::HashMap;
 
     fn test_config() -> Config {
@@ -166,6 +167,7 @@ mod tests {
             gateway: None,
             engines: EnginesConfig::default(),
             capabilities: CapabilitiesConfig::default(),
+            aliases: AliasesConfig::default(),
         }
     }
 

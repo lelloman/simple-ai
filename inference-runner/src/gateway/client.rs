@@ -333,7 +333,7 @@ impl GatewayClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig};
+    use crate::config::{AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig};
     use crate::engine::EngineRegistry;
     use simple_ai_common::{RunnerStatus, PROTOCOL_VERSION};
 
@@ -349,6 +349,7 @@ mod tests {
             gateway: None,
             engines: EnginesConfig::default(),
             capabilities: CapabilitiesConfig::default(),
+            aliases: AliasesConfig::default(),
         }
     }
 

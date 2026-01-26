@@ -5,6 +5,15 @@ use serde::Deserialize;
 use simple_ai_common::Capability;
 use std::collections::HashMap;
 
+/// Model alias configuration for mapping canonical names to local engine names.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AliasesConfig {
+    /// Maps canonical model names to local engine names.
+    /// Example: { "gemma-3-4b-it-Q4_K_M" = "google_gemma-3-4b-it-Q4_K_M" }
+    #[serde(default)]
+    pub mappings: HashMap<String, String>,
+}
+
 /// Main configuration structure for the inference runner.
 ///
 /// Note: Some fields are for Phase 2+ features (gateway connection, capability mappings).
@@ -21,6 +30,9 @@ pub struct Config {
     /// Capability-to-model mappings (Phase 2)
     #[serde(default)]
     pub capabilities: CapabilitiesConfig,
+    /// Model aliases for mapping canonical names to local engine names.
+    #[serde(default)]
+    pub aliases: AliasesConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]

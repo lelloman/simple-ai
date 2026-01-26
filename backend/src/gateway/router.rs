@@ -118,22 +118,17 @@ impl InferenceRouter {
         let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
 
-        // If it was a class request, we need to modify the request to use the resolved model
-        let model_request = ModelRequest::parse(model);
-        let response = if model_request.is_class_request() {
-            // Clone and modify the request to use the resolved model
-            // We need to serialize, modify, and re-serialize
-            let mut request_value = serde_json::to_value(request)
-                .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-            if let Some(obj) = request_value.as_object_mut() {
-                obj.insert("model".to_string(), serde_json::Value::String(selection.resolved_model.clone()));
-            }
-            self.proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
-                .await?
-        } else {
-            self.proxy_request(&selection.runner, "/v1/chat/completions", request)
-                .await?
-        };
+        // Resolve canonical → local for this runner (handles both class requests and aliases)
+        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+
+        // Always modify request with runner's local model name
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+        if let Some(obj) = request_value.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(local_model));
+        }
+        let response = self.proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
+            .await?;
 
         Ok(RoutedResponse {
             response,
@@ -157,20 +152,17 @@ impl InferenceRouter {
     {
         let selection = self.select_runner_for_model(model).await?;
 
-        // If it was a class request, we need to modify the request to use the resolved model
-        let model_request = ModelRequest::parse(model);
-        if model_request.is_class_request() {
-            let mut request_value = serde_json::to_value(request)
-                .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-            if let Some(obj) = request_value.as_object_mut() {
-                obj.insert("model".to_string(), serde_json::Value::String(selection.resolved_model.clone()));
-            }
-            self.proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
-                .await
-        } else {
-            self.proxy_request_raw(&selection.runner, "/v1/chat/completions", request)
-                .await
+        // Resolve canonical → local for this runner (handles both class requests and aliases)
+        let local_model = selection.runner.resolve_model_alias(&selection.resolved_model);
+
+        // Always modify request with runner's local model name
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+        if let Some(obj) = request_value.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
+        self.proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
+            .await
     }
 
     /// Get models from all runners.
@@ -343,87 +335,6 @@ impl InferenceRouter {
         }
     }
 
-    /// Proxy a request to a runner and deserialize the response.
-    async fn proxy_request<Req, Resp>(
-        &self,
-        runner: &ConnectedRunner,
-        path: &str,
-        request: &Req,
-    ) -> Result<Resp, RouterError>
-    where
-        Req: Serialize,
-        Resp: DeserializeOwned,
-    {
-        let base_url = runner
-            .http_base_url
-            .as_ref()
-            .ok_or_else(|| RouterError::ConnectionFailed("Runner has no HTTP URL".to_string()))?;
-
-        let url = format!("{}{}", base_url, path);
-        tracing::debug!("Proxying request to {} (runner: {})", url, runner.id);
-
-        let response = self
-            .http_client
-            .post(&url)
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
-        }
-
-        response.json().await.map_err(RouterError::RequestFailed)
-    }
-
-    /// Proxy a request and return the raw response (for streaming).
-    async fn proxy_request_raw<Req>(
-        &self,
-        runner: &ConnectedRunner,
-        path: &str,
-        request: &Req,
-    ) -> Result<reqwest::Response, RouterError>
-    where
-        Req: Serialize,
-    {
-        let base_url = runner
-            .http_base_url
-            .as_ref()
-            .ok_or_else(|| RouterError::ConnectionFailed("Runner has no HTTP URL".to_string()))?;
-
-        let url = format!("{}{}", base_url, path);
-        tracing::debug!(
-            "Proxying streaming request to {} (runner: {})",
-            url,
-            runner.id
-        );
-
-        let response = self
-            .http_client
-            .post(&url)
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
-        }
-
-        Ok(response)
-    }
-
     /// Proxy a request with a JSON Value body and deserialize the response.
     async fn proxy_request_value<Resp>(
         &self,
@@ -541,6 +452,7 @@ mod tests {
                 error: None,
             }],
             metrics: None,
+            model_aliases: std::collections::HashMap::new(),
         }
     }
 

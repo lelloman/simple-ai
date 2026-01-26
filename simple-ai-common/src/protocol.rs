@@ -104,6 +104,9 @@ pub struct RunnerStatus {
     /// System metrics (optional).
     #[serde(default)]
     pub metrics: Option<RunnerMetrics>,
+    /// Model aliases: maps canonical names to local engine names.
+    #[serde(default)]
+    pub model_aliases: std::collections::HashMap<String, String>,
 }
 
 /// Health state of the runner.
@@ -238,6 +241,7 @@ impl RunnerStatus {
             capabilities: vec![],
             engines: vec![],
             metrics: None,
+            model_aliases: std::collections::HashMap::new(),
         }
     }
 }
@@ -412,6 +416,7 @@ mod tests {
                 cpu_usage_percent: Some(45.5),
                 memory_used: Some(4 * 1024 * 1024 * 1024),
             }),
+            model_aliases: std::collections::HashMap::new(),
         };
 
         let json = serde_json::to_string(&status).unwrap();
