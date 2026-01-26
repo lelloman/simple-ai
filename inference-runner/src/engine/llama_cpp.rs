@@ -705,7 +705,10 @@ struct LlamaChoice {
 #[derive(Debug, Deserialize)]
 struct LlamaResponseMessage {
     role: String,
+    #[serde(default)]
     content: String,
+    #[serde(default)]
+    reasoning_content: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -907,9 +910,16 @@ impl InferenceEngine for LlamaCppEngine {
             .next()
             .ok_or_else(|| Error::InferenceFailed("No choices in response".to_string()))?;
 
+        // For thinking models, use reasoning_content as fallback if content is empty
+        let response_content = if choice.message.content.is_empty() {
+            choice.message.reasoning_content
+        } else {
+            choice.message.content
+        };
+
         let message = ChatMessage {
             role: choice.message.role,
-            content: Some(choice.message.content),
+            content: Some(response_content),
             tool_calls: None,
             tool_call_id: None,
         };
