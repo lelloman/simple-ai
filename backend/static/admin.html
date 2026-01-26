@@ -868,6 +868,7 @@
                     machine_type: data.machine_type,
                     health: data.health,
                     loaded_models: data.loaded_models,
+                    available_models: data.available_models || [],
                     is_online: true,
                     connected_at: new Date().toISOString(),
                     last_heartbeat: new Date().toISOString(),
@@ -909,14 +910,12 @@
                 if (runner) {
                     runner.health = data.health;
                     runner.loaded_models = data.loaded_models;
+                    runner.available_models = data.available_models || [];
                     runner.last_heartbeat = new Date().toISOString();
-                }
 
-                // Update UI
-                updateRunnerCard(data.runner_id, {
-                    health: data.health,
-                    loaded_models: data.loaded_models
-                });
+                    // Update UI with the full runner object
+                    updateRunnerCard(data.runner_id, runner);
+                }
             }
 
             handleNewRequest(data) {
@@ -941,6 +940,9 @@
             const safeMachineType = escapeHtml(runner.machine_type || 'N/A');
             const safeMacAddress = escapeHtml(runner.mac_address || 'N/A');
             const safeHttpUrl = escapeHtml(runner.http_base_url || 'N/A');
+
+            const availableModels = runner.available_models || [];
+            const loadedModels = runner.loaded_models || [];
 
             return `
                 <div id="runner-card-${safeId}" class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}" data-runner-id="${safeId}" data-is-online="${runner.is_online}" data-mac-address="${escapeAttr(runner.mac_address || '')}">
@@ -989,12 +991,18 @@
                             <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.last_heartbeat ? new Date(runner.last_heartbeat).toLocaleString() : 'N/A'}</span>
                         </div>
                     </div>
-                    <div class="runner-models-section mt-4 ${runner.loaded_models && runner.loaded_models.length > 0 ? '' : 'hidden'}">
-                        <span class="text-sm text-gray-500">Loaded Models:</span>
-                        <div class="runner-models mt-1 flex flex-wrap gap-2">
-                            ${(runner.loaded_models || []).map(m => `<span class="inline-flex items-center rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700">${escapeHtml(m)}</span>`).join('')}
+                    ${availableModels.length > 0 ? `
+                        <div class="runner-models-section mt-4">
+                            <span class="text-sm text-gray-500">Models (${availableModels.length} available, ${loadedModels.length} loaded):</span>
+                            <div class="runner-models mt-1 flex flex-wrap gap-2">
+                                ${availableModels.map(m => {
+                                    const isLoaded = loadedModels.includes(m);
+                                    const bgClass = isLoaded ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-600';
+                                    return `<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${bgClass}">${escapeHtml(m)}${isLoaded ? ' ✓' : ''}</span>`;
+                                }).join('')}
+                            </div>
                         </div>
-                    </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -1064,31 +1072,47 @@
         }
 
         // Update a runner card's health and loaded models
+        // Can receive either a full runner object (from runnersState) or partial updates
         function updateRunnerCard(runnerId, updates) {
             const card = document.getElementById(`runner-card-${runnerId}`);
             if (!card) return;
 
-            if (updates.health) {
+            // If updates has 'id', it's a full runner object - extract relevant fields
+            const isFullRunner = updates.id !== undefined;
+            const health = isFullRunner ? updates.health : updates.health;
+            const availableModels = isFullRunner ? (updates.available_models || []) : (updates.available_models);
+            const loadedModels = isFullRunner ? (updates.loaded_models || []) : (updates.loaded_models);
+
+            if (health) {
                 const badge = card.querySelector('.runner-health-badge');
                 if (badge) {
                     badge.className = 'runner-health-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ' +
-                        (updates.health === 'Healthy' ? 'bg-green-100 text-green-800' :
-                         updates.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
-                         updates.health === 'Offline' ? 'bg-gray-100 text-gray-600' :
+                        (health === 'Healthy' ? 'bg-green-100 text-green-800' :
+                         health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
+                         health === 'Offline' ? 'bg-gray-100 text-gray-600' :
                          'bg-red-100 text-red-800');
-                    badge.textContent = updates.health;
+                    badge.textContent = health;
                 }
             }
 
-            if (updates.loaded_models !== undefined) {
+            // For full runner objects, always update models; for partial updates, check if provided
+            if (isFullRunner || availableModels !== undefined || loadedModels !== undefined) {
                 const modelsSection = card.querySelector('.runner-models-section');
                 const modelsContainer = card.querySelector('.runner-models');
-                if (modelsSection && modelsContainer) {
-                    if (updates.loaded_models.length > 0) {
+                const labelSpan = modelsSection?.querySelector('span');
+
+                if (modelsSection && modelsContainer && labelSpan) {
+                    const avail = availableModels || [];
+                    const loaded = loadedModels || [];
+
+                    if (avail.length > 0) {
                         modelsSection.classList.remove('hidden');
-                        modelsContainer.innerHTML = updates.loaded_models
-                            .map(m => `<span class="inline-flex items-center rounded-md bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700">${escapeHtml(m)}</span>`)
-                            .join('');
+                        labelSpan.textContent = `Models (${avail.length} available, ${loaded.length} loaded):`;
+                        modelsContainer.innerHTML = avail.map(m => {
+                            const isLoaded = loaded.includes(m);
+                            const bgClass = isLoaded ? 'bg-primary-100 text-primary-700' : 'bg-gray-100 text-gray-600';
+                            return `<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${bgClass}">${escapeHtml(m)}${isLoaded ? ' ✓' : ''}</span>`;
+                        }).join('');
                     } else {
                         modelsSection.classList.add('hidden');
                     }

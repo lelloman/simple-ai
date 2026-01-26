@@ -21,6 +21,7 @@ pub enum RunnerEvent {
         machine_type: Option<String>,
         health: String,
         loaded_models: Vec<String>,
+        available_models: Vec<String>,
     },
     /// A runner has disconnected from the gateway.
     Disconnected { runner_id: String },
@@ -29,6 +30,7 @@ pub enum RunnerEvent {
         runner_id: String,
         health: String,
         loaded_models: Vec<String>,
+        available_models: Vec<String>,
     },
 }
 
@@ -71,6 +73,15 @@ impl ConnectedRunner {
             .engines
             .iter()
             .flat_map(|e| e.loaded_models.clone())
+            .collect()
+    }
+
+    /// Get list of available models across all engines.
+    pub fn available_models(&self) -> Vec<String> {
+        self.status
+            .engines
+            .iter()
+            .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
             .collect()
     }
 
@@ -158,6 +169,11 @@ impl RunnerRegistry {
             .iter()
             .flat_map(|e| e.loaded_models.clone())
             .collect();
+        let available_models: Vec<String> = status
+            .engines
+            .iter()
+            .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
+            .collect();
         let model_aliases = status.model_aliases.clone();
 
         let runner = ConnectedRunner {
@@ -183,6 +199,7 @@ impl RunnerRegistry {
             machine_type,
             health,
             loaded_models,
+            available_models,
         });
     }
 
@@ -202,7 +219,7 @@ impl RunnerRegistry {
     pub async fn update_status(&self, id: &str, status: RunnerStatus) {
         let mut runners = self.runners.write().await;
         if let Some(runner) = runners.get_mut(id) {
-            // Check if health or loaded_models changed
+            // Check if health, loaded_models, or available_models changed
             let old_health = format!("{:?}", runner.status.health);
             let new_health = format!("{:?}", status.health);
             let old_models: Vec<String> = runner.loaded_models();
@@ -211,8 +228,14 @@ impl RunnerRegistry {
                 .iter()
                 .flat_map(|e| e.loaded_models.clone())
                 .collect();
+            let old_available: Vec<String> = runner.available_models();
+            let new_available_models: Vec<String> = status
+                .engines
+                .iter()
+                .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
+                .collect();
 
-            let changed = old_health != new_health || old_models != new_models;
+            let changed = old_health != new_health || old_models != new_models || old_available != new_available_models;
 
             // Update model aliases from status
             runner.model_aliases = status.model_aliases.clone();
@@ -225,6 +248,7 @@ impl RunnerRegistry {
                     runner_id: id.to_string(),
                     health: new_health,
                     loaded_models: new_models,
+                    available_models: new_available_models,
                 });
             }
         }

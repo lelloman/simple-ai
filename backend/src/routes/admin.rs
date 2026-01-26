@@ -71,6 +71,7 @@ pub struct RunnerInfo {
     pub machine_type: Option<String>,
     pub health: String,
     pub loaded_models: Vec<String>,
+    pub available_models: Vec<String>,
     pub connected_at: String,
     pub last_heartbeat: String,
     pub http_base_url: Option<String>,
@@ -97,12 +98,14 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
         .into_iter()
         .map(|r| {
             let loaded_models = r.loaded_models();
+            let available_models = r.available_models();
             RunnerInfo {
                 id: r.id,
                 name: r.name,
                 machine_type: r.machine_type,
                 health: format!("{:?}", r.status.health),
                 loaded_models,
+                available_models,
                 connected_at: r.connected_at.to_rfc3339(),
                 last_heartbeat: r.last_heartbeat.to_rfc3339(),
                 http_base_url: r.http_base_url,
@@ -126,6 +129,7 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
                         machine_type: db_runner.machine_type,
                         health: "Offline".to_string(),
                         loaded_models: vec![],
+                        available_models: vec![],
                         connected_at: "".to_string(),
                         last_heartbeat: db_runner.last_seen_at,
                         http_base_url: None,
@@ -442,6 +446,7 @@ enum AdminServerMessage {
         machine_type: Option<String>,
         health: String,
         loaded_models: Vec<String>,
+        available_models: Vec<String>,
     },
     /// A runner disconnected.
     RunnerDisconnected { runner_id: String },
@@ -450,6 +455,7 @@ enum AdminServerMessage {
         runner_id: String,
         health: String,
         loaded_models: Vec<String>,
+        available_models: Vec<String>,
     },
     /// Models list updated (sent after runner connect/disconnect/status change).
     ModelsUpdated { models: Vec<AdminModelInfo> },
@@ -482,12 +488,14 @@ impl From<RunnerEvent> for AdminServerMessage {
                 machine_type,
                 health,
                 loaded_models,
+                available_models,
             } => AdminServerMessage::RunnerConnected {
                 runner_id,
                 name,
                 machine_type,
                 health,
                 loaded_models,
+                available_models,
             },
             RunnerEvent::Disconnected { runner_id } => {
                 AdminServerMessage::RunnerDisconnected { runner_id }
@@ -496,10 +504,12 @@ impl From<RunnerEvent> for AdminServerMessage {
                 runner_id,
                 health,
                 loaded_models,
+                available_models,
             } => AdminServerMessage::RunnerStatusChanged {
                 runner_id,
                 health,
                 loaded_models,
+                available_models,
             },
         }
     }
@@ -750,12 +760,14 @@ async fn get_runners_snapshot(state: &AppState) -> Vec<RunnerInfo> {
         .into_iter()
         .map(|r| {
             let loaded_models = r.loaded_models();
+            let available_models = r.available_models();
             RunnerInfo {
                 id: r.id,
                 name: r.name,
                 machine_type: r.machine_type,
                 health: format!("{:?}", r.status.health),
                 loaded_models,
+                available_models,
                 connected_at: r.connected_at.to_rfc3339(),
                 last_heartbeat: r.last_heartbeat.to_rfc3339(),
                 http_base_url: r.http_base_url,
@@ -775,6 +787,7 @@ async fn get_runners_snapshot(state: &AppState) -> Vec<RunnerInfo> {
                     machine_type: db_runner.machine_type,
                     health: "Offline".to_string(),
                     loaded_models: vec![],
+                    available_models: vec![],
                     connected_at: "".to_string(),
                     last_heartbeat: db_runner.last_seen_at,
                     http_base_url: None,
