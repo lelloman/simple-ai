@@ -288,6 +288,159 @@ async fn wake_runner(
     }
 }
 
+/// Request body for load model endpoint.
+#[derive(Debug, Deserialize)]
+pub struct LoadModelRequest {
+    pub model_id: String,
+}
+
+/// Response for load model endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct LoadModelResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// POST /admin/runners/:id/load-model - Load a model on a runner
+async fn load_model(
+    State(state): State<Arc<AppState>>,
+    Path(runner_id): Path<String>,
+    Json(req): Json<LoadModelRequest>,
+) -> Result<Json<LoadModelResponse>, (StatusCode, Json<LoadModelResponse>)> {
+    use simple_ai_common::GatewayMessage;
+
+    // Check if runner is online
+    let runner = match state.runner_registry.get(&runner_id).await {
+        Some(r) => r,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(LoadModelResponse {
+                    success: false,
+                    message: "Runner not found or offline".to_string(),
+                }),
+            ));
+        }
+    };
+
+    if !runner.is_operational() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(LoadModelResponse {
+                success: false,
+                message: "Runner is not operational".to_string(),
+            }),
+        ));
+    }
+
+    // Check if model is already loaded
+    if runner.has_model(&req.model_id) {
+        return Ok(Json(LoadModelResponse {
+            success: true,
+            message: "Model is already loaded".to_string(),
+        }));
+    }
+
+    // Generate a unique request ID
+    let request_id = format!("admin-load-{}-{}", runner_id, uuid::Uuid::new_v4().simple());
+
+    // Send LoadModel message to runner
+    let msg = GatewayMessage::LoadModel {
+        model_id: req.model_id.clone(),
+        request_id: request_id.clone(),
+    };
+
+    match runner.tx.send(msg).await {
+        Ok(_) => {
+            tracing::info!("Sent load model request '{}' for model '{}' to runner {}", request_id, req.model_id, runner_id);
+            Ok(Json(LoadModelResponse {
+                success: true,
+                message: format!("Loading model '{}' on runner {}", req.model_id, runner_id),
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to send load model message to runner {}: {}", runner_id, e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoadModelResponse {
+                    success: false,
+                    message: format!("Failed to send load command to runner: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+/// POST /admin/runners/:id/unload-model - Unload a model on a runner
+async fn unload_model(
+    State(state): State<Arc<AppState>>,
+    Path(runner_id): Path<String>,
+    Json(req): Json<LoadModelRequest>,
+) -> Result<Json<LoadModelResponse>, (StatusCode, Json<LoadModelResponse>)> {
+    use simple_ai_common::GatewayMessage;
+
+    // Check if runner is online
+    let runner = match state.runner_registry.get(&runner_id).await {
+        Some(r) => r,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(LoadModelResponse {
+                    success: false,
+                    message: "Runner not found or offline".to_string(),
+                }),
+            ));
+        }
+    };
+
+    if !runner.is_operational() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(LoadModelResponse {
+                success: false,
+                message: "Runner is not operational".to_string(),
+            }),
+        ));
+    }
+
+    // Check if model is actually loaded
+    if !runner.has_model(&req.model_id) {
+        return Ok(Json(LoadModelResponse {
+            success: true,
+            message: "Model is not loaded".to_string(),
+        }));
+    }
+
+    // Generate a unique request ID
+    let request_id = format!("admin-unload-{}-{}", runner_id, uuid::Uuid::new_v4().simple());
+
+    // Send UnloadModel message to runner
+    let msg = GatewayMessage::UnloadModel {
+        model_id: req.model_id.clone(),
+        request_id: request_id.clone(),
+    };
+
+    match runner.tx.send(msg).await {
+        Ok(_) => {
+            tracing::info!("Sent unload model request '{}' for model '{}' to runner {}", request_id, req.model_id, runner_id);
+            Ok(Json(LoadModelResponse {
+                success: true,
+                message: format!("Unloading model '{}' on runner {}", req.model_id, runner_id),
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to send unload model message to runner {}: {}", runner_id, e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(LoadModelResponse {
+                    success: false,
+                    message: format!("Failed to send unload command to runner: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
 // ========== JSON API Endpoints ==========
 
 /// Response for /admin/api/users endpoint.
@@ -937,6 +1090,8 @@ pub fn router(state: Arc<AppState>) -> Router {
     let admin_routes = Router::new()
         .route("/runners", get(list_runners))
         .route("/runners/:id/wake", post(wake_runner))
+        .route("/runners/:id/load-model", post(load_model))
+        .route("/runners/:id/unload-model", post(unload_model))
         .route("/models", get(list_models))
         // JSON API endpoints (for SPA dashboard)
         .route("/api/users", get(api_users_list))
@@ -953,6 +1108,42 @@ pub fn router(state: Arc<AppState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use simple_ai_common::{GatewayMessage, RunnerStatus, RunnerHealth, EngineStatus, ModelInfo as ProtocolModelInfo};
+    use tokio::sync::mpsc;
+
+    fn create_test_runner_with_models(loaded_models: Vec<String>, available_models: Vec<String>) -> (String, mpsc::Receiver<GatewayMessage>) {
+        let (tx, rx) = mpsc::channel(32);
+        let runner_id = "test-runner".to_string();
+
+        let status = RunnerStatus {
+            health: RunnerHealth::Healthy,
+            capabilities: vec![],
+            engines: vec![EngineStatus {
+                engine_type: "test".to_string(),
+                is_healthy: true,
+                version: None,
+                loaded_models,
+                available_models: available_models
+                    .into_iter()
+                    .map(|id| ProtocolModelInfo {
+                        id: id.clone(),
+                        name: id.clone(),
+                        size_bytes: None,
+                        parameter_count: None,
+                        context_length: None,
+                        quantization: None,
+                        modified_at: None,
+                    })
+                    .collect(),
+                error: None,
+            }],
+            metrics: None,
+            model_aliases: std::collections::HashMap::new(),
+        };
+
+        // We can't create a full ConnectedRunner here, so we'll just return what we need
+        (runner_id, rx)
+    }
 
     #[tokio::test]
     async fn test_dashboard_stats_default() {
@@ -984,5 +1175,23 @@ mod tests {
         assert_eq!(stats.total_tokens, 50000);
         assert_eq!(stats.tokens_prompt, 20000);
         assert_eq!(stats.tokens_completion, 30000);
+    }
+
+    #[tokio::test]
+    async fn test_load_model_request_deserialize() {
+        let json = r#"{"model_id":"llama3.2:3b"}"#;
+        let req: LoadModelRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.model_id, "llama3.2:3b");
+    }
+
+    #[tokio::test]
+    async fn test_load_model_response_serialize() {
+        let response = LoadModelResponse {
+            success: true,
+            message: "Loading model 'llama3.2:3b' on runner test-runner".to_string(),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains(r#""success":true"#));
+        assert!(json.contains("Loading model"));
     }
 }
