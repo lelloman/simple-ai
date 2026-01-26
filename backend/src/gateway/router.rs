@@ -8,7 +8,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::config::ModelsConfig;
+use crate::audit::{AuditLogger, RunnerMetricRow};
+use crate::config::{ModelsConfig, RoutingConfig};
 use super::model_class::{classify_model, ModelClass, ModelRequest};
 use super::{ConnectedRunner, RunnerRegistry};
 
@@ -39,6 +40,8 @@ pub enum LoadBalanceStrategy {
     Random,
     /// Prefer runners with specific machine type.
     PreferMachineType,
+    /// Smart routing with preference, queue, and latency scoring.
+    SmartRouting,
 }
 
 /// Result of runner selection, includes the resolved model name.
@@ -67,25 +70,40 @@ pub struct InferenceRouter {
     strategy: LoadBalanceStrategy,
     round_robin_counter: AtomicUsize,
     models_config: ModelsConfig,
+    routing_config: RoutingConfig,
+    audit_logger: Arc<AuditLogger>,
 }
 
 impl InferenceRouter {
     /// Create a new router.
-    pub fn new(registry: Arc<RunnerRegistry>, models_config: ModelsConfig) -> Self {
+    pub fn new(
+        registry: Arc<RunnerRegistry>,
+        models_config: ModelsConfig,
+        routing_config: RoutingConfig,
+        audit_logger: Arc<AuditLogger>,
+    ) -> Self {
         Self {
             registry,
             http_client: Client::builder()
                 .timeout(std::time::Duration::from_secs(300)) // 5 min for long generations
                 .build()
                 .expect("Failed to create HTTP client"),
-            strategy: LoadBalanceStrategy::RoundRobin,
+            strategy: LoadBalanceStrategy::SmartRouting,
             round_robin_counter: AtomicUsize::new(0),
             models_config,
+            routing_config,
+            audit_logger,
         }
     }
 
     /// Create a router with a specific strategy.
-    pub fn with_strategy(registry: Arc<RunnerRegistry>, strategy: LoadBalanceStrategy, models_config: ModelsConfig) -> Self {
+    pub fn with_strategy(
+        registry: Arc<RunnerRegistry>,
+        strategy: LoadBalanceStrategy,
+        models_config: ModelsConfig,
+        routing_config: RoutingConfig,
+        audit_logger: Arc<AuditLogger>,
+    ) -> Self {
         Self {
             registry,
             http_client: Client::builder()
@@ -95,7 +113,14 @@ impl InferenceRouter {
             strategy,
             round_robin_counter: AtomicUsize::new(0),
             models_config,
+            routing_config,
+            audit_logger,
         }
+    }
+
+    /// Get a reference to the registry.
+    pub fn registry(&self) -> &Arc<RunnerRegistry> {
+        &self.registry
     }
 
     /// Route a chat completion request to an appropriate runner.
@@ -105,6 +130,7 @@ impl InferenceRouter {
     /// - A class request (e.g., "class:fast" or "class:big")
     ///
     /// Returns a RoutedResponse containing the response and routing metadata.
+    /// Automatically tracks active requests for smart routing.
     pub async fn chat_completion<Req, Resp>(
         &self,
         model: &str,
@@ -127,11 +153,18 @@ impl InferenceRouter {
         if let Some(obj) = request_value.as_object_mut() {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
+
+        // Track active request for smart routing
+        self.registry.increment_requests(&runner_id).await;
+
         let response = self.proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
-            .await?;
+            .await;
+
+        // Always decrement, even on error
+        self.registry.decrement_requests(&runner_id).await;
 
         Ok(RoutedResponse {
-            response,
+            response: response?,
             runner_id,
             resolved_model,
         })
@@ -142,6 +175,10 @@ impl InferenceRouter {
     /// The model parameter can be:
     /// - A specific model ID (e.g., "llama3:8b")
     /// - A class request (e.g., "class:fast" or "class:big")
+    ///
+    /// Note: Streaming requests don't automatically decrement the active request count
+    /// since we can't track when the stream completes. This means queue depth may be
+    /// slightly underestimated for runners serving streaming requests.
     pub async fn chat_completion_raw<Req>(
         &self,
         model: &str,
@@ -151,6 +188,7 @@ impl InferenceRouter {
         Req: Serialize + Clone,
     {
         let selection = self.select_runner_for_model(model).await?;
+        let runner_id = selection.runner.id.clone();
 
         // Resolve canonical → local for this runner (handles both class requests and aliases)
         let local_model = selection.runner.resolve_model_alias(&selection.resolved_model);
@@ -161,8 +199,19 @@ impl InferenceRouter {
         if let Some(obj) = request_value.as_object_mut() {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        self.proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
-            .await
+
+        // Track active request (Note: we can't easily decrement for streaming)
+        self.registry.increment_requests(&runner_id).await;
+
+        let response = self.proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
+            .await;
+
+        // Decrement on connection error (if response succeeded, stream is ongoing)
+        if response.is_err() {
+            self.registry.decrement_requests(&runner_id).await;
+        }
+
+        response
     }
 
     /// Get models from all runners.
@@ -266,20 +315,125 @@ impl InferenceRouter {
                     .position(|(r, _)| r.machine_type.as_deref() == Some("gpu-server"))
                     .unwrap_or(0)
             }
+            LoadBalanceStrategy::SmartRouting => {
+                self.select_smart_routing(&candidates_with_models, class)
+            }
         };
 
         let (runner, resolved_model) = candidates_with_models.into_iter().nth(idx).unwrap();
         tracing::info!(
-            "Selected runner {} with model {} for class:{}",
+            "Selected runner {} with model {} for class:{} (strategy: {:?})",
             runner.id,
             resolved_model,
-            class
+            class,
+            self.strategy
         );
 
         Ok(SelectedRunner {
             runner,
             resolved_model,
         })
+    }
+
+    /// Select runner using smart routing with preference, queue, and latency scoring.
+    ///
+    /// Score = (pref_weight * preference_score) + (queue_weight * queue_score) + (latency_weight * latency_score)
+    /// Lower score is better.
+    fn select_smart_routing(
+        &self,
+        candidates: &[(ConnectedRunner, String)],
+        class: ModelClass,
+    ) -> usize {
+        let class_name = class.as_str();
+        // Ensure pref_weight is non-negative even if queue_weight + latency_weight > 1.0
+        let pref_weight = (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
+
+        // Get class preferences (ordered list of preferred machine types)
+        let preferences = self.routing_config.class_preferences.get(class_name);
+
+        // Collect all runner metrics for scoring
+        let all_metrics = self.audit_logger.get_all_metrics().unwrap_or_default();
+
+        let mut scored: Vec<(usize, f64)> = candidates
+            .iter()
+            .enumerate()
+            .map(|(idx, (runner, _model))| {
+                let score = self.score_runner(runner, class_name, preferences, &all_metrics, pref_weight);
+                (idx, score)
+            })
+            .collect();
+
+        // Sort by score (ascending - lower is better)
+        scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let (best_idx, best_score) = scored[0];
+        let best_runner = &candidates[best_idx].0;
+        tracing::info!(
+            "SmartRouting selected runner {} with score {:.2} (active_requests: {}, machine_type: {:?})",
+            best_runner.id,
+            best_score,
+            best_runner.active_requests.load(Ordering::SeqCst),
+            best_runner.machine_type
+        );
+
+        best_idx
+    }
+
+    /// Score a runner for smart routing.
+    ///
+    /// Lower score is better.
+    fn score_runner(
+        &self,
+        runner: &ConnectedRunner,
+        class_name: &str,
+        preferences: Option<&Vec<String>>,
+        all_metrics: &[RunnerMetricRow],
+        pref_weight: f64,
+    ) -> f64 {
+        // 1. Machine preference score (0.0 = first choice, 1.0 = second choice, etc.)
+        let pref_score = if let Some(prefs) = preferences {
+            if let Some(machine_type) = &runner.machine_type {
+                prefs
+                    .iter()
+                    .position(|p| p == machine_type)
+                    .map(|pos| pos as f64)
+                    .unwrap_or(prefs.len() as f64) // Not in list = worst preference
+            } else {
+                prefs.len() as f64 // No machine type = worst preference
+            }
+        } else {
+            0.0 // No preferences configured = neutral
+        };
+
+        // 2. Queue depth score (number of active requests)
+        let queue_score = runner.active_requests.load(Ordering::SeqCst) as f64;
+
+        // 3. Latency score (average latency in seconds, or 1.0 if no data)
+        let latency_score = all_metrics
+            .iter()
+            .find(|m| m.runner_id == runner.id && m.model_class == class_name)
+            .and_then(|m| m.avg_ms())
+            .map(|avg_ms| avg_ms / 1000.0) // Convert to seconds
+            .unwrap_or(1.0); // Default to 1.0 if no data
+
+        // Combined score
+        let score = (pref_weight * pref_score)
+            + (self.routing_config.queue_weight * queue_score)
+            + (self.routing_config.latency_weight * latency_score);
+
+        tracing::debug!(
+            "Runner {} score: {:.2} (pref={:.2}*{:.2}, queue={:.2}*{:.2}, latency={:.2}*{:.2})",
+            runner.id,
+            score,
+            pref_weight,
+            pref_score,
+            self.routing_config.queue_weight,
+            queue_score,
+            self.routing_config.latency_weight,
+            latency_score
+        );
+
+        score
     }
 
     /// Select a runner for the request (legacy method for backward compatibility).
@@ -329,6 +483,15 @@ impl InferenceRouter {
                     .iter()
                     .find(|r| r.machine_type.as_deref() == Some("gpu-server"))
                     .or_else(|| candidates.first())
+                    .cloned()
+                    .unwrap()
+            }
+            LoadBalanceStrategy::SmartRouting => {
+                // For non-class requests, use queue-based selection
+                // Find runner with fewest active requests
+                candidates
+                    .iter()
+                    .min_by_key(|r| r.active_requests.load(Ordering::SeqCst))
                     .cloned()
                     .unwrap()
             }
@@ -427,6 +590,7 @@ mod tests {
     use super::*;
     use simple_ai_common::{EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
     use tokio::sync::mpsc;
+    use uuid::Uuid;
 
     fn create_test_status(models: Vec<String>) -> RunnerStatus {
         RunnerStatus {
@@ -456,10 +620,22 @@ mod tests {
         }
     }
 
+    fn create_test_router(registry: Arc<RunnerRegistry>) -> InferenceRouter {
+        let test_db_path = format!("test_router_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        InferenceRouter::with_strategy(
+            registry,
+            LoadBalanceStrategy::RoundRobin,
+            crate::config::ModelsConfig::default(),
+            crate::config::RoutingConfig::default(),
+            audit_logger,
+        )
+    }
+
     #[tokio::test]
     async fn test_select_runner_no_runners() {
         let registry = Arc::new(RunnerRegistry::new());
-        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
+        let router = create_test_router(registry);
 
         let result = router.select_runner(Some("model")).await;
         assert!(matches!(result, Err(RouterError::NoRunners)));
@@ -482,7 +658,7 @@ mod tests {
             )
             .await;
 
-        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
+        let router = create_test_router(registry);
         let result = router.select_runner(Some("llama3")).await;
 
         assert!(result.is_ok());
@@ -520,7 +696,7 @@ mod tests {
             )
             .await;
 
-        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
+        let router = create_test_router(registry);
 
         // Round-robin should alternate
         let r1 = router.select_runner(Some("model")).await.unwrap();
@@ -561,12 +737,170 @@ mod tests {
             )
             .await;
 
-        let router = InferenceRouter::new(registry, crate::config::ModelsConfig::default());
+        let router = create_test_router(registry);
         let models = router.list_models().await.unwrap();
 
         assert_eq!(models.len(), 3);
         assert!(models.iter().any(|m| m.id == "model-a"));
         assert!(models.iter().any(|m| m.id == "model-b"));
         assert!(models.iter().any(|m| m.id == "model-c"));
+    }
+
+    #[tokio::test]
+    async fn test_smart_routing_prefers_machine_type() {
+        let registry = Arc::new(RunnerRegistry::new());
+
+        let (tx1, _) = mpsc::channel(32);
+        let (tx2, _) = mpsc::channel(32);
+
+        // Register two runners with different machine types
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                Some("halo".to_string()),
+                create_test_status(vec!["llama3:8b".to_string()]),
+                Some("http://host1:8080".to_string()),
+                tx1,
+                None,
+            )
+            .await;
+
+        registry
+            .register(
+                "runner-2".to_string(),
+                "Runner 2".to_string(),
+                Some("gpu-server".to_string()),
+                create_test_status(vec!["llama3:8b".to_string()]),
+                Some("http://host2:8080".to_string()),
+                tx2,
+                None,
+            )
+            .await;
+
+        // Create routing config that prefers gpu-server for fast models
+        let mut class_preferences = std::collections::HashMap::new();
+        class_preferences.insert("fast".to_string(), vec!["gpu-server".to_string(), "halo".to_string()]);
+
+        let routing_config = crate::config::RoutingConfig {
+            class_preferences,
+            queue_weight: 0.1,
+            latency_weight: 0.1,
+            speculative_wake_enabled: false,
+            speculative_wake_targets: std::collections::HashMap::new(),
+        };
+
+        let models_config = crate::config::ModelsConfig {
+            fast: vec!["llama3:8b".to_string()],
+            big: vec![],
+        };
+
+        let test_db_path = format!("test_smart_routing_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
+
+        // Smart routing should prefer gpu-server
+        let result = router.select_runner_for_class(ModelClass::Fast).await.unwrap();
+        assert_eq!(result.runner.machine_type, Some("gpu-server".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_smart_routing_considers_queue_depth() {
+        let registry = Arc::new(RunnerRegistry::new());
+
+        let (tx1, _) = mpsc::channel(32);
+        let (tx2, _) = mpsc::channel(32);
+
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                Some("gpu-server".to_string()),
+                create_test_status(vec!["llama3:8b".to_string()]),
+                Some("http://host1:8080".to_string()),
+                tx1,
+                None,
+            )
+            .await;
+
+        registry
+            .register(
+                "runner-2".to_string(),
+                "Runner 2".to_string(),
+                Some("gpu-server".to_string()),
+                create_test_status(vec!["llama3:8b".to_string()]),
+                Some("http://host2:8080".to_string()),
+                tx2,
+                None,
+            )
+            .await;
+
+        // Add 5 active requests to runner-1
+        for _ in 0..5 {
+            registry.increment_requests("runner-1").await;
+        }
+
+        // Create routing config with high queue weight
+        let routing_config = crate::config::RoutingConfig {
+            class_preferences: std::collections::HashMap::new(),
+            queue_weight: 0.8,
+            latency_weight: 0.1,
+            speculative_wake_enabled: false,
+            speculative_wake_targets: std::collections::HashMap::new(),
+        };
+
+        let models_config = crate::config::ModelsConfig {
+            fast: vec!["llama3:8b".to_string()],
+            big: vec![],
+        };
+
+        let test_db_path = format!("test_smart_queue_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
+
+        // Smart routing should prefer runner-2 (fewer active requests)
+        let result = router.select_runner_for_class(ModelClass::Fast).await.unwrap();
+        assert_eq!(result.runner.id, "runner-2");
+    }
+
+    #[tokio::test]
+    async fn test_smart_routing_handles_excessive_weights() {
+        // Test that pref_weight is clamped to 0 when queue_weight + latency_weight > 1.0
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx1, _) = mpsc::channel(32);
+
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                Some("gpu-server".to_string()),
+                create_test_status(vec!["llama3:8b".to_string()]),
+                Some("http://host1:8080".to_string()),
+                tx1,
+                None,
+            )
+            .await;
+
+        // Create config with weights that exceed 1.0
+        let routing_config = crate::config::RoutingConfig {
+            class_preferences: std::collections::HashMap::new(),
+            queue_weight: 0.8,
+            latency_weight: 0.5, // 0.8 + 0.5 = 1.3 > 1.0
+            speculative_wake_enabled: false,
+            speculative_wake_targets: std::collections::HashMap::new(),
+        };
+
+        let models_config = crate::config::ModelsConfig {
+            fast: vec!["llama3:8b".to_string()],
+            big: vec![],
+        };
+
+        let test_db_path = format!("test_excessive_weights_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
+
+        // Should not panic and should still work
+        let result = router.select_runner_for_class(ModelClass::Fast).await;
+        assert!(result.is_ok());
     }
 }

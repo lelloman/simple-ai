@@ -38,6 +38,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let inference_router = Arc::new(InferenceRouter::new(
         runner_registry.clone(),
         config.models.clone(),
+        config.routing.clone(),
+        audit_logger.clone(),
     ));
 
     // Initialize wake service for on-demand runner waking
@@ -47,15 +49,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.gateway.clone(),
         config.wol.clone(),
         config.models.clone(),
+        config.routing.clone(),
     ));
 
     if config.gateway.enabled {
         tracing::info!("Gateway mode enabled - will accept runner connections");
+        tracing::info!(
+            "Smart routing enabled (queue_weight: {}, latency_weight: {})",
+            config.routing.queue_weight,
+            config.routing.latency_weight
+        );
         if config.gateway.auto_wake_enabled {
             tracing::info!(
                 "Auto-wake enabled - will wake runners on demand (timeout: {}s)",
                 config.gateway.wake_timeout_secs
             );
+            if config.routing.speculative_wake_enabled {
+                tracing::info!(
+                    "Speculative wake enabled - targets: {:?}",
+                    config.routing.speculative_wake_targets
+                );
+            }
         }
     } else {
         tracing::info!("Gateway mode disabled - using direct Ollama connection");

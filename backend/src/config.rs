@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use config::{Config as ConfigLoader, ConfigError as ConfigCrateError, Environment, File};
 use serde::Deserialize;
 
@@ -28,6 +30,9 @@ pub struct Config {
     /// Model classification configuration.
     #[serde(default)]
     pub models: ModelsConfig,
+    /// Smart routing configuration.
+    #[serde(default)]
+    pub routing: RoutingConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -181,6 +186,52 @@ impl ModelsConfig {
     }
 }
 
+/// Smart routing configuration.
+///
+/// Controls how requests are routed to runners, including:
+/// - Class-based machine preferences (e.g., `class:fast` prefers gpu-server)
+/// - Queue-aware routing (prefer runners with fewer pending requests)
+/// - Latency-aware routing (use historical metrics to prefer faster runners)
+/// - Speculative wake (wake multiple machines for faster response)
+#[derive(Debug, Clone, Deserialize)]
+pub struct RoutingConfig {
+    /// Machine preferences by model class.
+    /// Key is the class name (e.g., "fast", "big"), value is ordered list of machine types.
+    /// First machine type in the list is most preferred.
+    #[serde(default)]
+    pub class_preferences: HashMap<String, Vec<String>>,
+    /// Weight for queue depth in runner scoring (0.0 to 1.0).
+    /// Higher values prefer runners with fewer pending requests.
+    #[serde(default = "default_queue_weight")]
+    pub queue_weight: f64,
+    /// Weight for historical latency in runner scoring (0.0 to 1.0).
+    /// Higher values prefer runners with lower average latency.
+    #[serde(default = "default_latency_weight")]
+    pub latency_weight: f64,
+    /// Enable speculative wake (wake multiple machines in parallel).
+    #[serde(default)]
+    pub speculative_wake_enabled: bool,
+    /// Speculative wake targets by model class.
+    /// Key is the class name, value is list of machine types to wake.
+    #[serde(default)]
+    pub speculative_wake_targets: HashMap<String, Vec<String>>,
+}
+
+fn default_queue_weight() -> f64 { 0.5 }
+fn default_latency_weight() -> f64 { 0.3 }
+
+impl Default for RoutingConfig {
+    fn default() -> Self {
+        Self {
+            class_preferences: HashMap::new(),
+            queue_weight: default_queue_weight(),
+            latency_weight: default_latency_weight(),
+            speculative_wake_enabled: false,
+            speculative_wake_targets: HashMap::new(),
+        }
+    }
+}
+
 // Defaults
 fn default_host() -> String { "0.0.0.0".to_string() }
 fn default_port() -> u16 { 8080 }
@@ -286,6 +337,9 @@ impl Config {
             .set_default("gateway.auto_wake_enabled", false)?
             .set_default("wol.broadcast_address", default_wol_broadcast())?
             .set_default("wol.port", default_wol_port() as i64)?
+            .set_default("routing.queue_weight", default_queue_weight())?
+            .set_default("routing.latency_weight", default_latency_weight())?
+            .set_default("routing.speculative_wake_enabled", false)?
             // Load from config.toml if it exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (SIMPLEAI__KEY format)
@@ -442,5 +496,34 @@ mod tests {
         assert_eq!(config.wake_timeout_secs, 90);
         assert!(!config.auto_wake_enabled);
         assert!(config.idle_manager_url.is_none());
+    }
+
+    #[test]
+    fn test_routing_config_defaults() {
+        let config = RoutingConfig::default();
+        assert!(config.class_preferences.is_empty());
+        assert!((config.queue_weight - 0.5).abs() < f64::EPSILON);
+        assert!((config.latency_weight - 0.3).abs() < f64::EPSILON);
+        assert!(!config.speculative_wake_enabled);
+        assert!(config.speculative_wake_targets.is_empty());
+    }
+
+    #[test]
+    fn test_routing_config_with_preferences() {
+        let mut prefs = std::collections::HashMap::new();
+        prefs.insert("fast".to_string(), vec!["gpu-server".to_string(), "halo".to_string()]);
+        prefs.insert("big".to_string(), vec!["halo".to_string(), "gpu-server".to_string()]);
+
+        let config = RoutingConfig {
+            class_preferences: prefs.clone(),
+            queue_weight: 0.4,
+            latency_weight: 0.2,
+            speculative_wake_enabled: true,
+            speculative_wake_targets: prefs,
+        };
+
+        assert_eq!(config.class_preferences.get("fast").unwrap()[0], "gpu-server");
+        assert_eq!(config.class_preferences.get("big").unwrap()[0], "halo");
+        assert!(config.speculative_wake_enabled);
     }
 }

@@ -1,6 +1,8 @@
 //! Runner registry for tracking connected inference runners.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -53,6 +55,8 @@ pub struct ConnectedRunner {
     pub mac_address: Option<String>,
     /// Model aliases: maps canonical names to local engine names.
     pub model_aliases: HashMap<String, String>,
+    /// Number of active requests currently being processed by this runner.
+    pub active_requests: Arc<AtomicUsize>,
 }
 
 impl ConnectedRunner {
@@ -167,6 +171,7 @@ impl RunnerRegistry {
             tx,
             mac_address,
             model_aliases,
+            active_requests: Arc::new(AtomicUsize::new(0)),
         };
         self.runners.write().await.insert(id.clone(), runner);
 
@@ -228,6 +233,44 @@ impl RunnerRegistry {
     /// Get a runner by ID.
     pub async fn get(&self, id: &str) -> Option<ConnectedRunner> {
         self.runners.read().await.get(id).cloned()
+    }
+
+    /// Increment the active request count for a runner.
+    /// Call this before proxying a request to the runner.
+    pub async fn increment_requests(&self, runner_id: &str) {
+        if let Some(runner) = self.runners.read().await.get(runner_id) {
+            let prev = runner.active_requests.fetch_add(1, Ordering::SeqCst);
+            tracing::debug!(
+                "Runner {} active requests: {} -> {}",
+                runner_id,
+                prev,
+                prev + 1
+            );
+        }
+    }
+
+    /// Decrement the active request count for a runner.
+    /// Call this after receiving a response from the runner.
+    pub async fn decrement_requests(&self, runner_id: &str) {
+        if let Some(runner) = self.runners.read().await.get(runner_id) {
+            let prev = runner.active_requests.fetch_sub(1, Ordering::SeqCst);
+            tracing::debug!(
+                "Runner {} active requests: {} -> {}",
+                runner_id,
+                prev,
+                prev.saturating_sub(1)
+            );
+        }
+    }
+
+    /// Get the current active request count for a runner.
+    pub async fn get_active_requests(&self, runner_id: &str) -> usize {
+        self.runners
+            .read()
+            .await
+            .get(runner_id)
+            .map(|r| r.active_requests.load(Ordering::SeqCst))
+            .unwrap_or(0)
     }
 
     /// Get all connected runners.
@@ -624,6 +667,7 @@ mod tests {
             tx: mpsc::channel(1).0,
             mac_address: None,
             model_aliases: aliases,
+            active_requests: Arc::new(AtomicUsize::new(0)),
         };
 
         assert_eq!(runner.resolve_model_alias("canonical-model"), "local-model");
@@ -642,6 +686,7 @@ mod tests {
             tx: mpsc::channel(1).0,
             mac_address: None,
             model_aliases: std::collections::HashMap::new(),
+            active_requests: Arc::new(AtomicUsize::new(0)),
         };
 
         // Should return original name when no alias exists
@@ -661,6 +706,7 @@ mod tests {
             tx: mpsc::channel(1).0,
             mac_address: None,
             model_aliases: std::collections::HashMap::new(),
+            active_requests: Arc::new(AtomicUsize::new(0)),
         };
 
         assert!(runner.has_model_or_alias("model-a"));
@@ -683,6 +729,7 @@ mod tests {
             tx: mpsc::channel(1).0,
             mac_address: None,
             model_aliases: aliases,
+            active_requests: Arc::new(AtomicUsize::new(0)),
         };
 
         // Should find via alias
@@ -725,5 +772,43 @@ mod tests {
         let with_local = registry.with_model("local-model-name").await;
         assert_eq!(with_local.len(), 1);
         assert_eq!(with_local[0].id, "runner-1");
+    }
+
+    #[tokio::test]
+    async fn test_active_requests_tracking() {
+        let registry = RunnerRegistry::new();
+        let (tx, _) = mpsc::channel(32);
+
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+
+        // Initial state
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
+
+        // Increment
+        registry.increment_requests("runner-1").await;
+        assert_eq!(registry.get_active_requests("runner-1").await, 1);
+
+        registry.increment_requests("runner-1").await;
+        assert_eq!(registry.get_active_requests("runner-1").await, 2);
+
+        // Decrement
+        registry.decrement_requests("runner-1").await;
+        assert_eq!(registry.get_active_requests("runner-1").await, 1);
+
+        registry.decrement_requests("runner-1").await;
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
+
+        // Non-existent runner returns 0
+        assert_eq!(registry.get_active_requests("non-existent").await, 0);
     }
 }

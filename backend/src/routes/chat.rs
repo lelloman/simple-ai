@@ -174,11 +174,11 @@ async fn chat_completions(
                 Ok(routed.response)
             }
             Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
-                // No runners available, try wake-on-demand
+                // No runners available, try wake-on-demand (speculative if enabled)
                 tracing::info!("No runners available, attempting wake-on-demand for {:?}", model_request);
                 wol_sent = true;
 
-                match state.wake_service.wake_and_wait(&model_request).await {
+                match state.wake_service.speculative_wake_and_wait(&model_request).await {
                     Ok(wake_result) => {
                         tracing::info!(
                             "Runner {} connected after {:.1}s, retrying request",

@@ -8,13 +8,14 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::future::join_all;
 use tokio::sync::broadcast;
 use tokio::time::timeout;
 
 use crate::audit::{AuditLogger, RunnerRecord};
-use crate::config::{GatewayConfig, WolConfig};
+use crate::config::{GatewayConfig, RoutingConfig, WolConfig};
 use crate::config::ModelsConfig;
-use crate::gateway::{classify_model, ModelRequest, RunnerEvent, RunnerRegistry};
+use crate::gateway::{classify_model, ModelClass, ModelRequest, RunnerEvent, RunnerRegistry};
 
 /// Errors that can occur during WOL operations.
 #[derive(Debug, thiserror::Error)]
@@ -257,6 +258,7 @@ pub struct WakeService {
     gateway_config: GatewayConfig,
     wol_config: WolConfig,
     models_config: ModelsConfig,
+    routing_config: RoutingConfig,
     http_client: reqwest::Client,
 }
 
@@ -268,6 +270,7 @@ impl WakeService {
         gateway_config: GatewayConfig,
         wol_config: WolConfig,
         models_config: ModelsConfig,
+        routing_config: RoutingConfig,
     ) -> Self {
         Self {
             registry,
@@ -275,8 +278,14 @@ impl WakeService {
             gateway_config,
             wol_config,
             models_config,
+            routing_config,
             http_client: reqwest::Client::new(),
         }
+    }
+
+    /// Check if speculative wake is enabled.
+    pub fn is_speculative_wake_enabled(&self) -> bool {
+        self.routing_config.speculative_wake_enabled
     }
 
     /// Check if auto-wake is enabled.
@@ -344,16 +353,86 @@ impl WakeService {
 
     /// Find the best runner to wake for a model request.
     ///
-    /// Returns the most recently seen runner that:
+    /// Returns the runner with the fastest historical boot time that:
     /// 1. Is offline
     /// 2. Has a MAC address
     /// 3. Has models matching the request
+    ///
+    /// Falls back to most recently seen if no boot metrics are available.
     pub async fn find_best_runner_to_wake(
         &self,
         model_request: &ModelRequest,
     ) -> Result<Option<RunnerRecord>, WakeError> {
-        let wakeable = self.find_wakeable_runners(Some(model_request)).await?;
-        Ok(wakeable.into_iter().next())
+        let mut wakeable = self.find_wakeable_runners(Some(model_request)).await?;
+
+        if wakeable.is_empty() {
+            return Ok(None);
+        }
+
+        // Get boot metrics for all wakeable runners
+        let all_metrics = self.audit_logger.get_all_metrics().unwrap_or_default();
+
+        // Sort by boot time (ascending) - faster boot first
+        // If no boot metric, use u64::MAX to deprioritize
+        wakeable.sort_by(|a, b| {
+            let a_boot = all_metrics
+                .iter()
+                .find(|m| m.runner_id == a.id && m.model_class == "boot")
+                .and_then(|m| m.avg_ms())
+                .map(|ms| ms as u64)
+                .unwrap_or(u64::MAX);
+            let b_boot = all_metrics
+                .iter()
+                .find(|m| m.runner_id == b.id && m.model_class == "boot")
+                .and_then(|m| m.avg_ms())
+                .map(|ms| ms as u64)
+                .unwrap_or(u64::MAX);
+            a_boot.cmp(&b_boot)
+        });
+
+        let best = wakeable.into_iter().next();
+        if let Some(ref runner) = best {
+            let boot_time = all_metrics
+                .iter()
+                .find(|m| m.runner_id == runner.id && m.model_class == "boot")
+                .and_then(|m| m.avg_ms());
+            tracing::debug!(
+                "Best runner to wake: {} (avg boot time: {:?}ms)",
+                runner.id,
+                boot_time
+            );
+        }
+
+        Ok(best)
+    }
+
+    /// Find runners to wake speculatively for a model class.
+    ///
+    /// Returns runners matching the speculative_wake_targets config for the class.
+    fn find_speculative_wake_targets(
+        &self,
+        class: ModelClass,
+        wakeable: &[RunnerRecord],
+    ) -> Vec<RunnerRecord> {
+        let class_name = class.as_str();
+        let targets = match self.routing_config.speculative_wake_targets.get(class_name) {
+            Some(t) => t,
+            None => return Vec::new(),
+        };
+
+        // Find wakeable runners that match any target machine type
+        let mut result = Vec::new();
+        for target_machine in targets {
+            for runner in wakeable {
+                if runner.machine_type.as_deref() == Some(target_machine) {
+                    if !result.iter().any(|r: &RunnerRecord| r.id == runner.id) {
+                        result.push(runner.clone());
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     /// Wake a single runner by MAC address.
@@ -505,6 +584,130 @@ impl WakeService {
             runner_id,
             wait_duration,
             runners_woken: 1,
+        })
+    }
+
+    /// Speculatively wake multiple runners and wait for the first to connect.
+    ///
+    /// This is an optimized wake strategy that:
+    /// 1. Wakes ALL runners matching the speculative_wake_targets config
+    /// 2. Waits for the FIRST runner to connect
+    /// 3. Records boot time metrics
+    ///
+    /// Falls back to single wake_and_wait if speculative wake is disabled or
+    /// no targets are configured.
+    pub async fn speculative_wake_and_wait(
+        &self,
+        model_request: &ModelRequest,
+    ) -> Result<WakeResult, WakeError> {
+        // Get the model class for speculative wake targets lookup
+        let class = match model_request {
+            ModelRequest::Class(c) => Some(*c),
+            ModelRequest::Specific(model_id) => classify_model(model_id, &self.models_config),
+        };
+
+        // If speculative wake is disabled or no class, use regular wake
+        if !self.routing_config.speculative_wake_enabled {
+            tracing::debug!("Speculative wake disabled, using regular wake_and_wait");
+            return self.wake_and_wait(model_request).await;
+        }
+
+        let class = match class {
+            Some(c) => c,
+            None => {
+                tracing::debug!("No model class for speculative wake, using regular wake_and_wait");
+                return self.wake_and_wait(model_request).await;
+            }
+        };
+
+        // Find all wakeable runners
+        let wakeable = self.find_wakeable_runners(Some(model_request)).await?;
+        if wakeable.is_empty() {
+            return Err(WakeError::NoWakeableRunners);
+        }
+
+        // Find speculative wake targets
+        let targets = self.find_speculative_wake_targets(class, &wakeable);
+        if targets.is_empty() {
+            tracing::debug!(
+                "No speculative wake targets for class:{}, using regular wake_and_wait",
+                class
+            );
+            return self.wake_and_wait(model_request).await;
+        }
+
+        let start = std::time::Instant::now();
+        let target_count = targets.len();
+
+        tracing::info!(
+            "Speculative wake: waking {} runners for class:{} (targets: {:?})",
+            target_count,
+            class,
+            targets.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
+        );
+
+        // Subscribe to events BEFORE waking
+        let mut rx = self.registry.subscribe_events();
+
+        // Wake ALL targets in parallel
+        let wake_futures: Vec<_> = targets
+            .iter()
+            .map(|runner| self.wake_runner(runner))
+            .collect();
+
+        let wake_results = join_all(wake_futures).await;
+
+        // Count successful wakes
+        let wakes_sent: usize = wake_results.iter().filter(|r| r.is_ok()).count();
+        if wakes_sent == 0 {
+            return Err(WakeError::WakeFailed("All wake attempts failed".to_string()));
+        }
+
+        tracing::info!(
+            "Speculative wake: sent {} wake signals, waiting for first connection...",
+            wakes_sent
+        );
+
+        // Wait for FIRST runner to connect
+        let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
+        let runner_id = timeout(timeout_duration, async {
+            loop {
+                match rx.recv().await {
+                    Ok(RunnerEvent::Connected { runner_id, .. }) => {
+                        tracing::info!(
+                            "Speculative wake: runner {} connected first",
+                            runner_id
+                        );
+                        return runner_id;
+                    }
+                    Ok(_) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break String::new(),
+                }
+            }
+        })
+        .await
+        .map_err(|_| WakeError::Timeout(self.gateway_config.wake_timeout_secs))?;
+
+        if runner_id.is_empty() {
+            return Err(WakeError::Timeout(self.gateway_config.wake_timeout_secs));
+        }
+
+        let wait_duration = start.elapsed();
+        tracing::info!(
+            "Speculative wake: runner {} connected after {:.1}s (woke {} runners)",
+            runner_id,
+            wait_duration.as_secs_f64(),
+            wakes_sent
+        );
+
+        // Record boot time metric for the runner that connected
+        let _ = self.audit_logger.record_metric(&runner_id, "boot", wait_duration.as_millis() as u64);
+
+        Ok(WakeResult {
+            runner_id,
+            wait_duration,
+            runners_woken: wakes_sent,
         })
     }
 }

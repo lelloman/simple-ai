@@ -64,3 +64,32 @@ fast = [
     "mistral:7b",
     "phi3:mini",
 ]
+
+[routing]
+# Smart routing configuration for intelligent request distribution.
+#
+# queue_weight: Balance between preference (0) and queue depth (1).
+# Higher values prefer runners with fewer pending requests.
+queue_weight = 0.5
+#
+# latency_weight: Weight for historical latency metrics (0 to 1).
+# Higher values prefer runners with lower average latency.
+latency_weight = 0.3
+#
+# speculative_wake_enabled: Wake multiple machines in parallel for faster response.
+# When enabled, the system wakes all configured targets and uses the first to connect.
+speculative_wake_enabled = false
+
+# Machine type preferences by model class.
+# First machine type in the list is most preferred.
+# Runners with machine types not in the list are deprioritized.
+[routing.class_preferences]
+fast = ["gpu-server", "halo"]   # Prefer gpu-server for fast models
+big = ["halo", "gpu-server"]    # Prefer halo for big models
+
+# Speculative wake targets by model class.
+# When speculative_wake_enabled=true and no runners are available,
+# wake ALL machines in this list for the requested class.
+[routing.speculative_wake_targets]
+fast = ["halo", "gpu-server"]   # Wake both; use whichever boots first
+big = ["halo"]                  # Only halos can run big models
