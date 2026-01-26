@@ -36,6 +36,18 @@ impl StatusCollector {
         local_name.to_string()
     }
 
+    /// Resolve a canonical alias name to the local engine model name.
+    /// If a mapping exists for this canonical name, returns the local name.
+    /// Otherwise returns the original name unchanged.
+    pub fn resolve_to_local(&self, canonical_name: &str) -> String {
+        self.config
+            .aliases
+            .mappings
+            .get(canonical_name)
+            .cloned()
+            .unwrap_or_else(|| canonical_name.to_string())
+    }
+
     /// Collect current status from all engines.
     pub async fn collect(&self) -> RunnerStatus {
         let engines = self.collect_engine_status().await;

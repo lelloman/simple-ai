@@ -278,10 +278,16 @@ impl GatewayClient {
     }
 
     async fn load_model(&self, model_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Resolve canonical name to local engine name if aliased
+        let local_id = self.status_collector.resolve_to_local(model_id);
+        let local_id = local_id.as_str();
+
+        tracing::debug!("Loading model: {} (local: {})", model_id, local_id);
+
         // Find an engine that has this model
-        if let Some(engine) = self.engine_registry.find_engine_for_model(model_id).await {
-            engine.load_model(model_id).await?;
-            tracing::info!("Loaded model: {}", model_id);
+        if let Some(engine) = self.engine_registry.find_engine_for_model(local_id).await {
+            engine.load_model(local_id).await?;
+            tracing::info!("Loaded model: {} (local: {})", model_id, local_id);
             return Ok(());
         }
 
@@ -293,16 +299,17 @@ impl GatewayClient {
 
         let mut last_error = None;
         for engine in engines {
-            match engine.load_model(model_id).await {
+            match engine.load_model(local_id).await {
                 Ok(()) => {
-                    tracing::info!("Loaded model {} via {}", model_id, engine.engine_type());
+                    tracing::info!("Loaded model {} (local: {}) via {}", model_id, local_id, engine.engine_type());
                     return Ok(());
                 }
                 Err(e) => {
                     tracing::debug!(
-                        "Engine {} failed to load model '{}': {}",
+                        "Engine {} failed to load model '{}' (local: '{}'): {}",
                         engine.engine_type(),
                         model_id,
+                        local_id,
                         e
                     );
                     last_error = Some(e);
@@ -311,17 +318,22 @@ impl GatewayClient {
         }
 
         Err(format!(
-            "Failed to load model '{}': {}",
+            "Failed to load model '{}' (local: '{}'): {}",
             model_id,
+            local_id,
             last_error.map(|e| e.to_string()).unwrap_or_else(|| "unknown error".to_string())
         ).into())
     }
 
     async fn unload_model(&self, model_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Resolve canonical name to local engine name if aliased
+        let local_id = self.status_collector.resolve_to_local(model_id);
+        let local_id = local_id.as_str();
+
         // Try each engine
         for engine in self.engine_registry.all().await {
-            if engine.unload_model(model_id).await.is_ok() {
-                tracing::info!("Unloaded model {} from {}", model_id, engine.engine_type());
+            if engine.unload_model(local_id).await.is_ok() {
+                tracing::info!("Unloaded model {} (local: {}) from {}", model_id, local_id, engine.engine_type());
                 return Ok(());
             }
         }
