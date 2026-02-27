@@ -111,13 +111,17 @@ pub fn send_wol(mac_address: &str, broadcast_addr: &str, port: u16) -> Result<()
 
 /// Send WOL via bouncer service (TCP).
 ///
+/// Sends `MAC BROADCAST_ADDR` (space-separated) to the bouncer so it can
+/// use the correct subnet-directed broadcast address.
+///
 /// # Arguments
 /// * `bouncer_addr` - Address of the bouncer service (e.g., "localhost:9999")
 /// * `mac_address` - Target MAC address in format AA:BB:CC:DD:EE:FF
+/// * `broadcast_addr` - Broadcast address (e.g., "192.168.1.255")
 pub async fn send_wol_via_bouncer(
     bouncer_addr: &str,
     mac_address: &str,
-    _broadcast_addr: &str,
+    broadcast_addr: &str,
 ) -> Result<(), WolError> {
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpStream;
@@ -132,11 +136,11 @@ pub async fn send_wol_via_bouncer(
         .map_err(|e| WolError::BouncerError(format!("Failed to connect to bouncer at {}: {}", addr, e)))?;
 
     stream
-        .write_all(format!("{}\n", mac_address).as_bytes())
+        .write_all(format!("{} {}\n", mac_address, broadcast_addr).as_bytes())
         .await
         .map_err(|e| WolError::BouncerError(format!("Failed to send MAC to bouncer: {}", e)))?;
 
-    tracing::info!("Sent WOL via bouncer for MAC {}", mac_address);
+    tracing::info!("Sent WOL via bouncer for MAC {} (broadcast: {})", mac_address, broadcast_addr);
 
     Ok(())
 }
