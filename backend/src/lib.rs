@@ -9,6 +9,7 @@ pub mod gateway;
 pub mod test_util;
 pub mod wol;
 pub mod arp;
+pub mod rate_limit;
 
 pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
 pub use auth::JwksClient;

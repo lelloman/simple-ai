@@ -44,6 +44,9 @@ sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
 
+# Rate limiting
+governor = "0.8"
+
 # Language detection
 fasttext = "0.7"
 

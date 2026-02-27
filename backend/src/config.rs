@@ -126,6 +126,9 @@ pub struct GatewayConfig {
     /// Minimum batch size before sending (if timeout not reached). Default: 1
     #[serde(default = "default_min_batch_size")]
     pub min_batch_size: u32,
+    /// Maximum requests per minute per IP. 0 = disabled. Default: 0
+    #[serde(default)]
+    pub rate_limit_rpm: u32,
 }
 
 /// Wake-on-LAN configuration.
@@ -303,6 +306,7 @@ impl Default for GatewayConfig {
             batching_enabled: false,
             batch_timeout_ms: default_batch_timeout_ms(),
             min_batch_size: default_min_batch_size(),
+            rate_limit_rpm: 0,
         }
     }
 }
@@ -352,6 +356,7 @@ impl Config {
             .set_default("gateway.batching_enabled", false)?
             .set_default("gateway.batch_timeout_ms", default_batch_timeout_ms() as i64)?
             .set_default("gateway.min_batch_size", default_min_batch_size() as i64)?
+            .set_default("gateway.rate_limit_rpm", 0 as i64)?
             .set_default("wol.broadcast_address", default_wol_broadcast())?
             .set_default("wol.port", default_wol_port() as i64)?
             .set_default("routing.queue_weight", default_queue_weight())?

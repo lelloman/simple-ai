@@ -137,12 +137,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Static admin UI HTML
     const ADMIN_UI_HTML: &str = include_str!("../static/admin.html");
 
+    // Build /v1 routes, optionally with rate limiting
+    let v1_routes = simple_ai_backend::routes::chat::router(state.clone())
+        .merge(simple_ai_backend::routes::language::router(state.clone()))
+        .merge(simple_ai_backend::routes::models::router(state.clone()));
+
+    let v1_routes = if config.gateway.rate_limit_rpm > 0 {
+        let limiter = Arc::new(simple_ai_backend::rate_limit::RateLimiter::new(config.gateway.rate_limit_rpm));
+        tracing::info!("Rate limiting enabled: {} requests/minute per IP", config.gateway.rate_limit_rpm);
+        v1_routes.layer(axum::middleware::from_fn_with_state(
+            limiter,
+            simple_ai_backend::rate_limit::rate_limit_middleware,
+        ))
+    } else {
+        v1_routes
+    };
+
     let app = simple_ai_backend::routes::health::router()
-        .nest("/v1",
-            simple_ai_backend::routes::chat::router(state.clone())
-                .merge(simple_ai_backend::routes::language::router(state.clone()))
-                .merge(simple_ai_backend::routes::models::router(state.clone()))
-        )
+        .nest("/v1", v1_routes)
         .nest("/admin", simple_ai_backend::routes::admin::router(state.clone()))
         // Admin UI (public, auth handled in browser)
         .route("/admin-ui", get(|| async { Html(ADMIN_UI_HTML) }))
