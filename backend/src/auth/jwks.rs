@@ -121,6 +121,7 @@ pub struct JwksClient {
     jwks_uri: String,
     keys: Arc<RwLock<HashMap<String, DecodingKey>>>,
     issuer: String,
+    audience: String,
     /// Path to roles in JWT claims (e.g., "roles", "realm_access.roles").
     role_claim_path: String,
     /// Name of the admin role.
@@ -152,6 +153,7 @@ impl JwksClient {
             jwks_uri: oidc_discovery.jwks_uri,
             keys: Arc::new(RwLock::new(HashMap::new())),
             issuer: config.issuer.clone(),
+            audience: config.audience.clone(),
             role_claim_path: config.role_claim_path.clone(),
             admin_role: config.admin_role.clone(),
             admin_users: config.admin_users.clone(),
@@ -257,8 +259,7 @@ impl JwksClient {
         // Validate token
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[&self.issuer]);
-        // Skip audience validation for now (can be added later)
-        validation.validate_aud = false;
+        validation.set_audience(&[&self.audience]);
 
         let token_data = decode::<Claims>(token, key, &validation)
             .map_err(|e| AuthError::InvalidToken(e.to_string()))?;
