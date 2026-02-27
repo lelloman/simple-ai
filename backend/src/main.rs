@@ -9,6 +9,7 @@ use simple_ai_backend::gateway::{
     ws_handler, BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RunnerRegistry, WsState,
 };
 use simple_ai_backend::wol::WakeService;
+use simple_ai_backend::circuit_breaker::CircuitBreaker;
 use simple_ai_backend::AppState;
 
 #[tokio::main]
@@ -37,12 +38,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize gateway components
     let runner_registry = Arc::new(RunnerRegistry::new());
+    // Initialize circuit breaker
+    let circuit_breaker = Arc::new(CircuitBreaker::new(
+        config.gateway.circuit_breaker_threshold,
+        config.gateway.circuit_breaker_recovery_secs,
+    ));
+    if config.gateway.circuit_breaker_threshold > 0 {
+        tracing::info!(
+            "Circuit breaker enabled (threshold: {}, recovery: {}s)",
+            config.gateway.circuit_breaker_threshold,
+            config.gateway.circuit_breaker_recovery_secs,
+        );
+    }
+
     let inference_router = Arc::new(InferenceRouter::new(
         runner_registry.clone(),
         config.models.clone(),
         config.routing.clone(),
         audit_logger.clone(),
-    ));
+    ).with_circuit_breaker(circuit_breaker.clone()));
 
     // Initialize wake service for on-demand runner waking
     let wake_service = Arc::new(WakeService::new(
@@ -119,6 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         request_events: request_events_tx,
         batch_queue,
         batch_dispatcher,
+        circuit_breaker,
     });
 
     let cors = tower_http::cors::CorsLayer::new()

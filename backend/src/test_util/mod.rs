@@ -85,6 +85,7 @@ pub async fn create_test_state() -> AppState {
         request_events: request_events_tx,
         batch_queue: None,
         batch_dispatcher: None,
+        circuit_breaker: std::sync::Arc::new(crate::CircuitBreaker::new(0, 30)),
     }
 }
 

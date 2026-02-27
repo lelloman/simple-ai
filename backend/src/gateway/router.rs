@@ -11,6 +11,7 @@ use thiserror::Error;
 use simple_ai_common::ChatCompletionRequest;
 
 use crate::audit::{AuditLogger, RunnerMetricRow};
+use crate::circuit_breaker::CircuitBreaker;
 use crate::config::{ModelsConfig, RoutingConfig};
 use super::batch_queue::BatchQueue;
 use super::model_class::{classify_model, ModelClass, ModelRequest};
@@ -77,6 +78,7 @@ pub struct InferenceRouter {
     models_config: ModelsConfig,
     routing_config: RoutingConfig,
     audit_logger: Arc<AuditLogger>,
+    circuit_breaker: Option<Arc<CircuitBreaker>>,
 }
 
 impl InferenceRouter {
@@ -98,6 +100,7 @@ impl InferenceRouter {
             models_config,
             routing_config,
             audit_logger,
+            circuit_breaker: None,
         }
     }
 
@@ -120,7 +123,14 @@ impl InferenceRouter {
             models_config,
             routing_config,
             audit_logger,
+            circuit_breaker: None,
         }
+    }
+
+    /// Set the circuit breaker for this router.
+    pub fn with_circuit_breaker(mut self, cb: Arc<CircuitBreaker>) -> Self {
+        self.circuit_breaker = Some(cb);
+        self
     }
 
     /// Get a reference to the registry.
@@ -167,6 +177,15 @@ impl InferenceRouter {
 
         // Always decrement, even on error
         self.registry.decrement_requests(&runner_id).await;
+
+        // Record circuit breaker outcome
+        if let Some(cb) = &self.circuit_breaker {
+            if response.is_ok() {
+                cb.record_success(&runner_id);
+            } else {
+                cb.record_failure(&runner_id);
+            }
+        }
 
         Ok(RoutedResponse {
             response: response?,
@@ -254,6 +273,11 @@ impl InferenceRouter {
         // Decrement on connection error (if response succeeded, stream is ongoing)
         if response.is_err() {
             self.registry.decrement_requests(&runner_id).await;
+            if let Some(cb) = &self.circuit_breaker {
+                cb.record_failure(&runner_id);
+            }
+        } else if let Some(cb) = &self.circuit_breaker {
+            cb.record_success(&runner_id);
         }
 
         response
@@ -297,12 +321,21 @@ impl InferenceRouter {
         }
     }
 
+    /// Filter out runners whose circuit breaker is open.
+    fn filter_available(&self, runners: Vec<ConnectedRunner>) -> Vec<ConnectedRunner> {
+        if let Some(cb) = &self.circuit_breaker {
+            runners.into_iter().filter(|r| cb.is_available(&r.id)).collect()
+        } else {
+            runners
+        }
+    }
+
     /// Select a runner for a specific model.
     async fn select_runner_for_specific(&self, model_id: &str) -> Result<ConnectedRunner, RouterError> {
-        let with_model = self.registry.with_model(model_id).await;
+        let with_model = self.filter_available(self.registry.with_model(model_id).await);
         if with_model.is_empty() {
             // Check if any runner is operational
-            let operational = self.registry.operational().await;
+            let operational = self.filter_available(self.registry.operational().await);
             if operational.is_empty() {
                 return Err(RouterError::NoRunners);
             }
@@ -317,7 +350,7 @@ impl InferenceRouter {
     ///
     /// Finds any available model of the requested class.
     async fn resolve_class_to_model(&self, class: ModelClass) -> Result<String, RouterError> {
-        let operational = self.registry.operational().await;
+        let operational = self.filter_available(self.registry.operational().await);
         if operational.is_empty() {
             return Err(RouterError::NoRunners);
         }
@@ -340,7 +373,7 @@ impl InferenceRouter {
     ///
     /// Finds runners that have models of the requested class and picks one.
     async fn select_runner_for_class(&self, class: ModelClass) -> Result<SelectedRunner, RouterError> {
-        let operational = self.registry.operational().await;
+        let operational = self.filter_available(self.registry.operational().await);
         if operational.is_empty() {
             return Err(RouterError::NoRunners);
         }

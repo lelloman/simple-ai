@@ -10,6 +10,7 @@ pub mod test_util;
 pub mod wol;
 pub mod arp;
 pub mod rate_limit;
+pub mod circuit_breaker;
 
 pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
 pub use auth::JwksClient;
@@ -21,6 +22,7 @@ pub use auth::AuthUser;
 pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
 pub use gateway::{BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RunnerRegistry};
 pub use wol::WakeService;
+pub use circuit_breaker::CircuitBreaker;
 
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -66,4 +68,6 @@ pub struct AppState {
     pub batch_queue: Option<Arc<BatchQueue>>,
     /// Batch dispatcher for cache invalidation (if enabled).
     pub batch_dispatcher: Option<Arc<BatchDispatcher>>,
+    /// Circuit breaker for failing backends.
+    pub circuit_breaker: Arc<CircuitBreaker>,
 }

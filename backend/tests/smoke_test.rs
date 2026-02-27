@@ -118,6 +118,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         request_events: request_events_tx,
         batch_queue: None,
         batch_dispatcher: None,
+        circuit_breaker: std::sync::Arc::new(simple_ai_backend::CircuitBreaker::new(0, 30)),
     }))
 }
 

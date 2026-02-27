@@ -129,6 +129,12 @@ pub struct GatewayConfig {
     /// Maximum requests per minute per IP. 0 = disabled. Default: 0
     #[serde(default)]
     pub rate_limit_rpm: u32,
+    /// Consecutive failures before opening circuit breaker. 0 = disabled. Default: 0
+    #[serde(default)]
+    pub circuit_breaker_threshold: u32,
+    /// Seconds before retrying after circuit opens. Default: 30
+    #[serde(default = "default_circuit_breaker_recovery_secs")]
+    pub circuit_breaker_recovery_secs: u64,
 }
 
 /// Wake-on-LAN configuration.
@@ -231,6 +237,7 @@ pub struct RoutingConfig {
 
 fn default_queue_weight() -> f64 { 0.5 }
 fn default_latency_weight() -> f64 { 0.3 }
+fn default_circuit_breaker_recovery_secs() -> u64 { 30 }
 fn default_batch_timeout_ms() -> u64 { 50 }
 fn default_min_batch_size() -> u32 { 1 }
 
@@ -307,6 +314,8 @@ impl Default for GatewayConfig {
             batch_timeout_ms: default_batch_timeout_ms(),
             min_batch_size: default_min_batch_size(),
             rate_limit_rpm: 0,
+            circuit_breaker_threshold: 0,
+            circuit_breaker_recovery_secs: default_circuit_breaker_recovery_secs(),
         }
     }
 }
@@ -357,6 +366,8 @@ impl Config {
             .set_default("gateway.batch_timeout_ms", default_batch_timeout_ms() as i64)?
             .set_default("gateway.min_batch_size", default_min_batch_size() as i64)?
             .set_default("gateway.rate_limit_rpm", 0 as i64)?
+            .set_default("gateway.circuit_breaker_threshold", 0 as i64)?
+            .set_default("gateway.circuit_breaker_recovery_secs", default_circuit_breaker_recovery_secs() as i64)?
             .set_default("wol.broadcast_address", default_wol_broadcast())?
             .set_default("wol.port", default_wol_port() as i64)?
             .set_default("routing.queue_weight", default_queue_weight())?

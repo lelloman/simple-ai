@@ -234,7 +234,20 @@ async fn chat_completions(
             Err(e) => Err(crate::llm::OllamaError::ConnectionFailed(e.to_string())),
         }
     } else {
-        state.ollama_client.chat(&request, &model).await
+        // Direct Ollama mode - check circuit breaker
+        if !state.circuit_breaker.is_available("ollama") {
+            Err(crate::llm::OllamaError::ConnectionFailed(
+                "Circuit breaker open: Ollama backend is unavailable".to_string(),
+            ))
+        } else {
+            let result = state.ollama_client.chat(&request, &model).await;
+            if result.is_ok() {
+                state.circuit_breaker.record_success("ollama");
+            } else {
+                state.circuit_breaker.record_failure("ollama");
+            }
+            result
+        }
     };
 
     // Compute model class for metrics tracking
