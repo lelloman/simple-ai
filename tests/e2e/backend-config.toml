@@ -1,0 +1,28 @@
+[oidc]
+issuer = "http://mock-oidc:9090"
+audience = "test-audience"
+
+[gateway]
+enabled = true
+auth_token = "test-runner-secret"
+auto_wake_enabled = true
+wake_timeout_secs = 30
+runner_timeout_secs = 90
+
+[models]
+fast = ["llama3:8b"]
+big = ["llama3:70b"]
+
+[routing]
+speculative_wake_enabled = true
+
+[routing.class_preferences]
+fast = ["gpu-server", "halo"]
+big = ["halo", "gpu-server"]
+
+[routing.speculative_wake_targets]
+fast = ["halo", "gpu-server"]
+big = ["halo"]
+
+[logging]
+level = "debug"

@@ -177,6 +177,42 @@ python test_auth.py -v --token YOUR_JWT_TOKEN
 
 ---
 
+### 5. `test_speculative_wake_priority.py` - Speculative Wake with Priority Routing
+
+Tests that when all runners are offline and a `class:fast` request arrives, multiple runners are woken speculatively, the fast-booting runner serves initial requests, and the preferred (faster inference) runner takes over once online.
+
+**Usage:**
+
+```bash
+# Run with all runners offline
+python test_speculative_wake_priority.py --token-binary ./get-token -v
+
+# With custom wait time for preferred runner
+python test_speculative_wake_priority.py --token-binary ./get-token --preferred-wait 180 -v
+
+# Specify the preferred model explicitly
+python test_speculative_wake_priority.py --token-binary ./get-token --preferred-model llama3:8b
+```
+
+**What it tests:**
+- Phase 1: Checks initial runner status (expects all offline)
+- Phase 2: Sends `class:fast` request triggering speculative wake of multiple runners
+- Phase 3: Waits for preferred runner to come online, then verifies it handles the majority of subsequent `class:fast` requests
+
+**Options:**
+- `--url BASE_URL` - Backend URL (default: https://ai.lelloman.com)
+- `--token TOKEN` - JWT token for authentication
+- `--token-binary PATH` - Path to token generation binary
+- `--timeout SECONDS` - Request timeout (default: 180)
+- `--preferred-model MODEL` - Model name on the preferred runner (default: auto-detect)
+- `--preferred-wait SECONDS` - Max time to wait for preferred runner (default: 120)
+- `--followup-requests N` - Number of follow-up requests (default: 5)
+- `--no-verify-ssl` - Disable SSL verification
+- `-v, --verbose` - Enable verbose output
+- `--debug` - Enable debug output
+
+---
+
 ## Common Options
 
 All scripts support these options:
@@ -242,6 +278,9 @@ python test_workload_routing.py --token-binary ./get-token --requests 20
 
 # Auth test
 python test_auth.py --token-binary ./get-token
+
+# Speculative wake + priority routing test
+python test_speculative_wake_priority.py --token-binary ./get-token -v
 ```
 
 ### Quick Smoke Test

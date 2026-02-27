@@ -269,15 +269,13 @@ def test_specific_model_with_specific_role(
             verify_ssl=config.verify_ssl,
         ))
 
-        # Override to request specific role
-        token = client.token_manager.get_token(role="model:specific")
-
         messages = [{"role": "user", "content": "Say 'OK'"}]
 
         response = client.chat_completion(
             messages=messages,
             model=model,
-            max_tokens=10
+            max_tokens=10,
+            role="model:specific"
         )
         return True, f"Specific model request succeeded with model:specific role", 200
 
