@@ -20,10 +20,6 @@ pub struct OllamaEngine {
 }
 
 impl OllamaEngine {
-    pub fn new(base_url: &str) -> Self {
-        Self::with_batch_size(base_url, 1)
-    }
-
     pub fn with_batch_size(base_url: &str, batch_size: u32) -> Self {
         Self {
             http_client: Client::new(),
