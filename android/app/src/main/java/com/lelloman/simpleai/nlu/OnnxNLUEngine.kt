@@ -149,8 +149,9 @@ class OnnxNLUEngine(
         // Memory-map the file instead of reading into heap
         Log.i(TAG, "Memory-mapping base model...")
         val raf = RandomAccessFile(baseModelFile, "rw")
-        modelFileChannel = raf.channel
-        modelBuffer = modelFileChannel!!.map(FileChannel.MapMode.READ_WRITE, 0, baseModelFile.length())
+        val channel = raf.channel
+        modelFileChannel = channel
+        modelBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, baseModelFile.length())
         Log.i(TAG, "Base model mapped: ${modelBuffer?.capacity()?.div(1024 * 1024)} MB")
     }
 
@@ -389,8 +390,8 @@ class OnnxNLUEngine(
         val tokenizerJson = inputStream.bufferedReader().readText()
         val tokenizer = Json.parseToJsonElement(tokenizerJson).jsonObject
 
-        val model = tokenizer["model"]!!.jsonObject
-        val vocabElement = model["vocab"]!!
+        val model = (tokenizer["model"] ?: throw IllegalStateException("Tokenizer missing 'model' field")).jsonObject
+        val vocabElement = model["vocab"] ?: throw IllegalStateException("Tokenizer model missing 'vocab' field")
 
         // SentencePiece format: vocab is array of [token, score] pairs
         // BPE format: vocab is object of {token: id}
@@ -427,8 +428,8 @@ class OnnxNLUEngine(
         val configJson = inputStream.bufferedReader().readText()
         val config = Json.parseToJsonElement(configJson).jsonObject
 
-        val intents = config["intents"]!!.jsonArray.map { it.jsonPrimitive.content }
-        val slotLabels = config["slot_labels"]!!.jsonArray.map { it.jsonPrimitive.content }
+        val intents = (config["intents"] ?: throw IllegalStateException("Config missing 'intents' field")).jsonArray.map { it.jsonPrimitive.content }
+        val slotLabels = (config["slot_labels"] ?: throw IllegalStateException("Config missing 'slot_labels' field")).jsonArray.map { it.jsonPrimitive.content }
         val maxLength = config["max_length"]?.jsonPrimitive?.int ?: 64
 
         Log.i(TAG, "Loaded config: ${intents.size} intents, ${slotLabels.size} slots, maxLength=$maxLength")
