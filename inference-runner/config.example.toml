@@ -75,3 +75,4 @@ max_loaded_models = 3
 # "gemma-3-4b" = "google_gemma-3-4b-it-Q4_K_M"
 # "llama3-8b" = "meta_llama-3-8b-instruct-Q4_K_M"
 # "mistral-7b" = "mistral-7b-instruct-v0.3-Q4_K_M"
+# "embedding:large" = "Qwen3-Embedding-8B-Q4_K_M"

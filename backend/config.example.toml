@@ -68,7 +68,7 @@ embed_small = [
     "nomic-embed-text",
 ]
 embed_large = [
-    "mxbai-embed-large",
+    "embedding:large",
 ]
 
 [routing]

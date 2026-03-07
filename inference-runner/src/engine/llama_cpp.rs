@@ -536,6 +536,11 @@ impl LlamaCppEngine {
             cmd.arg("-c").arg(ctx_size.to_string());
         }
 
+        // Enable embedding mode for embedding models
+        if Self::is_embedding_model(model_id) {
+            cmd.arg("--embedding");
+        }
+
         // Append extra llama-server arguments (e.g., --flash-attn on --no-mmap)
         for arg in &self.config.extra_args {
             cmd.arg(arg);
@@ -648,6 +653,11 @@ impl LlamaCppEngine {
         Ok(instance)
     }
 
+    /// Check if a model is an embedding model based on its name.
+    fn is_embedding_model(model_id: &str) -> bool {
+        model_id.to_lowercase().contains("embed")
+    }
+
     /// Extract quantization type from filename (e.g., "model-q4_0.gguf" -> "Q4_0").
     fn extract_quantization(filename: &str) -> Option<String> {
         let patterns = [
@@ -715,6 +725,23 @@ struct LlamaResponseMessage {
 struct LlamaUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
+}
+
+/// Request body for llama-server /v1/embeddings endpoint.
+#[derive(Debug, Serialize)]
+struct LlamaEmbeddingRequest {
+    input: Vec<String>,
+}
+
+/// Response from llama-server /v1/embeddings endpoint.
+#[derive(Debug, Deserialize)]
+struct LlamaEmbeddingResponse {
+    data: Vec<LlamaEmbeddingData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LlamaEmbeddingData {
+    embedding: Vec<f32>,
 }
 
 // ============================================================================
@@ -934,6 +961,77 @@ impl InferenceEngine for LlamaCppEngine {
         instance.touch().await;
 
         Ok(response)
+    }
+
+    async fn embed(
+        &self,
+        model_id: &str,
+        input: &[String],
+    ) -> Result<Vec<Vec<f32>>> {
+        if !Self::is_embedding_model(model_id) {
+            return Err(Error::InvalidRequest(format!(
+                "Model {} is not an embedding model",
+                model_id
+            )));
+        }
+
+        let instance = self.ensure_server(model_id).await?;
+
+        if instance.state().await != ServerState::Ready {
+            return Err(Error::EngineNotAvailable(format!(
+                "llama-server for {} is not ready",
+                model_id
+            )));
+        }
+
+        let url = format!("http://127.0.0.1:{}/v1/embeddings", instance.port);
+
+        tracing::debug!("Sending embedding request to llama-server: {}", url);
+
+        let request = LlamaEmbeddingRequest {
+            input: input.to_vec(),
+        };
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    tracing::warn!(
+                        "Connection failed to llama-server for {}, marking unhealthy",
+                        model_id
+                    );
+                    let instance_clone = instance.clone();
+                    tokio::spawn(async move {
+                        instance_clone.set_state(ServerState::Unhealthy).await;
+                    });
+                }
+                Error::Communication(e.to_string())
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::InferenceFailed(format!("{}: {}", status, body)));
+        }
+
+        let embed_response: LlamaEmbeddingResponse = response
+            .json()
+            .await
+            .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+
+        let embeddings = embed_response
+            .data
+            .into_iter()
+            .map(|d| d.embedding)
+            .collect();
+
+        instance.touch().await;
+
+        Ok(embeddings)
     }
 }
 
@@ -1168,6 +1266,17 @@ mod tests {
         // Model not in config and file doesn't exist, should return default 4.0
         let memory = engine.get_model_memory_gb("nonexistent").await;
         assert!((memory - 4.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_is_embedding_model() {
+        assert!(LlamaCppEngine::is_embedding_model("Qwen3-Embedding-8B-Q4_K_M"));
+        assert!(LlamaCppEngine::is_embedding_model("qwen3-embedding-0.6b"));
+        assert!(LlamaCppEngine::is_embedding_model("nomic-embed-text"));
+        assert!(LlamaCppEngine::is_embedding_model("mxbai-embed-large"));
+        assert!(!LlamaCppEngine::is_embedding_model("qwen3-4b"));
+        assert!(!LlamaCppEngine::is_embedding_model("gpt-oss-120b-Q4_K_M"));
+        assert!(!LlamaCppEngine::is_embedding_model("Qwen3-Coder-30B"));
     }
 
     #[tokio::test]
