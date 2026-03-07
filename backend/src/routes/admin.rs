@@ -53,6 +53,10 @@ async fn require_admin(
                     Html("<h1>403 Forbidden</h1><p>Admin access required.</p>"),
                 ).into_response();
             }
+            // Ensure admin user exists in the database
+            if let Err(e) = state.audit_logger.find_or_create_user(&user.sub, user.email.as_deref()) {
+                tracing::warn!("Failed to create user record for admin {}: {}", user.sub, e);
+            }
             next.run(request).await
         }
         Err(_) => {
@@ -1057,6 +1061,11 @@ async fn validate_admin_token(state: &AppState, token: &str) -> Result<(), Strin
         return Err("Admin access required".to_string());
     }
 
+    // Ensure admin user exists in the database
+    if let Err(e) = state.audit_logger.find_or_create_user(&user.sub, user.email.as_deref()) {
+        tracing::warn!("Failed to create user record for admin {}: {}", user.sub, e);
+    }
+
     Ok(())
 }
 
@@ -1091,6 +1100,11 @@ async fn runner_events(
 
     if !user.is_admin() {
         return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Ensure admin user exists in the database
+    if let Err(e) = state.audit_logger.find_or_create_user(&user.sub, user.email.as_deref()) {
+        tracing::warn!("Failed to create user record for admin {}: {}", user.sub, e);
     }
 
     // Subscribe to registry events
