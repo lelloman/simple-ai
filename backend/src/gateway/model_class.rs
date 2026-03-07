@@ -16,14 +16,20 @@ pub enum ModelClass {
     Big,
     /// Smaller models - faster inference
     Fast,
+    /// Small embedding models (e.g., nomic-embed-text)
+    EmbedSmall,
+    /// Large embedding models (e.g., mxbai-embed-large)
+    EmbedLarge,
 }
 
 impl ModelClass {
     /// Parse a model class from a string.
     pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
+        match s.to_lowercase().replace('-', "_").as_str() {
             "big" => Some(Self::Big),
             "fast" => Some(Self::Fast),
+            "embed_small" => Some(Self::EmbedSmall),
+            "embed_large" => Some(Self::EmbedLarge),
             _ => None,
         }
     }
@@ -33,6 +39,8 @@ impl ModelClass {
         match self {
             Self::Big => "big",
             Self::Fast => "fast",
+            Self::EmbedSmall => "embed_small",
+            Self::EmbedLarge => "embed_large",
         }
     }
 }
@@ -50,6 +58,8 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
     match config.classify(model_id) {
         Some("big") => Some(ModelClass::Big),
         Some("fast") => Some(ModelClass::Fast),
+        Some("embed_small") => Some(ModelClass::EmbedSmall),
+        Some("embed_large") => Some(ModelClass::EmbedLarge),
         _ => None,
     }
 }
@@ -130,7 +140,7 @@ mod tests {
                 "llama3:70b".to_string(),
                 "qwen2:72b".to_string(),
             ],
-            fast: vec![],
+            ..Default::default()
         };
         assert_eq!(classify_model("llama3:70b", &config), Some(ModelClass::Big));
         assert_eq!(classify_model("LLAMA3:70B", &config), Some(ModelClass::Big)); // case-insensitive
@@ -140,11 +150,11 @@ mod tests {
     #[test]
     fn test_classify_model_fast() {
         let config = ModelsConfig {
-            big: vec![],
             fast: vec![
                 "llama3:8b".to_string(),
                 "mistral:7b".to_string(),
             ],
+            ..Default::default()
         };
         assert_eq!(classify_model("llama3:8b", &config), Some(ModelClass::Fast));
         assert_eq!(classify_model("mistral:7b", &config), Some(ModelClass::Fast));
@@ -163,6 +173,7 @@ mod tests {
         let config = ModelsConfig {
             big: vec!["custom-big-model".to_string()],
             fast: vec!["small-model".to_string()],
+            ..Default::default()
         };
         assert_eq!(classify_model("custom-big-model", &config), Some(ModelClass::Big));
         assert_eq!(classify_model("Custom-Big-Model", &config), Some(ModelClass::Big)); // case-insensitive
@@ -221,6 +232,7 @@ mod tests {
         let config = ModelsConfig {
             big: vec!["llama3:70b".to_string()],
             fast: vec!["llama3:8b".to_string()],
+            ..Default::default()
         };
 
         // Class requests always return Some(class)

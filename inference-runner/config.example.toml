@@ -64,6 +64,7 @@ max_loaded_models = 3
 # "llama3.2:3b" = ["fast_chat"]
 # "qwen2.5:72b" = ["large_chat"]
 # "nomic-embed-text" = ["embeddings"]
+# "mxbai-embed-large" = ["embeddings"]
 
 # Model aliases map canonical (user-facing) names to local engine names.
 # This allows clients to request "gemma-3-4b" while the runner uses

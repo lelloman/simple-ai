@@ -1,6 +1,7 @@
 //! OpenAI-compatible HTTP API.
 
 pub mod chat;
+pub mod embeddings;
 pub mod health;
 pub mod models;
 
@@ -14,5 +15,6 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .merge(chat::router())
+        .merge(embeddings::router())
         .merge(models::router())
 }

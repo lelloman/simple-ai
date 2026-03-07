@@ -32,6 +32,9 @@ pub enum Error {
     #[error("Engine communication error: {0}")]
     Communication(String),
 
+    #[error("Not supported: {0}")]
+    NotSupported(String),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -46,6 +49,7 @@ impl IntoResponse for Error {
             Error::LoadFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, "load_failed"),
             Error::InvalidRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
             Error::Communication(_) => (StatusCode::BAD_GATEWAY, "communication_error"),
+            Error::NotSupported(_) => (StatusCode::NOT_IMPLEMENTED, "not_supported"),
             Error::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         };
 

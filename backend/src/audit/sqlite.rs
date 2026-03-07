@@ -1409,6 +1409,7 @@ mod tests {
         let models_config = ModelsConfig {
             big: vec!["llama3:70b".to_string()],
             fast: vec!["llama3:8b".to_string(), "mistral:7b".to_string()],
+            ..Default::default()
         };
 
         let big_runners = logger.get_runners_by_model_class(ModelClass::Big, &models_config).unwrap();

@@ -64,6 +64,12 @@ fast = [
     "mistral:7b",
     "phi3:mini",
 ]
+embed_small = [
+    "nomic-embed-text",
+]
+embed_large = [
+    "mxbai-embed-large",
+]
 
 [routing]
 # Smart routing configuration for intelligent request distribution.

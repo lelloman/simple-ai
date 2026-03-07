@@ -194,6 +194,52 @@ impl InferenceRouter {
         })
     }
 
+    /// Route an embedding request to an appropriate runner.
+    ///
+    /// Identical to `chat_completion()` except it proxies to `/v1/embeddings`.
+    pub async fn embed<Req, Resp>(
+        &self,
+        model: &str,
+        request: &Req,
+    ) -> Result<RoutedResponse<Resp>, RouterError>
+    where
+        Req: Serialize + Clone,
+        Resp: DeserializeOwned,
+    {
+        let selection = self.select_runner_for_model(model).await?;
+        let runner_id = selection.runner.id.clone();
+        let resolved_model = selection.resolved_model.clone();
+
+        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+        if let Some(obj) = request_value.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(local_model));
+        }
+
+        self.registry.increment_requests(&runner_id).await;
+
+        let response = self.proxy_request_value(&selection.runner, "/v1/embeddings", request_value)
+            .await;
+
+        self.registry.decrement_requests(&runner_id).await;
+
+        if let Some(cb) = &self.circuit_breaker {
+            if response.is_ok() {
+                cb.record_success(&runner_id);
+            } else {
+                cb.record_failure(&runner_id);
+            }
+        }
+
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model,
+        })
+    }
+
     /// Route a chat completion request through the batch queue.
     ///
     /// This method enqueues the request and waits for it to be processed
@@ -894,7 +940,7 @@ mod tests {
 
         let models_config = crate::config::ModelsConfig {
             fast: vec!["llama3:8b".to_string()],
-            big: vec![],
+            ..Default::default()
         };
 
         let test_db_path = format!("test_smart_routing_{}.db", Uuid::new_v4().to_string().replace('-', ""));
@@ -953,7 +999,7 @@ mod tests {
 
         let models_config = crate::config::ModelsConfig {
             fast: vec!["llama3:8b".to_string()],
-            big: vec![],
+            ..Default::default()
         };
 
         let test_db_path = format!("test_smart_queue_{}.db", Uuid::new_v4().to_string().replace('-', ""));
@@ -994,7 +1040,7 @@ mod tests {
 
         let models_config = crate::config::ModelsConfig {
             fast: vec!["llama3:8b".to_string()],
-            big: vec![],
+            ..Default::default()
         };
 
         let test_db_path = format!("test_excessive_weights_{}.db", Uuid::new_v4().to_string().replace('-', ""));

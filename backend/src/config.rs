@@ -169,6 +169,14 @@ pub struct ModelsConfig {
     /// Exact model IDs (case-insensitive).
     #[serde(default)]
     pub fast: Vec<String>,
+    /// Models classified as "embed_small" (small embedding models).
+    /// Exact model IDs (case-insensitive).
+    #[serde(default)]
+    pub embed_small: Vec<String>,
+    /// Models classified as "embed_large" (large embedding models).
+    /// Exact model IDs (case-insensitive).
+    #[serde(default)]
+    pub embed_large: Vec<String>,
 }
 
 impl Default for ModelsConfig {
@@ -176,6 +184,8 @@ impl Default for ModelsConfig {
         Self {
             big: vec![],
             fast: vec![],
+            embed_small: vec![],
+            embed_large: vec![],
         }
     }
 }
@@ -197,6 +207,18 @@ impl ModelsConfig {
         for id in &self.fast {
             if lower == id.to_lowercase() {
                 return Some("fast");
+            }
+        }
+
+        for id in &self.embed_small {
+            if lower == id.to_lowercase() {
+                return Some("embed_small");
+            }
+        }
+
+        for id in &self.embed_large {
+            if lower == id.to_lowercase() {
+                return Some("embed_large");
             }
         }
 

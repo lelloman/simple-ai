@@ -416,6 +416,55 @@ impl InferenceEngine for OllamaEngine {
 
         Ok(response)
     }
+
+    async fn embed(
+        &self,
+        model_id: &str,
+        input: &[String],
+    ) -> Result<Vec<Vec<f32>>> {
+        let url = format!("{}/api/embed", self.base_url);
+
+        let request = OllamaEmbedRequest {
+            model: model_id.to_string(),
+            input: input.to_vec(),
+        };
+
+        tracing::debug!("Sending embed request to Ollama: {} model={}", url, model_id);
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| Error::Communication(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::InferenceFailed(format!("{}: {}", status, body)));
+        }
+
+        let embed_response: OllamaEmbedResponse = response
+            .json()
+            .await
+            .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+
+        Ok(embed_response.embeddings)
+    }
+}
+
+/// Ollama embed request (POST /api/embed).
+#[derive(Debug, Serialize)]
+struct OllamaEmbedRequest {
+    model: String,
+    input: Vec<String>,
+}
+
+/// Ollama embed response.
+#[derive(Debug, Deserialize)]
+struct OllamaEmbedResponse {
+    embeddings: Vec<Vec<f32>>,
 }
 
 /// Parse parameter size strings like "7B", "70B", "1.5B" into actual counts.
@@ -447,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_ollama_engine_url_normalization() {
-        let engine = OllamaEngine::new("http://localhost:11434/");
+        let engine = OllamaEngine::with_batch_size("http://localhost:11434/", 1);
         assert_eq!(engine.base_url, "http://localhost:11434");
     }
 }

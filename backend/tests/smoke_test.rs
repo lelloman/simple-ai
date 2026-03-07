@@ -221,6 +221,16 @@ async fn test_admin_stats_requires_auth() {
 }
 
 #[tokio::test]
+async fn test_embeddings_requires_auth() {
+    let state = create_test_state().await.unwrap();
+    let app = axum::Router::new().nest("/v1", routes::embeddings::router(state));
+
+    let body = Bytes::from(r#"{"input": "Hello world", "model": "nomic-embed-text"}"#);
+    let status = send_request(&app, http::Method::POST, "/v1/embeddings", Some(body)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn test_nonexistent_route_returns_404() {
     let state = create_test_state().await.unwrap();
     let app = routes::admin::router(state);

@@ -213,6 +213,55 @@ impl OllamaClient {
 
         Ok(response)
     }
+
+    /// Send an embedding request to Ollama and return the embeddings.
+    pub async fn embed(
+        &self,
+        model: &str,
+        input: &[String],
+    ) -> Result<Vec<Vec<f32>>, OllamaError> {
+        let ollama_request = OllamaEmbedRequest {
+            model: model.to_string(),
+            input: input.to_vec(),
+        };
+
+        let url = format!("{}/api/embed", self.base_url);
+
+        tracing::debug!("Sending embed request to Ollama: {}", url);
+
+        let response = self.http_client
+            .post(&url)
+            .json(&ollama_request)
+            .send()
+            .await
+            .map_err(|e| OllamaError::RequestFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(OllamaError::OllamaError(format!("{}: {}", status, body)));
+        }
+
+        let ollama_response: OllamaEmbedResponse = response
+            .json()
+            .await
+            .map_err(|e| OllamaError::InvalidResponse(e.to_string()))?;
+
+        Ok(ollama_response.embeddings)
+    }
+}
+
+/// Ollama embed request format (POST /api/embed).
+#[derive(Debug, Serialize)]
+struct OllamaEmbedRequest {
+    model: String,
+    input: Vec<String>,
+}
+
+/// Ollama embed response format.
+#[derive(Debug, Deserialize)]
+struct OllamaEmbedResponse {
+    embeddings: Vec<Vec<f32>>,
 }
 
 #[cfg(test)]
