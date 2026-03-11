@@ -482,13 +482,52 @@ impl WakeService {
         Ok(())
     }
 
+    /// Send a keepalive signal to idle-manager for a runner.
+    ///
+    /// Fire-and-forget: logs a warning on failure but never blocks the caller.
+    pub fn keepalive_runner(&self, runner_id: String) {
+        let idle_manager_url = match self.gateway_config.idle_manager_url {
+            Some(ref url) => url.clone(),
+            None => return,
+        };
+
+        let client = self.http_client.clone();
+        tokio::spawn(async move {
+            let url = format!(
+                "{}/nodes/{}/keepalive",
+                idle_manager_url.trim_end_matches('/'),
+                runner_id
+            );
+            match client
+                .post(&url)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    tracing::debug!("Sent keepalive for runner {}", runner_id);
+                }
+                Ok(resp) => {
+                    tracing::warn!(
+                        "Keepalive for runner {} failed: HTTP {}",
+                        runner_id,
+                        resp.status()
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Keepalive for runner {} failed: {}", runner_id, e);
+                }
+            }
+        });
+    }
+
     /// Wake runner via idle-manager service.
     async fn wake_via_idle_manager(
         &self,
         idle_manager_url: &str,
         runner_id: &str,
     ) -> Result<(), WakeError> {
-        let url = format!("{}/wake/{}", idle_manager_url.trim_end_matches('/'), runner_id);
+        let url = format!("{}/nodes/{}/wake", idle_manager_url.trim_end_matches('/'), runner_id);
 
         let response = self
             .http_client

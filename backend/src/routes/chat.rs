@@ -105,7 +105,8 @@ async fn chat_completions(
 
         match initial_result {
             Ok(routed) => {
-                runner_id = Some(routed.runner_id);
+                runner_id = Some(routed.runner_id.clone());
+                state.wake_service.keepalive_runner(routed.runner_id);
                 Ok(routed.response)
             }
             Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
@@ -129,7 +130,8 @@ async fn chat_completions(
                         };
                         match retry_result {
                             Ok(routed) => {
-                                runner_id = Some(routed.runner_id);
+                                runner_id = Some(routed.runner_id.clone());
+                                state.wake_service.keepalive_runner(routed.runner_id);
                                 Ok(routed.response)
                             }
                             Err(e) => Err(crate::llm::OllamaError::ConnectionFailed(e.to_string())),

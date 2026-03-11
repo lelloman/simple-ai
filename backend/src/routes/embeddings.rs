@@ -117,7 +117,8 @@ async fn create_embeddings(
 
         match initial_result {
             Ok(routed) => {
-                runner_id = Some(routed.runner_id);
+                runner_id = Some(routed.runner_id.clone());
+                state.wake_service.keepalive_runner(routed.runner_id);
                 Ok(routed.response)
             }
             Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
@@ -134,7 +135,8 @@ async fn create_embeddings(
                         let retry_result = state.inference_router.embed::<EmbeddingRequest, EmbeddingResponse>(&model, &request).await;
                         match retry_result {
                             Ok(routed) => {
-                                runner_id = Some(routed.runner_id);
+                                runner_id = Some(routed.runner_id.clone());
+                                state.wake_service.keepalive_runner(routed.runner_id);
                                 Ok(routed.response)
                             }
                             Err(e) => Err(e.to_string()),
