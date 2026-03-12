@@ -20,6 +20,7 @@ RUN rm -rf simple-ai-common/src backend/src inference-runner/src
 COPY simple-ai-common/src ./simple-ai-common/src
 COPY backend/src ./backend/src
 COPY backend/static ./backend/static
+COPY backend/scripts ./backend/scripts
 
 # Build for release (touch both to ensure cargo rebuilds with actual sources)
 RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --release -p simple-ai-backend
@@ -27,9 +28,11 @@ RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --relea
 # Runtime image
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates curl python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --break-system-packages --no-cache-dir trafilatura==2.0.0
 
 COPY --from=builder /app/target/release/simple-ai-backend /usr/local/bin/
+COPY --from=builder /app/backend/scripts/simple_ai_extract.py /usr/local/bin/simple_ai_extract.py
 
 # Create data directory for SQLite and download language detection model
 RUN mkdir -p /data

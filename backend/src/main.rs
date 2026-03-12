@@ -155,6 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build /v1 routes, optionally with rate limiting
     let v1_routes = simple_ai_backend::routes::chat::router(state.clone())
         .merge(simple_ai_backend::routes::embeddings::router(state.clone()))
+        .merge(simple_ai_backend::routes::extract::router(state.clone()))
         .merge(simple_ai_backend::routes::language::router(state.clone()))
         .merge(simple_ai_backend::routes::models::router(state.clone()));
 
