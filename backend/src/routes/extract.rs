@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::{
+    extract::DefaultBodyLimit,
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -43,7 +44,10 @@ pub struct ExtractResponse {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
-    Router::new().route("/extract", post(extract)).with_state(state)
+    Router::new()
+        .route("/extract", post(extract))
+        .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
+        .with_state(state)
 }
 
 async fn extract(

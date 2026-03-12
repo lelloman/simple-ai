@@ -29,7 +29,7 @@ RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --relea
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates curl python3 python3-pip && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --break-system-packages --no-cache-dir trafilatura==2.0.0
+RUN pip3 install --break-system-packages --no-cache-dir trafilatura==2.0.0 lxml_html_clean
 
 COPY --from=builder /app/target/release/simple-ai-backend /usr/local/bin/
 COPY --from=builder /app/backend/scripts/simple_ai_extract.py /usr/local/bin/simple_ai_extract.py
