@@ -2,9 +2,9 @@ use std::net::SocketAddr;
 
 use axum::http::{HeaderMap, StatusCode};
 
-use crate::AppState;
 use crate::auth::AuthUser;
 use crate::models::user::User;
+use crate::AppState;
 
 /// Extract client IP from headers (X-Forwarded-For, X-Real-IP) or connection info.
 pub fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> Option<String> {
@@ -33,7 +33,9 @@ pub async fn authenticate_request(
         if token.starts_with("sk-") {
             match state.audit_logger.validate_api_key(token) {
                 Ok(Some((user_id, email))) => {
-                    let user = state.audit_logger.find_or_create_user(&user_id, email.as_deref())
+                    let user = state
+                        .audit_logger
+                        .find_or_create_user(&user_id, email.as_deref())
                         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                     if !user.is_enabled {
                         return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
@@ -51,13 +53,16 @@ pub async fn authenticate_request(
         }
     }
 
-    let auth_user = state.jwks_client.authenticate(headers).await
+    let auth_user = state
+        .jwks_client
+        .authenticate(headers)
+        .await
         .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
 
-    let user = state.audit_logger.find_or_create_user(
-        &auth_user.sub,
-        auth_user.email.as_deref(),
-    ).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let user = state
+        .audit_logger
+        .find_or_create_user(&auth_user.sub, auth_user.email.as_deref())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if !user.is_enabled {
         return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));

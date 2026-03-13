@@ -152,8 +152,11 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
         };
-        let response =
-            ChatCompletionResponse::new("test-model".to_string(), message, Some("stop".to_string()));
+        let response = ChatCompletionResponse::new(
+            "test-model".to_string(),
+            message,
+            Some("stop".to_string()),
+        );
         assert!(response.id.starts_with("chatcmpl-"));
         assert_eq!(response.object, "chat.completion");
         assert_eq!(response.model, "test-model");

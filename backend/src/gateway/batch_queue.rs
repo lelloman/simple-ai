@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tokio::sync::{oneshot, RwLock, Notify};
+use tokio::sync::{oneshot, Notify, RwLock};
 
 use simple_ai_common::ChatCompletionRequest;
 
@@ -270,10 +270,13 @@ impl BatchQueue {
         queues
             .iter()
             .map(|(model, queue)| {
-                (model.clone(), ModelQueueStats {
-                    pending: queue.len(),
-                    oldest_age_ms: queue.age().map(|d| d.as_millis() as u64),
-                })
+                (
+                    model.clone(),
+                    ModelQueueStats {
+                        pending: queue.len(),
+                        oldest_age_ms: queue.age().map(|d| d.as_millis() as u64),
+                    },
+                )
             })
             .collect()
     }
@@ -307,7 +310,9 @@ mod tests {
         assert!(queue.pending_models().await.is_empty());
         assert_eq!(queue.pending_count("model-a").await, 0);
 
-        let _rx = queue.enqueue("model-a".to_string(), create_test_request()).await;
+        let _rx = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
 
         assert_eq!(queue.pending_models().await, vec!["model-a".to_string()]);
         assert_eq!(queue.pending_count("model-a").await, 1);
@@ -319,7 +324,9 @@ mod tests {
 
         // Enqueue 4 requests
         for _ in 0..4 {
-            let _rx = queue.enqueue("model-a".to_string(), create_test_request()).await;
+            let _rx = queue
+                .enqueue("model-a".to_string(), create_test_request())
+                .await;
         }
 
         // Should dispatch when runner_batch_size is 4
@@ -337,7 +344,9 @@ mod tests {
         };
         let queue = BatchQueue::new(config);
 
-        let _rx = queue.enqueue("model-a".to_string(), create_test_request()).await;
+        let _rx = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
 
         // Should not dispatch immediately (not enough for batch)
         assert!(!queue.should_dispatch("model-a", 4).await);
@@ -355,7 +364,9 @@ mod tests {
 
         // Enqueue 5 requests
         for _ in 0..5 {
-            let _rx = queue.enqueue("model-a".to_string(), create_test_request()).await;
+            let _rx = queue
+                .enqueue("model-a".to_string(), create_test_request())
+                .await;
         }
 
         // Take batch of 3
@@ -385,7 +396,9 @@ mod tests {
 
         // Enqueue 2 requests (below min_batch_size)
         for _ in 0..2 {
-            let _rx = queue.enqueue("model-a".to_string(), create_test_request()).await;
+            let _rx = queue
+                .enqueue("model-a".to_string(), create_test_request())
+                .await;
         }
 
         // Wait for timeout
@@ -395,7 +408,9 @@ mod tests {
         assert!(!queue.should_dispatch("model-a", 8).await);
 
         // Add one more to reach min_batch_size
-        let _rx = queue.enqueue("model-a".to_string(), create_test_request()).await;
+        let _rx = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
 
         // Wait for timeout on the new request
         tokio::time::sleep(Duration::from_millis(15)).await;
@@ -413,9 +428,15 @@ mod tests {
         assert!(stats.is_empty());
 
         // Enqueue requests for two models
-        let _rx1 = queue.enqueue("model-a".to_string(), create_test_request()).await;
-        let _rx2 = queue.enqueue("model-a".to_string(), create_test_request()).await;
-        let _rx3 = queue.enqueue("model-b".to_string(), create_test_request()).await;
+        let _rx1 = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+        let _rx2 = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+        let _rx3 = queue
+            .enqueue("model-b".to_string(), create_test_request())
+            .await;
 
         let stats = queue.get_stats().await;
         assert_eq!(stats.len(), 2);

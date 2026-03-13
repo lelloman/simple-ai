@@ -1,6 +1,6 @@
-use axum::{routing::get, Json, Router};
-use axum::response::{IntoResponse, Response};
 use axum::http::{header, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::{routing::get, Json, Router};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -27,7 +27,12 @@ async fn metrics() -> Response {
          simpleai_info{{version=\"{}\"}} 1\n",
         version
     );
-    (StatusCode::OK, [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body).into_response()
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        body,
+    )
+        .into_response()
 }
 
 pub fn router() -> Router {

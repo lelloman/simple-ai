@@ -216,7 +216,10 @@ impl GatewayClient {
         tx: &mpsc::Sender<RunnerMessage>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let msg: GatewayMessage = serde_json::from_str(text)?;
-        tracing::debug!("Received gateway message: {:?}", std::mem::discriminant(&msg));
+        tracing::debug!(
+            "Received gateway message: {:?}",
+            std::mem::discriminant(&msg)
+        );
 
         match msg {
             GatewayMessage::Ping { timestamp } => {
@@ -237,7 +240,10 @@ impl GatewayClient {
                 tx.send(RunnerMessage::CommandResponse(response)).await?;
             }
 
-            GatewayMessage::LoadModel { model_id, request_id } => {
+            GatewayMessage::LoadModel {
+                model_id,
+                request_id,
+            } => {
                 let result = self.load_model(&model_id).await;
                 let status = self.status_collector.collect().await;
                 let response = CommandResponse {
@@ -249,7 +255,10 @@ impl GatewayClient {
                 tx.send(RunnerMessage::CommandResponse(response)).await?;
             }
 
-            GatewayMessage::UnloadModel { model_id, request_id } => {
+            GatewayMessage::UnloadModel {
+                model_id,
+                request_id,
+            } => {
                 let result = self.unload_model(&model_id).await;
                 let status = self.status_collector.collect().await;
                 let response = CommandResponse {
@@ -277,7 +286,10 @@ impl GatewayClient {
         Ok(())
     }
 
-    async fn load_model(&self, model_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn load_model(
+        &self,
+        model_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Resolve canonical name to local engine name if aliased
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();
@@ -301,7 +313,12 @@ impl GatewayClient {
         for engine in engines {
             match engine.load_model(local_id).await {
                 Ok(()) => {
-                    tracing::info!("Loaded model {} (local: {}) via {}", model_id, local_id, engine.engine_type());
+                    tracing::info!(
+                        "Loaded model {} (local: {}) via {}",
+                        model_id,
+                        local_id,
+                        engine.engine_type()
+                    );
                     return Ok(());
                 }
                 Err(e) => {
@@ -321,11 +338,17 @@ impl GatewayClient {
             "Failed to load model '{}' (local: '{}'): {}",
             model_id,
             local_id,
-            last_error.map(|e| e.to_string()).unwrap_or_else(|| "unknown error".to_string())
-        ).into())
+            last_error
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "unknown error".to_string())
+        )
+        .into())
     }
 
-    async fn unload_model(&self, model_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn unload_model(
+        &self,
+        model_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Resolve canonical name to local engine name if aliased
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();
@@ -333,7 +356,12 @@ impl GatewayClient {
         // Try each engine
         for engine in self.engine_registry.all().await {
             if engine.unload_model(local_id).await.is_ok() {
-                tracing::info!("Unloaded model {} (local: {}) from {}", model_id, local_id, engine.engine_type());
+                tracing::info!(
+                    "Unloaded model {} (local: {}) from {}",
+                    model_id,
+                    local_id,
+                    engine.engine_type()
+                );
                 return Ok(());
             }
         }
@@ -345,7 +373,9 @@ impl GatewayClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig};
+    use crate::config::{
+        AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig,
+    };
     use crate::engine::EngineRegistry;
     use simple_ai_common::{RunnerStatus, PROTOCOL_VERSION};
 

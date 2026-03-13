@@ -69,7 +69,9 @@ fn is_mac_address(s: &str) -> bool {
     if parts.len() != 6 {
         return false;
     }
-    parts.iter().all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
+    parts
+        .iter()
+        .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 #[cfg(test)]
@@ -85,9 +87,9 @@ mod tests {
 
     #[test]
     fn test_is_mac_address_invalid() {
-        assert!(!is_mac_address("aa:bb:cc:dd:ee"));  // Too short
-        assert!(!is_mac_address("aa:bb:cc:dd:ee:ff:00"));  // Too long
-        assert!(!is_mac_address("aa-bb-cc-dd-ee-ff"));  // Wrong delimiter
+        assert!(!is_mac_address("aa:bb:cc:dd:ee")); // Too short
+        assert!(!is_mac_address("aa:bb:cc:dd:ee:ff:00")); // Too long
+        assert!(!is_mac_address("aa-bb-cc-dd-ee-ff")); // Wrong delimiter
         assert!(!is_mac_address("not a mac"));
         assert!(!is_mac_address(""));
     }

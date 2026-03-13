@@ -109,7 +109,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(async move {
             client.run().await;
         });
-        tracing::info!("Gateway client started, connecting to {}", gateway_config.ws_url);
+        tracing::info!(
+            "Gateway client started, connecting to {}",
+            gateway_config.ws_url
+        );
     } else {
         tracing::info!("No gateway configured, running in standalone mode");
     }

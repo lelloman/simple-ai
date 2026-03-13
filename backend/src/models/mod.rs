@@ -1,3 +1,3 @@
 pub mod chat;
-pub mod user;
 pub mod request;
+pub mod user;

@@ -98,13 +98,10 @@ pub trait InferenceEngine: Send + Sync {
     /// Generate embeddings for the given input texts.
     ///
     /// Default implementation returns NotSupported.
-    async fn embed(
-        &self,
-        _model_id: &str,
-        _input: &[String],
-    ) -> Result<Vec<Vec<f32>>> {
-        Err(crate::error::Error::NotSupported(
-            format!("Embeddings not supported by {} engine", self.engine_type()),
-        ))
+    async fn embed(&self, _model_id: &str, _input: &[String]) -> Result<Vec<Vec<f32>>> {
+        Err(crate::error::Error::NotSupported(format!(
+            "Embeddings not supported by {} engine",
+            self.engine_type()
+        )))
     }
 }

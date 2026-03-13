@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use simple_ai_common::{
-    Capability, CapabilityInfo, CapabilityStatus, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus,
+    Capability, CapabilityInfo, CapabilityStatus, EngineStatus, ModelInfo, RunnerHealth,
+    RunnerStatus,
 };
 
 use crate::config::Config;
@@ -191,7 +192,9 @@ impl StatusCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig};
+    use crate::config::{
+        AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig,
+    };
     use std::collections::HashMap;
 
     fn test_config() -> Config {
@@ -240,11 +243,15 @@ mod tests {
         // Should have 2 capabilities (one loaded, one unloaded)
         assert_eq!(capabilities.len(), 2);
 
-        let fast_chat = capabilities.iter().find(|c| c.capability == Capability::FastChat);
+        let fast_chat = capabilities
+            .iter()
+            .find(|c| c.capability == Capability::FastChat);
         assert!(fast_chat.is_some());
         assert_eq!(fast_chat.unwrap().status, CapabilityStatus::Loaded);
 
-        let large_chat = capabilities.iter().find(|c| c.capability == Capability::LargeChat);
+        let large_chat = capabilities
+            .iter()
+            .find(|c| c.capability == Capability::LargeChat);
         assert!(large_chat.is_some());
         assert_eq!(large_chat.unwrap().status, CapabilityStatus::Unloaded);
     }
@@ -317,7 +324,10 @@ mod tests {
                 batch_size: 1,
             },
         ];
-        assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Healthy);
+        assert_eq!(
+            StatusCollector::compute_health(&engines),
+            RunnerHealth::Healthy
+        );
     }
 
     #[test]
@@ -342,7 +352,10 @@ mod tests {
                 batch_size: 1,
             },
         ];
-        assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Degraded);
+        assert_eq!(
+            StatusCollector::compute_health(&engines),
+            RunnerHealth::Degraded
+        );
     }
 
     #[test]
@@ -356,12 +369,18 @@ mod tests {
             error: Some("Down".to_string()),
             batch_size: 1,
         }];
-        assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Unhealthy);
+        assert_eq!(
+            StatusCollector::compute_health(&engines),
+            RunnerHealth::Unhealthy
+        );
     }
 
     #[test]
     fn test_compute_health_no_engines() {
         let engines: Vec<EngineStatus> = vec![];
-        assert_eq!(StatusCollector::compute_health(&engines), RunnerHealth::Starting);
+        assert_eq!(
+            StatusCollector::compute_health(&engines),
+            RunnerHealth::Starting
+        );
     }
 }

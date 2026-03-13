@@ -53,9 +53,15 @@ pub enum GatewayMessage {
     /// Acknowledgment of successful registration.
     RegisterAck { runner_id: String },
     /// Command to load a model.
-    LoadModel { model_id: String, request_id: String },
+    LoadModel {
+        model_id: String,
+        request_id: String,
+    },
     /// Command to unload a model.
-    UnloadModel { model_id: String, request_id: String },
+    UnloadModel {
+        model_id: String,
+        request_id: String,
+    },
     /// Request current status.
     RequestStatus { request_id: String },
     /// Ping for connection health.

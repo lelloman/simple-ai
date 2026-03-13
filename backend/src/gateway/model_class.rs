@@ -136,10 +136,7 @@ mod tests {
     #[test]
     fn test_classify_model_big() {
         let config = ModelsConfig {
-            big: vec![
-                "llama3:70b".to_string(),
-                "qwen2:72b".to_string(),
-            ],
+            big: vec!["llama3:70b".to_string(), "qwen2:72b".to_string()],
             ..Default::default()
         };
         assert_eq!(classify_model("llama3:70b", &config), Some(ModelClass::Big));
@@ -150,14 +147,14 @@ mod tests {
     #[test]
     fn test_classify_model_fast() {
         let config = ModelsConfig {
-            fast: vec![
-                "llama3:8b".to_string(),
-                "mistral:7b".to_string(),
-            ],
+            fast: vec!["llama3:8b".to_string(), "mistral:7b".to_string()],
             ..Default::default()
         };
         assert_eq!(classify_model("llama3:8b", &config), Some(ModelClass::Fast));
-        assert_eq!(classify_model("mistral:7b", &config), Some(ModelClass::Fast));
+        assert_eq!(
+            classify_model("mistral:7b", &config),
+            Some(ModelClass::Fast)
+        );
     }
 
     #[test]
@@ -175,9 +172,18 @@ mod tests {
             fast: vec!["small-model".to_string()],
             ..Default::default()
         };
-        assert_eq!(classify_model("custom-big-model", &config), Some(ModelClass::Big));
-        assert_eq!(classify_model("Custom-Big-Model", &config), Some(ModelClass::Big)); // case-insensitive
-        assert_eq!(classify_model("small-model", &config), Some(ModelClass::Fast));
+        assert_eq!(
+            classify_model("custom-big-model", &config),
+            Some(ModelClass::Big)
+        );
+        assert_eq!(
+            classify_model("Custom-Big-Model", &config),
+            Some(ModelClass::Big)
+        ); // case-insensitive
+        assert_eq!(
+            classify_model("small-model", &config),
+            Some(ModelClass::Fast)
+        );
         assert_eq!(classify_model("unknown-model", &config), None); // not in config
     }
 

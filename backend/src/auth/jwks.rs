@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use axum::http::HeaderMap;
-use jsonwebtoken::{decode, decode_header, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::RwLock;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::config::OidcConfig as AppOidcConfig;
 
@@ -192,7 +192,8 @@ impl JwksClient {
     async fn refresh_keys(&self) -> Result<(), AuthError> {
         tracing::info!("Fetching JWKS from {}", self.jwks_uri);
 
-        let response: JwksResponse = self.http_client
+        let response: JwksResponse = self
+            .http_client
             .get(&self.jwks_uri)
             .send()
             .await
@@ -245,15 +246,16 @@ impl JwksClient {
     /// instead of an Authorization header.
     pub async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError> {
         // Decode header to get kid
-        let header = decode_header(token)
-            .map_err(|e| AuthError::InvalidToken(e.to_string()))?;
+        let header = decode_header(token).map_err(|e| AuthError::InvalidToken(e.to_string()))?;
 
-        let kid = header.kid
+        let kid = header
+            .kid
             .ok_or_else(|| AuthError::InvalidToken("Missing kid in token header".to_string()))?;
 
         // Get key for kid
         let keys = self.keys.read().await;
-        let key = keys.get(&kid)
+        let key = keys
+            .get(&kid)
             .ok_or_else(|| AuthError::KeyNotFound(kid.clone()))?;
 
         // Validate token
@@ -293,8 +295,8 @@ struct OidcDiscovery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::HeaderMap;
     use axum::http::header::AUTHORIZATION;
+    use axum::http::HeaderMap;
 
     fn empty_headers() -> HeaderMap {
         HeaderMap::new()
@@ -353,23 +355,13 @@ mod tests {
 
     #[test]
     fn test_auth_user_is_admin_via_admin_users_list() {
-        let user = make_user_with_admin_users(
-            "user123",
-            None,
-            vec![],
-            vec!["user123"],
-        );
+        let user = make_user_with_admin_users("user123", None, vec![], vec!["user123"]);
         assert!(user.is_admin());
     }
 
     #[test]
     fn test_auth_user_is_admin_via_admin_users_list_no_match() {
-        let user = make_user_with_admin_users(
-            "user123",
-            None,
-            vec![],
-            vec!["other-user"],
-        );
+        let user = make_user_with_admin_users("user123", None, vec![], vec!["other-user"]);
         assert!(!user.is_admin());
     }
 
@@ -453,7 +445,8 @@ mod tests {
 
     #[test]
     fn test_auth_error_invalid_token() {
-        let result: Result<AuthUser, AuthError> = Err(AuthError::InvalidToken("test error".to_string()));
+        let result: Result<AuthUser, AuthError> =
+            Err(AuthError::InvalidToken("test error".to_string()));
         assert!(result.is_err());
         if let Err(e) = result {
             assert!(e.to_string().contains("Invalid token"));
@@ -462,7 +455,8 @@ mod tests {
 
     #[test]
     fn test_auth_error_jwks_fetch_error() {
-        let result: Result<AuthUser, AuthError> = Err(AuthError::JwksFetchError("connection refused".to_string()));
+        let result: Result<AuthUser, AuthError> =
+            Err(AuthError::JwksFetchError("connection refused".to_string()));
         assert!(result.is_err());
         if let Err(e) = result {
             assert!(e.to_string().contains("JWKS fetch error"));
@@ -523,10 +517,7 @@ mod tests {
     #[test]
     fn test_extract_roles_simple_path() {
         let mut extra = HashMap::new();
-        extra.insert(
-            "roles".to_string(),
-            serde_json::json!(["admin", "user"]),
-        );
+        extra.insert("roles".to_string(), serde_json::json!(["admin", "user"]));
         let roles = JwksClient::extract_roles(&extra, "roles");
         assert_eq!(roles, vec!["admin", "user"]);
     }
@@ -577,7 +568,10 @@ mod tests {
     #[test]
     fn test_extract_roles_intermediate_not_object() {
         let mut extra = HashMap::new();
-        extra.insert("realm_access".to_string(), serde_json::json!("not-an-object"));
+        extra.insert(
+            "realm_access".to_string(),
+            serde_json::json!("not-an-object"),
+        );
         let roles = JwksClient::extract_roles(&extra, "realm_access.roles");
         assert!(roles.is_empty());
     }

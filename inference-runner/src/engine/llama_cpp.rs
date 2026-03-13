@@ -80,9 +80,9 @@ impl ServerInstance {
         let mut process = self.process.write().await;
         if let Some(ref mut child) = *process {
             match child.try_wait() {
-                Ok(None) => true,  // Still running
-                Ok(Some(_)) => false,  // Exited
-                Err(_) => false,  // Error checking
+                Ok(None) => true,     // Still running
+                Ok(Some(_)) => false, // Exited
+                Err(_) => false,      // Error checking
             }
         } else {
             false
@@ -107,26 +107,15 @@ impl ServerInstance {
             }
 
             // Wait with timeout
-            let wait_result = tokio::time::timeout(
-                Duration::from_secs(timeout_secs),
-                child.wait(),
-            )
-            .await;
+            let wait_result =
+                tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait()).await;
 
             match wait_result {
                 Ok(Ok(status)) => {
-                    tracing::debug!(
-                        "llama-server for {} exited with {}",
-                        self.model_id,
-                        status
-                    );
+                    tracing::debug!("llama-server for {} exited with {}", self.model_id, status);
                 }
                 Ok(Err(e)) => {
-                    tracing::warn!(
-                        "Error waiting for llama-server {}: {}",
-                        self.model_id,
-                        e
-                    );
+                    tracing::warn!("Error waiting for llama-server {}: {}", self.model_id, e);
                 }
                 Err(_timeout) => {
                     tracing::warn!(
@@ -194,7 +183,10 @@ impl LlamaCppEngine {
 
             if path.is_dir() {
                 self.scan_directory_recursive(&path, models);
-            } else if path.extension().map_or(false, |ext| ext.eq_ignore_ascii_case("gguf")) {
+            } else if path
+                .extension()
+                .map_or(false, |ext| ext.eq_ignore_ascii_case("gguf"))
+            {
                 let filename = match path.file_name().and_then(|s| s.to_str()) {
                     Some(f) => f,
                     None => continue,
@@ -278,9 +270,9 @@ impl LlamaCppEngine {
             )))
         } else {
             // Use OS-assigned port
-            let listener = TcpListener::bind("127.0.0.1:0")
-                .await
-                .map_err(|e| Error::Internal(format!("Failed to bind for port allocation: {}", e)))?;
+            let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| {
+                Error::Internal(format!("Failed to bind for port allocation: {}", e))
+            })?;
             let port = listener
                 .local_addr()
                 .map_err(|e| Error::Internal(format!("Failed to get local addr: {}", e)))?
@@ -499,9 +491,10 @@ impl LlamaCppEngine {
     /// Start a llama-server process for a model.
     async fn start_server(&self, model_id: &str, memory_gb: f32) -> Result<Arc<ServerInstance>> {
         // Look up model path from cache
-        let model_path = self.model_path(model_id).await.ok_or_else(|| {
-            Error::ModelNotFound(format!("Model not found: {}", model_id))
-        })?;
+        let model_path = self
+            .model_path(model_id)
+            .await
+            .ok_or_else(|| Error::ModelNotFound(format!("Model not found: {}", model_id)))?;
 
         if !model_path.exists() {
             return Err(Error::ModelNotFound(format!(
@@ -560,9 +553,7 @@ impl LlamaCppEngine {
         let process = cmd.spawn().map_err(|e| {
             Error::LoadFailed(format!(
                 "Failed to spawn llama-server for {}: {}. Binary: {}",
-                model_id,
-                e,
-                self.config.server_binary
+                model_id, e, self.config.server_binary
             ))
         })?;
 
@@ -574,7 +565,12 @@ impl LlamaCppEngine {
             memory_gb
         );
 
-        let instance = Arc::new(ServerInstance::new(model_id.to_string(), port, memory_gb, process));
+        let instance = Arc::new(ServerInstance::new(
+            model_id.to_string(),
+            port,
+            memory_gb,
+            process,
+        ));
 
         // Wait for server to be ready
         if let Err(e) = self.wait_for_ready(&instance).await {
@@ -661,8 +657,8 @@ impl LlamaCppEngine {
     /// Extract quantization type from filename (e.g., "model-q4_0.gguf" -> "Q4_0").
     fn extract_quantization(filename: &str) -> Option<String> {
         let patterns = [
-            "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s", "q4_k_m",
-            "q5_0", "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "f16", "f32",
+            "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_0", "q4_1", "q4_k_s", "q4_k_m", "q5_0",
+            "q5_1", "q5_k_s", "q5_k_m", "q6_k", "q8_0", "f16", "f32",
         ];
 
         let lower = filename.to_lowercase();
@@ -851,9 +847,7 @@ impl InferenceEngine for LlamaCppEngine {
         };
 
         if let Some(instance) = instance {
-            instance
-                .terminate(self.config.shutdown_timeout_secs)
-                .await;
+            instance.terminate(self.config.shutdown_timeout_secs).await;
             tracing::info!("Model {} unloaded from llama.cpp", model_id);
         }
 
@@ -963,11 +957,7 @@ impl InferenceEngine for LlamaCppEngine {
         Ok(response)
     }
 
-    async fn embed(
-        &self,
-        model_id: &str,
-        input: &[String],
-    ) -> Result<Vec<Vec<f32>>> {
+    async fn embed(&self, model_id: &str, input: &[String]) -> Result<Vec<Vec<f32>>> {
         if !Self::is_embedding_model(model_id) {
             return Err(Error::InvalidRequest(format!(
                 "Model {} is not an embedding model",
@@ -1076,13 +1066,23 @@ mod tests {
     #[test]
     fn test_is_non_primary_shard() {
         // Primary shards should return false
-        assert!(!LlamaCppEngine::is_non_primary_shard("model-00001-of-00002.gguf"));
-        assert!(!LlamaCppEngine::is_non_primary_shard("gpt-oss-120b-Q4_K_M-00001-of-00002.gguf"));
+        assert!(!LlamaCppEngine::is_non_primary_shard(
+            "model-00001-of-00002.gguf"
+        ));
+        assert!(!LlamaCppEngine::is_non_primary_shard(
+            "gpt-oss-120b-Q4_K_M-00001-of-00002.gguf"
+        ));
 
         // Non-primary shards should return true
-        assert!(LlamaCppEngine::is_non_primary_shard("model-00002-of-00002.gguf"));
-        assert!(LlamaCppEngine::is_non_primary_shard("model-00003-of-00005.gguf"));
-        assert!(LlamaCppEngine::is_non_primary_shard("gpt-oss-120b-Q4_K_M-00002-of-00002.gguf"));
+        assert!(LlamaCppEngine::is_non_primary_shard(
+            "model-00002-of-00002.gguf"
+        ));
+        assert!(LlamaCppEngine::is_non_primary_shard(
+            "model-00003-of-00005.gguf"
+        ));
+        assert!(LlamaCppEngine::is_non_primary_shard(
+            "gpt-oss-120b-Q4_K_M-00002-of-00002.gguf"
+        ));
 
         // Non-sharded models should return false
         assert!(!LlamaCppEngine::is_non_primary_shard("model.gguf"));
@@ -1126,10 +1126,7 @@ mod tests {
             LlamaCppEngine::extract_quantization("model-f16.gguf"),
             Some("F16".to_string())
         );
-        assert_eq!(
-            LlamaCppEngine::extract_quantization("model.gguf"),
-            None
-        );
+        assert_eq!(LlamaCppEngine::extract_quantization("model.gguf"), None);
     }
 
     #[test]
@@ -1270,7 +1267,9 @@ mod tests {
 
     #[test]
     fn test_is_embedding_model() {
-        assert!(LlamaCppEngine::is_embedding_model("Qwen3-Embedding-8B-Q4_K_M"));
+        assert!(LlamaCppEngine::is_embedding_model(
+            "Qwen3-Embedding-8B-Q4_K_M"
+        ));
         assert!(LlamaCppEngine::is_embedding_model("qwen3-embedding-0.6b"));
         assert!(LlamaCppEngine::is_embedding_model("nomic-embed-text"));
         assert!(LlamaCppEngine::is_embedding_model("mxbai-embed-large"));
@@ -1337,5 +1336,4 @@ mod tests {
         let result = engine.ensure_capacity("new-model", 8.0).await;
         assert!(result.is_ok());
     }
-
 }

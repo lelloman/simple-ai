@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::AppState;
 use super::auth_helpers::authenticate_request;
+use crate::AppState;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,7 +59,10 @@ async fn extract(
     let (_auth_user, user) = authenticate_request(&state, &headers).await?;
 
     if request.url.trim().is_empty() || request.html.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "url and html are required".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "url and html are required".to_string(),
+        ));
     }
 
     let payload = serde_json::to_vec(&request)
@@ -71,19 +74,28 @@ async fn extract(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to spawn extractor: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to spawn extractor: {}", e),
+            )
+        })?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(&payload)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to send extractor payload: {}", e)))?;
+        stdin.write_all(&payload).await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to send extractor payload: {}", e),
+            )
+        })?;
     }
 
-    let output = child
-        .wait_with_output()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("extractor process failed: {}", e)))?;
+    let output = child.wait_with_output().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("extractor process failed: {}", e),
+        )
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -95,8 +107,12 @@ async fn extract(
         return Err((StatusCode::INTERNAL_SERVER_ERROR, msg));
     }
 
-    let response: ExtractResponse = serde_json::from_slice(&output.stdout)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("invalid extractor response: {}", e)))?;
+    let response: ExtractResponse = serde_json::from_slice(&output.stdout).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("invalid extractor response: {}", e),
+        )
+    })?;
 
     tracing::info!(
         user_id = %user.id,

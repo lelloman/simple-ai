@@ -240,8 +240,14 @@ impl Config {
             // Set defaults
             .set_default("api.host", default_host())?
             .set_default("api.port", default_port() as i64)?
-            .set_default("capabilities.persistence.idle_timeout_secs", default_idle_timeout() as i64)?
-            .set_default("capabilities.persistence.max_loaded_models", default_max_loaded() as i64)?
+            .set_default(
+                "capabilities.persistence.idle_timeout_secs",
+                default_idle_timeout() as i64,
+            )?
+            .set_default(
+                "capabilities.persistence.max_loaded_models",
+                default_max_loaded() as i64,
+            )?
             // Load from config.toml if exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (RUNNER__SECTION__KEY format)

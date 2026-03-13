@@ -201,7 +201,9 @@ impl InferenceEngine for OllamaEngine {
             .into_iter()
             .map(|m| {
                 let parameter_count = m.details.as_ref().and_then(|d| {
-                    d.parameter_size.as_ref().and_then(|s| parse_parameter_size(s))
+                    d.parameter_size
+                        .as_ref()
+                        .and_then(|s| parse_parameter_size(s))
                 });
                 let quantization = m
                     .details
@@ -408,20 +410,17 @@ impl InferenceEngine for OllamaEngine {
         let mut response =
             ChatCompletionResponse::new(model_id.to_string(), message, finish_reason);
 
-        if let (Some(prompt), Some(completion)) =
-            (ollama_response.prompt_eval_count, ollama_response.eval_count)
-        {
+        if let (Some(prompt), Some(completion)) = (
+            ollama_response.prompt_eval_count,
+            ollama_response.eval_count,
+        ) {
             response = response.with_usage(prompt, completion);
         }
 
         Ok(response)
     }
 
-    async fn embed(
-        &self,
-        model_id: &str,
-        input: &[String],
-    ) -> Result<Vec<Vec<f32>>> {
+    async fn embed(&self, model_id: &str, input: &[String]) -> Result<Vec<Vec<f32>>> {
         let url = format!("{}/api/embed", self.base_url);
 
         let request = OllamaEmbedRequest {
@@ -429,7 +428,11 @@ impl InferenceEngine for OllamaEngine {
             input: input.to_vec(),
         };
 
-        tracing::debug!("Sending embed request to Ollama: {} model={}", url, model_id);
+        tracing::debug!(
+            "Sending embed request to Ollama: {} model={}",
+            url,
+            model_id
+        );
 
         let response = self
             .http_client
@@ -478,7 +481,10 @@ fn parse_parameter_size(s: &str) -> Option<u64> {
         return None;
     };
 
-    num_str.parse::<f64>().ok().map(|n| (n * multiplier as f64) as u64)
+    num_str
+        .parse::<f64>()
+        .ok()
+        .map(|n| (n * multiplier as f64) as u64)
 }
 
 #[cfg(test)]

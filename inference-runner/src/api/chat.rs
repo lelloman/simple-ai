@@ -35,7 +35,11 @@ async fn chat_completions(
         .map(|s| s.as_str())
         .unwrap_or(model);
 
-    tracing::debug!("Chat completion request for model: {} (resolved: {})", model, resolved_model);
+    tracing::debug!(
+        "Chat completion request for model: {} (resolved: {})",
+        model,
+        resolved_model
+    );
 
     // Find an engine that can serve this model
     let engine = state

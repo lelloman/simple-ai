@@ -1,7 +1,9 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction};
+use crate::models::chat::{
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
+};
 
 /// Client for communicating with Ollama API.
 pub struct OllamaClient {
@@ -103,18 +105,23 @@ impl OllamaClient {
         model: &str,
     ) -> Result<ChatCompletionResponse, OllamaError> {
         // Convert messages to Ollama format
-        let messages: Vec<OllamaMessage> = request.messages.iter()
+        let messages: Vec<OllamaMessage> = request
+            .messages
+            .iter()
             .map(|m| {
                 // Convert tool_calls from OpenAI format to Ollama format
                 let tool_calls = m.tool_calls.as_ref().map(|calls| {
-                    calls.iter().map(|tc| OllamaToolCall {
-                        id: Some(tc.id.clone()),
-                        function: OllamaToolFunction {
-                            name: tc.function.name.clone(),
-                            arguments: serde_json::from_str(&tc.function.arguments)
-                                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                        },
-                    }).collect()
+                    calls
+                        .iter()
+                        .map(|tc| OllamaToolCall {
+                            id: Some(tc.id.clone()),
+                            function: OllamaToolFunction {
+                                name: tc.function.name.clone(),
+                                arguments: serde_json::from_str(&tc.function.arguments)
+                                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                            },
+                        })
+                        .collect()
                 });
 
                 OllamaMessage {
@@ -147,7 +154,8 @@ impl OllamaClient {
 
         tracing::debug!("Sending request to Ollama: {}", url);
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&url)
             .json(&ollama_request)
             .send()
@@ -167,16 +175,18 @@ impl OllamaClient {
 
         // Convert tool_calls from Ollama format to OpenAI format
         let tool_calls = ollama_response.message.tool_calls.map(|calls| {
-            calls.into_iter().enumerate().map(|(i, tc)| {
-                ToolCall {
+            calls
+                .into_iter()
+                .enumerate()
+                .map(|(i, tc)| ToolCall {
                     id: tc.id.unwrap_or_else(|| format!("call_{}", i)),
                     call_type: "function".to_string(),
                     function: ToolFunction {
                         name: tc.function.name,
                         arguments: tc.function.arguments.to_string(),
                     },
-                }
-            }).collect()
+                })
+                .collect()
         });
 
         // Convert to OpenAI format
@@ -198,16 +208,13 @@ impl OllamaClient {
             None
         };
 
-        let mut response = ChatCompletionResponse::new(
-            model.to_string(),
-            message,
-            finish_reason,
-        );
+        let mut response = ChatCompletionResponse::new(model.to_string(), message, finish_reason);
 
         // Add usage info if available
-        if let (Some(prompt), Some(completion)) =
-            (ollama_response.prompt_eval_count, ollama_response.eval_count)
-        {
+        if let (Some(prompt), Some(completion)) = (
+            ollama_response.prompt_eval_count,
+            ollama_response.eval_count,
+        ) {
             response = response.with_usage(prompt, completion);
         }
 
@@ -215,11 +222,7 @@ impl OllamaClient {
     }
 
     /// Send an embedding request to Ollama and return the embeddings.
-    pub async fn embed(
-        &self,
-        model: &str,
-        input: &[String],
-    ) -> Result<Vec<Vec<f32>>, OllamaError> {
+    pub async fn embed(&self, model: &str, input: &[String]) -> Result<Vec<Vec<f32>>, OllamaError> {
         let ollama_request = OllamaEmbedRequest {
             model: model.to_string(),
             input: input.to_vec(),
@@ -229,7 +232,8 @@ impl OllamaClient {
 
         tracing::debug!("Sending embed request to Ollama: {}", url);
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&url)
             .json(&ollama_request)
             .send()

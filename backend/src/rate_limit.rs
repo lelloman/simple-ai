@@ -16,7 +16,8 @@ use tokio::sync::Mutex;
 
 /// Per-IP rate limiter using the GCRA algorithm.
 pub struct RateLimiter {
-    limiters: Mutex<HashMap<String, Arc<GovernorRateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>,
+    limiters:
+        Mutex<HashMap<String, Arc<GovernorRateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>,
     quota: Quota,
 }
 
@@ -42,7 +43,8 @@ impl RateLimiter {
         match limiter.check() {
             Ok(()) => Ok(()),
             Err(not_until) => {
-                let retry_after = not_until.wait_time_from(governor::clock::Clock::now(&DefaultClock::default()));
+                let retry_after =
+                    not_until.wait_time_from(governor::clock::Clock::now(&DefaultClock::default()));
                 Err(retry_after.as_secs().max(1))
             }
         }

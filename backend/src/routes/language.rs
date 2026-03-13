@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
@@ -6,6 +5,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::AppState;
 
@@ -26,14 +26,17 @@ async fn detect_language(
     Json(request): Json<DetectLanguageRequest>,
 ) -> Result<Json<DetectLanguageResponse>, (StatusCode, String)> {
     // Authenticate user
-    let auth_user = state.jwks_client.authenticate(&headers).await
+    let auth_user = state
+        .jwks_client
+        .authenticate(&headers)
+        .await
         .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
 
     // Find or create user in database
-    let user = state.audit_logger.find_or_create_user(
-        &auth_user.sub,
-        auth_user.email.as_deref(),
-    ).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let user = state
+        .audit_logger
+        .find_or_create_user(&auth_user.sub, auth_user.email.as_deref())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Check if user is enabled
     if !user.is_enabled {
@@ -42,7 +45,8 @@ async fn detect_language(
 
     // Detect language using FastText
     let detector = state.lang_detector.lock().await;
-    let predictions = detector.predict(&request.text, 1, 0.0)
+    let predictions = detector
+        .predict(&request.text, 1, 0.0)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     let response = match predictions.first() {

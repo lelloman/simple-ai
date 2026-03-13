@@ -1,10 +1,10 @@
+use chrono::Utc;
+use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
-use chrono::Utc;
-use rusqlite::{Connection, params};
 
-use crate::models::user::User;
 use crate::models::request::{Request, Response};
+use crate::models::user::User;
 
 /// SQLite-based audit logger with user management.
 pub struct AuditLogger {
@@ -32,12 +32,10 @@ impl AuditLogger {
 
         // Create parent directories if needed
         if let Some(parent) = Path::new(path).parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AuditError::IoError(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| AuditError::IoError(e.to_string()))?;
         }
 
-        let conn = Connection::open(path)
-            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let conn = Connection::open(path).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Create users table
         conn.execute(
@@ -49,7 +47,8 @@ impl AuditLogger {
                 is_enabled INTEGER NOT NULL DEFAULT 1
             )",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Create requests table
         conn.execute(
@@ -64,7 +63,8 @@ impl AuditLogger {
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Migration: add client_ip column if it doesn't exist (for existing databases)
         let _ = conn.execute("ALTER TABLE requests ADD COLUMN client_ip TEXT", []);
@@ -83,15 +83,22 @@ impl AuditLogger {
                 FOREIGN KEY (request_id) REFERENCES requests(id)
             )",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Migration: add runner_id and wol_sent columns to responses
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN runner_id TEXT", []);
-        let _ = conn.execute("ALTER TABLE responses ADD COLUMN wol_sent INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute(
+            "ALTER TABLE responses ADD COLUMN wol_sent INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
 
         // Migration: add tokens_prompt and tokens_completion columns to responses (for existing databases)
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN tokens_prompt INTEGER", []);
-        let _ = conn.execute("ALTER TABLE responses ADD COLUMN tokens_completion INTEGER", []);
+        let _ = conn.execute(
+            "ALTER TABLE responses ADD COLUMN tokens_completion INTEGER",
+            [],
+        );
 
         // Create API keys table
         conn.execute(
@@ -106,23 +113,27 @@ impl AuditLogger {
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Create indexes
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id)",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_responses_request_id ON responses(request_id)",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Create runners table for persistent runner tracking
         conn.execute(
@@ -135,19 +146,14 @@ impl AuditLogger {
                 available_models TEXT
             )",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Migration: add available_models column if it doesn't exist
-        let _ = conn.execute(
-            "ALTER TABLE runners ADD COLUMN available_models TEXT",
-            [],
-        ); // Ignore error if column already exists
+        let _ = conn.execute("ALTER TABLE runners ADD COLUMN available_models TEXT", []); // Ignore error if column already exists
 
         // Migration: add model_class column to responses
-        let _ = conn.execute(
-            "ALTER TABLE responses ADD COLUMN model_class TEXT",
-            [],
-        );
+        let _ = conn.execute("ALTER TABLE responses ADD COLUMN model_class TEXT", []);
 
         // Create runner_metrics table for tracking boot time and inference latency
         conn.execute(
@@ -162,7 +168,8 @@ impl AuditLogger {
                 PRIMARY KEY (runner_id, model_class)
             )",
             [],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         tracing::info!("Audit logger initialized with database: {}", path);
 
@@ -172,8 +179,14 @@ impl AuditLogger {
     }
 
     /// Find or create a user. Returns the user.
-    pub fn find_or_create_user(&self, user_id: &str, email: Option<&str>) -> Result<User, AuditError> {
-        let conn = self.conn.lock()
+    pub fn find_or_create_user(
+        &self,
+        user_id: &str,
+        email: Option<&str>,
+    ) -> Result<User, AuditError> {
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let now = Utc::now();
@@ -183,13 +196,15 @@ impl AuditLogger {
             .query_row(
                 "SELECT id, email, created_at, last_seen_at, is_enabled FROM users WHERE id = ?1",
                 params![user_id],
-                |row| Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get::<_, i32>(4)? != 0,
-                )),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get::<_, i32>(4)? != 0,
+                    ))
+                },
             )
             .ok();
 
@@ -199,7 +214,8 @@ impl AuditLogger {
                 conn.execute(
                     "UPDATE users SET last_seen_at = ?1, email = COALESCE(?2, email) WHERE id = ?3",
                     params![now.to_rfc3339(), email, user_id],
-                ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+                )
+                .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
                 let created = chrono::DateTime::parse_from_rfc3339(&created_at)
                     .map(|dt| dt.with_timezone(&Utc))
@@ -220,7 +236,11 @@ impl AuditLogger {
                     params![user_id, email, now.to_rfc3339(), now.to_rfc3339()],
                 ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-                tracing::info!("Created new user: {} ({})", user_id, email.unwrap_or("no email"));
+                tracing::info!(
+                    "Created new user: {} ({})",
+                    user_id,
+                    email.unwrap_or("no email")
+                );
 
                 Ok(User {
                     id: user_id.to_string(),
@@ -235,7 +255,9 @@ impl AuditLogger {
 
     /// Log a request (before calling the LLM). Returns the request ID.
     pub fn log_request(&self, request: &Request) -> Result<String, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
@@ -258,7 +280,9 @@ impl AuditLogger {
 
     /// Log a response (after getting LLM result).
     pub fn log_response(&self, response: &Response) -> Result<(), AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
@@ -280,7 +304,9 @@ impl AuditLogger {
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Record inference metrics if we have runner_id and model_class
-        if let (Some(ref runner_id), Some(ref model_class)) = (&response.runner_id, &response.model_class) {
+        if let (Some(ref runner_id), Some(ref model_class)) =
+            (&response.runner_id, &response.model_class)
+        {
             // Use a separate connection lock scope - ignore errors from metrics recording
             drop(conn);
             let _ = self.record_metric(runner_id, model_class, response.latency_ms);
@@ -291,8 +317,15 @@ impl AuditLogger {
     }
 
     /// Record a metric sample (boot time or inference latency).
-    pub fn record_metric(&self, runner_id: &str, model_class: &str, ms: u64) -> Result<(), AuditError> {
-        let conn = self.conn.lock()
+    pub fn record_metric(
+        &self,
+        runner_id: &str,
+        model_class: &str,
+        ms: u64,
+    ) -> Result<(), AuditError> {
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let now = Utc::now().to_rfc3339();
@@ -309,7 +342,12 @@ impl AuditLogger {
             params![runner_id, model_class, ms as i64, now],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        tracing::debug!("Recorded {} metric for runner {}: {}ms", model_class, runner_id, ms);
+        tracing::debug!(
+            "Recorded {} metric for runner {}: {}ms",
+            model_class,
+            runner_id,
+            ms
+        );
         Ok(())
     }
 
@@ -317,7 +355,9 @@ impl AuditLogger {
 
     /// Get dashboard statistics.
     pub fn get_stats(&self) -> Result<DashboardStats, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let total_users: i64 = conn
@@ -361,25 +401,31 @@ impl AuditLogger {
 
     /// Get recent requests for dashboard.
     pub fn get_recent_requests(&self, limit: u32) -> Result<Vec<RequestSummary>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let mut stmt = conn.prepare(
-            "SELECT r.id, r.timestamp, r.user_id, r.request_path, r.model
+        let mut stmt = conn
+            .prepare(
+                "SELECT r.id, r.timestamp, r.user_id, r.request_path, r.model
              FROM requests r
              ORDER BY r.timestamp DESC
-             LIMIT ?1"
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+             LIMIT ?1",
+            )
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows = stmt.query_map(params![limit], |row| {
-            Ok(RequestSummary {
-                id: row.get(0)?,
-                timestamp: row.get(1)?,
-                user_id: row.get(2)?,
-                request_path: row.get(3)?,
-                model: row.get(4)?,
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok(RequestSummary {
+                    id: row.get(0)?,
+                    timestamp: row.get(1)?,
+                    user_id: row.get(2)?,
+                    request_path: row.get(3)?,
+                    model: row.get(4)?,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut requests = Vec::new();
         for row in rows {
@@ -390,26 +436,32 @@ impl AuditLogger {
 
     /// Get all users with request counts.
     pub fn get_users_with_stats(&self) -> Result<Vec<UserWithStats>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let mut stmt = conn.prepare(
-            "SELECT u.id, u.email, u.created_at, u.last_seen_at, u.is_enabled,
+        let mut stmt = conn
+            .prepare(
+                "SELECT u.id, u.email, u.created_at, u.last_seen_at, u.is_enabled,
                     (SELECT COUNT(*) FROM requests r WHERE r.user_id = u.id) as request_count
              FROM users u
-             ORDER BY u.last_seen_at DESC"
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+             ORDER BY u.last_seen_at DESC",
+            )
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok(UserWithStats {
-                id: row.get(0)?,
-                email: row.get(1)?,
-                created_at: row.get(2)?,
-                last_seen_at: row.get(3)?,
-                is_enabled: row.get::<_, i32>(4)? != 0,
-                request_count: row.get(5)?,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(UserWithStats {
+                    id: row.get(0)?,
+                    email: row.get(1)?,
+                    created_at: row.get(2)?,
+                    last_seen_at: row.get(3)?,
+                    is_enabled: row.get::<_, i32>(4)? != 0,
+                    request_count: row.get(5)?,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut users = Vec::new();
         for row in rows {
@@ -426,7 +478,9 @@ impl AuditLogger {
         page: u32,
         per_page: u32,
     ) -> Result<(Vec<RequestWithResponse>, u32), AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Build query with filters
@@ -455,9 +509,11 @@ impl AuditLogger {
         // Get total count
         let count_sql = format!("SELECT COUNT(*) FROM requests r {}", where_clause);
         let total: i64 = {
-            let mut stmt = conn.prepare(&count_sql)
+            let mut stmt = conn
+                .prepare(&count_sql)
                 .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-            let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+            let params_refs: Vec<&dyn rusqlite::ToSql> =
+                params_vec.iter().map(|p| p.as_ref()).collect();
             stmt.query_row(params_refs.as_slice(), |row| row.get(0))
                 .unwrap_or(0)
         };
@@ -482,27 +538,31 @@ impl AuditLogger {
         params_vec.push(Box::new(per_page as i64));
         params_vec.push(Box::new(offset as i64));
 
-        let mut stmt = conn.prepare(&query_sql)
+        let mut stmt = conn
+            .prepare(&query_sql)
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
-        let rows = stmt.query_map(params_refs.as_slice(), |row| {
-            Ok(RequestWithResponse {
-                id: row.get(0)?,
-                timestamp: row.get(1)?,
-                user_id: row.get(2)?,
-                user_email: row.get(3)?,
-                request_path: row.get(4)?,
-                model: row.get(5)?,
-                client_ip: row.get(6)?,
-                status: row.get(7)?,
-                latency_ms: row.get(8)?,
-                tokens_prompt: row.get(9)?,
-                tokens_completion: row.get(10)?,
-                runner_id: row.get(11)?,
-                wol_sent: row.get::<_, i32>(12)? != 0,
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Ok(RequestWithResponse {
+                    id: row.get(0)?,
+                    timestamp: row.get(1)?,
+                    user_id: row.get(2)?,
+                    user_email: row.get(3)?,
+                    request_path: row.get(4)?,
+                    model: row.get(5)?,
+                    client_ip: row.get(6)?,
+                    status: row.get(7)?,
+                    latency_ms: row.get(8)?,
+                    tokens_prompt: row.get(9)?,
+                    tokens_completion: row.get(10)?,
+                    runner_id: row.get(11)?,
+                    wol_sent: row.get::<_, i32>(12)? != 0,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut requests = Vec::new();
         for row in rows {
@@ -514,26 +574,32 @@ impl AuditLogger {
 
     /// Enable a user.
     pub fn enable_user(&self, user_id: &str) -> Result<(), AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
             "UPDATE users SET is_enabled = 1 WHERE id = ?1",
             params![user_id],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
 
     /// Disable a user.
     pub fn disable_user(&self, user_id: &str) -> Result<(), AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
             "UPDATE users SET is_enabled = 0 WHERE id = ?1",
             params![user_id],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }
@@ -541,10 +607,16 @@ impl AuditLogger {
     // ==================== API Key Management ====================
 
     /// Create a new API key. Returns the plaintext key (only shown once).
-    pub fn create_api_key(&self, user_id: &str, name: &str) -> Result<(ApiKey, String), AuditError> {
-        use sha2::{Sha256, Digest};
+    pub fn create_api_key(
+        &self,
+        user_id: &str,
+        name: &str,
+    ) -> Result<(ApiKey, String), AuditError> {
+        use sha2::{Digest, Sha256};
 
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Generate a random key: sk-<32 hex chars>
@@ -563,14 +635,17 @@ impl AuditLogger {
             "INSERT INTO api_keys (id, key_hash, user_id, name, created_at, revoked)
              VALUES (?1, ?2, ?3, ?4, ?5, 0)",
             params![id, key_hash, user_id, name, now],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Get user email for the response
-        let user_email: Option<String> = conn.query_row(
-            "SELECT email FROM users WHERE id = ?1",
-            params![user_id],
-            |row| row.get(0),
-        ).ok();
+        let user_email: Option<String> = conn
+            .query_row(
+                "SELECT email FROM users WHERE id = ?1",
+                params![user_id],
+                |row| row.get(0),
+            )
+            .ok();
 
         let api_key = ApiKey {
             id,
@@ -588,14 +663,19 @@ impl AuditLogger {
 
     /// Validate an API key and return the associated user info.
     /// Updates last_used_at on successful validation.
-    pub fn validate_api_key(&self, plaintext_key: &str) -> Result<Option<(String, Option<String>)>, AuditError> {
-        use sha2::{Sha256, Digest};
+    pub fn validate_api_key(
+        &self,
+        plaintext_key: &str,
+    ) -> Result<Option<(String, Option<String>)>, AuditError> {
+        use sha2::{Digest, Sha256};
 
         if !plaintext_key.starts_with("sk-") {
             return Ok(None);
         }
 
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Hash the provided key
@@ -630,7 +710,9 @@ impl AuditLogger {
 
     /// List all API keys (for admin).
     pub fn list_api_keys(&self) -> Result<Vec<ApiKey>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
@@ -640,18 +722,20 @@ impl AuditLogger {
              ORDER BY ak.created_at DESC"
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok(ApiKey {
-                id: row.get(0)?,
-                key_hash: row.get(1)?,
-                user_id: row.get(2)?,
-                user_email: row.get(3)?,
-                name: row.get(4)?,
-                created_at: row.get(5)?,
-                last_used_at: row.get(6)?,
-                revoked: row.get::<_, i32>(7)? != 0,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ApiKey {
+                    id: row.get(0)?,
+                    key_hash: row.get(1)?,
+                    user_id: row.get(2)?,
+                    user_email: row.get(3)?,
+                    name: row.get(4)?,
+                    created_at: row.get(5)?,
+                    last_used_at: row.get(6)?,
+                    revoked: row.get::<_, i32>(7)? != 0,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut keys = Vec::new();
         for row in rows {
@@ -663,13 +747,17 @@ impl AuditLogger {
 
     /// Revoke an API key.
     pub fn revoke_api_key(&self, key_id: &str) -> Result<bool, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows_affected = conn.execute(
-            "UPDATE api_keys SET revoked = 1 WHERE id = ?1",
-            params![key_id],
-        ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let rows_affected = conn
+            .execute(
+                "UPDATE api_keys SET revoked = 1 WHERE id = ?1",
+                params![key_id],
+            )
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         Ok(rows_affected > 0)
     }
@@ -784,7 +872,9 @@ impl AuditLogger {
         machine_type: Option<&str>,
         available_models: Option<&[String]>,
     ) -> Result<(), AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let now = Utc::now().to_rfc3339();
@@ -802,13 +892,19 @@ impl AuditLogger {
             params![id, name, mac_address, machine_type, now, models_json],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        tracing::debug!("Upserted runner: {} with {} models", id, available_models.map(|m| m.len()).unwrap_or(0));
+        tracing::debug!(
+            "Upserted runner: {} with {} models",
+            id,
+            available_models.map(|m| m.len()).unwrap_or(0)
+        );
         Ok(())
     }
 
     /// Get a runner by ID.
     pub fn get_runner(&self, id: &str) -> Result<Option<RunnerRecord>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let result = conn.query_row(
@@ -839,27 +935,31 @@ impl AuditLogger {
 
     /// Get all runner records.
     pub fn get_all_runners(&self) -> Result<Vec<RunnerRecord>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
             "SELECT id, name, mac_address, machine_type, last_seen_at, available_models FROM runners ORDER BY last_seen_at DESC"
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows = stmt.query_map([], |row| {
-            let models_json: Option<String> = row.get(5)?;
-            let available_models = models_json
-                .and_then(|j| serde_json::from_str(&j).ok())
-                .unwrap_or_default();
-            Ok(RunnerRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                mac_address: row.get(2)?,
-                machine_type: row.get(3)?,
-                last_seen_at: row.get(4)?,
-                available_models,
+        let rows = stmt
+            .query_map([], |row| {
+                let models_json: Option<String> = row.get(5)?;
+                let available_models = models_json
+                    .and_then(|j| serde_json::from_str(&j).ok())
+                    .unwrap_or_default();
+                Ok(RunnerRecord {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    mac_address: row.get(2)?,
+                    machine_type: row.get(3)?,
+                    last_seen_at: row.get(4)?,
+                    available_models,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut runners = Vec::new();
         for row in rows {
@@ -896,7 +996,9 @@ impl AuditLogger {
 
     /// Get all metrics for a specific runner.
     pub fn get_runner_metrics(&self, runner_id: &str) -> Result<Vec<RunnerMetricRow>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
@@ -904,17 +1006,19 @@ impl AuditLogger {
              FROM runner_metrics WHERE runner_id = ?1 ORDER BY model_class"
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows = stmt.query_map(params![runner_id], |row| {
-            Ok(RunnerMetricRow {
-                runner_id: row.get(0)?,
-                model_class: row.get(1)?,
-                sample_count: row.get::<_, i64>(2)? as u64,
-                total_ms: row.get::<_, i64>(3)? as u64,
-                min_ms: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
-                max_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
-                last_updated_at: row.get(6)?,
+        let rows = stmt
+            .query_map(params![runner_id], |row| {
+                Ok(RunnerMetricRow {
+                    runner_id: row.get(0)?,
+                    model_class: row.get(1)?,
+                    sample_count: row.get::<_, i64>(2)? as u64,
+                    total_ms: row.get::<_, i64>(3)? as u64,
+                    min_ms: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                    max_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                    last_updated_at: row.get(6)?,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut metrics = Vec::new();
         for row in rows {
@@ -925,7 +1029,9 @@ impl AuditLogger {
 
     /// Get all metrics across all runners.
     pub fn get_all_metrics(&self) -> Result<Vec<RunnerMetricRow>, AuditError> {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
@@ -933,17 +1039,19 @@ impl AuditLogger {
              FROM runner_metrics ORDER BY runner_id, model_class"
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok(RunnerMetricRow {
-                runner_id: row.get(0)?,
-                model_class: row.get(1)?,
-                sample_count: row.get::<_, i64>(2)? as u64,
-                total_ms: row.get::<_, i64>(3)? as u64,
-                min_ms: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
-                max_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
-                last_updated_at: row.get(6)?,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(RunnerMetricRow {
+                    runner_id: row.get(0)?,
+                    model_class: row.get(1)?,
+                    sample_count: row.get::<_, i64>(2)? as u64,
+                    total_ms: row.get::<_, i64>(3)? as u64,
+                    min_ms: row.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                    max_ms: row.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                    last_updated_at: row.get(6)?,
+                })
             })
-        }).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut metrics = Vec::new();
         for row in rows {
@@ -966,7 +1074,10 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_logger() -> AuditLogger {
-        let test_db_path = format!("test_audit_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let test_db_path = format!(
+            "test_audit_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
         AuditLogger::new(&test_db_path).unwrap()
     }
 
@@ -976,7 +1087,10 @@ mod tests {
 
     #[test]
     fn test_new_creates_tables() {
-        let test_db_path = format!("test_new_tables_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let test_db_path = format!(
+            "test_new_tables_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
         let logger = AuditLogger::new(&test_db_path).unwrap();
         drop(logger);
         assert!(fs::metadata(&test_db_path).is_ok());
@@ -986,7 +1100,9 @@ mod tests {
     #[test]
     fn test_find_or_create_user_new() {
         let logger = create_test_logger();
-        let user = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+        let user = logger
+            .find_or_create_user("user123", Some("user@example.com"))
+            .unwrap();
         assert_eq!(user.id, "user123");
         assert_eq!(user.email, Some("user@example.com".to_string()));
         assert!(user.is_enabled);
@@ -995,8 +1111,12 @@ mod tests {
     #[test]
     fn test_find_or_create_user_existing() {
         let logger = create_test_logger();
-        let user1 = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
-        let user2 = logger.find_or_create_user("user123", Some("user2@example.com")).unwrap();
+        let user1 = logger
+            .find_or_create_user("user123", Some("user@example.com"))
+            .unwrap();
+        let user2 = logger
+            .find_or_create_user("user123", Some("user2@example.com"))
+            .unwrap();
         assert_eq!(user1.id, user2.id);
         assert_eq!(user2.email, Some("user2@example.com".to_string()));
     }
@@ -1168,7 +1288,9 @@ mod tests {
             let request = Request::new(user2.id.clone(), "/v1/chat/completions".to_string());
             logger.log_request(&request).unwrap();
         }
-        let (requests, _) = logger.get_requests_paginated(Some("user1"), None, 1, 10).unwrap();
+        let (requests, _) = logger
+            .get_requests_paginated(Some("user1"), None, 1, 10)
+            .unwrap();
         assert!(requests.iter().all(|r| r.user_id.contains("user1")));
     }
 
@@ -1181,8 +1303,12 @@ mod tests {
             request.model = Some(format!("model-{}", i));
             logger.log_request(&request).unwrap();
         }
-        let (requests, _) = logger.get_requests_paginated(None, Some("model-2"), 1, 10).unwrap();
-        assert!(requests.iter().all(|r| r.model.as_ref().unwrap().contains("model-2")));
+        let (requests, _) = logger
+            .get_requests_paginated(None, Some("model-2"), 1, 10)
+            .unwrap();
+        assert!(requests
+            .iter()
+            .all(|r| r.model.as_ref().unwrap().contains("model-2")));
     }
 
     #[test]
@@ -1272,7 +1398,10 @@ mod tests {
         assert_eq!(req_with_resp.status, Some(200));
         assert_eq!(req_with_resp.latency_ms, Some(150));
         assert_eq!(req_with_resp.client_ip, Some("192.168.1.100".to_string()));
-        assert_eq!(req_with_resp.user_email, Some("user@example.com".to_string()));
+        assert_eq!(
+            req_with_resp.user_email,
+            Some("user@example.com".to_string())
+        );
         assert_eq!(req_with_resp.runner_id, Some("gpu-server".to_string()));
         assert!(req_with_resp.wol_sent);
     }
@@ -1305,13 +1434,15 @@ mod tests {
     fn test_upsert_runner_new() {
         let logger = create_test_logger();
         let models = vec!["llama3:8b".to_string(), "mistral:7b".to_string()];
-        logger.upsert_runner(
-            "runner-1",
-            "Test Runner",
-            Some("AA:BB:CC:DD:EE:FF"),
-            Some("gpu-server"),
-            Some(&models),
-        ).unwrap();
+        logger
+            .upsert_runner(
+                "runner-1",
+                "Test Runner",
+                Some("AA:BB:CC:DD:EE:FF"),
+                Some("gpu-server"),
+                Some(&models),
+            )
+            .unwrap();
 
         let runner = logger.get_runner("runner-1").unwrap().unwrap();
         assert_eq!(runner.id, "runner-1");
@@ -1327,10 +1458,20 @@ mod tests {
 
         // Initial insert
         let models = vec!["llama3:8b".to_string()];
-        logger.upsert_runner("runner-1", "Old Name", Some("AA:BB:CC:DD:EE:FF"), None, Some(&models)).unwrap();
+        logger
+            .upsert_runner(
+                "runner-1",
+                "Old Name",
+                Some("AA:BB:CC:DD:EE:FF"),
+                None,
+                Some(&models),
+            )
+            .unwrap();
 
         // Update with new name, keeps MAC address and models
-        logger.upsert_runner("runner-1", "New Name", None, Some("cpu-server"), None).unwrap();
+        logger
+            .upsert_runner("runner-1", "New Name", None, Some("cpu-server"), None)
+            .unwrap();
 
         let runner = logger.get_runner("runner-1").unwrap().unwrap();
         assert_eq!(runner.name, "New Name");
@@ -1342,7 +1483,9 @@ mod tests {
     #[test]
     fn test_upsert_runner_without_mac() {
         let logger = create_test_logger();
-        logger.upsert_runner("runner-1", "Test Runner", None, None, None).unwrap();
+        logger
+            .upsert_runner("runner-1", "Test Runner", None, None, None)
+            .unwrap();
 
         let runner = logger.get_runner("runner-1").unwrap().unwrap();
         assert_eq!(runner.id, "runner-1");
@@ -1367,9 +1510,27 @@ mod tests {
     #[test]
     fn test_get_all_runners() {
         let logger = create_test_logger();
-        logger.upsert_runner("runner-1", "Runner 1", Some("AA:BB:CC:DD:EE:01"), None, None).unwrap();
-        logger.upsert_runner("runner-2", "Runner 2", Some("AA:BB:CC:DD:EE:02"), None, None).unwrap();
-        logger.upsert_runner("runner-3", "Runner 3", None, None, None).unwrap();
+        logger
+            .upsert_runner(
+                "runner-1",
+                "Runner 1",
+                Some("AA:BB:CC:DD:EE:01"),
+                None,
+                None,
+            )
+            .unwrap();
+        logger
+            .upsert_runner(
+                "runner-2",
+                "Runner 2",
+                Some("AA:BB:CC:DD:EE:02"),
+                None,
+                None,
+            )
+            .unwrap();
+        logger
+            .upsert_runner("runner-3", "Runner 3", None, None, None)
+            .unwrap();
 
         let runners = logger.get_all_runners().unwrap();
         assert_eq!(runners.len(), 3);
@@ -1396,15 +1557,31 @@ mod tests {
 
         // Runner with big model
         let big_models = vec!["llama3:70b".to_string()];
-        logger.upsert_runner("runner-big", "Big Runner", Some("AA:BB:CC:DD:EE:01"), None, Some(&big_models)).unwrap();
+        logger
+            .upsert_runner(
+                "runner-big",
+                "Big Runner",
+                Some("AA:BB:CC:DD:EE:01"),
+                None,
+                Some(&big_models),
+            )
+            .unwrap();
 
         // Runner with fast model
         let fast_models = vec!["llama3:8b".to_string(), "mistral:7b".to_string()];
-        logger.upsert_runner("runner-fast", "Fast Runner", Some("AA:BB:CC:DD:EE:02"), None, Some(&fast_models)).unwrap();
+        logger
+            .upsert_runner(
+                "runner-fast",
+                "Fast Runner",
+                Some("AA:BB:CC:DD:EE:02"),
+                None,
+                Some(&fast_models),
+            )
+            .unwrap();
 
         // Query by class with config
-        use crate::gateway::ModelClass;
         use crate::config::ModelsConfig;
+        use crate::gateway::ModelClass;
 
         let models_config = ModelsConfig {
             big: vec!["llama3:70b".to_string()],
@@ -1412,11 +1589,15 @@ mod tests {
             ..Default::default()
         };
 
-        let big_runners = logger.get_runners_by_model_class(ModelClass::Big, &models_config).unwrap();
+        let big_runners = logger
+            .get_runners_by_model_class(ModelClass::Big, &models_config)
+            .unwrap();
         assert_eq!(big_runners.len(), 1);
         assert_eq!(big_runners[0].id, "runner-big");
 
-        let fast_runners = logger.get_runners_by_model_class(ModelClass::Fast, &models_config).unwrap();
+        let fast_runners = logger
+            .get_runners_by_model_class(ModelClass::Fast, &models_config)
+            .unwrap();
         assert_eq!(fast_runners.len(), 1);
         assert_eq!(fast_runners[0].id, "runner-fast");
     }
@@ -1426,10 +1607,14 @@ mod tests {
         let logger = create_test_logger();
 
         let models1 = vec!["llama3:8b".to_string(), "mistral:7b".to_string()];
-        logger.upsert_runner("runner-1", "Runner 1", None, None, Some(&models1)).unwrap();
+        logger
+            .upsert_runner("runner-1", "Runner 1", None, None, Some(&models1))
+            .unwrap();
 
         let models2 = vec!["llama3:8b".to_string()];
-        logger.upsert_runner("runner-2", "Runner 2", None, None, Some(&models2)).unwrap();
+        logger
+            .upsert_runner("runner-2", "Runner 2", None, None, Some(&models2))
+            .unwrap();
 
         // Both have llama3:8b
         let llama_runners = logger.get_runners_by_model("llama3:8b").unwrap();
@@ -1446,7 +1631,9 @@ mod tests {
     #[test]
     fn test_create_api_key() {
         let logger = create_test_logger();
-        let user = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+        let user = logger
+            .find_or_create_user("user123", Some("user@example.com"))
+            .unwrap();
 
         let (key, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
 
@@ -1465,7 +1652,9 @@ mod tests {
     #[test]
     fn test_validate_api_key_valid() {
         let logger = create_test_logger();
-        let user = logger.find_or_create_user("user123", Some("user@example.com")).unwrap();
+        let user = logger
+            .find_or_create_user("user123", Some("user@example.com"))
+            .unwrap();
 
         let (_, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
 
@@ -1483,7 +1672,9 @@ mod tests {
         let logger = create_test_logger();
 
         // Try to validate a key that doesn't exist
-        let result = logger.validate_api_key("sk-invalidkey12345678901234567890").unwrap();
+        let result = logger
+            .validate_api_key("sk-invalidkey12345678901234567890")
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -1542,8 +1733,12 @@ mod tests {
     #[test]
     fn test_list_api_keys() {
         let logger = create_test_logger();
-        let user1 = logger.find_or_create_user("user1", Some("user1@example.com")).unwrap();
-        let user2 = logger.find_or_create_user("user2", Some("user2@example.com")).unwrap();
+        let user1 = logger
+            .find_or_create_user("user1", Some("user1@example.com"))
+            .unwrap();
+        let user2 = logger
+            .find_or_create_user("user2", Some("user2@example.com"))
+            .unwrap();
 
         logger.create_api_key(&user1.id, "Key 1").unwrap();
         logger.create_api_key(&user1.id, "Key 2").unwrap();
@@ -1553,8 +1748,12 @@ mod tests {
         assert_eq!(keys.len(), 3);
 
         // Should include user emails
-        assert!(keys.iter().any(|k| k.user_email == Some("user1@example.com".to_string())));
-        assert!(keys.iter().any(|k| k.user_email == Some("user2@example.com".to_string())));
+        assert!(keys
+            .iter()
+            .any(|k| k.user_email == Some("user1@example.com".to_string())));
+        assert!(keys
+            .iter()
+            .any(|k| k.user_email == Some("user2@example.com".to_string())));
     }
 
     #[test]

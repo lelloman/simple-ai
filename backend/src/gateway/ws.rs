@@ -16,8 +16,8 @@ use tokio::time::{timeout, Duration};
 
 use simple_ai_common::{GatewayMessage, RunnerMessage, RunnerRegistration, PROTOCOL_VERSION};
 
-use crate::audit::AuditLogger;
 use super::{BatchDispatcher, RunnerRegistry};
+use crate::audit::AuditLogger;
 
 /// Shared state for WebSocket connections.
 pub struct WsState {
@@ -48,7 +48,10 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
         Ok(Some(Ok(Message::Text(text)))) => match serde_json::from_str::<RunnerMessage>(&text) {
             Ok(RunnerMessage::Register(reg)) => reg,
             Ok(_) => {
-                tracing::warn!("Expected Register message from {}, got different type", addr);
+                tracing::warn!(
+                    "Expected Register message from {}, got different type",
+                    addr
+                );
                 let _ = send_error(&mut ws_tx, "PROTOCOL_ERROR", "Expected Register message").await;
                 return;
             }
@@ -114,15 +117,27 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
 
     // Use MAC address from registration if provided, otherwise try ARP lookup
     let mac_address = if let Some(ref mac) = registration.mac_address {
-        tracing::info!("Runner {} provided MAC address: {}", registration.runner_id, mac);
+        tracing::info!(
+            "Runner {} provided MAC address: {}",
+            registration.runner_id,
+            mac
+        );
         Some(mac.clone())
     } else {
         // Fall back to ARP lookup (works for non-Docker deployments)
         let arp_mac = crate::arp::lookup_mac(&addr.ip());
         if let Some(ref mac) = arp_mac {
-            tracing::info!("Discovered MAC {} for runner {} via ARP ({})", mac, registration.runner_id, addr.ip());
+            tracing::info!(
+                "Discovered MAC {} for runner {} via ARP ({})",
+                mac,
+                registration.runner_id,
+                addr.ip()
+            );
         } else {
-            tracing::debug!("No MAC address for runner {} - not provided and not found in ARP cache", registration.runner_id);
+            tracing::debug!(
+                "No MAC address for runner {} - not provided and not found in ARP cache",
+                registration.runner_id
+            );
         }
         arp_mac
     };

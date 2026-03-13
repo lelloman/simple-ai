@@ -44,10 +44,7 @@ impl EngineRegistry {
     ///
     /// Searches all registered engines and returns the first one
     /// that reports having the model.
-    pub async fn find_engine_for_model(
-        &self,
-        model_id: &str,
-    ) -> Option<Arc<dyn InferenceEngine>> {
+    pub async fn find_engine_for_model(&self, model_id: &str) -> Option<Arc<dyn InferenceEngine>> {
         // Clone engines to avoid holding the lock across async calls
         let engines: Vec<Arc<dyn InferenceEngine>> = {
             let guard = self.engines.read().await;

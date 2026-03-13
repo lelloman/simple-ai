@@ -69,10 +69,7 @@ impl CapabilityStatus {
     }
 
     pub fn is_available(&self) -> bool {
-        matches!(
-            self,
-            CapabilityStatus::Loaded | CapabilityStatus::Unloaded
-        )
+        matches!(self, CapabilityStatus::Loaded | CapabilityStatus::Unloaded)
     }
 }
 

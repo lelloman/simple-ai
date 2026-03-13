@@ -77,7 +77,11 @@ async fn create_embeddings(
         .map(|s| s.as_str())
         .unwrap_or(model);
 
-    tracing::debug!("Embedding request for model: {} (resolved: {})", model, resolved_model);
+    tracing::debug!(
+        "Embedding request for model: {} (resolved: {})",
+        model,
+        resolved_model
+    );
 
     let inputs = request.input.into_vec();
 
@@ -91,7 +95,8 @@ async fn create_embeddings(
     let embeddings = engine.embed(resolved_model, &inputs).await?;
 
     // Approximate token count
-    let prompt_tokens: u32 = inputs.iter()
+    let prompt_tokens: u32 = inputs
+        .iter()
         .map(|s| (s.split_whitespace().count() as u32).max(1))
         .sum();
 
