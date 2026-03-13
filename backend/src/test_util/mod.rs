@@ -1,18 +1,21 @@
 pub mod mock_ollama;
 
-use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
-use chrono::{Duration, Utc};
-use crate::auth::AuthUser;
-use crate::config::{Config, OllamaConfig, OidcConfig, DatabaseConfig, LoggingConfig, LanguageConfig, CorsConfig, GatewayConfig, WolConfig, ModelsConfig, RoutingConfig};
-use tokio::sync::Mutex;
-use fasttext::FastText;
-use std::sync::Arc;
-use crate::AppState;
-use crate::llm::OllamaClient;
 use crate::audit::AuditLogger;
+use crate::auth::AuthUser;
 use crate::auth::JwksClient;
-use crate::gateway::{InferenceRouter, RunnerRegistry};
+use crate::config::{
+    Config, CorsConfig, DatabaseConfig, GatewayConfig, LanguageConfig, LoggingConfig, ModelsConfig,
+    OidcConfig, OllamaConfig, RoutingConfig, WolConfig,
+};
+use crate::gateway::{InferenceRouter, RequestScheduler, RouterTelemetry, RunnerRegistry};
+use crate::llm::OllamaClient;
 use crate::wol::WakeService;
+use crate::AppState;
+use chrono::{Duration, Utc};
+use fasttext::FastText;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub fn test_config() -> Config {
     Config {
@@ -35,7 +38,9 @@ pub fn test_config() -> Config {
         logging: LoggingConfig {
             level: "debug".to_string(),
         },
-        cors: CorsConfig { origins: "*".to_string() },
+        cors: CorsConfig {
+            origins: "*".to_string(),
+        },
         language: LanguageConfig {
             model_path: "/tmp/test-lid.ftz".to_string(),
         },
@@ -69,6 +74,15 @@ pub async fn create_test_state() -> AppState {
         config.models.clone(),
         config.routing.clone(),
     ));
+    let router_telemetry = Arc::new(RouterTelemetry::new());
+    let request_scheduler = Arc::new(RequestScheduler::new(
+        inference_router.clone(),
+        runner_registry.clone(),
+        wake_service.clone(),
+        router_telemetry.clone(),
+        None,
+        config.routing.clone(),
+    ));
 
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
 
@@ -80,9 +94,11 @@ pub async fn create_test_state() -> AppState {
         lang_detector,
         runner_registry,
         inference_router,
+        request_scheduler,
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        router_telemetry,
         batch_queue: None,
         batch_dispatcher: None,
         circuit_breaker: std::sync::Arc::new(crate::CircuitBreaker::new(0, 30)),
@@ -125,11 +141,7 @@ pub fn generate_test_jwt(
     encode(&header, &claims, signing_key).expect("Failed to encode JWT")
 }
 
-pub fn generate_expired_jwt(
-    user_id: &str,
-    kid: &str,
-    signing_key: &EncodingKey,
-) -> String {
+pub fn generate_expired_jwt(user_id: &str, kid: &str, signing_key: &EncodingKey) -> String {
     let now = Utc::now();
     let claims = TestClaims {
         sub: user_id.to_string(),
@@ -156,4 +168,3 @@ pub fn test_auth_user(sub: &str, email: Option<&str>, roles: Vec<&str>) -> AuthU
         roles.iter().map(|s| s.to_string()).collect(),
     )
 }
-

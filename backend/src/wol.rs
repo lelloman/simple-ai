@@ -13,8 +13,8 @@ use tokio::sync::broadcast;
 use tokio::time::timeout;
 
 use crate::audit::{AuditLogger, RunnerRecord};
-use crate::config::{GatewayConfig, RoutingConfig, WolConfig};
 use crate::config::ModelsConfig;
+use crate::config::{GatewayConfig, RoutingConfig, WolConfig};
 use crate::gateway::{classify_model, ModelClass, ModelRequest, RunnerEvent, RunnerRegistry};
 
 /// Errors that can occur during WOL operations.
@@ -40,9 +40,8 @@ fn parse_mac_address(mac: &str) -> Result<[u8; 6], WolError> {
 
     let mut bytes = [0u8; 6];
     for (i, part) in parts.iter().enumerate() {
-        bytes[i] = u8::from_str_radix(part, 16).map_err(|_| {
-            WolError::InvalidMacAddress(format!("Invalid hex octet: {}", part))
-        })?;
+        bytes[i] = u8::from_str_radix(part, 16)
+            .map_err(|_| WolError::InvalidMacAddress(format!("Invalid hex octet: {}", part)))?;
     }
 
     Ok(bytes)
@@ -131,16 +130,20 @@ pub async fn send_wol_via_bouncer(
         .trim_start_matches("tcp://")
         .trim_start_matches("http://");
 
-    let mut stream = TcpStream::connect(addr)
-        .await
-        .map_err(|e| WolError::BouncerError(format!("Failed to connect to bouncer at {}: {}", addr, e)))?;
+    let mut stream = TcpStream::connect(addr).await.map_err(|e| {
+        WolError::BouncerError(format!("Failed to connect to bouncer at {}: {}", addr, e))
+    })?;
 
     stream
         .write_all(format!("{} {}\n", mac_address, broadcast_addr).as_bytes())
         .await
         .map_err(|e| WolError::BouncerError(format!("Failed to send MAC to bouncer: {}", e)))?;
 
-    tracing::info!("Sent WOL via bouncer for MAC {} (broadcast: {})", mac_address, broadcast_addr);
+    tracing::info!(
+        "Sent WOL via bouncer for MAC {} (broadcast: {})",
+        mac_address,
+        broadcast_addr
+    );
 
     Ok(())
 }
@@ -439,6 +442,37 @@ impl WakeService {
         result
     }
 
+    /// Plan which offline runners would be woken for a request.
+    pub async fn planned_wake_targets(
+        &self,
+        model_request: &ModelRequest,
+    ) -> Result<Vec<RunnerRecord>, WakeError> {
+        let class = match model_request {
+            ModelRequest::Class(c) => Some(*c),
+            ModelRequest::Specific(model_id) => classify_model(model_id, &self.models_config),
+        };
+
+        let wakeable = self.find_wakeable_runners(Some(model_request)).await?;
+        if wakeable.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        if self.routing_config.speculative_wake_enabled {
+            if let Some(class) = class {
+                let targets = self.find_speculative_wake_targets(class, &wakeable);
+                if !targets.is_empty() {
+                    return Ok(targets);
+                }
+            }
+        }
+
+        Ok(self
+            .find_best_runner_to_wake(model_request)
+            .await?
+            .into_iter()
+            .collect())
+    }
+
     /// Wake a single runner by MAC address.
     ///
     /// Tries idle-manager first (if configured), falls back to direct WOL.
@@ -450,12 +484,12 @@ impl WakeService {
 
         // Try idle-manager first if configured
         if let Some(ref idle_manager_url) = self.gateway_config.idle_manager_url {
-            match self.wake_via_idle_manager(idle_manager_url, &runner.id).await {
+            match self
+                .wake_via_idle_manager(idle_manager_url, &runner.id)
+                .await
+            {
                 Ok(()) => {
-                    tracing::info!(
-                        "Woke runner {} via idle-manager",
-                        runner.id
-                    );
+                    tracing::info!("Woke runner {} via idle-manager", runner.id);
                     return Ok(());
                 }
                 Err(e) => {
@@ -474,8 +508,12 @@ impl WakeService {
                 .await
                 .map_err(|e| WakeError::WakeFailed(e.to_string()))?;
         } else {
-            send_wol(mac, &self.wol_config.broadcast_address, self.wol_config.port)
-                .map_err(|e| WakeError::WakeFailed(e.to_string()))?;
+            send_wol(
+                mac,
+                &self.wol_config.broadcast_address,
+                self.wol_config.port,
+            )
+            .map_err(|e| WakeError::WakeFailed(e.to_string()))?;
         }
 
         tracing::info!("Sent WOL packet to runner {} (MAC: {})", runner.id, mac);
@@ -527,7 +565,11 @@ impl WakeService {
         idle_manager_url: &str,
         runner_id: &str,
     ) -> Result<(), WakeError> {
-        let url = format!("{}/nodes/{}/wake", idle_manager_url.trim_end_matches('/'), runner_id);
+        let url = format!(
+            "{}/nodes/{}/wake",
+            idle_manager_url.trim_end_matches('/'),
+            runner_id
+        );
 
         let response = self
             .http_client
@@ -558,7 +600,10 @@ impl WakeService {
     /// 2. Subscribe to registry connection events BEFORE waking
     /// 3. Wake the runner
     /// 4. Wait for it to connect or timeout
-    pub async fn wake_and_wait(&self, model_request: &ModelRequest) -> Result<WakeResult, WakeError> {
+    pub async fn wake_and_wait(
+        &self,
+        model_request: &ModelRequest,
+    ) -> Result<WakeResult, WakeError> {
         let start = std::time::Instant::now();
 
         // 1. Find the best runner for this request
@@ -580,7 +625,10 @@ impl WakeService {
         // 3. Wake the runner
         self.wake_runner(&runner).await?;
 
-        tracing::info!("Sent wake signal to runner {}, waiting for connection...", runner.id);
+        tracing::info!(
+            "Sent wake signal to runner {}, waiting for connection...",
+            runner.id
+        );
 
         // 4. Wait for a runner to connect (filter for Connected events only)
         let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
@@ -621,7 +669,9 @@ impl WakeService {
         );
 
         // Record boot time metric (ignore errors)
-        let _ = self.audit_logger.record_metric(&runner_id, "boot", wait_duration.as_millis() as u64);
+        let _ =
+            self.audit_logger
+                .record_metric(&runner_id, "boot", wait_duration.as_millis() as u64);
 
         Ok(WakeResult {
             runner_id,
@@ -703,7 +753,9 @@ impl WakeService {
         // Count successful wakes
         let wakes_sent: usize = wake_results.iter().filter(|r| r.is_ok()).count();
         if wakes_sent == 0 {
-            return Err(WakeError::WakeFailed("All wake attempts failed".to_string()));
+            return Err(WakeError::WakeFailed(
+                "All wake attempts failed".to_string(),
+            ));
         }
 
         tracing::info!(
@@ -717,10 +769,7 @@ impl WakeService {
             loop {
                 match rx.recv().await {
                     Ok(RunnerEvent::Connected { runner_id, .. }) => {
-                        tracing::info!(
-                            "Speculative wake: runner {} connected first",
-                            runner_id
-                        );
+                        tracing::info!("Speculative wake: runner {} connected first", runner_id);
                         return runner_id;
                     }
                     Ok(_) => continue,
@@ -745,7 +794,9 @@ impl WakeService {
         );
 
         // Record boot time metric for the runner that connected
-        let _ = self.audit_logger.record_metric(&runner_id, "boot", wait_duration.as_millis() as u64);
+        let _ =
+            self.audit_logger
+                .record_metric(&runner_id, "boot", wait_duration.as_millis() as u64);
 
         Ok(WakeResult {
             runner_id,

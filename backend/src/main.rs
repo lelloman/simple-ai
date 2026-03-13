@@ -1,16 +1,17 @@
-use std::sync::Arc;
-use axum::routing::get;
 use axum::response::Html;
-use simple_ai_backend::config::Config;
-use simple_ai_backend::auth::JwksClient;
-use simple_ai_backend::llm::OllamaClient;
+use axum::routing::get;
 use simple_ai_backend::audit::AuditLogger;
-use simple_ai_backend::gateway::{
-    ws_handler, BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RunnerRegistry, WsState,
-};
-use simple_ai_backend::wol::WakeService;
+use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::circuit_breaker::CircuitBreaker;
+use simple_ai_backend::config::Config;
+use simple_ai_backend::gateway::{
+    ws_handler, BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RequestScheduler,
+    RouterTelemetry, RunnerRegistry, WsState,
+};
+use simple_ai_backend::llm::OllamaClient;
+use simple_ai_backend::wol::WakeService;
 use simple_ai_backend::AppState;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,8 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use tracing_subscriber::util::SubscriberInitExt;
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| config.logging.level.clone().into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| config.logging.level.clone().into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -32,9 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audit_logger = Arc::new(AuditLogger::new(&config.database.url)?);
 
     let mut lang_detector = fasttext::FastText::default();
-    lang_detector.load_model(&config.language.model_path)
+    lang_detector
+        .load_model(&config.language.model_path)
         .map_err(|e| format!("Failed to load language model: {}", e))?;
-    tracing::info!("Loaded language detection model from {}", config.language.model_path);
+    tracing::info!(
+        "Loaded language detection model from {}",
+        config.language.model_path
+    );
 
     // Initialize gateway components
     let runner_registry = Arc::new(RunnerRegistry::new());
@@ -51,12 +58,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let inference_router = Arc::new(InferenceRouter::new(
-        runner_registry.clone(),
-        config.models.clone(),
-        config.routing.clone(),
-        audit_logger.clone(),
-    ).with_circuit_breaker(circuit_breaker.clone()));
+    let inference_router = Arc::new(
+        InferenceRouter::new(
+            runner_registry.clone(),
+            config.models.clone(),
+            config.routing.clone(),
+            audit_logger.clone(),
+        )
+        .with_circuit_breaker(circuit_breaker.clone()),
+    );
 
     // Initialize wake service for on-demand runner waking
     let wake_service = Arc::new(WakeService::new(
@@ -93,32 +103,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create broadcast channel for request events (admin dashboard)
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
+    let router_telemetry = Arc::new(RouterTelemetry::new());
 
     // Initialize batch queue if batching is enabled
-    let (batch_queue, batch_dispatcher) = if config.gateway.enabled && config.gateway.batching_enabled {
-        let queue_config = BatchQueueConfig::new(
-            config.gateway.batch_timeout_ms,
-            config.gateway.min_batch_size,
-        );
-        let queue = Arc::new(BatchQueue::new(queue_config));
+    let (batch_queue, batch_dispatcher) =
+        if config.gateway.enabled && config.gateway.batching_enabled {
+            let queue_config = BatchQueueConfig::new(
+                config.gateway.batch_timeout_ms,
+                config.gateway.min_batch_size,
+            );
+            let queue = Arc::new(BatchQueue::new(queue_config));
 
-        // Create and spawn batch dispatcher (keep Arc for cache invalidation)
-        let dispatcher = Arc::new(BatchDispatcher::new(queue.clone(), runner_registry.clone()));
-        let dispatcher_clone = dispatcher.clone();
-        tokio::spawn(async move {
-            dispatcher_clone.run().await;
-        });
+            // Create and spawn batch dispatcher (keep Arc for cache invalidation)
+            let dispatcher = Arc::new(BatchDispatcher::new(queue.clone(), runner_registry.clone()));
+            let dispatcher_clone = dispatcher.clone();
+            tokio::spawn(async move {
+                dispatcher_clone.run().await;
+            });
 
-        tracing::info!(
-            "Request batching enabled (timeout={}ms, min_batch_size={})",
-            config.gateway.batch_timeout_ms,
-            config.gateway.min_batch_size
-        );
+            tracing::info!(
+                "Request batching enabled (timeout={}ms, min_batch_size={})",
+                config.gateway.batch_timeout_ms,
+                config.gateway.min_batch_size
+            );
 
-        (Some(queue), Some(dispatcher))
-    } else {
-        (None, None)
-    };
+            (Some(queue), Some(dispatcher))
+        } else {
+            (None, None)
+        };
+
+    let request_scheduler = Arc::new(RequestScheduler::new(
+        inference_router.clone(),
+        runner_registry.clone(),
+        wake_service.clone(),
+        router_telemetry.clone(),
+        batch_queue.clone(),
+        config.routing.clone(),
+    ));
 
     let state = Arc::new(AppState {
         config: config.clone(),
@@ -128,9 +149,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         lang_detector: tokio::sync::Mutex::new(lang_detector),
         runner_registry: runner_registry.clone(),
         inference_router,
+        request_scheduler,
         wol_config: config.wol.clone(),
         wake_service,
         request_events: request_events_tx,
+        router_telemetry,
         batch_queue,
         batch_dispatcher,
         circuit_breaker,
@@ -160,8 +183,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(simple_ai_backend::routes::models::router(state.clone()));
 
     let v1_routes = if config.gateway.rate_limit_rpm > 0 {
-        let limiter = Arc::new(simple_ai_backend::rate_limit::RateLimiter::new(config.gateway.rate_limit_rpm));
-        tracing::info!("Rate limiting enabled: {} requests/minute per IP", config.gateway.rate_limit_rpm);
+        let limiter = Arc::new(simple_ai_backend::rate_limit::RateLimiter::new(
+            config.gateway.rate_limit_rpm,
+        ));
+        tracing::info!(
+            "Rate limiting enabled: {} requests/minute per IP",
+            config.gateway.rate_limit_rpm
+        );
         v1_routes.layer(axum::middleware::from_fn_with_state(
             limiter,
             simple_ai_backend::rate_limit::rate_limit_middleware,
@@ -172,19 +200,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = simple_ai_backend::routes::health::router()
         .nest("/v1", v1_routes)
-        .nest("/admin", simple_ai_backend::routes::admin::router(state.clone()))
+        .nest(
+            "/admin",
+            simple_ai_backend::routes::admin::router(state.clone()),
+        )
         // Admin UI (public, auth handled in browser)
         .route("/admin-ui", get(|| async { Html(ADMIN_UI_HTML) }))
         // WebSocket endpoint for runner connections
         .route("/ws/runners", get(ws_handler).with_state(ws_state))
         .layer(cors)
-        .layer(axum::middleware::from_fn(simple_ai_backend::logging::request_logger));
+        .layer(axum::middleware::from_fn(
+            simple_ai_backend::logging::request_logger,
+        ));
 
     let addr = format!("{}:{}", config.host, config.port);
     tracing::info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

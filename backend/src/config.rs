@@ -255,13 +255,41 @@ pub struct RoutingConfig {
     /// Key is the class name, value is list of machine types to wake.
     #[serde(default)]
     pub speculative_wake_targets: HashMap<String, Vec<String>>,
+    /// Queue age threshold before allowing a compatible runner to switch models.
+    #[serde(default = "default_starvation_queue_age_secs")]
+    pub starvation_queue_age_secs: u64,
+    /// Pending request threshold before allowing a compatible runner to switch models.
+    #[serde(default = "default_starvation_pending_requests")]
+    pub starvation_pending_requests: usize,
+    /// Timeout when explicitly preparing a model on a connected runner.
+    #[serde(default = "default_model_prepare_timeout_secs")]
+    pub model_prepare_timeout_secs: u64,
 }
 
-fn default_queue_weight() -> f64 { 0.5 }
-fn default_latency_weight() -> f64 { 0.3 }
-fn default_circuit_breaker_recovery_secs() -> u64 { 30 }
-fn default_batch_timeout_ms() -> u64 { 50 }
-fn default_min_batch_size() -> u32 { 1 }
+fn default_queue_weight() -> f64 {
+    0.5
+}
+fn default_latency_weight() -> f64 {
+    0.3
+}
+fn default_starvation_queue_age_secs() -> u64 {
+    10
+}
+fn default_starvation_pending_requests() -> usize {
+    3
+}
+fn default_model_prepare_timeout_secs() -> u64 {
+    60
+}
+fn default_circuit_breaker_recovery_secs() -> u64 {
+    30
+}
+fn default_batch_timeout_ms() -> u64 {
+    50
+}
+fn default_min_batch_size() -> u32 {
+    1
+}
 
 impl Default for RoutingConfig {
     fn default() -> Self {
@@ -271,24 +299,53 @@ impl Default for RoutingConfig {
             latency_weight: default_latency_weight(),
             speculative_wake_enabled: false,
             speculative_wake_targets: HashMap::new(),
+            starvation_queue_age_secs: default_starvation_queue_age_secs(),
+            starvation_pending_requests: default_starvation_pending_requests(),
+            model_prepare_timeout_secs: default_model_prepare_timeout_secs(),
         }
     }
 }
 
 // Defaults
-fn default_host() -> String { "0.0.0.0".to_string() }
-fn default_port() -> u16 { 8080 }
-fn default_ollama_base_url() -> String { "http://localhost:11434".to_string() }
-fn default_ollama_model() -> String { "gpt-oss:20b".to_string() }
-fn default_database_url() -> String { "sqlite:./data/audit.db".to_string() }
-fn default_log_level() -> String { "info".to_string() }
-fn default_cors_origins() -> String { "*".to_string() }
-fn default_language_model_path() -> String { "/data/lid.176.ftz".to_string() }
-fn default_gateway_auth_token() -> String { "change-me-in-production".to_string() }
-fn default_runner_timeout() -> u64 { 90 }
-fn default_wake_timeout() -> u64 { 90 }
-fn default_wol_broadcast() -> String { "255.255.255.255".to_string() }
-fn default_wol_port() -> u16 { 9 }
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+fn default_port() -> u16 {
+    8080
+}
+fn default_ollama_base_url() -> String {
+    "http://localhost:11434".to_string()
+}
+fn default_ollama_model() -> String {
+    "gpt-oss:20b".to_string()
+}
+fn default_database_url() -> String {
+    "sqlite:./data/audit.db".to_string()
+}
+fn default_log_level() -> String {
+    "info".to_string()
+}
+fn default_cors_origins() -> String {
+    "*".to_string()
+}
+fn default_language_model_path() -> String {
+    "/data/lid.176.ftz".to_string()
+}
+fn default_gateway_auth_token() -> String {
+    "change-me-in-production".to_string()
+}
+fn default_runner_timeout() -> u64 {
+    90
+}
+fn default_wake_timeout() -> u64 {
+    90
+}
+fn default_wol_broadcast() -> String {
+    "255.255.255.255".to_string()
+}
+fn default_wol_port() -> u16 {
+    9
+}
 
 impl Default for OllamaConfig {
     fn default() -> Self {
@@ -301,25 +358,33 @@ impl Default for OllamaConfig {
 
 impl Default for DatabaseConfig {
     fn default() -> Self {
-        Self { url: default_database_url() }
+        Self {
+            url: default_database_url(),
+        }
     }
 }
 
 impl Default for LoggingConfig {
     fn default() -> Self {
-        Self { level: default_log_level() }
+        Self {
+            level: default_log_level(),
+        }
     }
 }
 
 impl Default for CorsConfig {
     fn default() -> Self {
-        Self { origins: default_cors_origins() }
+        Self {
+            origins: default_cors_origins(),
+        }
     }
 }
 
 impl Default for LanguageConfig {
     fn default() -> Self {
-        Self { model_path: default_language_model_path() }
+        Self {
+            model_path: default_language_model_path(),
+        }
     }
 }
 
@@ -381,27 +446,48 @@ impl Config {
             .set_default("language.model_path", default_language_model_path())?
             .set_default("gateway.enabled", false)?
             .set_default("gateway.auth_token", default_gateway_auth_token())?
-            .set_default("gateway.runner_timeout_secs", default_runner_timeout() as i64)?
+            .set_default(
+                "gateway.runner_timeout_secs",
+                default_runner_timeout() as i64,
+            )?
             .set_default("gateway.wake_timeout_secs", default_wake_timeout() as i64)?
             .set_default("gateway.auto_wake_enabled", false)?
             .set_default("gateway.batching_enabled", false)?
-            .set_default("gateway.batch_timeout_ms", default_batch_timeout_ms() as i64)?
+            .set_default(
+                "gateway.batch_timeout_ms",
+                default_batch_timeout_ms() as i64,
+            )?
             .set_default("gateway.min_batch_size", default_min_batch_size() as i64)?
             .set_default("gateway.rate_limit_rpm", 0 as i64)?
             .set_default("gateway.circuit_breaker_threshold", 0 as i64)?
-            .set_default("gateway.circuit_breaker_recovery_secs", default_circuit_breaker_recovery_secs() as i64)?
+            .set_default(
+                "gateway.circuit_breaker_recovery_secs",
+                default_circuit_breaker_recovery_secs() as i64,
+            )?
             .set_default("wol.broadcast_address", default_wol_broadcast())?
             .set_default("wol.port", default_wol_port() as i64)?
             .set_default("routing.queue_weight", default_queue_weight())?
             .set_default("routing.latency_weight", default_latency_weight())?
             .set_default("routing.speculative_wake_enabled", false)?
+            .set_default(
+                "routing.starvation_queue_age_secs",
+                default_starvation_queue_age_secs() as i64,
+            )?
+            .set_default(
+                "routing.starvation_pending_requests",
+                default_starvation_pending_requests() as i64,
+            )?
+            .set_default(
+                "routing.model_prepare_timeout_secs",
+                default_model_prepare_timeout_secs() as i64,
+            )?
             // Load from config.toml if it exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (SIMPLEAI__KEY format)
             .add_source(
                 Environment::with_prefix("SIMPLEAI")
                     .separator("__")
-                    .try_parsing(true)
+                    .try_parsing(true),
             )
             .build()?;
 
@@ -569,8 +655,14 @@ mod tests {
     #[test]
     fn test_routing_config_with_preferences() {
         let mut prefs = std::collections::HashMap::new();
-        prefs.insert("fast".to_string(), vec!["gpu-server".to_string(), "halo".to_string()]);
-        prefs.insert("big".to_string(), vec!["halo".to_string(), "gpu-server".to_string()]);
+        prefs.insert(
+            "fast".to_string(),
+            vec!["gpu-server".to_string(), "halo".to_string()],
+        );
+        prefs.insert(
+            "big".to_string(),
+            vec!["halo".to_string(), "gpu-server".to_string()],
+        );
 
         let config = RoutingConfig {
             class_preferences: prefs.clone(),
@@ -578,9 +670,13 @@ mod tests {
             latency_weight: 0.2,
             speculative_wake_enabled: true,
             speculative_wake_targets: prefs,
+            ..Default::default()
         };
 
-        assert_eq!(config.class_preferences.get("fast").unwrap()[0], "gpu-server");
+        assert_eq!(
+            config.class_preferences.get("fast").unwrap()[0],
+            "gpu-server"
+        );
         assert_eq!(config.class_preferences.get("big").unwrap()[0], "halo");
         assert!(config.speculative_wake_enabled);
     }

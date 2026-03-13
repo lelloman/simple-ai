@@ -32,7 +32,7 @@ use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 
 use crate::audit::{ApiKey, DashboardStats, RequestWithResponse, UserWithStats};
-use crate::gateway::{ModelQueueStats, RunnerEvent};
+use crate::gateway::{ModelQueueStats, RouterEventRecord, RouterStateSnapshot, RunnerEvent};
 use crate::wol;
 use crate::AppState;
 
@@ -51,20 +51,23 @@ async fn require_admin(
                 return (
                     StatusCode::FORBIDDEN,
                     Html("<h1>403 Forbidden</h1><p>Admin access required.</p>"),
-                ).into_response();
+                )
+                    .into_response();
             }
             // Ensure admin user exists in the database
-            if let Err(e) = state.audit_logger.find_or_create_user(&user.sub, user.email.as_deref()) {
+            if let Err(e) = state
+                .audit_logger
+                .find_or_create_user(&user.sub, user.email.as_deref())
+            {
                 tracing::warn!("Failed to create user record for admin {}: {}", user.sub, e);
             }
             next.run(request).await
         }
-        Err(_) => {
-            (
-                StatusCode::UNAUTHORIZED,
-                Html("<h1>401 Unauthorized</h1><p>Please provide a valid Bearer token.</p>"),
-            ).into_response()
-        }
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Html("<h1>401 Unauthorized</h1><p>Please provide a valid Bearer token.</p>"),
+        )
+            .into_response(),
     }
 }
 
@@ -127,7 +130,11 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
             let mut added = 0;
             for db_runner in db_runners {
                 if !connected_ids.contains(&db_runner.id) {
-                    tracing::debug!("Adding offline runner: {} (MAC: {:?})", db_runner.id, db_runner.mac_address);
+                    tracing::debug!(
+                        "Adding offline runner: {} (MAC: {:?})",
+                        db_runner.id,
+                        db_runner.mac_address
+                    );
                     runners.push(RunnerInfo {
                         id: db_runner.id,
                         name: db_runner.name,
@@ -144,7 +151,12 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
                     added += 1;
                 }
             }
-            tracing::debug!("Runners: {} in DB, {} connected, {} offline added", db_count, connected_ids.len(), added);
+            tracing::debug!(
+                "Runners: {} in DB, {} connected, {} offline added",
+                db_count,
+                connected_ids.len(),
+                added
+            );
             added
         }
         Err(e) => {
@@ -154,7 +166,12 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
     };
 
     let total = runners.len();
-    tracing::debug!("Returning {} runners ({} connected, {} offline)", total, connected_ids.len(), offline_count);
+    tracing::debug!(
+        "Returning {} runners ({} connected, {} offline)",
+        total,
+        connected_ids.len(),
+        offline_count
+    );
     Json(RunnersResponse { runners, total })
 }
 
@@ -209,7 +226,11 @@ pub struct BatchQueueInfo {
 
 /// GET /admin/models - List all models with loaded status (JSON API)
 async fn list_models(State(state): State<Arc<AppState>>) -> Json<AdminModelsResponse> {
-    let models = state.inference_router.list_models_with_details().await.unwrap_or_default();
+    let models = state
+        .inference_router
+        .list_models_with_details()
+        .await
+        .unwrap_or_default();
     let total = models.len();
 
     let models: Vec<AdminModelInfo> = models
@@ -258,7 +279,9 @@ async fn wake_runner(
         runner.mac_address
     } else {
         // Check database for offline runner
-        state.audit_logger.get_runner(&runner_id)
+        state
+            .audit_logger
+            .get_runner(&runner_id)
             .ok()
             .flatten()
             .and_then(|r| r.mac_address)
@@ -278,7 +301,11 @@ async fn wake_runner(
     let result = if let Some(ref bouncer_url) = state.wol_config.bouncer_url {
         wol::send_wol_via_bouncer(bouncer_url, &mac, &state.wol_config.broadcast_address).await
     } else {
-        wol::send_wol(&mac, &state.wol_config.broadcast_address, state.wol_config.port)
+        wol::send_wol(
+            &mac,
+            &state.wol_config.broadcast_address,
+            state.wol_config.port,
+        )
     };
 
     match result {
@@ -366,14 +393,23 @@ async fn load_model(
 
     match runner.tx.send(msg).await {
         Ok(_) => {
-            tracing::info!("Sent load model request '{}' for model '{}' to runner {}", request_id, req.model_id, runner_id);
+            tracing::info!(
+                "Sent load model request '{}' for model '{}' to runner {}",
+                request_id,
+                req.model_id,
+                runner_id
+            );
             Ok(Json(LoadModelResponse {
                 success: true,
                 message: format!("Loading model '{}' on runner {}", req.model_id, runner_id),
             }))
         }
         Err(e) => {
-            tracing::error!("Failed to send load model message to runner {}: {}", runner_id, e);
+            tracing::error!(
+                "Failed to send load model message to runner {}: {}",
+                runner_id,
+                e
+            );
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoadModelResponse {
@@ -426,7 +462,11 @@ async fn unload_model(
     }
 
     // Generate a unique request ID
-    let request_id = format!("admin-unload-{}-{}", runner_id, uuid::Uuid::new_v4().simple());
+    let request_id = format!(
+        "admin-unload-{}-{}",
+        runner_id,
+        uuid::Uuid::new_v4().simple()
+    );
 
     // Send UnloadModel message to runner
     let msg = GatewayMessage::UnloadModel {
@@ -436,14 +476,23 @@ async fn unload_model(
 
     match runner.tx.send(msg).await {
         Ok(_) => {
-            tracing::info!("Sent unload model request '{}' for model '{}' to runner {}", request_id, req.model_id, runner_id);
+            tracing::info!(
+                "Sent unload model request '{}' for model '{}' to runner {}",
+                request_id,
+                req.model_id,
+                runner_id
+            );
             Ok(Json(LoadModelResponse {
                 success: true,
                 message: format!("Unloading model '{}' on runner {}", req.model_id, runner_id),
             }))
         }
         Err(e) => {
-            tracing::error!("Failed to send unload model message to runner {}: {}", runner_id, e);
+            tracing::error!(
+                "Failed to send unload model message to runner {}: {}",
+                runner_id,
+                e
+            );
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(LoadModelResponse {
@@ -466,7 +515,10 @@ pub struct UsersApiResponse {
 
 /// GET /admin/api/users - List all users with stats (JSON API)
 async fn api_users_list(State(state): State<Arc<AppState>>) -> Json<UsersApiResponse> {
-    let users = state.audit_logger.get_users_with_stats().unwrap_or_default();
+    let users = state
+        .audit_logger
+        .get_users_with_stats()
+        .unwrap_or_default();
     let total = users.len();
     Json(UsersApiResponse { users, total })
 }
@@ -552,10 +604,14 @@ async fn api_keys_create(
     Json(body): Json<CreateApiKeyRequest>,
 ) -> Result<Json<CreateApiKeyResponse>, (StatusCode, String)> {
     // Verify the user exists
-    let user = state.audit_logger.find_or_create_user(&body.user_id, None)
+    let user = state
+        .audit_logger
+        .find_or_create_user(&body.user_id, None)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("User not found: {}", e)))?;
 
-    let (key, secret) = state.audit_logger.create_api_key(&user.id, &body.name)
+    let (key, secret) = state
+        .audit_logger
+        .create_api_key(&user.id, &body.name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(CreateApiKeyResponse { key, secret }))
@@ -566,7 +622,9 @@ async fn api_keys_revoke(
     State(state): State<Arc<AppState>>,
     Path(key_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let revoked = state.audit_logger.revoke_api_key(&key_id)
+    let revoked = state
+        .audit_logger
+        .revoke_api_key(&key_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if revoked {
@@ -606,6 +664,7 @@ enum AdminServerMessage {
         models: Vec<AdminModelInfo>,
         stats: DashboardStatsInfo,
         batch_queue: BatchQueueInfo,
+        router_state: RouterStateSnapshot,
     },
     /// A runner connected.
     RunnerConnected {
@@ -647,6 +706,10 @@ enum AdminServerMessage {
     StatsUpdated { stats: DashboardStatsInfo },
     /// Batch queue updated (sent periodically when batching is enabled).
     BatchQueueUpdated { batch_queue: BatchQueueInfo },
+    /// Router state updated.
+    RouterStateUpdated { router_state: RouterStateSnapshot },
+    /// Router emitted an event.
+    RouterEvent { event: RouterEventRecord },
 }
 
 impl From<RunnerEvent> for AdminServerMessage {
@@ -692,10 +755,7 @@ impl From<RunnerEvent> for AdminServerMessage {
 /// - Server responds with `{ "type": "auth_ok" }` or `{ "type": "auth_error", "message": "..." }`
 /// - After auth, server sends runner events as they occur
 /// - Client can send auth message again to refresh token mid-connection
-async fn admin_ws(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn admin_ws(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_admin_ws(socket, state))
 }
 
@@ -705,59 +765,57 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
 
     // Wait for initial auth message within 10 seconds
     let auth_timeout = Duration::from_secs(10);
-    let initial_auth = match tokio::time::timeout(auth_timeout, FuturesStreamExt::next(&mut ws_rx)).await {
-        Ok(Some(Ok(Message::Text(text)))) => {
-            match serde_json::from_str::<AdminClientMessage>(&text) {
-                Ok(AdminClientMessage::Auth { token }) => token,
-                Err(e) => {
-                    let _ = send_admin_message(
-                        &mut ws_tx,
-                        &AdminServerMessage::AuthError {
-                            message: format!("Invalid message format: {}", e),
-                        },
-                    )
-                    .await;
-                    return;
+    let initial_auth =
+        match tokio::time::timeout(auth_timeout, FuturesStreamExt::next(&mut ws_rx)).await {
+            Ok(Some(Ok(Message::Text(text)))) => {
+                match serde_json::from_str::<AdminClientMessage>(&text) {
+                    Ok(AdminClientMessage::Auth { token }) => token,
+                    Err(e) => {
+                        let _ = send_admin_message(
+                            &mut ws_tx,
+                            &AdminServerMessage::AuthError {
+                                message: format!("Invalid message format: {}", e),
+                            },
+                        )
+                        .await;
+                        return;
+                    }
                 }
             }
-        }
-        Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {
-            tracing::debug!("Admin WS client disconnected before auth");
-            return;
-        }
-        Ok(Some(Ok(_))) => {
-            let _ = send_admin_message(
-                &mut ws_tx,
-                &AdminServerMessage::AuthError {
-                    message: "Expected text message with auth".to_string(),
-                },
-            )
-            .await;
-            return;
-        }
-        Ok(Some(Err(e))) => {
-            tracing::warn!("Admin WS error during auth: {}", e);
-            return;
-        }
-        Err(_) => {
-            let _ = send_admin_message(
-                &mut ws_tx,
-                &AdminServerMessage::AuthError {
-                    message: "Authentication timeout".to_string(),
-                },
-            )
-            .await;
-            return;
-        }
-    };
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {
+                tracing::debug!("Admin WS client disconnected before auth");
+                return;
+            }
+            Ok(Some(Ok(_))) => {
+                let _ = send_admin_message(
+                    &mut ws_tx,
+                    &AdminServerMessage::AuthError {
+                        message: "Expected text message with auth".to_string(),
+                    },
+                )
+                .await;
+                return;
+            }
+            Ok(Some(Err(e))) => {
+                tracing::warn!("Admin WS error during auth: {}", e);
+                return;
+            }
+            Err(_) => {
+                let _ = send_admin_message(
+                    &mut ws_tx,
+                    &AdminServerMessage::AuthError {
+                        message: "Authentication timeout".to_string(),
+                    },
+                )
+                .await;
+                return;
+            }
+        };
 
     // Validate initial token
     if let Err(msg) = validate_admin_token(&state, &initial_auth).await {
-        let _ = send_admin_message(
-            &mut ws_tx,
-            &AdminServerMessage::AuthError { message: msg },
-        )
-        .await;
+        let _ =
+            send_admin_message(&mut ws_tx, &AdminServerMessage::AuthError { message: msg }).await;
         return;
     }
 
@@ -776,9 +834,19 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     let models = get_models_snapshot(&state).await;
     let stats = get_stats_snapshot(&state);
     let batch_queue = get_batch_queue_snapshot(&state).await;
-    if send_admin_message(&mut ws_tx, &AdminServerMessage::StateSnapshot { runners, models, stats, batch_queue })
-        .await
-        .is_err()
+    let router_state = get_router_state_snapshot(&state).await;
+    if send_admin_message(
+        &mut ws_tx,
+        &AdminServerMessage::StateSnapshot {
+            runners,
+            models,
+            stats,
+            batch_queue,
+            router_state,
+        },
+    )
+    .await
+    .is_err()
     {
         return;
     }
@@ -790,6 +858,8 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     // Subscribe to request events
     let request_rx = state.request_events.subscribe();
     let mut request_stream = BroadcastStream::new(request_rx);
+    let router_rx = state.router_telemetry.subscribe();
+    let mut router_stream = BroadcastStream::new(router_rx);
 
     // Ping interval for keep-alive (30 seconds)
     let mut ping_interval = tokio::time::interval(Duration::from_secs(30));
@@ -814,6 +884,10 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
                         // Also send updated models (since model availability depends on runners)
                         let models = get_models_snapshot(&state).await;
                         if send_admin_message(&mut ws_tx, &AdminServerMessage::ModelsUpdated { models }).await.is_err() {
+                            break;
+                        }
+                        let router_state = get_router_state_snapshot(&state).await;
+                        if send_admin_message(&mut ws_tx, &AdminServerMessage::RouterStateUpdated { router_state }).await.is_err() {
                             break;
                         }
                     }
@@ -853,6 +927,23 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
                     }
                     Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
                         tracing::warn!("Admin WS client lagged, skipped {} request events", n);
+                    }
+                }
+            }
+
+            Some(router_result) = TokioStreamExt::next(&mut router_stream) => {
+                match router_result {
+                    Ok(event) => {
+                        if send_admin_message(&mut ws_tx, &AdminServerMessage::RouterEvent { event }).await.is_err() {
+                            break;
+                        }
+                        let router_state = get_router_state_snapshot(&state).await;
+                        if send_admin_message(&mut ws_tx, &AdminServerMessage::RouterStateUpdated { router_state }).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                        tracing::warn!("Admin WS client lagged, skipped {} router events", n);
                     }
                 }
             }
@@ -922,6 +1013,10 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
             _ = batch_queue_interval.tick(), if batching_enabled => {
                 let batch_queue = get_batch_queue_snapshot(&state).await;
                 if send_admin_message(&mut ws_tx, &AdminServerMessage::BatchQueueUpdated { batch_queue }).await.is_err() {
+                    break;
+                }
+                let router_state = get_router_state_snapshot(&state).await;
+                if send_admin_message(&mut ws_tx, &AdminServerMessage::RouterStateUpdated { router_state }).await.is_err() {
                     break;
                 }
             }
@@ -1049,6 +1144,18 @@ async fn get_batch_queue_snapshot(state: &AppState) -> BatchQueueInfo {
     }
 }
 
+async fn get_router_state_snapshot(state: &AppState) -> RouterStateSnapshot {
+    state
+        .router_telemetry
+        .snapshot(
+            &state.runner_registry,
+            &state.audit_logger,
+            state.batch_queue.as_ref(),
+            &state.config.models,
+        )
+        .await
+}
+
 /// Validate a JWT token for admin access.
 async fn validate_admin_token(state: &AppState, token: &str) -> Result<(), String> {
     let user = state
@@ -1062,7 +1169,10 @@ async fn validate_admin_token(state: &AppState, token: &str) -> Result<(), Strin
     }
 
     // Ensure admin user exists in the database
-    if let Err(e) = state.audit_logger.find_or_create_user(&user.sub, user.email.as_deref()) {
+    if let Err(e) = state
+        .audit_logger
+        .find_or_create_user(&user.sub, user.email.as_deref())
+    {
         tracing::warn!("Failed to create user record for admin {}: {}", user.sub, e);
     }
 
@@ -1103,7 +1213,10 @@ async fn runner_events(
     }
 
     // Ensure admin user exists in the database
-    if let Err(e) = state.audit_logger.find_or_create_user(&user.sub, user.email.as_deref()) {
+    if let Err(e) = state
+        .audit_logger
+        .find_or_create_user(&user.sub, user.email.as_deref())
+    {
         tracing::warn!("Failed to create user record for admin {}: {}", user.sub, e);
     }
 
@@ -1169,10 +1282,15 @@ pub fn router(state: Arc<AppState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_ai_common::{GatewayMessage, RunnerStatus, RunnerHealth, EngineStatus, ModelInfo as ProtocolModelInfo};
+    use simple_ai_common::{
+        EngineStatus, GatewayMessage, ModelInfo as ProtocolModelInfo, RunnerHealth, RunnerStatus,
+    };
     use tokio::sync::mpsc;
 
-    fn create_test_runner_with_models(loaded_models: Vec<String>, available_models: Vec<String>) -> (String, mpsc::Receiver<GatewayMessage>) {
+    fn create_test_runner_with_models(
+        loaded_models: Vec<String>,
+        available_models: Vec<String>,
+    ) -> (String, mpsc::Receiver<GatewayMessage>) {
         let (tx, rx) = mpsc::channel(32);
         let runner_id = "test-runner".to_string();
 

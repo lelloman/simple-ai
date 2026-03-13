@@ -52,6 +52,7 @@
                             <div class="ml-10 flex items-baseline space-x-4">
                                 <a href="#dashboard" onclick="showPage('dashboard')" id="nav-dashboard" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Dashboard</a>
                                 <a href="#runners" onclick="showPage('runners')" id="nav-runners" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Runners</a>
+                                <a href="#router" onclick="showPage('router')" id="nav-router" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Router</a>
                                 <a href="#models" onclick="showPage('models')" id="nav-models" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Models</a>
                                 <a href="#users" onclick="showPage('users')" id="nav-users" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Users</a>
                                 <a href="#requests" onclick="showPage('requests')" id="nav-requests" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Requests</a>
@@ -114,6 +115,35 @@
                     <!-- Runners page -->
                     <div id="page-runners" class="page hidden">
                         <div id="runners-list" class="space-y-4"></div>
+                    </div>
+
+                    <!-- Router page -->
+                    <div id="page-router" class="page hidden">
+                        <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                            <div class="xl:col-span-2 space-y-6">
+                                <div class="bg-white shadow rounded-lg overflow-hidden">
+                                    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                                        <h3 class="text-sm font-medium text-gray-900">Fleet Routing State</h3>
+                                        <div id="router-summary" class="text-xs text-gray-500"></div>
+                                    </div>
+                                    <div id="router-runners" class="p-4 space-y-3"></div>
+                                </div>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="bg-white shadow rounded-lg overflow-hidden">
+                                    <div class="px-4 py-3 border-b border-gray-200">
+                                        <h3 class="text-sm font-medium text-gray-900">Queue Pressure</h3>
+                                    </div>
+                                    <div id="router-queues" class="p-4"></div>
+                                </div>
+                                <div class="bg-white shadow rounded-lg overflow-hidden">
+                                    <div class="px-4 py-3 border-b border-gray-200">
+                                        <h3 class="text-sm font-medium text-gray-900">Recent Router Events</h3>
+                                    </div>
+                                    <div id="router-events" class="max-h-[32rem] overflow-y-auto p-4 space-y-3"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Models page -->
@@ -183,6 +213,13 @@
 
                     <!-- Requests page -->
                     <div id="page-requests" class="page hidden">
+                        <div class="mb-6 bg-white shadow rounded-lg overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-200">
+                                <h3 class="text-sm font-medium text-gray-900">Router Activity</h3>
+                            </div>
+                            <div id="requests-router-events" class="p-4 space-y-3"></div>
+                        </div>
+
                         <!-- Batch Queue Panel -->
                         <div id="batch-queue-panel" class="mb-6 bg-white shadow rounded-lg overflow-hidden">
                             <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
@@ -220,6 +257,7 @@
         let modelsState = [];
         let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0, tokens_prompt: 0, tokens_completion: 0 };
         let batchQueueState = { enabled: false, timeout_ms: 0, min_batch_size: 0, queues: {} };
+        let routerState = { runners: [], queues: {}, recent_events: [] };
 
         // Token refresh state
         let refreshToken = null;
@@ -763,6 +801,7 @@
                         modelsState = msg.models;
                         statsState = msg.stats;
                         batchQueueState = msg.batch_queue;
+                        routerState = msg.router_state || routerState;
                         renderCurrentPage();
                         break;
 
@@ -800,6 +839,22 @@
                     case 'batch_queue_updated':
                         batchQueueState = msg.batch_queue;
                         renderBatchQueue();
+                        break;
+
+                    case 'router_state_updated':
+                        routerState = msg.router_state;
+                        renderRouterIfVisible();
+                        renderRequestsRouterEventsIfVisible();
+                        break;
+
+                    case 'router_event':
+                        if (!routerState.recent_events) {
+                            routerState.recent_events = [];
+                        }
+                        routerState.recent_events.unshift(msg.event);
+                        routerState.recent_events = routerState.recent_events.slice(0, 100);
+                        renderRouterIfVisible();
+                        renderRequestsRouterEventsIfVisible();
                         break;
 
                     default:
@@ -1173,6 +1228,7 @@
             const titles = {
                 dashboard: 'Dashboard',
                 runners: 'Runners',
+                router: 'Router',
                 models: 'Models',
                 users: 'Users',
                 'user-detail': 'User Details',
@@ -1197,7 +1253,7 @@
 
             // Show/hide auto-refresh badge - all data now comes via WebSocket
             const badge = document.getElementById('auto-refresh-badge');
-            if (['dashboard', 'runners', 'models'].includes(currentPage)) {
+            if (['dashboard', 'runners', 'router', 'models'].includes(currentPage)) {
                 badge.classList.remove('hidden');
                 // Badge text is controlled by WebSocket connection state
             } else {
@@ -1206,11 +1262,13 @@
 
             if (currentPage === 'dashboard') renderDashboard();
             else if (currentPage === 'runners') renderRunners();
+            else if (currentPage === 'router') renderRouter();
             else if (currentPage === 'models') renderModels();
             else if (currentPage === 'users') loadUsers();
             else if (currentPage === 'requests') {
                 loadRequests();
                 renderBatchQueue();
+                renderRequestsRouterEvents();
             }
             // user-detail page is handled by showUserDetail()
         }
@@ -1320,6 +1378,129 @@
                             stats.oldest_age_ms ? `oldest: ${stats.oldest_age_ms}ms` : '-'
                         }</span>
                     </div>
+                </div>
+            `).join('');
+        }
+
+        function renderRouter() {
+            const runnersEl = document.getElementById('router-runners');
+            const queuesEl = document.getElementById('router-queues');
+            const eventsEl = document.getElementById('router-events');
+            const summaryEl = document.getElementById('router-summary');
+            if (!runnersEl || !queuesEl || !eventsEl || !summaryEl) return;
+
+            const runners = routerState.runners || [];
+            const recentEvents = routerState.recent_events || [];
+            const queueEntries = Object.entries(routerState.queues || {});
+            const active = runners.filter(r => r.is_online).length;
+            const waking = runners.filter(r => r.scheduler_state === 'waking').length;
+            const loading = runners.filter(r => r.scheduler_state === 'loading').length;
+            summaryEl.textContent = `${active} online • ${waking} waking • ${loading} loading`;
+
+            if (runners.length === 0) {
+                runnersEl.innerHTML = '<div class="text-sm text-gray-500">No router state available yet.</div>';
+            } else {
+                runnersEl.innerHTML = runners.map(renderRouterRunnerStateHtml).join('');
+            }
+
+            if (queueEntries.length === 0) {
+                queuesEl.innerHTML = '<p class="text-sm text-gray-500">No queued models tracked.</p>';
+            } else {
+                queuesEl.innerHTML = queueEntries.map(([model, pending]) => `
+                    <div class="flex items-center justify-between border-b border-gray-100 py-2 last:border-0">
+                        <span class="text-sm font-medium text-gray-900">${escapeHtml(model)}</span>
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${pending > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'}">${pending} pending</span>
+                    </div>
+                `).join('');
+            }
+
+            renderRouterEventsInto(eventsEl, recentEvents, 20);
+        }
+
+        function renderRouterIfVisible() {
+            if (currentPage === 'router') {
+                renderRouter();
+            }
+        }
+
+        function renderRequestsRouterEvents() {
+            const el = document.getElementById('requests-router-events');
+            if (!el) return;
+            renderRouterEventsInto(el, routerState.recent_events || [], 8);
+        }
+
+        function renderRequestsRouterEventsIfVisible() {
+            if (currentPage === 'requests') {
+                renderRequestsRouterEvents();
+            }
+        }
+
+        function renderRouterRunnerStateHtml(runner) {
+            const stateClass =
+                runner.scheduler_state === 'ready' ? 'bg-green-100 text-green-800' :
+                runner.scheduler_state === 'loading' ? 'bg-blue-100 text-blue-800' :
+                runner.scheduler_state === 'waking' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-600';
+
+            return `
+                <div class="rounded-lg border border-gray-200 p-4">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="text-sm font-semibold text-gray-900">${escapeHtml(runner.name)}</h4>
+                                <span class="text-xs text-gray-400">${escapeHtml(runner.runner_id)}</span>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">
+                                ${escapeHtml(runner.machine_type || 'unknown machine')}
+                                <span class="mx-1">•</span>
+                                health: ${escapeHtml(runner.health)}
+                                <span class="mx-1">•</span>
+                                active: ${runner.active_requests}
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-end gap-2">
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${stateClass}">${escapeHtml(runner.scheduler_state)}</span>
+                            ${runner.target_model ? `<span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">target: ${escapeHtml(runner.target_model)}</span>` : ''}
+                            ${runner.protected_classes && runner.protected_classes.length ? `<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">protects: ${escapeHtml(runner.protected_classes.join(', '))}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div>
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Loaded</p>
+                            <div class="mt-1 flex flex-wrap gap-2">
+                                ${(runner.loaded_models || []).length ? runner.loaded_models.map(model => `<span class="inline-flex items-center rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700">${escapeHtml(model)}</span>`).join('') : '<span class="text-xs text-gray-400">None</span>'}
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Available</p>
+                            <div class="mt-1 flex flex-wrap gap-2">
+                                ${(runner.available_models || []).length ? runner.available_models.map(model => `<span class="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">${escapeHtml(model)}</span>`).join('') : '<span class="text-xs text-gray-400">None</span>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderRouterEventsInto(container, events, limit) {
+            const items = (events || []).slice(0, limit);
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-500">No router events yet.</p>';
+                return;
+            }
+
+            container.innerHTML = items.map(event => `
+                <div class="border-l-2 border-slate-200 pl-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(event.kind)}</span>
+                        <span class="text-[11px] text-gray-400">${new Date(event.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-800">${escapeHtml(event.message)}</p>
+                    <p class="mt-1 text-xs text-gray-500">
+                        ${event.request_id ? `req ${escapeHtml(event.request_id)}` : ''}
+                        ${event.runner_id ? `${event.request_id ? ' • ' : ''}${escapeHtml(event.runner_id)}` : ''}
+                        ${event.model ? `${(event.request_id || event.runner_id) ? ' • ' : ''}${escapeHtml(event.model)}` : ''}
+                    </p>
                 </div>
             `).join('');
         }
@@ -1860,7 +2041,7 @@
         // Handle hash-based navigation
         function getPageFromHash() {
             const hash = window.location.hash.slice(1); // Remove the #
-            const validPages = ['dashboard', 'runners', 'models', 'users', 'user-detail', 'requests'];
+            const validPages = ['dashboard', 'runners', 'router', 'models', 'users', 'user-detail', 'requests'];
             return validPages.includes(hash) ? hash : 'dashboard';
         }
 

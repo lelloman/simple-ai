@@ -1,33 +1,38 @@
-pub mod config;
-pub mod routes;
-pub mod auth;
-pub mod llm;
+pub mod arp;
 pub mod audit;
-pub mod models;
-pub mod logging;
+pub mod auth;
+pub mod circuit_breaker;
+pub mod config;
 pub mod gateway;
+pub mod llm;
+pub mod logging;
+pub mod models;
+pub mod rate_limit;
+pub mod routes;
 pub mod test_util;
 pub mod wol;
-pub mod arp;
-pub mod rate_limit;
-pub mod circuit_breaker;
 
-pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
-pub use auth::JwksClient;
-pub use llm::OllamaClient;
 pub use audit::AuditLogger;
-pub use models::chat::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction};
-pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
+pub use audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
 pub use auth::AuthUser;
-pub use audit::{DashboardStats, UserWithStats, RequestSummary, RequestWithResponse};
-pub use gateway::{BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RunnerRegistry};
-pub use wol::WakeService;
+pub use auth::JwksClient;
 pub use circuit_breaker::CircuitBreaker;
+pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
+pub use gateway::{
+    BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RequestScheduler,
+    RouterTelemetry, RunnerRegistry,
+};
+pub use llm::OllamaClient;
+pub use models::chat::{
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
+};
+pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
+pub use wol::WakeService;
 
-use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
 use fasttext::FastText;
 use serde::Serialize;
+use std::sync::Arc;
+use tokio::sync::{broadcast, Mutex};
 
 /// Event emitted when a new request is completed.
 #[derive(Debug, Clone, Serialize)]
@@ -58,12 +63,16 @@ pub struct AppState {
     pub runner_registry: Arc<RunnerRegistry>,
     /// Inference router for distributing requests.
     pub inference_router: Arc<InferenceRouter>,
+    /// Central scheduler for request preparation and dispatch.
+    pub request_scheduler: Arc<RequestScheduler>,
     /// Wake-on-LAN configuration.
     pub wol_config: WolConfig,
     /// Wake service for on-demand runner waking.
     pub wake_service: Arc<WakeService>,
     /// Broadcast channel for request events (for admin dashboard).
     pub request_events: broadcast::Sender<RequestEvent>,
+    /// Router telemetry for scheduler state and recent events.
+    pub router_telemetry: Arc<RouterTelemetry>,
     /// Batch queue for request batching (if enabled).
     pub batch_queue: Option<Arc<BatchQueue>>,
     /// Batch dispatcher for cache invalidation (if enabled).

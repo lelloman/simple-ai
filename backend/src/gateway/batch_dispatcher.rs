@@ -179,13 +179,11 @@ impl BatchDispatcher {
         let runners = self.registry.with_model(model).await;
 
         if runners.is_empty() {
-            // Check if any operational runners exist
-            let operational = self.registry.operational().await;
-            if operational.is_empty() {
+            let compatible = self.registry.with_available_model(model).await;
+            if compatible.is_empty() {
                 return Err(RouterError::NoRunners);
             }
-            // Return first operational runner (it will load the model on demand)
-            return Ok(operational.into_iter().next().unwrap());
+            return Ok(compatible.into_iter().next().unwrap());
         }
 
         // Select runner with fewest active requests
@@ -230,13 +228,13 @@ impl BatchDispatcher {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!("HTTP {}: {}", status, body)));
+            return Err(RouterError::RunnerError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
         }
 
-        response
-            .json()
-            .await
-            .map_err(RouterError::RequestFailed)
+        response.json().await.map_err(RouterError::RequestFailed)
     }
 }
 

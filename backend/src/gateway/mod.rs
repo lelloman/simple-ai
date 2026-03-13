@@ -13,11 +13,15 @@ pub mod batch_queue;
 pub mod model_class;
 mod registry;
 pub mod router;
+pub mod scheduler;
+pub mod telemetry;
 mod ws;
 
 pub use batch_dispatcher::BatchDispatcher;
 pub use batch_queue::{BatchQueue, BatchQueueConfig, BatchedResponse, ModelQueueStats};
-pub use model_class::{classify_model, can_request_model, ModelClass, ModelRequest};
+pub use model_class::{can_request_model, classify_model, ModelClass, ModelRequest};
 pub use registry::{ConnectedRunner, RunnerEvent, RunnerRegistry};
-pub use router::{InferenceRouter, RouterError, RoutedResponse};
+pub use router::{InferenceRouter, RoutePlan, RoutedResponse, RouterError};
+pub use scheduler::{RequestScheduler, ScheduledResponse, SchedulerError};
+pub use telemetry::{RouterEventRecord, RouterStateSnapshot, RouterTelemetry};
 pub use ws::{ws_handler, WsState};

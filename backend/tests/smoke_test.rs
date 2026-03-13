@@ -1,16 +1,19 @@
-use simple_ai_backend::{routes, AppState, Config, InferenceRouter, RunnerRegistry, WakeService};
-use simple_ai_backend::auth::{JwksClient, AuthError};
-use simple_ai_backend::llm::OllamaClient;
-use simple_ai_backend::audit::AuditLogger;
-use simple_ai_backend::models::chat::{ChatCompletionRequest, ChatMessage};
-use std::sync::Arc;
 use bytes::Bytes;
 use http::StatusCode;
-use tower::ServiceExt;
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
+use simple_ai_backend::audit::AuditLogger;
+use simple_ai_backend::auth::{AuthError, JwksClient};
+use simple_ai_backend::llm::OllamaClient;
+use simple_ai_backend::models::chat::{ChatCompletionRequest, ChatMessage};
+use simple_ai_backend::{
+    routes, AppState, Config, InferenceRouter, RequestScheduler, RouterTelemetry, RunnerRegistry,
+    WakeService,
+};
+use std::sync::Arc;
+use tower::ServiceExt;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
     let config = Config {
@@ -53,7 +56,9 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
     }
 
     Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/.well-known/openid-configuration"))
+        .and(wiremock::matchers::path(
+            "/.well-known/openid-configuration",
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(OidcConfig {
             jwks_uri: format!("{}/.well-known/jwks.json", mock_server.uri()),
         }))
@@ -102,6 +107,15 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         config.models.clone(),
         config.routing.clone(),
     ));
+    let router_telemetry = Arc::new(RouterTelemetry::new());
+    let request_scheduler = Arc::new(RequestScheduler::new(
+        inference_router.clone(),
+        runner_registry.clone(),
+        wake_service.clone(),
+        router_telemetry.clone(),
+        None,
+        config.routing.clone(),
+    ));
 
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
 
@@ -113,29 +127,36 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         lang_detector: tokio::sync::Mutex::new(fasttext::FastText::default()),
         runner_registry,
         inference_router,
+        request_scheduler,
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        router_telemetry,
         batch_queue: None,
         batch_dispatcher: None,
         circuit_breaker: std::sync::Arc::new(simple_ai_backend::CircuitBreaker::new(0, 30)),
     }))
 }
 
-async fn send_request(app: &axum::Router, method: http::Method, uri: &str, body: Option<Bytes>) -> StatusCode {
-    let mut req_builder = http::Request::builder()
-        .method(method)
-        .uri(uri);
+async fn send_request(
+    app: &axum::Router,
+    method: http::Method,
+    uri: &str,
+    body: Option<Bytes>,
+) -> StatusCode {
+    let mut req_builder = http::Request::builder().method(method).uri(uri);
 
     if body.is_some() {
         req_builder = req_builder.header("Content-Type", "application/json");
     }
 
-    let req = req_builder.body(if let Some(b) = body {
-        axum::body::Body::from(b)
-    } else {
-        axum::body::Body::empty()
-    }).unwrap();
+    let req = req_builder
+        .body(if let Some(b) = body {
+            axum::body::Body::from(b)
+        } else {
+            axum::body::Body::empty()
+        })
+        .unwrap();
 
     let response = app.clone().oneshot(req).await.unwrap();
     response.status()

@@ -10,12 +10,12 @@ use thiserror::Error;
 
 use simple_ai_common::ChatCompletionRequest;
 
-use crate::audit::{AuditLogger, RunnerMetricRow};
-use crate::circuit_breaker::CircuitBreaker;
-use crate::config::{ModelsConfig, RoutingConfig};
 use super::batch_queue::BatchQueue;
 use super::model_class::{classify_model, ModelClass, ModelRequest};
 use super::{ConnectedRunner, RunnerRegistry};
+use crate::audit::{AuditLogger, RunnerMetricRow};
+use crate::circuit_breaker::CircuitBreaker;
+use crate::config::{ModelsConfig, RoutingConfig};
 
 /// Errors from the inference router.
 #[derive(Debug, Error)]
@@ -56,6 +56,16 @@ struct SelectedRunner {
     runner: ConnectedRunner,
     /// The actual model to use (resolved from class if needed).
     resolved_model: String,
+    /// Whether the resolved model is already loaded on the selected runner.
+    is_loaded: bool,
+}
+
+/// Planning information for a routed request.
+#[derive(Debug, Clone)]
+pub struct RoutePlan {
+    pub runner: ConnectedRunner,
+    pub resolved_model: String,
+    pub is_loaded: bool,
 }
 
 /// Result of a routed request, includes metadata about routing.
@@ -172,7 +182,8 @@ impl InferenceRouter {
         // Track active request for smart routing
         self.registry.increment_requests(&runner_id).await;
 
-        let response = self.proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
+        let response = self
+            .proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
             .await;
 
         // Always decrement, even on error
@@ -220,7 +231,8 @@ impl InferenceRouter {
 
         self.registry.increment_requests(&runner_id).await;
 
-        let response = self.proxy_request_value(&selection.runner, "/v1/embeddings", request_value)
+        let response = self
+            .proxy_request_value(&selection.runner, "/v1/embeddings", request_value)
             .await;
 
         self.registry.decrement_requests(&runner_id).await;
@@ -266,7 +278,9 @@ impl InferenceRouter {
         };
 
         // Enqueue the request and wait for the response
-        let rx = batch_queue.enqueue(resolved_model.clone(), request.clone()).await;
+        let rx = batch_queue
+            .enqueue(resolved_model.clone(), request.clone())
+            .await;
 
         // Wait for the batched response
         let batched = rx.await.map_err(|_| {
@@ -301,7 +315,9 @@ impl InferenceRouter {
         let runner_id = selection.runner.id.clone();
 
         // Resolve canonical → local for this runner (handles both class requests and aliases)
-        let local_model = selection.runner.resolve_model_alias(&selection.resolved_model);
+        let local_model = selection
+            .runner
+            .resolve_model_alias(&selection.resolved_model);
 
         // Always modify request with runner's local model name
         let mut request_value = serde_json::to_value(request)
@@ -313,7 +329,8 @@ impl InferenceRouter {
         // Track active request (Note: we can't easily decrement for streaming)
         self.registry.increment_requests(&runner_id).await;
 
-        let response = self.proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
+        let response = self
+            .proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
             .await;
 
         // Decrement on connection error (if response succeeded, stream is ongoing)
@@ -343,8 +360,20 @@ impl InferenceRouter {
     }
 
     /// Get models with full details from all runners.
-    pub async fn list_models_with_details(&self) -> Result<Vec<crate::gateway::registry::ModelInfo>, RouterError> {
+    pub async fn list_models_with_details(
+        &self,
+    ) -> Result<Vec<crate::gateway::registry::ModelInfo>, RouterError> {
         Ok(self.registry.all_models().await)
+    }
+
+    /// Plan a routed request without executing it.
+    pub async fn plan_request(&self, model: &str) -> Result<RoutePlan, RouterError> {
+        let selection = self.select_runner_for_model(model).await?;
+        Ok(RoutePlan {
+            runner: selection.runner,
+            resolved_model: selection.resolved_model,
+            is_loaded: selection.is_loaded,
+        })
     }
 
     /// Select a runner for the given model string.
@@ -356,38 +385,42 @@ impl InferenceRouter {
         match model_request {
             ModelRequest::Specific(model_id) => {
                 let runner = self.select_runner_for_specific(&model_id).await?;
+                let is_loaded = runner.has_model_or_alias(&model_id);
                 Ok(SelectedRunner {
                     runner,
                     resolved_model: model_id,
+                    is_loaded,
                 })
             }
-            ModelRequest::Class(class) => {
-                self.select_runner_for_class(class).await
-            }
+            ModelRequest::Class(class) => self.select_runner_for_class(class).await,
         }
     }
 
     /// Filter out runners whose circuit breaker is open.
     fn filter_available(&self, runners: Vec<ConnectedRunner>) -> Vec<ConnectedRunner> {
         if let Some(cb) = &self.circuit_breaker {
-            runners.into_iter().filter(|r| cb.is_available(&r.id)).collect()
+            runners
+                .into_iter()
+                .filter(|r| cb.is_available(&r.id))
+                .collect()
         } else {
             runners
         }
     }
 
     /// Select a runner for a specific model.
-    async fn select_runner_for_specific(&self, model_id: &str) -> Result<ConnectedRunner, RouterError> {
+    async fn select_runner_for_specific(
+        &self,
+        model_id: &str,
+    ) -> Result<ConnectedRunner, RouterError> {
         let with_model = self.filter_available(self.registry.with_model(model_id).await);
         if with_model.is_empty() {
-            // Check if any runner is operational
-            let operational = self.filter_available(self.registry.operational().await);
-            if operational.is_empty() {
+            let compatible =
+                self.filter_available(self.registry.with_available_model(model_id).await);
+            if compatible.is_empty() {
                 return Err(RouterError::NoRunners);
             }
-            // Model not loaded on any runner - return first operational
-            // The runner will load the model on demand
-            return Ok(self.select_from_candidates(&operational));
+            return Ok(self.select_from_candidates(&compatible));
         }
         Ok(self.select_from_candidates(&with_model))
     }
@@ -403,7 +436,10 @@ impl InferenceRouter {
 
         // Find any model of the requested class
         for runner in &operational {
-            for model in runner.status.engines.iter()
+            for model in runner
+                .status
+                .engines
+                .iter()
                 .flat_map(|e| e.available_models.iter())
             {
                 if classify_model(&model.id, &self.models_config) == Some(class) {
@@ -418,27 +454,45 @@ impl InferenceRouter {
     /// Select a runner for a model class.
     ///
     /// Finds runners that have models of the requested class and picks one.
-    async fn select_runner_for_class(&self, class: ModelClass) -> Result<SelectedRunner, RouterError> {
+    async fn select_runner_for_class(
+        &self,
+        class: ModelClass,
+    ) -> Result<SelectedRunner, RouterError> {
         let operational = self.filter_available(self.registry.operational().await);
         if operational.is_empty() {
             return Err(RouterError::NoRunners);
         }
 
-        // Find runners with models of the requested class
-        let mut candidates_with_models: Vec<(ConnectedRunner, String)> = Vec::new();
+        // Prefer runners that already have a matching model loaded before considering cold loads.
+        let mut loaded_candidates: Vec<(ConnectedRunner, String)> = Vec::new();
+        let mut available_candidates: Vec<(ConnectedRunner, String)> = Vec::new();
 
         for runner in &operational {
-            // Get models from this runner that match the class
-            for model in &runner.status.engines.iter()
+            let models: Vec<_> = runner
+                .status
+                .engines
+                .iter()
                 .flat_map(|e| e.available_models.iter())
-                .collect::<Vec<_>>()
-            {
+                .collect();
+            for model in models {
                 if classify_model(&model.id, &self.models_config) == Some(class) {
-                    candidates_with_models.push((runner.clone(), model.id.clone()));
+                    let target = if runner.has_model_or_alias(&model.id) {
+                        &mut loaded_candidates
+                    } else {
+                        &mut available_candidates
+                    };
+                    target.push((runner.clone(), model.id.clone()));
                     break; // One model per runner is enough
                 }
             }
         }
+
+        let is_loaded = !loaded_candidates.is_empty();
+        let candidates_with_models = if is_loaded {
+            loaded_candidates
+        } else {
+            available_candidates
+        };
 
         if candidates_with_models.is_empty() {
             return Err(RouterError::NoModelsOfClass(class.to_string()));
@@ -447,7 +501,8 @@ impl InferenceRouter {
         // Select using load balancing
         let idx = match self.strategy {
             LoadBalanceStrategy::RoundRobin => {
-                self.round_robin_counter.fetch_add(1, Ordering::Relaxed) % candidates_with_models.len()
+                self.round_robin_counter.fetch_add(1, Ordering::Relaxed)
+                    % candidates_with_models.len()
             }
             LoadBalanceStrategy::Random => {
                 use std::collections::hash_map::RandomState;
@@ -464,6 +519,7 @@ impl InferenceRouter {
             }
             LoadBalanceStrategy::SmartRouting => {
                 self.select_smart_routing(&candidates_with_models, class)
+                    .await
             }
         };
 
@@ -479,6 +535,7 @@ impl InferenceRouter {
         Ok(SelectedRunner {
             runner,
             resolved_model,
+            is_loaded,
         })
     }
 
@@ -486,17 +543,19 @@ impl InferenceRouter {
     ///
     /// Score = (pref_weight * preference_score) + (queue_weight * queue_score) + (latency_weight * latency_score)
     /// Lower score is better.
-    fn select_smart_routing(
+    async fn select_smart_routing(
         &self,
         candidates: &[(ConnectedRunner, String)],
         class: ModelClass,
     ) -> usize {
         let class_name = class.as_str();
         // Ensure pref_weight is non-negative even if queue_weight + latency_weight > 1.0
-        let pref_weight = (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
+        let pref_weight =
+            (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
 
         // Get class preferences (ordered list of preferred machine types)
         let preferences = self.routing_config.class_preferences.get(class_name);
+        let all_operational = self.registry.operational().await;
 
         // Collect all runner metrics for scoring
         let all_metrics = self.audit_logger.get_all_metrics().unwrap_or_default();
@@ -505,7 +564,14 @@ impl InferenceRouter {
             .iter()
             .enumerate()
             .map(|(idx, (runner, _model))| {
-                let score = self.score_runner(runner, class_name, preferences, &all_metrics, pref_weight);
+                let score = self.score_runner(
+                    runner,
+                    class_name,
+                    preferences,
+                    &all_metrics,
+                    &all_operational,
+                    pref_weight,
+                );
                 (idx, score)
             })
             .collect();
@@ -535,6 +601,7 @@ impl InferenceRouter {
         class_name: &str,
         preferences: Option<&Vec<String>>,
         all_metrics: &[RunnerMetricRow],
+        all_operational: &[ConnectedRunner],
         pref_weight: f64,
     ) -> f64 {
         // 1. Machine preference score (0.0 = first choice, 1.0 = second choice, etc.)
@@ -563,13 +630,17 @@ impl InferenceRouter {
             .map(|avg_ms| avg_ms / 1000.0) // Convert to seconds
             .unwrap_or(1.0); // Default to 1.0 if no data
 
+        // 4. Scarcity penalty: preserve runners that uniquely cover other classes/models.
+        let scarcity_penalty = self.scarcity_penalty(runner, class_name, all_operational);
+
         // Combined score
         let score = (pref_weight * pref_score)
             + (self.routing_config.queue_weight * queue_score)
-            + (self.routing_config.latency_weight * latency_score);
+            + (self.routing_config.latency_weight * latency_score)
+            + scarcity_penalty;
 
         tracing::debug!(
-            "Runner {} score: {:.2} (pref={:.2}*{:.2}, queue={:.2}*{:.2}, latency={:.2}*{:.2})",
+            "Runner {} score: {:.2} (pref={:.2}*{:.2}, queue={:.2}*{:.2}, latency={:.2}*{:.2}, scarcity={:.2})",
             runner.id,
             score,
             pref_weight,
@@ -577,10 +648,42 @@ impl InferenceRouter {
             self.routing_config.queue_weight,
             queue_score,
             self.routing_config.latency_weight,
-            latency_score
+            latency_score,
+            scarcity_penalty
         );
 
         score
+    }
+
+    fn scarcity_penalty(
+        &self,
+        runner: &ConnectedRunner,
+        requested_class: &str,
+        all_operational: &[ConnectedRunner],
+    ) -> f64 {
+        let mut penalty = 0.0;
+
+        for model_id in runner.available_models() {
+            let Some(model_class) = classify_model(&model_id, &self.models_config) else {
+                continue;
+            };
+            if model_class.as_str() == requested_class {
+                continue;
+            }
+
+            let supported_elsewhere = all_operational.iter().any(|other| {
+                other.id != runner.id
+                    && other.available_models().iter().any(|other_model| {
+                        classify_model(other_model, &self.models_config) == Some(model_class)
+                    })
+            });
+
+            if !supported_elsewhere {
+                penalty += 2.0;
+            }
+        }
+
+        penalty
     }
 
     /// Select a runner for the request (legacy method for backward compatibility).
@@ -589,14 +692,11 @@ impl InferenceRouter {
         let candidates = if let Some(model_id) = model {
             let with_model = self.registry.with_model(model_id).await;
             if with_model.is_empty() {
-                // Check if any runner is operational
-                let operational = self.registry.operational().await;
-                if operational.is_empty() {
+                let compatible = self.registry.with_available_model(model_id).await;
+                if compatible.is_empty() {
                     return Err(RouterError::NoRunners);
                 }
-                // Model not loaded on any runner - return first operational
-                // The runner will load the model on demand
-                return Ok(self.select_from_candidates(&operational));
+                return Ok(self.select_from_candidates(&compatible));
             }
             with_model
         } else {
@@ -731,7 +831,6 @@ pub struct ModelEntry {
     pub owned_by: String,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,7 +868,10 @@ mod tests {
     }
 
     fn create_test_router(registry: Arc<RunnerRegistry>) -> InferenceRouter {
-        let test_db_path = format!("test_router_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let test_db_path = format!(
+            "test_router_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         InferenceRouter::with_strategy(
             registry,
@@ -928,7 +1030,10 @@ mod tests {
 
         // Create routing config that prefers gpu-server for fast models
         let mut class_preferences = std::collections::HashMap::new();
-        class_preferences.insert("fast".to_string(), vec!["gpu-server".to_string(), "halo".to_string()]);
+        class_preferences.insert(
+            "fast".to_string(),
+            vec!["gpu-server".to_string(), "halo".to_string()],
+        );
 
         let routing_config = crate::config::RoutingConfig {
             class_preferences,
@@ -936,6 +1041,7 @@ mod tests {
             latency_weight: 0.1,
             speculative_wake_enabled: false,
             speculative_wake_targets: std::collections::HashMap::new(),
+            ..Default::default()
         };
 
         let models_config = crate::config::ModelsConfig {
@@ -943,12 +1049,18 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!("test_smart_routing_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let test_db_path = format!(
+            "test_smart_routing_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Smart routing should prefer gpu-server
-        let result = router.select_runner_for_class(ModelClass::Fast).await.unwrap();
+        let result = router
+            .select_runner_for_class(ModelClass::Fast)
+            .await
+            .unwrap();
         assert_eq!(result.runner.machine_type, Some("gpu-server".to_string()));
     }
 
@@ -995,6 +1107,7 @@ mod tests {
             latency_weight: 0.1,
             speculative_wake_enabled: false,
             speculative_wake_targets: std::collections::HashMap::new(),
+            ..Default::default()
         };
 
         let models_config = crate::config::ModelsConfig {
@@ -1002,12 +1115,18 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!("test_smart_queue_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let test_db_path = format!(
+            "test_smart_queue_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Smart routing should prefer runner-2 (fewer active requests)
-        let result = router.select_runner_for_class(ModelClass::Fast).await.unwrap();
+        let result = router
+            .select_runner_for_class(ModelClass::Fast)
+            .await
+            .unwrap();
         assert_eq!(result.runner.id, "runner-2");
     }
 
@@ -1036,6 +1155,7 @@ mod tests {
             latency_weight: 0.5, // 0.8 + 0.5 = 1.3 > 1.0
             speculative_wake_enabled: false,
             speculative_wake_targets: std::collections::HashMap::new(),
+            ..Default::default()
         };
 
         let models_config = crate::config::ModelsConfig {
@@ -1043,12 +1163,70 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!("test_excessive_weights_{}.db", Uuid::new_v4().to_string().replace('-', ""));
+        let test_db_path = format!(
+            "test_excessive_weights_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Should not panic and should still work
         let result = router.select_runner_for_class(ModelClass::Fast).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_smart_routing_preserves_complementary_coverage() {
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx1, _) = mpsc::channel(32);
+        let (tx2, _) = mpsc::channel(32);
+
+        registry
+            .register(
+                "runner-a".to_string(),
+                "Runner A".to_string(),
+                Some("multi".to_string()),
+                create_test_status(vec!["model-x".to_string(), "model-y".to_string()]),
+                Some("http://host1:8080".to_string()),
+                tx1,
+                None,
+            )
+            .await;
+
+        registry
+            .register(
+                "runner-b".to_string(),
+                "Runner B".to_string(),
+                Some("single".to_string()),
+                create_test_status(vec!["model-x".to_string()]),
+                Some("http://host2:8080".to_string()),
+                tx2,
+                None,
+            )
+            .await;
+
+        let models_config = crate::config::ModelsConfig {
+            fast: vec!["model-x".to_string()],
+            big: vec!["model-y".to_string()],
+            ..Default::default()
+        };
+
+        let test_db_path = format!(
+            "test_complementary_coverage_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
+        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let router = InferenceRouter::new(
+            registry,
+            models_config,
+            crate::config::RoutingConfig::default(),
+            audit_logger,
+        );
+
+        let result = router
+            .select_runner_for_class(ModelClass::Fast)
+            .await
+            .unwrap();
+        assert_eq!(result.runner.id, "runner-b");
     }
 }

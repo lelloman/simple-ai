@@ -111,6 +111,16 @@ impl ConnectedRunner {
                 .map(|local| self.has_model(local))
                 .unwrap_or(false)
     }
+
+    /// Check if the runner has a model available on disk or via alias mapping.
+    pub fn has_available_model_or_alias(&self, model_id: &str) -> bool {
+        self.available_models().iter().any(|m| m == model_id)
+            || self
+                .model_aliases
+                .get(model_id)
+                .map(|local| self.available_models().iter().any(|m| m == local))
+                .unwrap_or(false)
+    }
 }
 
 /// Registry of connected inference runners.
@@ -235,7 +245,9 @@ impl RunnerRegistry {
                 .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
                 .collect();
 
-            let changed = old_health != new_health || old_models != new_models || old_available != new_available_models;
+            let changed = old_health != new_health
+                || old_models != new_models
+                || old_available != new_available_models;
 
             // Update model aliases from status
             runner.model_aliases = status.model_aliases.clone();
@@ -324,6 +336,17 @@ impl RunnerRegistry {
             .collect()
     }
 
+    /// Get runners that can serve a specific model, whether or not it is currently loaded.
+    pub async fn with_available_model(&self, model_id: &str) -> Vec<ConnectedRunner> {
+        self.runners
+            .read()
+            .await
+            .values()
+            .filter(|r| r.is_operational() && r.has_available_model_or_alias(model_id))
+            .cloned()
+            .collect()
+    }
+
     /// Get all unique models available across all runners.
     pub async fn all_models(&self) -> Vec<ModelInfo> {
         let runners = self.runners.read().await;
@@ -335,10 +358,8 @@ impl RunnerRegistry {
             }
 
             // Collect all loaded model IDs for this runner
-            let loaded_ids: std::collections::HashSet<String> = runner
-                .loaded_models()
-                .into_iter()
-                .collect();
+            let loaded_ids: std::collections::HashSet<String> =
+                runner.loaded_models().into_iter().collect();
 
             // Get all available models from each engine
             for engine in &runner.status.engines {
@@ -346,20 +367,18 @@ impl RunnerRegistry {
                     let model_id = &available_model.id;
                     let is_loaded = loaded_ids.contains(model_id);
 
-                    let entry = models
-                        .entry(model_id.clone())
-                        .or_insert_with(|| ModelInfo {
-                            id: model_id.clone(),
-                            name: available_model.name.clone(),
-                            size_bytes: available_model.size_bytes,
-                            parameter_count: available_model.parameter_count,
-                            context_length: available_model.context_length,
-                            quantization: available_model.quantization.clone(),
-                            modified_at: available_model.modified_at.clone(),
-                            loaded: false,
-                            runners: vec![],
-                            available_on: vec![],
-                        });
+                    let entry = models.entry(model_id.clone()).or_insert_with(|| ModelInfo {
+                        id: model_id.clone(),
+                        name: available_model.name.clone(),
+                        size_bytes: available_model.size_bytes,
+                        parameter_count: available_model.parameter_count,
+                        context_length: available_model.context_length,
+                        quantization: available_model.quantization.clone(),
+                        modified_at: available_model.modified_at.clone(),
+                        loaded: false,
+                        runners: vec![],
+                        available_on: vec![],
+                    });
 
                     // Track which runners have this model available
                     if !entry.available_on.contains(&runner.id) {
@@ -395,11 +414,7 @@ impl RunnerRegistry {
         runners.retain(|id, runner| {
             let age = (now - runner.last_heartbeat).num_seconds();
             if age > timeout_secs {
-                tracing::warn!(
-                    "Removing stale runner {} (no heartbeat for {}s)",
-                    id,
-                    age
-                );
+                tracing::warn!("Removing stale runner {} (no heartbeat for {}s)", id, age);
                 removed.push(id.clone());
                 false
             } else {

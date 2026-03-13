@@ -10,11 +10,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{AppState, RequestEvent};
-use crate::gateway::{can_request_model, ModelRequest, RouterError};
-use crate::models::request::{Request, Response};
-use crate::wol::WakeError;
 use super::auth_helpers::{authenticate_request, extract_client_ip};
+use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
+use crate::models::request::{Request, Response};
+use crate::{AppState, RequestEvent};
 
 /// OpenAI-compatible embedding request.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -99,11 +98,14 @@ async fn create_embeddings(
     req_log.model = Some(model.clone());
     req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
 
-    let request_id = state.audit_logger.log_request(&req_log)
+    let request_id = state
+        .audit_logger
+        .log_request(&req_log)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Approximate token count for usage reporting
-    let prompt_tokens: u32 = inputs.iter()
+    let prompt_tokens: u32 = inputs
+        .iter()
         .map(|s| (s.split_whitespace().count() as u32).max(1))
         .sum();
 
@@ -113,48 +115,34 @@ async fn create_embeddings(
 
     // Forward to appropriate backend (gateway or direct Ollama)
     let result = if state.config.gateway.enabled {
-        let initial_result = state.inference_router.embed::<EmbeddingRequest, EmbeddingResponse>(&model, &request).await;
-
-        match initial_result {
-            Ok(routed) => {
-                runner_id = Some(routed.runner_id.clone());
-                state.wake_service.keepalive_runner(routed.runner_id);
-                Ok(routed.response)
+        match state
+            .request_scheduler
+            .embeddings(&req_log.id, &model, &model_request, &request)
+            .await
+        {
+            Ok(scheduled) => {
+                runner_id = Some(scheduled.runner_id.clone());
+                wol_sent = scheduled.wol_sent;
+                state
+                    .wake_service
+                    .keepalive_runner(scheduled.runner_id.clone());
+                state
+                    .router_telemetry
+                    .emit(
+                        "request_dispatched",
+                        format!(
+                            "Embedding request dispatched to {} using {}",
+                            scheduled.runner_id, scheduled.resolved_model
+                        ),
+                        Some(req_log.id.clone()),
+                        Some(scheduled.runner_id.clone()),
+                        Some(scheduled.resolved_model.clone()),
+                    )
+                    .await;
+                Ok(scheduled.response)
             }
-            Err(RouterError::NoRunners) if state.wake_service.is_enabled() => {
-                tracing::info!("No runners available, attempting wake-on-demand for {:?}", model_request);
-                wol_sent = true;
-
-                match state.wake_service.speculative_wake_and_wait(&model_request).await {
-                    Ok(wake_result) => {
-                        tracing::info!(
-                            "Runner {} connected after {:.1}s, retrying request",
-                            wake_result.runner_id,
-                            wake_result.wait_duration.as_secs_f64()
-                        );
-                        let retry_result = state.inference_router.embed::<EmbeddingRequest, EmbeddingResponse>(&model, &request).await;
-                        match retry_result {
-                            Ok(routed) => {
-                                runner_id = Some(routed.runner_id.clone());
-                                state.wake_service.keepalive_runner(routed.runner_id);
-                                Ok(routed.response)
-                            }
-                            Err(e) => Err(e.to_string()),
-                        }
-                    }
-                    Err(WakeError::NoWakeableRunners) => {
-                        Err("No runners available and no wakeable runners configured".to_string())
-                    }
-                    Err(WakeError::Timeout(secs)) => {
-                        Err(format!("No runners available after waiting {}s for wake", secs))
-                    }
-                    Err(e) => {
-                        tracing::warn!("Wake-on-demand failed: {}", e);
-                        Err(format!("Failed to wake inference runners: {}", e))
-                    }
-                }
-            }
-            Err(e) => Err(e.to_string()),
+            Err(SchedulerError::Wake(e)) => Err(format!("Failed to wake inference runners: {}", e)),
+            Err(SchedulerError::Router(e)) => Err(e.to_string()),
         }
     } else {
         // Direct Ollama mode - check circuit breaker
@@ -203,9 +191,22 @@ async fn create_embeddings(
             let mut resp_log = Response::new(request_id, 200);
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.tokens_prompt = Some(prompt_tokens);
-            resp_log.runner_id = runner_id;
+            resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
             resp_log.model_class = model_class_str.clone();
+            state
+                .router_telemetry
+                .emit(
+                    "request_completed",
+                    format!(
+                        "Embedding request completed with status 200 on {}",
+                        runner_id.clone().unwrap_or_else(|| "unknown".to_string())
+                    ),
+                    Some(req_log.id.clone()),
+                    runner_id.clone(),
+                    req_log.model.clone(),
+                )
+                .await;
             (resp, resp_log)
         }
         Err(e) => {
@@ -216,6 +217,16 @@ async fn create_embeddings(
             resp_log.wol_sent = wol_sent;
             resp_log.model_class = model_class_str.clone();
             let _ = state.audit_logger.log_response(&resp_log);
+            state
+                .router_telemetry
+                .emit(
+                    "request_failed",
+                    format!("Embedding request failed: {}", e),
+                    Some(req_log.id.clone()),
+                    runner_id.clone(),
+                    req_log.model.clone(),
+                )
+                .await;
 
             let _ = state.request_events.send(RequestEvent {
                 id: req_log.id.clone(),
