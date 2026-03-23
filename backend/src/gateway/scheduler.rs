@@ -280,12 +280,12 @@ impl RequestScheduler {
             .tx
             .send(GatewayMessage::LoadModel {
                 model_id: plan.resolved_model.clone(),
-                request_id,
+                request_id: request_id.clone(),
             })
             .await
             .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
 
-        self.wait_for_model_ready(&plan.runner.id, &plan.resolved_model)
+        self.wait_for_model_ready(&plan.runner.id, &plan.resolved_model, &request_id)
             .await
     }
 
@@ -293,6 +293,7 @@ impl RequestScheduler {
         &self,
         runner_id: &str,
         model_id: &str,
+        request_id: &str,
     ) -> Result<(), SchedulerError> {
         let mut events = self.runner_registry.subscribe_events();
         let timeout_duration = Duration::from_secs(self.routing_config.model_prepare_timeout_secs);
@@ -326,6 +327,25 @@ impl RequestScheduler {
                     }) => {
                         if changed_runner == runner_id {
                             continue;
+                        }
+                    }
+                    Ok(RunnerEvent::CommandCompleted {
+                        runner_id: changed_runner,
+                        request_id: completed_request_id,
+                        success,
+                        error,
+                    }) => {
+                        if changed_runner == runner_id && completed_request_id == request_id {
+                            if success {
+                                continue;
+                            }
+                            self.router_telemetry.clear_runner_state(runner_id).await;
+                            return Err(RouterError::ConnectionFailed(format!(
+                                "Runner {} failed to prepare model {}: {}",
+                                runner_id,
+                                model_id,
+                                error.unwrap_or_else(|| "unknown error".to_string())
+                            )));
                         }
                     }
                     Ok(RunnerEvent::Disconnected {

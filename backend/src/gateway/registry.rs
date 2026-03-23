@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
-use simple_ai_common::{GatewayMessage, RunnerStatus};
+use simple_ai_common::{CommandResponse, GatewayMessage, RunnerStatus};
 
 /// Event emitted when runner state changes.
 #[derive(Debug, Clone, Serialize)]
@@ -31,6 +31,13 @@ pub enum RunnerEvent {
         health: String,
         loaded_models: Vec<String>,
         available_models: Vec<String>,
+    },
+    /// A runner completed a gateway command such as load/unload model.
+    CommandCompleted {
+        runner_id: String,
+        request_id: String,
+        success: bool,
+        error: Option<String>,
     },
 }
 
@@ -264,6 +271,16 @@ impl RunnerRegistry {
                 });
             }
         }
+    }
+
+    /// Broadcast a command completion event from a runner.
+    pub fn emit_command_response(&self, runner_id: &str, response: &CommandResponse) {
+        let _ = self.event_tx.send(RunnerEvent::CommandCompleted {
+            runner_id: runner_id.to_string(),
+            request_id: response.request_id.clone(),
+            success: response.success,
+            error: response.error.clone(),
+        });
     }
 
     /// Get a runner by ID.

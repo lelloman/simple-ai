@@ -282,10 +282,10 @@ async fn handle_runner_message(
                 response.success
             );
             // Update status if included
-            if let Some(status) = response.status {
-                registry.update_status(runner_id, status).await;
+            if let Some(status) = response.status.as_ref() {
+                registry.update_status(runner_id, status.clone()).await;
             }
-            // TODO: Route response back to waiting request (for load/unload commands)
+            registry.emit_command_response(runner_id, &response);
         }
         RunnerMessage::Register(_) => {
             tracing::warn!(

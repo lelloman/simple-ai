@@ -684,6 +684,13 @@ enum AdminServerMessage {
         loaded_models: Vec<String>,
         available_models: Vec<String>,
     },
+    /// A runner command completed.
+    RunnerCommandCompleted {
+        runner_id: String,
+        request_id: String,
+        success: bool,
+        error: Option<String>,
+    },
     /// Models list updated (sent after runner connect/disconnect/status change).
     ModelsUpdated { models: Vec<AdminModelInfo> },
     /// A new request was completed.
@@ -743,6 +750,17 @@ impl From<RunnerEvent> for AdminServerMessage {
                 health,
                 loaded_models,
                 available_models,
+            },
+            RunnerEvent::CommandCompleted {
+                runner_id,
+                request_id,
+                success,
+                error,
+            } => AdminServerMessage::RunnerCommandCompleted {
+                runner_id,
+                request_id,
+                success,
+                error,
             },
         }
     }
@@ -1232,6 +1250,7 @@ async fn runner_events(
                     RunnerEvent::Connected { .. } => "runner_connected",
                     RunnerEvent::Disconnected { .. } => "runner_disconnected",
                     RunnerEvent::StatusChanged { .. } => "runner_status_changed",
+                    RunnerEvent::CommandCompleted { .. } => "runner_command_completed",
                 };
 
                 // Serialize event data
