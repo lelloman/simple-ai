@@ -183,6 +183,10 @@
                                     <h3 class="text-lg font-medium leading-6 text-gray-900">API Keys</h3>
                                 </div>
 
+                                <div class="mb-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                                    Existing API keys cannot be viewed again. For security, only the hash is stored and the plaintext secret is shown once at creation time.
+                                </div>
+
                                 <!-- Create API Key Form -->
                                 <div class="flex items-end gap-4 mb-4 pb-4 border-b">
                                     <div class="flex-1">
@@ -1953,7 +1957,7 @@
                 const userKeys = data.keys.filter(k => k.user_id === selectedUserId);
 
                 if (userKeys.length === 0) {
-                    ul.innerHTML = '<li class="px-4 py-4 text-center text-gray-500">No API keys for this user. Create one above.</li>';
+                    ul.innerHTML = '<li class="px-4 py-4 text-center text-gray-500">No API keys for this user. Create one above. Any new key secret will only be shown once.</li>';
                     return;
                 }
 
@@ -1966,6 +1970,7 @@
                                     Created: ${new Date(key.created_at).toLocaleDateString()}
                                     ${key.last_used_at ? ` | Last used: ${new Date(key.last_used_at).toLocaleString()}` : ' | Never used'}
                                 </p>
+                                <p class="text-xs text-gray-400 mt-1">Secret value unavailable after creation.</p>
                             </div>
                             <div class="flex items-center space-x-3 ml-4">
                                 ${key.revoked
