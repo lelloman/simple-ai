@@ -712,7 +712,14 @@ struct LlamaToolCall {
 #[derive(Debug, Serialize, Deserialize)]
 struct LlamaToolFunction {
     name: String,
-    arguments: Value,
+    arguments: LlamaToolArguments,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum LlamaToolArguments {
+    Text(String),
+    Json(Value),
 }
 
 /// Response from llama-server /v1/chat/completions endpoint.
@@ -909,8 +916,7 @@ impl InferenceEngine for LlamaCppEngine {
                             call_type: tc.call_type.clone(),
                             function: LlamaToolFunction {
                                 name: tc.function.name.clone(),
-                                arguments: serde_json::from_str(&tc.function.arguments)
-                                    .unwrap_or_else(|_| Value::Object(serde_json::Map::new())),
+                                arguments: LlamaToolArguments::Text(tc.function.arguments.clone()),
                             },
                         })
                         .collect()
@@ -979,7 +985,10 @@ impl InferenceEngine for LlamaCppEngine {
                     call_type: tc.call_type,
                     function: ToolFunction {
                         name: tc.function.name,
-                        arguments: tc.function.arguments.to_string(),
+                        arguments: match tc.function.arguments {
+                            LlamaToolArguments::Text(value) => value,
+                            LlamaToolArguments::Json(value) => value.to_string(),
+                        },
                     },
                 })
                 .collect()
