@@ -16,7 +16,8 @@ const SERVER_STARTING_POLL_MS: u64 = 100;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage};
+use serde_json::Value;
+use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction};
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
 use tokio::sync::{RwLock, Semaphore};
@@ -681,6 +682,8 @@ struct LlamaChatRequest {
     model: String,
     messages: Vec<LlamaMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
@@ -690,7 +693,26 @@ struct LlamaChatRequest {
 #[derive(Debug, Serialize)]
 struct LlamaMessage {
     role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<LlamaToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LlamaToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: LlamaToolFunction,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LlamaToolFunction {
+    name: String,
+    arguments: Value,
 }
 
 /// Response from llama-server /v1/chat/completions endpoint.
@@ -712,9 +734,11 @@ struct LlamaChoice {
 struct LlamaResponseMessage {
     role: String,
     #[serde(default)]
-    content: String,
+    content: Option<String>,
     #[serde(default)]
-    reasoning_content: String,
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<LlamaToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -876,13 +900,29 @@ impl InferenceEngine for LlamaCppEngine {
             .iter()
             .map(|m| LlamaMessage {
                 role: m.role.clone(),
-                content: m.content.clone().unwrap_or_default(),
+                content: m.content.clone(),
+                tool_calls: m.tool_calls.as_ref().map(|calls| {
+                    calls
+                        .iter()
+                        .map(|tc| LlamaToolCall {
+                            id: tc.id.clone(),
+                            call_type: tc.call_type.clone(),
+                            function: LlamaToolFunction {
+                                name: tc.function.name.clone(),
+                                arguments: serde_json::from_str(&tc.function.arguments)
+                                    .unwrap_or_else(|_| Value::Object(serde_json::Map::new())),
+                            },
+                        })
+                        .collect()
+                }),
+                tool_call_id: m.tool_call_id.clone(),
             })
             .collect();
 
         let llama_request = LlamaChatRequest {
             model: model_id.to_string(),
             messages,
+            tools: request.tools.clone(),
             temperature: request.temperature,
             max_tokens: request.max_tokens,
             stream: false,
@@ -931,17 +971,31 @@ impl InferenceEngine for LlamaCppEngine {
             .next()
             .ok_or_else(|| Error::InferenceFailed("No choices in response".to_string()))?;
 
+        let tool_calls = choice.message.tool_calls.map(|calls| {
+            calls
+                .into_iter()
+                .map(|tc| ToolCall {
+                    id: tc.id,
+                    call_type: tc.call_type,
+                    function: ToolFunction {
+                        name: tc.function.name,
+                        arguments: tc.function.arguments.to_string(),
+                    },
+                })
+                .collect()
+        });
+
         // For thinking models, use reasoning_content as fallback if content is empty
-        let response_content = if choice.message.content.is_empty() {
-            choice.message.reasoning_content
-        } else {
-            choice.message.content
+        let response_content = match (choice.message.content, choice.message.reasoning_content) {
+            (Some(content), _) if !content.is_empty() => Some(content),
+            (_, Some(reasoning)) if !reasoning.is_empty() => Some(reasoning),
+            _ => None,
         };
 
         let message = ChatMessage {
             role: choice.message.role,
-            content: Some(response_content),
-            tool_calls: None,
+            content: response_content,
+            tool_calls,
             tool_call_id: None,
         };
 
