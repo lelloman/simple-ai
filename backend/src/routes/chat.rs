@@ -1,18 +1,21 @@
+use axum::body::{Body, Bytes};
 use axum::http::HeaderMap;
 use axum::{
     extract::{ConnectInfo, State},
-    http::StatusCode,
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response as AxumResponse},
     routing::post,
     Json, Router,
 };
+use futures_util::stream;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::auth_helpers::{authenticate_request, extract_client_ip};
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
-use crate::models::chat::{ChatCompletionRequest, ChatCompletionResponse};
-use crate::models::request::{Request, Response};
+use crate::models::chat::ChatCompletionRequest;
+use crate::models::request::{Request, Response as AuditResponse};
 use crate::{AppState, RequestEvent};
 
 /// POST /v1/chat/completions - OpenAI-compatible chat endpoint
@@ -21,7 +24,7 @@ async fn chat_completions(
     connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
-) -> Result<Json<ChatCompletionResponse>, (StatusCode, String)> {
+) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
 
     // Authenticate user - try API key first, then fall back to JWT
@@ -90,10 +93,154 @@ async fn chat_completions(
     // Track routing metadata
     let mut runner_id: Option<String> = None;
     let mut wol_sent = false;
+    let is_streaming = request.stream.unwrap_or(false);
     // Check if batching should be used (enabled, non-streaming, has batch queue)
-    let use_batching = state.batch_queue.is_some() && !request.stream.unwrap_or(false);
+    let use_batching = state.batch_queue.is_some() && !is_streaming;
 
-    // Forward to appropriate backend (gateway or direct Ollama)
+    // Compute model class for metrics tracking
+    let model_class_str = model_request
+        .effective_class(&state.config.models)
+        .map(|c| c.as_str().to_string());
+
+    if is_streaming {
+        let stream_body = if state.config.gateway.enabled {
+            let scheduled = match state
+                .request_scheduler
+                .chat_completion_stream(&req_log.id, &model, &model_request, &request)
+                .await
+            {
+                Ok(scheduled) => scheduled,
+                Err(SchedulerError::Wake(e)) => {
+                    let e = crate::llm::OllamaError::ConnectionFailed(format!(
+                        "Failed to wake inference runners: {}",
+                        e
+                    ));
+                    let mut resp_log = AuditResponse::new(request_id, 500);
+                    resp_log.response_body = e.to_string();
+                    resp_log.latency_ms = start.elapsed().as_millis() as u64;
+                    resp_log.model_class = model_class_str.clone();
+                    let _ = state.audit_logger.log_response(&resp_log);
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                }
+                Err(SchedulerError::Router(e)) => {
+                    let e = crate::llm::OllamaError::ConnectionFailed(e.to_string());
+                    let mut resp_log = AuditResponse::new(request_id, 500);
+                    resp_log.response_body = e.to_string();
+                    resp_log.latency_ms = start.elapsed().as_millis() as u64;
+                    resp_log.model_class = model_class_str.clone();
+                    let _ = state.audit_logger.log_response(&resp_log);
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                }
+            };
+
+            runner_id = Some(scheduled.runner_id.clone());
+            wol_sent = scheduled.wol_sent;
+            state
+                .wake_service
+                .keepalive_runner(scheduled.runner_id.clone());
+            state
+                .router_telemetry
+                .emit(
+                    "request_dispatched",
+                    format!(
+                        "Streaming request dispatched to {} using {}",
+                        scheduled.runner_id, scheduled.resolved_model
+                    ),
+                    Some(req_log.id.clone()),
+                    Some(scheduled.runner_id.clone()),
+                    Some(scheduled.resolved_model.clone()),
+                )
+                .await;
+
+            let stream = stream::try_unfold(scheduled.response, |mut response| async move {
+                let next = response
+                    .chunk()
+                    .await
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+                Ok::<_, std::io::Error>(next.map(|chunk| (Bytes::from(chunk), response)))
+            });
+            Body::from_stream(stream)
+        } else if !state.circuit_breaker.is_available("ollama") {
+            let e = crate::llm::OllamaError::ConnectionFailed(
+                "Circuit breaker open: Ollama backend is unavailable".to_string(),
+            );
+            let mut resp_log = AuditResponse::new(request_id, 500);
+            resp_log.response_body = e.to_string();
+            resp_log.latency_ms = start.elapsed().as_millis() as u64;
+            resp_log.model_class = model_class_str.clone();
+            let _ = state.audit_logger.log_response(&resp_log);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+        } else {
+            let result = state.ollama_client.chat_stream(&request, &model).await;
+            if result.is_ok() {
+                state.circuit_breaker.record_success("ollama");
+            } else {
+                state.circuit_breaker.record_failure("ollama");
+            }
+            match result {
+                Ok(stream) => Body::from_stream(stream),
+                Err(e) => {
+                    let mut resp_log = AuditResponse::new(request_id, 500);
+                    resp_log.response_body = e.to_string();
+                    resp_log.latency_ms = start.elapsed().as_millis() as u64;
+                    resp_log.model_class = model_class_str.clone();
+                    let _ = state.audit_logger.log_response(&resp_log);
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                }
+            }
+        };
+
+        let mut resp_log = AuditResponse::new(request_id, 200);
+        resp_log.response_body = "[stream]".to_string();
+        resp_log.latency_ms = start.elapsed().as_millis() as u64;
+        resp_log.runner_id = runner_id.clone();
+        resp_log.wol_sent = wol_sent;
+        resp_log.model_class = model_class_str;
+        let _ = state.audit_logger.log_response(&resp_log);
+        state
+            .router_telemetry
+            .emit(
+                "request_completed",
+                format!(
+                    "Streaming request started with status 200 on {}",
+                    runner_id.clone().unwrap_or_else(|| "unknown".to_string())
+                ),
+                Some(req_log.id.clone()),
+                runner_id.clone(),
+                req_log.model.clone(),
+            )
+            .await;
+        let _ = state.request_events.send(RequestEvent {
+            id: req_log.id.clone(),
+            timestamp: req_log.timestamp.to_rfc3339(),
+            user_id: req_log.user_id.clone(),
+            user_email: auth_user.email.clone(),
+            request_path: req_log.request_path.clone(),
+            model: req_log.model.clone(),
+            client_ip: req_log.client_ip.clone(),
+            status: Some(200),
+            latency_ms: Some(resp_log.latency_ms as i64),
+            tokens_prompt: None,
+            tokens_completion: None,
+            runner_id: resp_log.runner_id.clone(),
+            wol_sent: resp_log.wol_sent,
+        });
+
+        let mut response = AxumResponse::new(stream_body);
+        *response.status_mut() = StatusCode::OK;
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/event-stream"),
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        response
+            .headers_mut()
+            .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+        return Ok(response);
+    }
+
     let result = if state.config.gateway.enabled {
         match state
             .request_scheduler
@@ -128,32 +275,23 @@ async fn chat_completions(
                 Err(crate::llm::OllamaError::ConnectionFailed(e.to_string()))
             }
         }
+    } else if !state.circuit_breaker.is_available("ollama") {
+        Err(crate::llm::OllamaError::ConnectionFailed(
+            "Circuit breaker open: Ollama backend is unavailable".to_string(),
+        ))
     } else {
-        // Direct Ollama mode - check circuit breaker
-        if !state.circuit_breaker.is_available("ollama") {
-            Err(crate::llm::OllamaError::ConnectionFailed(
-                "Circuit breaker open: Ollama backend is unavailable".to_string(),
-            ))
+        let result = state.ollama_client.chat(&request, &model).await;
+        if result.is_ok() {
+            state.circuit_breaker.record_success("ollama");
         } else {
-            let result = state.ollama_client.chat(&request, &model).await;
-            if result.is_ok() {
-                state.circuit_breaker.record_success("ollama");
-            } else {
-                state.circuit_breaker.record_failure("ollama");
-            }
-            result
+            state.circuit_breaker.record_failure("ollama");
         }
+        result
     };
 
-    // Compute model class for metrics tracking
-    let model_class_str = model_request
-        .effective_class(&state.config.models)
-        .map(|c| c.as_str().to_string());
-
-    // Log response
     let (response, resp_log) = match result {
         Ok(resp) => {
-            let mut resp_log = Response::new(request_id, 200);
+            let mut resp_log = AuditResponse::new(request_id, 200);
             resp_log.response_body = serde_json::to_string(&resp).unwrap_or_default();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id.clone();
@@ -179,7 +317,7 @@ async fn chat_completions(
             (resp, resp_log)
         }
         Err(e) => {
-            let mut resp_log = Response::new(request_id, 500);
+            let mut resp_log = AuditResponse::new(request_id, 500);
             resp_log.response_body = e.to_string();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id.clone();
@@ -196,8 +334,6 @@ async fn chat_completions(
                     req_log.model.clone(),
                 )
                 .await;
-
-            // Emit request event for admin dashboard (error case)
             let _ = state.request_events.send(RequestEvent {
                 id: req_log.id.clone(),
                 timestamp: req_log.timestamp.to_rfc3339(),
@@ -213,14 +349,11 @@ async fn chat_completions(
                 runner_id,
                 wol_sent,
             });
-
             return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     };
 
     let _ = state.audit_logger.log_response(&resp_log);
-
-    // Emit request event for admin dashboard
     let _ = state.request_events.send(RequestEvent {
         id: req_log.id.clone(),
         timestamp: req_log.timestamp.to_rfc3339(),
@@ -237,7 +370,7 @@ async fn chat_completions(
         wol_sent: resp_log.wol_sent,
     });
 
-    Ok(Json(response))
+    Ok(Json(response).into_response())
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

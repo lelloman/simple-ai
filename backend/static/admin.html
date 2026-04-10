@@ -191,6 +191,11 @@
                                             </div>
                                         </div>
 
+                                        <label class="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                            <input type="checkbox" id="chat-streaming-enabled" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                                            <span>Stream responses</span>
+                                        </label>
+
                                         <div>
                                             <label for="chat-system-prompt" class="block text-sm font-medium text-gray-700">System Prompt</label>
                                             <textarea id="chat-system-prompt" rows="5" placeholder="Optional instructions applied to this session" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500"></textarea>
@@ -1602,6 +1607,69 @@
                 .map(({ role, content }) => ({ role, content }));
         }
 
+        function isChatStreamingEnabled() {
+            return Boolean(document.getElementById('chat-streaming-enabled')?.checked);
+        }
+
+        async function apiFetchRaw(endpoint, options = {}, retried = false) {
+            const token = await getValidAccessToken();
+            if (!token) {
+                logout();
+                throw new Error('No valid token');
+            }
+
+            const response = await fetch(endpoint, {
+                method: options.method || 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+                    ...options.headers
+                },
+                ...(options.body ? { body: options.body } : {})
+            });
+
+            if (!response.ok) {
+                if (response.status === 401 && !retried && refreshToken) {
+                    await refreshTokens();
+                    return apiFetchRaw(endpoint, options, true);
+                }
+                throw new Error(`API error: ${response.status}`);
+            }
+
+            return response;
+        }
+
+        async function readChatStream(response, onDelta) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || '';
+
+                for (const event of events) {
+                    const dataLines = event
+                        .split('\n')
+                        .filter(line => line.startsWith('data: '))
+                        .map(line => line.slice(6));
+
+                    if (!dataLines.length) continue;
+                    const payload = dataLines.join('\n');
+                    if (payload === '[DONE]') return;
+
+                    const parsed = JSON.parse(payload);
+                    const choice = parsed.choices?.[0];
+                    if (!choice) continue;
+                    onDelta(choice.delta || {}, choice.finish_reason || null, parsed.model || null);
+                }
+            }
+        }
+
         async function refreshChatModels() {
             if (chatModelsLoading) return;
             try {
@@ -1671,7 +1739,7 @@
             const requestBody = {
                 model,
                 messages: [...buildChatMessages(), { role: 'user', content }],
-                stream: false,
+                stream: isChatStreamingEnabled(),
             };
 
             if (temperatureRaw !== '') {
@@ -1690,34 +1758,86 @@
             const startedAt = performance.now();
             chatRequestInFlight = true;
             syncChatSendState();
-            setChatStatus('Generating', 'busy');
+            setChatStatus(requestBody.stream ? 'Streaming' : 'Generating', 'busy');
             if (meta) {
-                meta.textContent = `Waiting for ${model}...`;
+                meta.textContent = `Waiting for ${model}${requestBody.stream ? ' stream' : ''}...`;
             }
 
             try {
-                const response = await apiFetch('/v1/chat/completions', {
-                    method: 'POST',
-                    body: JSON.stringify(requestBody),
-                });
+                if (requestBody.stream) {
+                    chatMessagesState.push({
+                        role: 'assistant',
+                        content: '',
+                        model,
+                    });
+                    renderChatTranscript();
 
-                const assistantMessage = response?.choices?.[0]?.message?.content || '';
-                chatMessagesState.push({
-                    role: 'assistant',
-                    content: assistantMessage,
-                    model: response?.model || model,
-                });
-                renderChatTranscript();
+                    const response = await apiFetchRaw('/v1/chat/completions', {
+                        method: 'POST',
+                        body: JSON.stringify(requestBody),
+                    });
 
-                const elapsedMs = Math.round(performance.now() - startedAt);
-                const usage = response?.usage;
-                const usageText = usage
-                    ? ` • tokens ${usage.prompt_tokens}/${usage.completion_tokens}/${usage.total_tokens}`
-                    : '';
-                if (meta) {
-                    meta.textContent = `${response?.model || model} responded in ${elapsedMs}ms${usageText}`;
+                    let streamedModel = model;
+                    await readChatStream(response, (delta, finishReason, chunkModel) => {
+                        if (chunkModel) {
+                            streamedModel = chunkModel;
+                        }
+
+                        const lastMessage = chatMessagesState[chatMessagesState.length - 1];
+                        if (!lastMessage || lastMessage.role !== 'assistant') {
+                            return;
+                        }
+
+                        if (typeof delta.content === 'string') {
+                            lastMessage.content += delta.content;
+                        }
+
+                        if (Array.isArray(delta.tool_calls) && delta.tool_calls.length) {
+                            const toolSummary = delta.tool_calls.map(call => {
+                                const name = call.function?.name || 'tool';
+                                const args = call.function?.arguments || '{}';
+                                return `${name}(${args})`;
+                            }).join('\n');
+                            lastMessage.content += `${lastMessage.content ? '\n' : ''}[tool_calls]\n${toolSummary}`;
+                        }
+
+                        lastMessage.model = streamedModel;
+                        renderChatTranscript();
+
+                        if (finishReason && meta) {
+                            meta.textContent = `${streamedModel} stream finished: ${finishReason}`;
+                        }
+                    });
+
+                    const elapsedMs = Math.round(performance.now() - startedAt);
+                    if (meta) {
+                        meta.textContent = `${streamedModel} streamed in ${elapsedMs}ms`;
+                    }
+                    setChatStatus('Complete', 'ok');
+                } else {
+                    const response = await apiFetch('/v1/chat/completions', {
+                        method: 'POST',
+                        body: JSON.stringify(requestBody),
+                    });
+
+                    const assistantMessage = response?.choices?.[0]?.message?.content || '';
+                    chatMessagesState.push({
+                        role: 'assistant',
+                        content: assistantMessage,
+                        model: response?.model || model,
+                    });
+                    renderChatTranscript();
+
+                    const elapsedMs = Math.round(performance.now() - startedAt);
+                    const usage = response?.usage;
+                    const usageText = usage
+                        ? ` • tokens ${usage.prompt_tokens}/${usage.completion_tokens}/${usage.total_tokens}`
+                        : '';
+                    if (meta) {
+                        meta.textContent = `${response?.model || model} responded in ${elapsedMs}ms${usageText}`;
+                    }
+                    setChatStatus('Complete', 'ok');
                 }
-                setChatStatus('Complete', 'ok');
             } catch (e) {
                 console.error('Chat request failed:', e);
                 chatMessagesState.push({

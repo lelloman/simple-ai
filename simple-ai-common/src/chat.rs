@@ -70,6 +70,54 @@ pub struct Usage {
     pub total_tokens: u32,
 }
 
+/// OpenAI-compatible streaming chat completion chunk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionChunk {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub model: String,
+    pub choices: Vec<ChunkChoice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkChoice {
+    pub index: u32,
+    pub delta: ChatMessage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+}
+
+impl ChatCompletionChunk {
+    pub fn new(
+        id: String,
+        created: i64,
+        model: String,
+        delta: ChatMessage,
+        finish_reason: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            object: "chat.completion.chunk".to_string(),
+            created,
+            model,
+            choices: vec![ChunkChoice {
+                index: 0,
+                delta,
+                finish_reason,
+            }],
+        }
+    }
+}
+
+pub fn format_sse_chunk(chunk: &ChatCompletionChunk) -> Result<String, serde_json::Error> {
+    Ok(format!("data: {}\n\n", serde_json::to_string(chunk)?))
+}
+
+pub fn format_sse_done() -> String {
+    "data: [DONE]\n\n".to_string()
+}
+
 impl ChatCompletionResponse {
     pub fn new(model: String, message: ChatMessage, finish_reason: Option<String>) -> Self {
         let now = chrono::Utc::now().timestamp();

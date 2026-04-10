@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
+use axum::body::Body;
 use axum::extract::State;
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
@@ -19,7 +22,7 @@ pub fn router() -> Router<Arc<AppState>> {
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
     Json(request): Json<ChatCompletionRequest>,
-) -> Result<Json<ChatCompletionResponse>> {
+) -> Result<Response> {
     // Get the model from request, or use default
     let model = request
         .model
@@ -48,8 +51,26 @@ async fn chat_completions(
         .await
         .ok_or_else(|| Error::ModelNotFound(model.to_string()))?;
 
-    // Execute the chat completion
-    let response = engine.chat_completion(resolved_model, &request).await?;
-
-    Ok(Json(response))
+    if request.stream.unwrap_or(false) {
+        let stream = engine
+            .chat_completion_stream(resolved_model, &request)
+            .await?;
+        let mut response = Response::new(Body::from_stream(stream));
+        *response.status_mut() = StatusCode::OK;
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/event-stream"),
+        );
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        response
+            .headers_mut()
+            .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+        Ok(response)
+    } else {
+        let response: ChatCompletionResponse =
+            engine.chat_completion(resolved_model, &request).await?;
+        Ok(Json(response).into_response())
+    }
 }

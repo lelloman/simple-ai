@@ -8,8 +8,8 @@ pub mod protocol;
 
 pub use capability::{Capability, CapabilityInfo, CapabilityStatus};
 pub use chat::{
-    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, ToolCall, ToolFunction,
-    Usage,
+    format_sse_chunk, format_sse_done, ChatCompletionChunk, ChatCompletionRequest,
+    ChatCompletionResponse, ChatMessage, Choice, ChunkChoice, ToolCall, ToolFunction, Usage,
 };
 pub use protocol::{
     CommandResponse, EngineStatus, GatewayMessage, ModelInfo, RunnerHealth, RunnerMessage,

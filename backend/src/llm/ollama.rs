@@ -1,5 +1,10 @@
+use axum::body::Bytes;
+use futures_util::stream::{self, Stream};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use simple_ai_common::{format_sse_chunk, format_sse_done, ChatCompletionChunk};
+use std::collections::VecDeque;
+use std::pin::Pin;
 
 use crate::models::chat::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
@@ -12,6 +17,8 @@ pub struct OllamaClient {
     #[allow(dead_code)]
     default_model: String,
 }
+
+pub type ChatStream = Pin<Box<dyn Stream<Item = Result<Bytes, OllamaError>> + Send>>;
 
 /// Ollama chat request format.
 #[derive(Debug, Serialize)]
@@ -98,18 +105,16 @@ impl OllamaClient {
         }
     }
 
-    /// Send a chat request to Ollama and translate the response to OpenAI format.
-    pub async fn chat(
+    fn build_chat_request(
         &self,
         request: &ChatCompletionRequest,
         model: &str,
-    ) -> Result<ChatCompletionResponse, OllamaError> {
-        // Convert messages to Ollama format
+        stream: bool,
+    ) -> OllamaChatRequest {
         let messages: Vec<OllamaMessage> = request
             .messages
             .iter()
             .map(|m| {
-                // Convert tool_calls from OpenAI format to Ollama format
                 let tool_calls = m.tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
@@ -142,13 +147,22 @@ impl OllamaClient {
             None
         };
 
-        let ollama_request = OllamaChatRequest {
+        OllamaChatRequest {
             model: model.to_string(),
             messages,
-            stream: false,
+            stream,
             options,
             tools: request.tools.clone(),
-        };
+        }
+    }
+
+    /// Send a chat request to Ollama and translate the response to OpenAI format.
+    pub async fn chat(
+        &self,
+        request: &ChatCompletionRequest,
+        model: &str,
+    ) -> Result<ChatCompletionResponse, OllamaError> {
+        let ollama_request = self.build_chat_request(request, model, false);
 
         let url = format!("{}/api/chat", self.base_url);
 
@@ -219,6 +233,163 @@ impl OllamaClient {
         }
 
         Ok(response)
+    }
+
+    pub async fn chat_stream(
+        &self,
+        request: &ChatCompletionRequest,
+        model: &str,
+    ) -> Result<ChatStream, OllamaError> {
+        let ollama_request = self.build_chat_request(request, model, true);
+        let url = format!("{}/api/chat", self.base_url);
+
+        tracing::debug!("Sending streaming request to Ollama: {}", url);
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&ollama_request)
+            .send()
+            .await
+            .map_err(|e| OllamaError::RequestFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(OllamaError::OllamaError(format!("{}: {}", status, body)));
+        }
+
+        struct StreamState {
+            response: reqwest::Response,
+            buffer: String,
+            pending: VecDeque<Bytes>,
+            sent_role: bool,
+            emitted_done: bool,
+            chunk_id: String,
+            created: i64,
+            model: String,
+        }
+
+        let state = StreamState {
+            response,
+            buffer: String::new(),
+            pending: VecDeque::new(),
+            sent_role: false,
+            emitted_done: false,
+            chunk_id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            created: chrono::Utc::now().timestamp(),
+            model: model.to_string(),
+        };
+
+        let stream = stream::try_unfold(state, |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.pop_front() {
+                    return Ok(Some((item, state)));
+                }
+
+                let Some(chunk) = state
+                    .response
+                    .chunk()
+                    .await
+                    .map_err(|e| OllamaError::RequestFailed(e.to_string()))?
+                else {
+                    if !state.emitted_done {
+                        state.emitted_done = true;
+                        return Ok(Some((Bytes::from(format_sse_done()), state)));
+                    }
+                    return Ok(None);
+                };
+
+                let text = std::str::from_utf8(&chunk)
+                    .map_err(|e| OllamaError::InvalidResponse(e.to_string()))?;
+                state.buffer.push_str(text);
+
+                while let Some(newline_idx) = state.buffer.find('\n') {
+                    let line = state.buffer[..newline_idx].trim().to_string();
+                    state.buffer.drain(..=newline_idx);
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    let parsed: OllamaChatResponse = serde_json::from_str(&line)
+                        .map_err(|e| OllamaError::InvalidResponse(e.to_string()))?;
+
+                    let tool_calls = parsed.message.tool_calls.map(|calls| {
+                        calls
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, tc)| ToolCall {
+                                id: tc.id.unwrap_or_else(|| format!("call_{}", i)),
+                                call_type: "function".to_string(),
+                                function: ToolFunction {
+                                    name: tc.function.name,
+                                    arguments: tc.function.arguments.to_string(),
+                                },
+                            })
+                            .collect::<Vec<_>>()
+                    });
+
+                    let has_payload = parsed
+                        .message
+                        .content
+                        .as_ref()
+                        .is_some_and(|c| !c.is_empty())
+                        || tool_calls.is_some();
+
+                    if has_payload || !state.sent_role {
+                        let delta = ChatMessage {
+                            role: if state.sent_role {
+                                String::new()
+                            } else {
+                                parsed.message.role.clone()
+                            },
+                            content: parsed.message.content.clone(),
+                            tool_calls: tool_calls.clone(),
+                            tool_call_id: None,
+                        };
+                        let chunk = ChatCompletionChunk::new(
+                            state.chunk_id.clone(),
+                            state.created,
+                            state.model.clone(),
+                            delta,
+                            None,
+                        );
+                        let payload = format_sse_chunk(&chunk)
+                            .map_err(|e| OllamaError::InvalidResponse(e.to_string()))?;
+                        state.pending.push_back(Bytes::from(payload));
+                        state.sent_role = true;
+                    }
+
+                    if parsed.done {
+                        let finish_reason = if tool_calls.is_some() {
+                            Some("tool_calls".to_string())
+                        } else {
+                            Some("stop".to_string())
+                        };
+                        let final_chunk = ChatCompletionChunk::new(
+                            state.chunk_id.clone(),
+                            state.created,
+                            state.model.clone(),
+                            ChatMessage {
+                                role: String::new(),
+                                content: None,
+                                tool_calls: None,
+                                tool_call_id: None,
+                            },
+                            finish_reason,
+                        );
+                        let payload = format_sse_chunk(&final_chunk)
+                            .map_err(|e| OllamaError::InvalidResponse(e.to_string()))?;
+                        state.pending.push_back(Bytes::from(payload));
+                        state.pending.push_back(Bytes::from(format_sse_done()));
+                        state.emitted_done = true;
+                    }
+                }
+            }
+        });
+
+        Ok(Box::pin(stream))
     }
 
     /// Send an embedding request to Ollama and return the embeddings.

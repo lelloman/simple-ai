@@ -307,7 +307,7 @@ impl InferenceRouter {
         &self,
         model: &str,
         request: &Req,
-    ) -> Result<reqwest::Response, RouterError>
+    ) -> Result<RoutedResponse<reqwest::Response>, RouterError>
     where
         Req: Serialize + Clone,
     {
@@ -343,7 +343,11 @@ impl InferenceRouter {
             cb.record_success(&runner_id);
         }
 
-        response
+        response.map(|response| RoutedResponse {
+            response,
+            runner_id,
+            resolved_model: selection.resolved_model,
+        })
     }
 
     /// Get models from all runners.

@@ -12,10 +12,15 @@ pub use ollama::OllamaEngine;
 pub use registry::EngineRegistry;
 
 use async_trait::async_trait;
+use axum::body::Bytes;
+use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
+use std::pin::Pin;
 
 use crate::error::Result;
+
+pub type ChatCompletionStream = Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>;
 
 /// Information about an available model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +99,13 @@ pub trait InferenceEngine: Send + Sync {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse>;
+
+    /// Perform streamed chat completion inference, yielding OpenAI-compatible SSE bytes.
+    async fn chat_completion_stream(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+    ) -> Result<ChatCompletionStream>;
 
     /// Generate embeddings for the given input texts.
     ///

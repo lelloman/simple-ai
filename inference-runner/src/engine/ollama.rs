@@ -1,13 +1,17 @@
 //! Ollama inference engine implementation.
 
 use async_trait::async_trait;
+use axum::body::Bytes;
+use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
-    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
+    format_sse_chunk, format_sse_done, ChatCompletionChunk, ChatCompletionRequest,
+    ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
 };
+use std::collections::VecDeque;
 
-use super::{EngineHealth, InferenceEngine, ModelInfo};
+use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
 use crate::error::{Error, Result};
 
 /// Ollama inference engine.
@@ -25,6 +29,65 @@ impl OllamaEngine {
             http_client: Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
             batch_size,
+        }
+    }
+
+    fn build_chat_request(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+        stream: bool,
+    ) -> OllamaChatRequest {
+        let messages: Vec<OllamaMessage> = request
+            .messages
+            .iter()
+            .map(|m| {
+                let tool_calls = m.tool_calls.as_ref().map(|calls| {
+                    calls
+                        .iter()
+                        .map(|tc| OllamaToolCall {
+                            id: Some(tc.id.clone()),
+                            function: OllamaToolFunction {
+                                name: tc.function.name.clone(),
+                                arguments: serde_json::from_str(&tc.function.arguments)
+                                    .unwrap_or_else(|e| {
+                                        tracing::warn!(
+                                            "Failed to parse tool arguments for '{}': {}. Input: {}",
+                                            tc.function.name,
+                                            e,
+                                            tc.function.arguments
+                                        );
+                                        serde_json::Value::Object(serde_json::Map::new())
+                                    }),
+                            },
+                        })
+                        .collect()
+                });
+
+                OllamaMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                    tool_calls,
+                    tool_call_id: m.tool_call_id.clone(),
+                }
+            })
+            .collect();
+
+        let options = if request.temperature.is_some() || request.max_tokens.is_some() {
+            Some(OllamaOptions {
+                temperature: request.temperature,
+                num_predict: request.max_tokens,
+            })
+        } else {
+            None
+        };
+
+        OllamaChatRequest {
+            model: model_id.to_string(),
+            messages,
+            stream,
+            options,
+            tools: request.tools.clone(),
         }
     }
 }
@@ -298,58 +361,7 @@ impl InferenceEngine for OllamaEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
-        // Convert messages to Ollama format
-        let messages: Vec<OllamaMessage> = request
-            .messages
-            .iter()
-            .map(|m| {
-                let tool_calls = m.tool_calls.as_ref().map(|calls| {
-                    calls
-                        .iter()
-                        .map(|tc| OllamaToolCall {
-                            id: Some(tc.id.clone()),
-                            function: OllamaToolFunction {
-                                name: tc.function.name.clone(),
-                                arguments: serde_json::from_str(&tc.function.arguments)
-                                    .unwrap_or_else(|e| {
-                                        tracing::warn!(
-                                            "Failed to parse tool arguments for '{}': {}. Input: {}",
-                                            tc.function.name,
-                                            e,
-                                            tc.function.arguments
-                                        );
-                                        serde_json::Value::Object(serde_json::Map::new())
-                                    }),
-                            },
-                        })
-                        .collect()
-                });
-
-                OllamaMessage {
-                    role: m.role.clone(),
-                    content: m.content.clone(),
-                    tool_calls,
-                    tool_call_id: m.tool_call_id.clone(),
-                }
-            })
-            .collect();
-
-        let options = if request.temperature.is_some() || request.max_tokens.is_some() {
-            Some(OllamaOptions {
-                temperature: request.temperature,
-                num_predict: request.max_tokens,
-            })
-        } else {
-            None
-        };
-
-        let ollama_request = OllamaChatRequest {
-            model: model_id.to_string(),
-            messages,
-            stream: false,
-            options,
-            tools: request.tools.clone(),
-        };
+        let ollama_request = self.build_chat_request(model_id, request, false);
 
         let url = format!("{}/api/chat", self.base_url);
 
@@ -418,6 +430,167 @@ impl InferenceEngine for OllamaEngine {
         }
 
         Ok(response)
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+    ) -> Result<ChatCompletionStream> {
+        let ollama_request = self.build_chat_request(model_id, request, true);
+        let url = format!("{}/api/chat", self.base_url);
+
+        tracing::debug!(
+            "Sending streaming chat request to Ollama: {} model={}",
+            url,
+            model_id
+        );
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&ollama_request)
+            .send()
+            .await
+            .map_err(|e| Error::Communication(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::InferenceFailed(format!("{}: {}", status, body)));
+        }
+
+        struct StreamState {
+            response: reqwest::Response,
+            buffer: String,
+            pending: VecDeque<Bytes>,
+            sent_role: bool,
+            emitted_done: bool,
+            chunk_id: String,
+            created: i64,
+            model: String,
+        }
+
+        let state = StreamState {
+            response,
+            buffer: String::new(),
+            pending: VecDeque::new(),
+            sent_role: false,
+            emitted_done: false,
+            chunk_id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            created: chrono::Utc::now().timestamp(),
+            model: model_id.to_string(),
+        };
+
+        let stream = stream::try_unfold(state, |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.pop_front() {
+                    return Ok(Some((item, state)));
+                }
+
+                let Some(chunk) = state
+                    .response
+                    .chunk()
+                    .await
+                    .map_err(|e| Error::Communication(e.to_string()))?
+                else {
+                    if !state.emitted_done {
+                        state.emitted_done = true;
+                        return Ok(Some((Bytes::from(format_sse_done()), state)));
+                    }
+                    return Ok(None);
+                };
+
+                let text = std::str::from_utf8(&chunk)
+                    .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+                state.buffer.push_str(text);
+
+                while let Some(newline_idx) = state.buffer.find('\n') {
+                    let line = state.buffer[..newline_idx].trim().to_string();
+                    state.buffer.drain(..=newline_idx);
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    let parsed: OllamaChatResponse = serde_json::from_str(&line)
+                        .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+
+                    let tool_calls = parsed.message.tool_calls.map(|calls| {
+                        calls
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, tc)| ToolCall {
+                                id: tc.id.unwrap_or_else(|| format!("call_{}", i)),
+                                call_type: "function".to_string(),
+                                function: ToolFunction {
+                                    name: tc.function.name,
+                                    arguments: tc.function.arguments.to_string(),
+                                },
+                            })
+                            .collect::<Vec<_>>()
+                    });
+
+                    let has_payload = parsed
+                        .message
+                        .content
+                        .as_ref()
+                        .is_some_and(|c| !c.is_empty())
+                        || tool_calls.is_some();
+
+                    if has_payload || !state.sent_role {
+                        let delta = ChatMessage {
+                            role: if state.sent_role {
+                                String::new()
+                            } else {
+                                parsed.message.role.clone()
+                            },
+                            content: parsed.message.content.clone(),
+                            tool_calls: tool_calls.clone(),
+                            tool_call_id: None,
+                        };
+                        let chunk = ChatCompletionChunk::new(
+                            state.chunk_id.clone(),
+                            state.created,
+                            state.model.clone(),
+                            delta,
+                            None,
+                        );
+                        let payload = format_sse_chunk(&chunk)
+                            .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+                        state.pending.push_back(Bytes::from(payload));
+                        state.sent_role = true;
+                    }
+
+                    if parsed.done {
+                        let finish_reason = if tool_calls.is_some() {
+                            Some("tool_calls".to_string())
+                        } else {
+                            Some("stop".to_string())
+                        };
+                        let final_chunk = ChatCompletionChunk::new(
+                            state.chunk_id.clone(),
+                            state.created,
+                            state.model.clone(),
+                            ChatMessage {
+                                role: String::new(),
+                                content: None,
+                                tool_calls: None,
+                                tool_call_id: None,
+                            },
+                            finish_reason,
+                        );
+                        let payload = format_sse_chunk(&final_chunk)
+                            .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+                        state.pending.push_back(Bytes::from(payload));
+                        state.pending.push_back(Bytes::from(format_sse_done()));
+                        state.emitted_done = true;
+                    }
+                }
+            }
+        });
+
+        Ok(Box::pin(stream))
     }
 
     async fn embed(&self, model_id: &str, input: &[String]) -> Result<Vec<Vec<f32>>> {

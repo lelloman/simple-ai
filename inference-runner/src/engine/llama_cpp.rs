@@ -14,15 +14,19 @@ const HEALTH_CHECK_INTERVAL_MS: u64 = 200;
 const SERVER_STARTING_POLL_MS: u64 = 100;
 
 use async_trait::async_trait;
+use axum::body::Bytes;
+use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction};
+use simple_ai_common::{
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
+};
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
 use tokio::sync::{RwLock, Semaphore};
 
-use super::{EngineHealth, InferenceEngine, ModelInfo};
+use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
 use crate::config::LlamaCppEngineConfig;
 use crate::error::{Error, Result};
 
@@ -1018,6 +1022,94 @@ impl InferenceEngine for LlamaCppEngine {
         instance.touch().await;
 
         Ok(response)
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+    ) -> Result<ChatCompletionStream> {
+        let instance = self.ensure_server(model_id).await?;
+
+        if instance.state().await != ServerState::Ready {
+            return Err(Error::EngineNotAvailable(format!(
+                "llama-server for {} is not ready",
+                model_id
+            )));
+        }
+
+        let messages: Vec<LlamaMessage> = request
+            .messages
+            .iter()
+            .map(|m| LlamaMessage {
+                role: m.role.clone(),
+                content: m.content.clone(),
+                tool_calls: m.tool_calls.as_ref().map(|calls| {
+                    calls
+                        .iter()
+                        .map(|tc| LlamaToolCall {
+                            id: tc.id.clone(),
+                            call_type: tc.call_type.clone(),
+                            function: LlamaToolFunction {
+                                name: tc.function.name.clone(),
+                                arguments: LlamaToolArguments::Text(tc.function.arguments.clone()),
+                            },
+                        })
+                        .collect()
+                }),
+                tool_call_id: m.tool_call_id.clone(),
+            })
+            .collect();
+
+        let llama_request = LlamaChatRequest {
+            model: model_id.to_string(),
+            messages,
+            tools: request.tools.clone(),
+            temperature: request.temperature,
+            max_tokens: request.max_tokens,
+            stream: true,
+        };
+
+        let url = format!("http://127.0.0.1:{}/v1/chat/completions", instance.port);
+
+        tracing::debug!("Sending streaming chat request to llama-server: {}", url);
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&llama_request)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    tracing::warn!(
+                        "Connection failed to llama-server for {}, marking unhealthy",
+                        model_id
+                    );
+                    let instance_clone = instance.clone();
+                    tokio::spawn(async move {
+                        instance_clone.set_state(ServerState::Unhealthy).await;
+                    });
+                }
+                Error::Communication(e.to_string())
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::InferenceFailed(format!("{}: {}", status, body)));
+        }
+
+        let stream = stream::try_unfold(response, |mut response| async move {
+            let next = response
+                .chunk()
+                .await
+                .map_err(|e| Error::Communication(e.to_string()))?;
+
+            Ok(next.map(|chunk| (Bytes::from(chunk), response)))
+        });
+
+        Ok(Box::pin(stream))
     }
 
     async fn embed(&self, model_id: &str, input: &[String]) -> Result<Vec<Vec<f32>>> {

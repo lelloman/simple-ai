@@ -92,6 +92,28 @@ impl RequestScheduler {
         })
     }
 
+    pub async fn chat_completion_stream(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        request: &ChatCompletionRequest,
+    ) -> Result<ScheduledResponse<reqwest::Response>, SchedulerError> {
+        let wol_sent = self
+            .prepare_for_request(request_id, model, model_request)
+            .await?;
+        let routed = self
+            .inference_router
+            .chat_completion_raw(model, request)
+            .await?;
+        Ok(ScheduledResponse {
+            response: routed.response,
+            runner_id: routed.runner_id,
+            resolved_model: routed.resolved_model,
+            wol_sent,
+        })
+    }
+
     pub async fn embeddings(
         &self,
         request_id: &str,
