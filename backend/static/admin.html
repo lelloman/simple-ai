@@ -54,6 +54,7 @@
                                 <a href="#runners" onclick="showPage('runners')" id="nav-runners" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Runners</a>
                                 <a href="#router" onclick="showPage('router')" id="nav-router" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Router</a>
                                 <a href="#models" onclick="showPage('models')" id="nav-models" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Models</a>
+                                <a href="#chat" onclick="showPage('chat')" id="nav-chat" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Chat</a>
                                 <a href="#users" onclick="showPage('users')" id="nav-users" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Users</a>
                                 <a href="#requests" onclick="showPage('requests')" id="nav-requests" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Requests</a>
                             </div>
@@ -150,6 +151,87 @@
                     <div id="page-models" class="page hidden">
                         <div id="models-list" class="overflow-hidden bg-white shadow sm:rounded-md">
                             <ul role="list" class="divide-y divide-gray-200" id="models-ul"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Chat page -->
+                    <div id="page-chat" class="page hidden">
+                        <div class="grid grid-cols-1 gap-6 xl:grid-cols-12">
+                            <div class="space-y-6 xl:col-span-4">
+                                <div class="overflow-hidden rounded-lg bg-white shadow">
+                                    <div class="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                                        <h3 class="text-sm font-medium text-gray-900">Session Controls</h3>
+                                        <span id="chat-status-badge" class="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">Idle</span>
+                                    </div>
+                                    <div class="space-y-4 p-4">
+                                        <div>
+                                            <label for="chat-model-select" class="block text-sm font-medium text-gray-700">Model</label>
+                                            <div class="mt-1 flex gap-2">
+                                                <select id="chat-model-select" class="block w-full rounded-md border border-gray-300 bg-white p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                                    <option value="">Loading models...</option>
+                                                </select>
+                                                <button onclick="refreshChatModels()" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Refresh</button>
+                                            </div>
+                                            <p class="mt-1 text-xs text-gray-500">Switch models between turns without losing the session.</p>
+                                        </div>
+
+                                        <div>
+                                            <label for="chat-model-override" class="block text-sm font-medium text-gray-700">Manual Model Override</label>
+                                            <input type="text" id="chat-model-override" placeholder="e.g. class:fast or llama3.2:3b" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                        </div>
+
+                                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <div>
+                                                <label for="chat-temperature" class="block text-sm font-medium text-gray-700">Temperature</label>
+                                                <input type="number" id="chat-temperature" min="0" max="2" step="0.1" value="0.7" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                            </div>
+                                            <div>
+                                                <label for="chat-max-tokens" class="block text-sm font-medium text-gray-700">Max Tokens</label>
+                                                <input type="number" id="chat-max-tokens" min="1" step="1" placeholder="Optional" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label for="chat-system-prompt" class="block text-sm font-medium text-gray-700">System Prompt</label>
+                                            <textarea id="chat-system-prompt" rows="5" placeholder="Optional instructions applied to this session" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500"></textarea>
+                                        </div>
+
+                                        <div class="flex flex-wrap gap-2">
+                                            <button onclick="startNewChatSession()" class="rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700">New Session</button>
+                                            <button onclick="clearChatMessages()" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Clear Messages</button>
+                                        </div>
+
+                                        <div>
+                                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Quick Picks</p>
+                                            <div id="chat-quick-models" class="mt-2 flex flex-wrap gap-2"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-6 xl:col-span-8">
+                                <div class="overflow-hidden rounded-lg bg-white shadow">
+                                    <div class="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                                        <div>
+                                            <h3 class="text-sm font-medium text-gray-900">Chat Transcript</h3>
+                                            <p id="chat-session-summary" class="mt-1 text-xs text-gray-500">No messages yet.</p>
+                                        </div>
+                                    </div>
+                                    <div id="chat-transcript" class="flex min-h-[28rem] max-h-[36rem] flex-col gap-4 overflow-y-auto bg-gray-50 p-4">
+                                        <div class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
+                                            Start a session by sending a message. Model responses will appear here.
+                                        </div>
+                                    </div>
+                                    <div class="border-t border-gray-200 bg-white p-4">
+                                        <label for="chat-user-input" class="block text-sm font-medium text-gray-700">Message</label>
+                                        <textarea id="chat-user-input" rows="5" placeholder="Ask something, then switch the model and ask again." class="mt-1 block w-full rounded-md border border-gray-300 p-3 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500"></textarea>
+                                        <div class="mt-3 flex items-center justify-between gap-3">
+                                            <p id="chat-last-metadata" class="text-xs text-gray-500">Ready.</p>
+                                            <button id="chat-send-button" onclick="sendChatMessage()" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Send</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -262,6 +344,10 @@
         let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0, tokens_prompt: 0, tokens_completion: 0 };
         let batchQueueState = { enabled: false, timeout_ms: 0, min_batch_size: 0, queues: {} };
         let routerState = { runners: [], queues: {}, recent_events: [] };
+        let chatModelsState = [];
+        let chatMessagesState = [];
+        let chatRequestInFlight = false;
+        let chatModelsLoading = false;
 
         // Token refresh state
         let refreshToken = null;
@@ -693,6 +779,13 @@
                 '"': '&quot;',
                 "'": '&#39;'
             })[c]);
+        }
+
+        function truncateMiddle(str, maxLength = 48) {
+            if (!str || str.length <= maxLength) return str || '';
+            const head = Math.ceil((maxLength - 3) / 2);
+            const tail = Math.floor((maxLength - 3) / 2);
+            return `${str.slice(0, head)}...${str.slice(str.length - tail)}`;
         }
 
         // =================================================================
@@ -1234,6 +1327,7 @@
                 runners: 'Runners',
                 router: 'Router',
                 models: 'Models',
+                chat: 'Chat',
                 users: 'Users',
                 'user-detail': 'User Details',
                 requests: 'Requests'
@@ -1268,6 +1362,7 @@
             else if (currentPage === 'runners') renderRunners();
             else if (currentPage === 'router') renderRouter();
             else if (currentPage === 'models') renderModels();
+            else if (currentPage === 'chat') renderChatPage();
             else if (currentPage === 'users') loadUsers();
             else if (currentPage === 'requests') {
                 loadRequests();
@@ -1345,6 +1440,299 @@
             // Also update dashboard since model count might be relevant
             if (currentPage === 'dashboard') {
                 renderDashboardStats();
+            }
+        }
+
+        function getSelectedChatModel() {
+            const override = document.getElementById('chat-model-override')?.value.trim();
+            if (override) return override;
+            return document.getElementById('chat-model-select')?.value || '';
+        }
+
+        function setChatStatus(label, tone = 'idle') {
+            const badge = document.getElementById('chat-status-badge');
+            if (!badge) return;
+
+            badge.textContent = label;
+            badge.className = 'inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ';
+            if (tone === 'busy') {
+                badge.className += 'bg-blue-100 text-blue-800';
+            } else if (tone === 'error') {
+                badge.className += 'bg-red-100 text-red-800';
+            } else if (tone === 'ok') {
+                badge.className += 'bg-green-100 text-green-800';
+            } else {
+                badge.className += 'bg-gray-100 text-gray-600';
+            }
+        }
+
+        function syncChatSendState() {
+            const button = document.getElementById('chat-send-button');
+            const input = document.getElementById('chat-user-input');
+            if (button) {
+                button.disabled = chatRequestInFlight;
+                button.textContent = chatRequestInFlight ? 'Sending...' : 'Send';
+                button.classList.toggle('opacity-60', chatRequestInFlight);
+                button.classList.toggle('cursor-not-allowed', chatRequestInFlight);
+            }
+            if (input) {
+                input.disabled = chatRequestInFlight;
+            }
+        }
+
+        function renderChatQuickModels() {
+            const container = document.getElementById('chat-quick-models');
+            if (!container) return;
+
+            const quickModels = ['class:fast', 'class:big', ...chatModelsState.map(model => model.id)]
+                .filter((value, index, array) => value && array.indexOf(value) === index)
+                .slice(0, 10);
+
+            if (quickModels.length === 0) {
+                container.innerHTML = '<span class="text-xs text-gray-400">No models available.</span>';
+                return;
+            }
+
+            container.innerHTML = quickModels.map(model => `
+                <button onclick="selectQuickChatModel('${escapeAttr(model)}')" class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200">
+                    ${escapeHtml(truncateMiddle(model, 28))}
+                </button>
+            `).join('');
+        }
+
+        function renderChatModelOptions() {
+            const select = document.getElementById('chat-model-select');
+            if (!select) return;
+
+            const previousValue = select.value;
+            const models = ['class:fast', 'class:big', ...chatModelsState.map(model => model.id)]
+                .filter((value, index, array) => value && array.indexOf(value) === index);
+
+            if (models.length === 0) {
+                select.innerHTML = '<option value="">No models available</option>';
+                renderChatQuickModels();
+                return;
+            }
+
+            select.innerHTML = models.map(model => `
+                <option value="${escapeAttr(model)}">${escapeHtml(model)}</option>
+            `).join('');
+
+            if (models.includes(previousValue)) {
+                select.value = previousValue;
+            }
+
+            renderChatQuickModels();
+        }
+
+        function renderChatTranscript() {
+            const transcript = document.getElementById('chat-transcript');
+            const summary = document.getElementById('chat-session-summary');
+            if (!transcript || !summary) return;
+
+            if (chatMessagesState.length === 0) {
+                transcript.innerHTML = `
+                    <div class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
+                        Start a session by sending a message. Model responses will appear here.
+                    </div>
+                `;
+                summary.textContent = 'No messages yet.';
+                return;
+            }
+
+            const visibleMessages = chatMessagesState.filter(msg => msg.role !== 'system');
+            const hasSystemPrompt = Boolean(document.getElementById('chat-system-prompt')?.value.trim());
+            summary.textContent = `${visibleMessages.length} visible messages${hasSystemPrompt ? ' • system prompt active' : ''}`;
+
+            transcript.innerHTML = visibleMessages.map(message => {
+                const isUser = message.role === 'user';
+                const roleLabel = isUser ? 'You' : (message.role === 'assistant' ? 'Assistant' : message.role);
+                const bubbleClass = isUser
+                    ? 'bg-gray-900 text-white ml-auto'
+                    : 'bg-white text-gray-900 border border-gray-200';
+
+                return `
+                    <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
+                        <div class="max-w-3xl rounded-2xl px-4 py-3 shadow-sm ${bubbleClass}">
+                            <div class="mb-2 text-[11px] font-semibold uppercase tracking-wide ${isUser ? 'text-gray-300' : 'text-gray-400'}">${escapeHtml(roleLabel)}</div>
+                            <div class="whitespace-pre-wrap break-words text-sm leading-6">${escapeHtml(message.content || '')}</div>
+                            ${message.model ? `<div class="mt-2 text-[11px] ${isUser ? 'text-gray-300' : 'text-gray-400'}">model: ${escapeHtml(message.model)}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+
+        function renderChatPage() {
+            renderChatModelOptions();
+            renderChatQuickModels();
+            renderChatTranscript();
+            syncChatSendState();
+            if (!chatModelsState.length && !chatModelsLoading) {
+                refreshChatModels();
+            }
+        }
+
+        function selectQuickChatModel(model) {
+            const override = document.getElementById('chat-model-override');
+            const select = document.getElementById('chat-model-select');
+            if (override) {
+                override.value = '';
+            }
+            if (select) {
+                select.value = model;
+            }
+        }
+
+        function buildChatMessages() {
+            const systemPrompt = document.getElementById('chat-system-prompt')?.value.trim();
+            const messages = [...chatMessagesState];
+
+            if (systemPrompt) {
+                return [
+                    { role: 'system', content: systemPrompt },
+                    ...messages.filter(message => message.role !== 'system').map(({ role, content }) => ({ role, content }))
+                ];
+            }
+
+            return messages
+                .filter(message => message.role !== 'system')
+                .map(({ role, content }) => ({ role, content }));
+        }
+
+        async function refreshChatModels() {
+            if (chatModelsLoading) return;
+            try {
+                chatModelsLoading = true;
+                setChatStatus('Loading models', 'busy');
+                const data = await apiFetch('/v1/models');
+                chatModelsState = Array.isArray(data.data) ? data.data : [];
+                renderChatModelOptions();
+                setChatStatus('Models ready', 'ok');
+            } catch (e) {
+                console.error('Failed to load chat models:', e);
+                setChatStatus('Model load failed', 'error');
+                const meta = document.getElementById('chat-last-metadata');
+                if (meta) {
+                    meta.textContent = `Failed to load models: ${e.message}`;
+                }
+            } finally {
+                chatModelsLoading = false;
+            }
+        }
+
+        function startNewChatSession() {
+            chatMessagesState = [];
+            const input = document.getElementById('chat-user-input');
+            const meta = document.getElementById('chat-last-metadata');
+            if (input) {
+                input.value = '';
+            }
+            if (meta) {
+                meta.textContent = 'Started a new session.';
+            }
+            setChatStatus('Idle');
+            renderChatTranscript();
+        }
+
+        function clearChatMessages() {
+            chatMessagesState = [];
+            const meta = document.getElementById('chat-last-metadata');
+            if (meta) {
+                meta.textContent = 'Cleared all messages.';
+            }
+            setChatStatus('Idle');
+            renderChatTranscript();
+        }
+
+        async function sendChatMessage() {
+            if (chatRequestInFlight) return;
+
+            const input = document.getElementById('chat-user-input');
+            const meta = document.getElementById('chat-last-metadata');
+            const model = getSelectedChatModel();
+            const content = input?.value.trim() || '';
+
+            if (!content) {
+                if (meta) meta.textContent = 'Enter a message before sending.';
+                return;
+            }
+
+            if (!model) {
+                if (meta) meta.textContent = 'Choose a model or set a manual override first.';
+                setChatStatus('Missing model', 'error');
+                return;
+            }
+
+            const temperatureRaw = document.getElementById('chat-temperature')?.value.trim();
+            const maxTokensRaw = document.getElementById('chat-max-tokens')?.value.trim();
+            const requestBody = {
+                model,
+                messages: [...buildChatMessages(), { role: 'user', content }],
+                stream: false,
+            };
+
+            if (temperatureRaw !== '') {
+                requestBody.temperature = Number(temperatureRaw);
+            }
+            if (maxTokensRaw !== '') {
+                requestBody.max_tokens = Number(maxTokensRaw);
+            }
+
+            chatMessagesState.push({ role: 'user', content, model });
+            renderChatTranscript();
+            if (input) {
+                input.value = '';
+            }
+
+            const startedAt = performance.now();
+            chatRequestInFlight = true;
+            syncChatSendState();
+            setChatStatus('Generating', 'busy');
+            if (meta) {
+                meta.textContent = `Waiting for ${model}...`;
+            }
+
+            try {
+                const response = await apiFetch('/v1/chat/completions', {
+                    method: 'POST',
+                    body: JSON.stringify(requestBody),
+                });
+
+                const assistantMessage = response?.choices?.[0]?.message?.content || '';
+                chatMessagesState.push({
+                    role: 'assistant',
+                    content: assistantMessage,
+                    model: response?.model || model,
+                });
+                renderChatTranscript();
+
+                const elapsedMs = Math.round(performance.now() - startedAt);
+                const usage = response?.usage;
+                const usageText = usage
+                    ? ` • tokens ${usage.prompt_tokens}/${usage.completion_tokens}/${usage.total_tokens}`
+                    : '';
+                if (meta) {
+                    meta.textContent = `${response?.model || model} responded in ${elapsedMs}ms${usageText}`;
+                }
+                setChatStatus('Complete', 'ok');
+            } catch (e) {
+                console.error('Chat request failed:', e);
+                chatMessagesState.push({
+                    role: 'assistant',
+                    content: `Request failed: ${e.message}`,
+                    model,
+                });
+                renderChatTranscript();
+                if (meta) {
+                    meta.textContent = `Request failed for ${model}: ${e.message}`;
+                }
+                setChatStatus('Failed', 'error');
+            } finally {
+                chatRequestInFlight = false;
+                syncChatSendState();
             }
         }
 
@@ -2046,7 +2434,7 @@
         // Handle hash-based navigation
         function getPageFromHash() {
             const hash = window.location.hash.slice(1); // Remove the #
-            const validPages = ['dashboard', 'runners', 'router', 'models', 'users', 'user-detail', 'requests'];
+            const validPages = ['dashboard', 'runners', 'router', 'models', 'chat', 'users', 'user-detail', 'requests'];
             return validPages.includes(hash) ? hash : 'dashboard';
         }
 
@@ -2054,6 +2442,18 @@
         window.addEventListener('hashchange', () => {
             if (accessToken) {
                 showPage(getPageFromHash());
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const chatInput = document.getElementById('chat-user-input');
+            if (chatInput) {
+                chatInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                        event.preventDefault();
+                        sendChatMessage();
+                    }
+                });
             }
         });
 
