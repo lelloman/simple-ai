@@ -4,7 +4,8 @@
 //! Each loaded model runs in its own llama-server process for isolation.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -245,6 +246,16 @@ impl LlamaCppEngine {
     async fn model_path(&self, model_id: &str) -> Option<PathBuf> {
         let paths = self.model_paths.read().await;
         paths.get(model_id).cloned()
+    }
+
+    /// Determine the context size to use for a model server.
+    ///
+    /// A configured value is treated as an explicit operator override. When it
+    /// is absent, use the maximum context length declared in GGUF metadata.
+    fn effective_context_size(&self, model_path: &Path) -> Option<u32> {
+        self.config
+            .context_size
+            .or_else(|| Self::read_gguf_context_length(model_path))
     }
 
     /// Refresh the model paths cache by scanning the model directory.
@@ -530,7 +541,7 @@ impl LlamaCppEngine {
             cmd.arg("-ngl").arg(gpu_layers.to_string());
         }
 
-        if let Some(ctx_size) = self.config.context_size {
+        if let Some(ctx_size) = self.effective_context_size(&model_path) {
             cmd.arg("-c").arg(ctx_size.to_string());
         }
 
@@ -674,6 +685,129 @@ impl LlamaCppEngine {
         }
         None
     }
+
+    fn read_gguf_context_length(path: &Path) -> Option<u32> {
+        match Self::read_gguf_context_length_inner(path) {
+            Ok(value) => value,
+            Err(e) => {
+                tracing::debug!(
+                    "Could not read GGUF context length from {}: {}",
+                    path.display(),
+                    e
+                );
+                None
+            }
+        }
+    }
+
+    fn read_gguf_context_length_inner(path: &Path) -> io::Result<Option<u32>> {
+        let mut file = std::fs::File::open(path)?;
+
+        let mut magic = [0u8; 4];
+        file.read_exact(&mut magic)?;
+        if &magic != b"GGUF" {
+            return Ok(None);
+        }
+
+        let _version = read_u32(&mut file)?;
+        let _tensor_count = read_u64(&mut file)?;
+        let metadata_count = read_u64(&mut file)?;
+
+        for _ in 0..metadata_count {
+            let key = read_gguf_string(&mut file)?;
+            let value_type = read_u32(&mut file)?;
+
+            if key.ends_with(".context_length") || key == "context_length" {
+                return read_gguf_u32_value(&mut file, value_type);
+            }
+
+            skip_gguf_value(&mut file, value_type)?;
+        }
+
+        Ok(None)
+    }
+}
+
+fn read_u32(reader: &mut impl Read) -> io::Result<u32> {
+    let mut bytes = [0u8; 4];
+    reader.read_exact(&mut bytes)?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+fn read_i32(reader: &mut impl Read) -> io::Result<i32> {
+    let mut bytes = [0u8; 4];
+    reader.read_exact(&mut bytes)?;
+    Ok(i32::from_le_bytes(bytes))
+}
+
+fn read_u64(reader: &mut impl Read) -> io::Result<u64> {
+    let mut bytes = [0u8; 8];
+    reader.read_exact(&mut bytes)?;
+    Ok(u64::from_le_bytes(bytes))
+}
+
+fn read_i64(reader: &mut impl Read) -> io::Result<i64> {
+    let mut bytes = [0u8; 8];
+    reader.read_exact(&mut bytes)?;
+    Ok(i64::from_le_bytes(bytes))
+}
+
+fn read_gguf_string(reader: &mut impl Read) -> io::Result<String> {
+    let len = read_u64(reader)? as usize;
+    let mut bytes = vec![0u8; len];
+    reader.read_exact(&mut bytes)?;
+    String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+fn read_gguf_u32_value(reader: &mut impl Read, value_type: u32) -> io::Result<Option<u32>> {
+    match value_type {
+        4 => Ok(Some(read_u32(reader)?)),
+        5 => Ok(u32::try_from(read_i32(reader)?).ok()),
+        10 => Ok(u32::try_from(read_u64(reader)?).ok()),
+        11 => Ok(u32::try_from(read_i64(reader)?).ok()),
+        _ => {
+            skip_gguf_value(reader, value_type)?;
+            Ok(None)
+        }
+    }
+}
+
+fn skip_gguf_value(reader: &mut impl Read, value_type: u32) -> io::Result<()> {
+    match value_type {
+        0 | 1 | 7 => skip_exact(reader, 1),
+        2 | 3 => skip_exact(reader, 2),
+        4 | 5 | 6 => skip_exact(reader, 4),
+        8 => {
+            let len = read_u64(reader)?;
+            skip_exact(reader, len)
+        }
+        9 => {
+            let item_type = read_u32(reader)?;
+            let len = read_u64(reader)?;
+            for _ in 0..len {
+                skip_gguf_value(reader, item_type)?;
+            }
+            Ok(())
+        }
+        10 | 11 | 12 => skip_exact(reader, 8),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unknown GGUF metadata value type {}", value_type),
+        )),
+    }
+}
+
+fn skip_exact(reader: &mut impl Read, len: u64) -> io::Result<()> {
+    let mut remaining = len;
+    let mut buffer = [0u8; 8192];
+
+    while remaining > 0 {
+        let chunk_len = remaining.min(buffer.len() as u64) as usize;
+        reader.read_exact(&mut buffer[..chunk_len])?;
+        remaining -= chunk_len as u64;
+    }
+
+    Ok(())
 }
 
 // ============================================================================
@@ -845,13 +979,14 @@ impl InferenceEngine for LlamaCppEngine {
 
             let size_bytes = std::fs::metadata(path).map(|m| m.len()).ok();
             let quantization = Self::extract_quantization(filename);
+            let context_length = self.effective_context_size(path);
 
             models.push(ModelInfo {
                 id: model_id.clone(),
                 name: model_id.clone(),
                 size_bytes,
                 parameter_count: None,
-                context_length: self.config.context_size,
+                context_length,
                 quantization,
                 modified_at: None,
             });
@@ -1216,6 +1351,35 @@ mod tests {
     fn test_engine_type() {
         let engine = LlamaCppEngine::new(test_config());
         assert_eq!(engine.engine_type(), "llama_cpp");
+    }
+
+    #[test]
+    fn test_read_gguf_context_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("model.gguf");
+        let mut bytes = Vec::new();
+
+        bytes.extend_from_slice(b"GGUF");
+        bytes.extend_from_slice(&3u32.to_le_bytes()); // version
+        bytes.extend_from_slice(&0u64.to_le_bytes()); // tensor count
+        bytes.extend_from_slice(&2u64.to_le_bytes()); // metadata count
+
+        write_gguf_string(&mut bytes, "general.name");
+        bytes.extend_from_slice(&8u32.to_le_bytes()); // string
+        write_gguf_string(&mut bytes, "test-model");
+
+        write_gguf_string(&mut bytes, "llama.context_length");
+        bytes.extend_from_slice(&4u32.to_le_bytes()); // uint32
+        bytes.extend_from_slice(&32768u32.to_le_bytes());
+
+        std::fs::write(&path, bytes).unwrap();
+
+        assert_eq!(LlamaCppEngine::read_gguf_context_length(&path), Some(32768));
+    }
+
+    fn write_gguf_string(bytes: &mut Vec<u8>, value: &str) {
+        bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(value.as_bytes());
     }
 
     #[test]

@@ -9,7 +9,8 @@ use simple_ai_common::{
     format_sse_chunk, format_sse_done, ChatCompletionChunk, ChatCompletionRequest,
     ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
 };
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use tokio::sync::RwLock;
 
 use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
 use crate::error::{Error, Result};
@@ -21,6 +22,7 @@ pub struct OllamaEngine {
     http_client: Client,
     base_url: String,
     batch_size: u32,
+    model_context_cache: RwLock<HashMap<String, Option<u32>>>,
 }
 
 impl OllamaEngine {
@@ -29,6 +31,7 @@ impl OllamaEngine {
             http_client: Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
             batch_size,
+            model_context_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -37,6 +40,7 @@ impl OllamaEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
         stream: bool,
+        context_length: Option<u32>,
     ) -> OllamaChatRequest {
         let messages: Vec<OllamaMessage> = request
             .messages
@@ -73,10 +77,14 @@ impl OllamaEngine {
             })
             .collect();
 
-        let options = if request.temperature.is_some() || request.max_tokens.is_some() {
+        let options = if request.temperature.is_some()
+            || request.max_tokens.is_some()
+            || context_length.is_some()
+        {
             Some(OllamaOptions {
                 temperature: request.temperature,
                 num_predict: request.max_tokens,
+                num_ctx: context_length,
             })
         } else {
             None
@@ -89,6 +97,57 @@ impl OllamaEngine {
             options,
             tools: request.tools.clone(),
         }
+    }
+
+    async fn cached_model_context_length(&self, model_id: &str) -> Option<u32> {
+        if let Some(context_length) = self.model_context_cache.read().await.get(model_id) {
+            return *context_length;
+        }
+
+        let context_length = match self.fetch_model_context_length(model_id).await {
+            Ok(value) => value,
+            Err(e) => {
+                tracing::debug!(
+                    "Could not fetch Ollama context length for {}: {}",
+                    model_id,
+                    e
+                );
+                None
+            }
+        };
+
+        self.model_context_cache
+            .write()
+            .await
+            .insert(model_id.to_string(), context_length);
+
+        context_length
+    }
+
+    async fn fetch_model_context_length(&self, model_id: &str) -> Result<Option<u32>> {
+        let url = format!("{}/api/show", self.base_url);
+        let request = OllamaShowRequest {
+            model: model_id.to_string(),
+        };
+
+        let response = self
+            .http_client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| Error::Communication(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Ok(None);
+        }
+
+        let show: OllamaShowResponse = response
+            .json()
+            .await
+            .map_err(|e| Error::Communication(e.to_string()))?;
+
+        Ok(extract_ollama_context_length(&show.model_info))
     }
 }
 
@@ -137,6 +196,19 @@ struct OllamaOptions {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     num_predict: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    num_ctx: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+struct OllamaShowRequest {
+    model: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaShowResponse {
+    #[serde(default)]
+    model_info: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,31 +331,30 @@ impl InferenceEngine for OllamaEngine {
             .await
             .map_err(|e| Error::Communication(e.to_string()))?;
 
-        let models = tags
-            .models
-            .into_iter()
-            .map(|m| {
-                let parameter_count = m.details.as_ref().and_then(|d| {
-                    d.parameter_size
-                        .as_ref()
-                        .and_then(|s| parse_parameter_size(s))
-                });
-                let quantization = m
-                    .details
+        let mut models = Vec::new();
+        for m in tags.models {
+            let parameter_count = m.details.as_ref().and_then(|d| {
+                d.parameter_size
                     .as_ref()
-                    .and_then(|d| d.quantization_level.clone());
+                    .and_then(|s| parse_parameter_size(s))
+            });
+            let quantization = m
+                .details
+                .as_ref()
+                .and_then(|d| d.quantization_level.clone());
 
-                ModelInfo {
-                    id: m.name.clone(),
-                    name: m.name,
-                    size_bytes: m.size,
-                    parameter_count,
-                    context_length: None, // Ollama doesn't expose this in /api/tags
-                    quantization,
-                    modified_at: m.modified_at,
-                }
-            })
-            .collect();
+            let context_length = self.cached_model_context_length(&m.name).await;
+
+            models.push(ModelInfo {
+                id: m.name.clone(),
+                name: m.name,
+                size_bytes: m.size,
+                parameter_count,
+                context_length,
+                quantization,
+                modified_at: m.modified_at,
+            });
+        }
 
         Ok(models)
     }
@@ -361,7 +432,8 @@ impl InferenceEngine for OllamaEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
-        let ollama_request = self.build_chat_request(model_id, request, false);
+        let context_length = self.cached_model_context_length(model_id).await;
+        let ollama_request = self.build_chat_request(model_id, request, false, context_length);
 
         let url = format!("{}/api/chat", self.base_url);
 
@@ -437,7 +509,8 @@ impl InferenceEngine for OllamaEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionStream> {
-        let ollama_request = self.build_chat_request(model_id, request, true);
+        let context_length = self.cached_model_context_length(model_id).await;
+        let ollama_request = self.build_chat_request(model_id, request, true, context_length);
         let url = format!("{}/api/chat", self.base_url);
 
         tracing::debug!(
@@ -660,6 +733,16 @@ fn parse_parameter_size(s: &str) -> Option<u64> {
         .map(|n| (n * multiplier as f64) as u64)
 }
 
+fn extract_ollama_context_length(model_info: &HashMap<String, serde_json::Value>) -> Option<u32> {
+    model_info.iter().find_map(|(key, value)| {
+        if key == "context_length" || key.ends_with(".context_length") {
+            value.as_u64().and_then(|v| u32::try_from(v).ok())
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -671,6 +754,17 @@ mod tests {
         assert_eq!(parse_parameter_size("1.5B"), Some(1_500_000_000));
         assert_eq!(parse_parameter_size("500M"), Some(500_000_000));
         assert_eq!(parse_parameter_size("invalid"), None);
+    }
+
+    #[test]
+    fn test_extract_ollama_context_length() {
+        let mut model_info = HashMap::new();
+        model_info.insert(
+            "llama.context_length".to_string(),
+            serde_json::Value::from(131072),
+        );
+
+        assert_eq!(extract_ollama_context_length(&model_info), Some(131072));
     }
 
     #[test]
