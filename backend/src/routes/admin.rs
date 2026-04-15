@@ -31,7 +31,9 @@ use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 
-use crate::audit::{ApiKey, DashboardStats, RequestWithResponse, UserWithStats};
+use crate::audit::{
+    ApiKey, DashboardStats, ModelContextMetricRow, RequestWithResponse, UserWithStats,
+};
 use crate::gateway::{ModelQueueStats, RouterEventRecord, RouterStateSnapshot, RunnerEvent};
 use crate::wol;
 use crate::AppState;
@@ -541,6 +543,13 @@ pub struct RequestsApiResponse {
     pub total_pages: u32,
 }
 
+/// Response for /admin/api/model-speeds endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelSpeedsApiResponse {
+    pub metrics: Vec<ModelContextMetricRow>,
+    pub total: usize,
+}
+
 /// GET /admin/api/requests - List requests with pagination (JSON API)
 async fn api_requests_list(
     State(state): State<Arc<AppState>>,
@@ -565,6 +574,16 @@ async fn api_requests_list(
         per_page,
         total_pages,
     })
+}
+
+/// GET /admin/api/model-speeds - Aggregate model inference speed metrics.
+async fn api_model_speeds(State(state): State<Arc<AppState>>) -> Json<ModelSpeedsApiResponse> {
+    let metrics = state
+        .audit_logger
+        .get_model_context_metrics(200)
+        .unwrap_or_default();
+    let total = metrics.len();
+    Json(ModelSpeedsApiResponse { metrics, total })
 }
 
 // ========== API Key Endpoints ==========
@@ -1289,6 +1308,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         // JSON API endpoints (for SPA dashboard)
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
+        .route("/api/model-speeds", get(api_model_speeds))
         .route("/api/keys", get(api_keys_list).post(api_keys_create))
         .route("/api/keys/:id", axum::routing::delete(api_keys_revoke))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))

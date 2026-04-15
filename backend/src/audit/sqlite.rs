@@ -1039,6 +1039,24 @@ pub struct RunnerMetricRow {
     pub last_updated_at: String,
 }
 
+/// Aggregate inference speed metrics per model, runner, and context window.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ModelContextMetricRow {
+    pub resolved_model: String,
+    pub runner_id: String,
+    pub context_window: u32,
+    pub sample_count: u64,
+    pub prompt_tokens_total: u64,
+    pub completion_tokens_total: u64,
+    pub avg_prompt_tokens_per_sec: Option<f64>,
+    pub avg_completion_tokens_per_sec: Option<f64>,
+    pub prompt_tps_min: Option<f64>,
+    pub prompt_tps_max: Option<f64>,
+    pub completion_tps_min: Option<f64>,
+    pub completion_tps_max: Option<f64>,
+    pub last_updated_at: String,
+}
+
 impl RunnerMetricRow {
     /// Calculate the average latency in milliseconds.
     pub fn avg_ms(&self) -> Option<f64> {
@@ -1248,6 +1266,70 @@ impl AuditLogger {
         Ok(metrics)
     }
 
+    /// Get aggregate model speed metrics.
+    pub fn get_model_context_metrics(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<ModelContextMetricRow>, AuditError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT
+                resolved_model,
+                runner_id,
+                context_window,
+                sample_count,
+                prompt_tokens_total,
+                completion_tokens_total,
+                CASE
+                    WHEN prompt_tokens_total > 0 THEN prompt_weighted_tps_total / prompt_tokens_total
+                    ELSE NULL
+                END AS avg_prompt_tps,
+                CASE
+                    WHEN completion_tokens_total > 0 THEN completion_weighted_tps_total / completion_tokens_total
+                    ELSE NULL
+                END AS avg_completion_tps,
+                prompt_tps_min,
+                prompt_tps_max,
+                completion_tps_min,
+                completion_tps_max,
+                last_updated_at
+             FROM model_context_metrics
+             ORDER BY last_updated_at DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![limit.min(500) as i64], |row| {
+                Ok(ModelContextMetricRow {
+                    resolved_model: row.get(0)?,
+                    runner_id: row.get(1)?,
+                    context_window: row.get::<_, i64>(2)? as u32,
+                    sample_count: row.get::<_, i64>(3)? as u64,
+                    prompt_tokens_total: row.get::<_, i64>(4)? as u64,
+                    completion_tokens_total: row.get::<_, i64>(5)? as u64,
+                    avg_prompt_tokens_per_sec: row.get(6)?,
+                    avg_completion_tokens_per_sec: row.get(7)?,
+                    prompt_tps_min: row.get(8)?,
+                    prompt_tps_max: row.get(9)?,
+                    completion_tps_min: row.get(10)?,
+                    completion_tps_max: row.get(11)?,
+                    last_updated_at: row.get(12)?,
+                })
+            })
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let mut metrics = Vec::new();
+        for row in rows {
+            metrics.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
+        }
+        Ok(metrics)
+    }
+
     /// Get boot time metrics for a specific runner.
     pub fn get_boot_metrics(&self, runner_id: &str) -> Result<Option<RunnerMetricRow>, AuditError> {
         let metrics = self.get_runner_metrics(runner_id)?;
@@ -1438,6 +1520,41 @@ mod tests {
         assert_eq!(row.2, 150);
         assert_eq!(row.3, 100.0);
         assert_eq!(row.4, 50.0);
+    }
+
+    #[test]
+    fn test_get_model_context_metrics() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+
+        let mut response = Response::new(request_id, 200);
+        response.runner_id = Some("runner-1".to_string());
+        response.inference_metrics = Some(
+            InferenceMetrics {
+                resolved_model: Some("qwen3.5:35b".to_string()),
+                context_window: Some(8192),
+                prompt_tokens: Some(100),
+                completion_tokens: Some(50),
+                prompt_eval_ms: Some(1_000),
+                completion_eval_ms: Some(2_000),
+                ..Default::default()
+            }
+            .with_computed_rates(),
+        );
+
+        logger.log_response(&response).unwrap();
+
+        let metrics = logger.get_model_context_metrics(10).unwrap();
+        assert_eq!(metrics.len(), 1);
+        let row = &metrics[0];
+        assert_eq!(row.resolved_model, "qwen3.5:35b");
+        assert_eq!(row.runner_id, "runner-1");
+        assert_eq!(row.context_window, 8192);
+        assert_eq!(row.sample_count, 1);
+        assert_eq!(row.avg_prompt_tokens_per_sec, Some(100.0));
+        assert_eq!(row.avg_completion_tokens_per_sec, Some(25.0));
     }
 
     #[test]

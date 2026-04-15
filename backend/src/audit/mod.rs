@@ -1,6 +1,6 @@
 mod sqlite;
 
 pub use sqlite::{
-    ApiKey, AuditError, AuditLogger, DashboardStats, RequestSummary, RequestWithResponse,
-    RunnerMetricRow, RunnerRecord, UserWithStats,
+    ApiKey, AuditError, AuditLogger, DashboardStats, ModelContextMetricRow, RequestSummary,
+    RequestWithResponse, RunnerMetricRow, RunnerRecord, UserWithStats,
 };
