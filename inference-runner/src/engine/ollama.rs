@@ -6,8 +6,9 @@ use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
-    format_sse_chunk, format_sse_done, ChatCompletionChunk, ChatCompletionRequest,
-    ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
+    format_sse_chunk, format_sse_done, format_sse_metrics, ChatCompletionChunk,
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, InferenceMetrics, ToolCall,
+    ToolFunction,
 };
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::RwLock;
@@ -219,6 +220,12 @@ struct OllamaChatResponse {
     prompt_eval_count: Option<u32>,
     #[serde(default)]
     eval_count: Option<u32>,
+    #[serde(default)]
+    prompt_eval_duration: Option<u64>,
+    #[serde(default)]
+    eval_duration: Option<u64>,
+    #[serde(default)]
+    total_duration: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -494,12 +501,29 @@ impl InferenceEngine for OllamaEngine {
         let mut response =
             ChatCompletionResponse::new(model_id.to_string(), message, finish_reason);
 
+        let prompt_tokens = ollama_response.prompt_eval_count;
+        let completion_tokens = ollama_response.eval_count;
         if let (Some(prompt), Some(completion)) = (
             ollama_response.prompt_eval_count,
             ollama_response.eval_count,
         ) {
             response = response.with_usage(prompt, completion);
         }
+
+        response = response.with_inference_metrics(
+            InferenceMetrics {
+                resolved_model: Some(model_id.to_string()),
+                engine_type: Some(self.engine_type().to_string()),
+                context_window: context_length,
+                prompt_tokens,
+                completion_tokens,
+                prompt_eval_ms: nanos_to_ms(ollama_response.prompt_eval_duration),
+                completion_eval_ms: nanos_to_ms(ollama_response.eval_duration),
+                total_inference_ms: nanos_to_ms(ollama_response.total_duration),
+                ..Default::default()
+            }
+            .with_computed_rates(),
+        );
 
         Ok(response)
     }
@@ -542,6 +566,7 @@ impl InferenceEngine for OllamaEngine {
             chunk_id: String,
             created: i64,
             model: String,
+            context_length: Option<u32>,
         }
 
         let state = StreamState {
@@ -553,6 +578,7 @@ impl InferenceEngine for OllamaEngine {
             chunk_id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
             created: chrono::Utc::now().timestamp(),
             model: model_id.to_string(),
+            context_length,
         };
 
         let stream = stream::try_unfold(state, |mut state| async move {
@@ -636,6 +662,18 @@ impl InferenceEngine for OllamaEngine {
                     }
 
                     if parsed.done {
+                        let metrics = InferenceMetrics {
+                            resolved_model: Some(state.model.clone()),
+                            engine_type: Some("ollama".to_string()),
+                            context_window: state.context_length,
+                            prompt_tokens: parsed.prompt_eval_count,
+                            completion_tokens: parsed.eval_count,
+                            prompt_eval_ms: nanos_to_ms(parsed.prompt_eval_duration),
+                            completion_eval_ms: nanos_to_ms(parsed.eval_duration),
+                            total_inference_ms: nanos_to_ms(parsed.total_duration),
+                            ..Default::default()
+                        }
+                        .with_computed_rates();
                         let finish_reason = if tool_calls.is_some() {
                             Some("tool_calls".to_string())
                         } else {
@@ -654,6 +692,9 @@ impl InferenceEngine for OllamaEngine {
                             finish_reason,
                         );
                         let payload = format_sse_chunk(&final_chunk)
+                            .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+                        state.pending.push_back(Bytes::from(payload));
+                        let payload = format_sse_metrics(&metrics)
                             .map_err(|e| Error::InferenceFailed(e.to_string()))?;
                         state.pending.push_back(Bytes::from(payload));
                         state.pending.push_back(Bytes::from(format_sse_done()));
@@ -701,6 +742,10 @@ impl InferenceEngine for OllamaEngine {
 
         Ok(embed_response.embeddings)
     }
+}
+
+fn nanos_to_ms(value: Option<u64>) -> Option<u64> {
+    value.map(|nanos| nanos / 1_000_000)
 }
 
 /// Ollama embed request (POST /api/embed).

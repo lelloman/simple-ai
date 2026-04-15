@@ -71,6 +71,6 @@ async fn chat_completions(
     } else {
         let response: ChatCompletionResponse =
             engine.chat_completion(resolved_model, &request).await?;
-        Ok(Json(response).into_response())
+        Ok(Json(response.strip_internal_metrics()).into_response())
     }
 }

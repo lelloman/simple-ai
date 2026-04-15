@@ -8,6 +8,8 @@ use axum::{
     Json, Router,
 };
 use futures_util::stream;
+use simple_ai_common::InferenceMetrics;
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -17,6 +19,141 @@ use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
 use crate::models::chat::ChatCompletionRequest;
 use crate::models::request::{Request, Response as AuditResponse};
 use crate::{AppState, RequestEvent};
+
+struct StreamLogContext {
+    state: Arc<AppState>,
+    request_id: String,
+    req_log: Request,
+    user_email: Option<String>,
+    start: Instant,
+    runner_id: Option<String>,
+    wol_sent: bool,
+    model_class: Option<String>,
+}
+
+struct GatewayStreamState {
+    response: reqwest::Response,
+    buffer: String,
+    pending: VecDeque<Bytes>,
+    metrics: Option<InferenceMetrics>,
+    log_context: Option<StreamLogContext>,
+}
+
+fn filter_gateway_stream(response: reqwest::Response, log_context: StreamLogContext) -> Body {
+    let state = GatewayStreamState {
+        response,
+        buffer: String::new(),
+        pending: VecDeque::new(),
+        metrics: None,
+        log_context: Some(log_context),
+    };
+
+    let stream = stream::try_unfold(state, |mut state| async move {
+        loop {
+            if let Some(item) = state.pending.pop_front() {
+                return Ok::<_, std::io::Error>(Some((item, state)));
+            }
+
+            let Some(chunk) = state
+                .response
+                .chunk()
+                .await
+                .map_err(|e| std::io::Error::other(e.to_string()))?
+            else {
+                if let Some(log_context) = state.log_context.take() {
+                    log_stream_response(log_context, state.metrics).await;
+                }
+                return Ok(None);
+            };
+
+            let text =
+                std::str::from_utf8(&chunk).map_err(|e| std::io::Error::other(e.to_string()))?;
+            state.buffer.push_str(text);
+
+            while let Some(event_end) = state.buffer.find("\n\n") {
+                let event = state.buffer[..event_end].to_string();
+                state.buffer.drain(..event_end + 2);
+
+                if let Some(metrics) = parse_internal_metrics_event(&event) {
+                    state.metrics = Some(metrics);
+                    continue;
+                }
+
+                state
+                    .pending
+                    .push_back(Bytes::from(format!("{}\n\n", event)));
+            }
+        }
+    });
+
+    Body::from_stream(stream)
+}
+
+fn parse_internal_metrics_event(event: &str) -> Option<InferenceMetrics> {
+    if !event
+        .lines()
+        .any(|line| line.trim() == "event: simple_ai_metrics")
+    {
+        return None;
+    }
+
+    let data = event
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:").map(str::trim_start))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    serde_json::from_str(&data).ok()
+}
+
+async fn log_stream_response(log_context: StreamLogContext, metrics: Option<InferenceMetrics>) {
+    let mut resp_log = AuditResponse::new(log_context.request_id, 200);
+    resp_log.response_body = "[stream]".to_string();
+    resp_log.latency_ms = log_context.start.elapsed().as_millis() as u64;
+    resp_log.runner_id = log_context.runner_id.clone();
+    resp_log.wol_sent = log_context.wol_sent;
+    resp_log.model_class = log_context.model_class;
+    resp_log.inference_metrics = metrics.clone();
+    if let Some(metrics) = metrics {
+        resp_log.tokens_prompt = metrics.prompt_tokens;
+        resp_log.tokens_completion = metrics.completion_tokens;
+    }
+
+    let _ = log_context.state.audit_logger.log_response(&resp_log);
+    log_context
+        .state
+        .router_telemetry
+        .emit(
+            "request_completed",
+            format!(
+                "Streaming request completed with status 200 on {}",
+                log_context
+                    .runner_id
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string())
+            ),
+            Some(log_context.req_log.id.clone()),
+            log_context.runner_id.clone(),
+            log_context.req_log.model.clone(),
+        )
+        .await;
+
+    let _ = log_context.state.request_events.send(RequestEvent {
+        id: log_context.req_log.id.clone(),
+        timestamp: log_context.req_log.timestamp.to_rfc3339(),
+        user_id: log_context.req_log.user_id.clone(),
+        user_email: log_context.user_email,
+        request_path: log_context.req_log.request_path.clone(),
+        model: log_context.req_log.model.clone(),
+        client_ip: log_context.req_log.client_ip.clone(),
+        status: Some(resp_log.status as i32),
+        latency_ms: Some(resp_log.latency_ms as i64),
+        tokens_prompt: resp_log.tokens_prompt.map(|v| v as i64),
+        tokens_completion: resp_log.tokens_completion.map(|v| v as i64),
+        runner_id: resp_log.runner_id.clone(),
+        wol_sent: resp_log.wol_sent,
+    });
+}
 
 /// POST /v1/chat/completions - OpenAI-compatible chat endpoint
 async fn chat_completions(
@@ -133,8 +270,6 @@ async fn chat_completions(
                 }
             };
 
-            runner_id = Some(scheduled.runner_id.clone());
-            wol_sent = scheduled.wol_sent;
             state
                 .wake_service
                 .keepalive_runner(scheduled.runner_id.clone());
@@ -152,14 +287,19 @@ async fn chat_completions(
                 )
                 .await;
 
-            let stream = stream::try_unfold(scheduled.response, |mut response| async move {
-                let next = response
-                    .chunk()
-                    .await
-                    .map_err(|e| std::io::Error::other(e.to_string()))?;
-                Ok::<_, std::io::Error>(next.map(|chunk| (Bytes::from(chunk), response)))
-            });
-            Body::from_stream(stream)
+            filter_gateway_stream(
+                scheduled.response,
+                StreamLogContext {
+                    state: state.clone(),
+                    request_id: request_id.clone(),
+                    req_log: req_log.clone(),
+                    user_email: auth_user.email.clone(),
+                    start,
+                    runner_id: Some(scheduled.runner_id.clone()),
+                    wol_sent: scheduled.wol_sent,
+                    model_class: model_class_str.clone(),
+                },
+            )
         } else if !state.circuit_breaker.is_available("ollama") {
             let e = crate::llm::OllamaError::ConnectionFailed(
                 "Circuit breaker open: Ollama backend is unavailable".to_string(),
@@ -178,7 +318,16 @@ async fn chat_completions(
                 state.circuit_breaker.record_failure("ollama");
             }
             match result {
-                Ok(stream) => Body::from_stream(stream),
+                Ok(stream) => {
+                    let mut resp_log = AuditResponse::new(request_id.clone(), 200);
+                    resp_log.response_body = "[stream]".to_string();
+                    resp_log.latency_ms = start.elapsed().as_millis() as u64;
+                    resp_log.runner_id = runner_id.clone();
+                    resp_log.wol_sent = wol_sent;
+                    resp_log.model_class = model_class_str.clone();
+                    let _ = state.audit_logger.log_response(&resp_log);
+                    Body::from_stream(stream)
+                }
                 Err(e) => {
                     let mut resp_log = AuditResponse::new(request_id, 500);
                     resp_log.response_body = e.to_string();
@@ -189,42 +338,6 @@ async fn chat_completions(
                 }
             }
         };
-
-        let mut resp_log = AuditResponse::new(request_id, 200);
-        resp_log.response_body = "[stream]".to_string();
-        resp_log.latency_ms = start.elapsed().as_millis() as u64;
-        resp_log.runner_id = runner_id.clone();
-        resp_log.wol_sent = wol_sent;
-        resp_log.model_class = model_class_str;
-        let _ = state.audit_logger.log_response(&resp_log);
-        state
-            .router_telemetry
-            .emit(
-                "request_completed",
-                format!(
-                    "Streaming request started with status 200 on {}",
-                    runner_id.clone().unwrap_or_else(|| "unknown".to_string())
-                ),
-                Some(req_log.id.clone()),
-                runner_id.clone(),
-                req_log.model.clone(),
-            )
-            .await;
-        let _ = state.request_events.send(RequestEvent {
-            id: req_log.id.clone(),
-            timestamp: req_log.timestamp.to_rfc3339(),
-            user_id: req_log.user_id.clone(),
-            user_email: auth_user.email.clone(),
-            request_path: req_log.request_path.clone(),
-            model: req_log.model.clone(),
-            client_ip: req_log.client_ip.clone(),
-            status: Some(200),
-            latency_ms: Some(resp_log.latency_ms as i64),
-            tokens_prompt: None,
-            tokens_completion: None,
-            runner_id: resp_log.runner_id.clone(),
-            wol_sent: resp_log.wol_sent,
-        });
 
         let mut response = AxumResponse::new(stream_body);
         *response.status_mut() = StatusCode::OK;
@@ -291,13 +404,16 @@ async fn chat_completions(
 
     let (response, resp_log) = match result {
         Ok(resp) => {
+            let metrics = resp.inference_metrics.clone();
+            let client_resp = resp.strip_internal_metrics();
             let mut resp_log = AuditResponse::new(request_id, 200);
-            resp_log.response_body = serde_json::to_string(&resp).unwrap_or_default();
+            resp_log.response_body = serde_json::to_string(&client_resp).unwrap_or_default();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
             resp_log.model_class = model_class_str.clone();
-            if let Some(ref usage) = resp.usage {
+            resp_log.inference_metrics = metrics;
+            if let Some(ref usage) = client_resp.usage {
                 resp_log.tokens_prompt = Some(usage.prompt_tokens);
                 resp_log.tokens_completion = Some(usage.completion_tokens);
             }
@@ -314,7 +430,7 @@ async fn chat_completions(
                     req_log.model.clone(),
                 )
                 .await;
-            (resp, resp_log)
+            (client_resp, resp_log)
         }
         Err(e) => {
             let mut resp_log = AuditResponse::new(request_id, 500);
@@ -381,6 +497,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 #[cfg(test)]
 mod tests {
+    use super::parse_internal_metrics_event;
     use crate::models::chat::{ChatCompletionRequest, ChatMessage};
 
     fn create_test_request() -> ChatCompletionRequest {
@@ -450,5 +567,19 @@ mod tests {
         };
         assert_eq!(req.model, Some("custom-model".to_string()));
         assert_eq!(req.temperature, Some(0.5));
+    }
+
+    #[test]
+    fn test_parse_internal_metrics_event() {
+        let event = r#"event: simple_ai_metrics
+data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":8192,"prompt_tokens":10,"completion_tokens":5}
+"#;
+
+        let metrics = parse_internal_metrics_event(event).unwrap();
+        assert_eq!(metrics.resolved_model, Some("model-a".to_string()));
+        assert_eq!(metrics.engine_type, Some("llama_cpp".to_string()));
+        assert_eq!(metrics.context_window, Some(8192));
+        assert_eq!(metrics.prompt_tokens, Some(10));
+        assert_eq!(metrics.completion_tokens, Some(5));
     }
 }

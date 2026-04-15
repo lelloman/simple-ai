@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use simple_ai_common::InferenceMetrics;
 
 /// A logged API request.
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +45,8 @@ pub struct Response {
     pub wol_sent: bool,
     /// Model class (fast, big) for metrics tracking.
     pub model_class: Option<String>,
+    /// Inference-only performance metrics, excluding load/unload/wake time.
+    pub inference_metrics: Option<InferenceMetrics>,
 }
 
 impl Response {
@@ -60,6 +63,7 @@ impl Response {
             runner_id: None,
             wol_sent: false,
             model_class: None,
+            inference_metrics: None,
         }
     }
 }

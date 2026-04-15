@@ -9,8 +9,9 @@ pub mod protocol;
 
 pub use capability::{Capability, CapabilityInfo, CapabilityStatus};
 pub use chat::{
-    format_sse_chunk, format_sse_done, ChatCompletionChunk, ChatCompletionRequest,
-    ChatCompletionResponse, ChatMessage, Choice, ChunkChoice, ToolCall, ToolFunction, Usage,
+    format_sse_chunk, format_sse_done, format_sse_metrics, ChatCompletionChunk,
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, ChunkChoice,
+    InferenceMetrics, ToolCall, ToolFunction, Usage,
 };
 pub use ocr::{
     OcrBlock, OcrFeature, OcrMetadata, OcrMode, OcrOptions, OcrPage, OcrProviderInfo, OcrResponse,

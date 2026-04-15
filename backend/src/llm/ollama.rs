@@ -2,7 +2,7 @@ use axum::body::Bytes;
 use futures_util::stream::{self, Stream};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use simple_ai_common::{format_sse_chunk, format_sse_done, ChatCompletionChunk};
+use simple_ai_common::{format_sse_chunk, format_sse_done, ChatCompletionChunk, InferenceMetrics};
 use std::collections::VecDeque;
 use std::pin::Pin;
 
@@ -73,6 +73,12 @@ struct OllamaChatResponse {
     prompt_eval_count: Option<u32>,
     #[serde(default)]
     eval_count: Option<u32>,
+    #[serde(default)]
+    prompt_eval_duration: Option<u64>,
+    #[serde(default)]
+    eval_duration: Option<u64>,
+    #[serde(default)]
+    total_duration: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,12 +231,28 @@ impl OllamaClient {
         let mut response = ChatCompletionResponse::new(model.to_string(), message, finish_reason);
 
         // Add usage info if available
+        let prompt_tokens = ollama_response.prompt_eval_count;
+        let completion_tokens = ollama_response.eval_count;
         if let (Some(prompt), Some(completion)) = (
             ollama_response.prompt_eval_count,
             ollama_response.eval_count,
         ) {
             response = response.with_usage(prompt, completion);
         }
+
+        response = response.with_inference_metrics(
+            InferenceMetrics {
+                resolved_model: Some(model.to_string()),
+                engine_type: Some("ollama".to_string()),
+                prompt_tokens,
+                completion_tokens,
+                prompt_eval_ms: nanos_to_ms(ollama_response.prompt_eval_duration),
+                completion_eval_ms: nanos_to_ms(ollama_response.eval_duration),
+                total_inference_ms: nanos_to_ms(ollama_response.total_duration),
+                ..Default::default()
+            }
+            .with_computed_rates(),
+        );
 
         Ok(response)
     }
@@ -424,6 +446,10 @@ impl OllamaClient {
 
         Ok(ollama_response.embeddings)
     }
+}
+
+fn nanos_to_ms(value: Option<u64>) -> Option<u64> {
+    value.map(|nanos| nanos / 1_000_000)
 }
 
 /// Ollama embed request format (POST /api/embed).

@@ -21,7 +21,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_ai_common::{
-    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
+    format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
+    InferenceMetrics, ToolCall, ToolFunction,
 };
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
@@ -810,6 +811,32 @@ fn skip_exact(reader: &mut impl Read, len: u64) -> io::Result<()> {
     Ok(())
 }
 
+fn f64_ms_to_u64(value: Option<f64>) -> Option<u64> {
+    value.and_then(|ms| {
+        if ms.is_finite() && ms >= 0.0 {
+            Some(ms.round() as u64)
+        } else {
+            None
+        }
+    })
+}
+
+fn parse_llama_stream_usage(event: &str) -> Option<LlamaUsage> {
+    let data = event
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:").map(str::trim_start))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if data.is_empty() || data == "[DONE]" {
+        return None;
+    }
+
+    let value: Value = serde_json::from_str(&data).ok()?;
+    let usage = value.get("usage")?;
+    serde_json::from_value(usage.clone()).ok()
+}
+
 // ============================================================================
 // llama-server API types (OpenAI-compatible)
 // ============================================================================
@@ -826,6 +853,13 @@ struct LlamaChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<LlamaStreamOptions>,
+}
+
+#[derive(Debug, Serialize)]
+struct LlamaStreamOptions {
+    include_usage: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -890,6 +924,14 @@ struct LlamaResponseMessage {
 struct LlamaUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
+    #[serde(default)]
+    prompt_ms: Option<f64>,
+    #[serde(default)]
+    predicted_ms: Option<f64>,
+    #[serde(default)]
+    prompt_per_second: Option<f64>,
+    #[serde(default)]
+    predicted_per_second: Option<f64>,
 }
 
 /// Request body for llama-server /v1/embeddings endpoint.
@@ -1071,12 +1113,19 @@ impl InferenceEngine for LlamaCppEngine {
             temperature: request.temperature,
             max_tokens: request.max_tokens,
             stream: false,
+            stream_options: None,
         };
 
         let url = format!("http://127.0.0.1:{}/v1/chat/completions", instance.port);
+        let context_window = self
+            .model_path(model_id)
+            .await
+            .as_deref()
+            .and_then(|path| self.effective_context_size(path));
 
         tracing::debug!("Sending chat request to llama-server: {}", url);
 
+        let inference_start = Instant::now();
         let response = self
             .http_client
             .post(&url)
@@ -1109,6 +1158,7 @@ impl InferenceEngine for LlamaCppEngine {
             .json()
             .await
             .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+        let total_inference_ms = inference_start.elapsed().as_millis() as u64;
 
         let choice = llama_response
             .choices
@@ -1152,6 +1202,36 @@ impl InferenceEngine for LlamaCppEngine {
 
         if let Some(usage) = llama_response.usage {
             response = response.with_usage(usage.prompt_tokens, usage.completion_tokens);
+            let prompt_eval_ms = f64_ms_to_u64(usage.prompt_ms);
+            let completion_eval_ms = f64_ms_to_u64(usage.predicted_ms);
+            let mut metrics = InferenceMetrics {
+                resolved_model: Some(model_id.to_string()),
+                engine_type: Some(self.engine_type().to_string()),
+                context_window,
+                prompt_tokens: Some(usage.prompt_tokens),
+                completion_tokens: Some(usage.completion_tokens),
+                prompt_eval_ms,
+                completion_eval_ms,
+                total_inference_ms: Some(total_inference_ms),
+                prompt_tokens_per_sec: usage.prompt_per_second,
+                completion_tokens_per_sec: usage.predicted_per_second,
+            }
+            .with_computed_rates();
+            if metrics.prompt_tokens_per_sec.is_none() {
+                metrics.prompt_tokens_per_sec = usage.prompt_per_second;
+            }
+            if metrics.completion_tokens_per_sec.is_none() {
+                metrics.completion_tokens_per_sec = usage.predicted_per_second;
+            }
+            response = response.with_inference_metrics(metrics);
+        } else {
+            response = response.with_inference_metrics(InferenceMetrics {
+                resolved_model: Some(model_id.to_string()),
+                engine_type: Some(self.engine_type().to_string()),
+                context_window,
+                total_inference_ms: Some(total_inference_ms),
+                ..Default::default()
+            });
         }
 
         instance.touch().await;
@@ -1203,12 +1283,21 @@ impl InferenceEngine for LlamaCppEngine {
             temperature: request.temperature,
             max_tokens: request.max_tokens,
             stream: true,
+            stream_options: Some(LlamaStreamOptions {
+                include_usage: true,
+            }),
         };
 
         let url = format!("http://127.0.0.1:{}/v1/chat/completions", instance.port);
+        let context_window = self
+            .model_path(model_id)
+            .await
+            .as_deref()
+            .and_then(|path| self.effective_context_size(path));
 
         tracing::debug!("Sending streaming chat request to llama-server: {}", url);
 
+        let inference_start = Instant::now();
         let response = self
             .http_client
             .post(&url)
@@ -1235,13 +1324,89 @@ impl InferenceEngine for LlamaCppEngine {
             return Err(Error::InferenceFailed(format!("{}: {}", status, body)));
         }
 
-        let stream = stream::try_unfold(response, |mut response| async move {
-            let next = response
+        struct StreamState {
+            response: reqwest::Response,
+            buffer: String,
+            emitted_metrics: bool,
+            model_id: String,
+            context_window: Option<u32>,
+            inference_start: Instant,
+            prompt_tokens: Option<u32>,
+            completion_tokens: Option<u32>,
+            prompt_eval_ms: Option<u64>,
+            completion_eval_ms: Option<u64>,
+            prompt_tokens_per_sec: Option<f64>,
+            completion_tokens_per_sec: Option<f64>,
+        }
+
+        let state = StreamState {
+            response,
+            buffer: String::new(),
+            emitted_metrics: false,
+            model_id: model_id.to_string(),
+            context_window,
+            inference_start,
+            prompt_tokens: None,
+            completion_tokens: None,
+            prompt_eval_ms: None,
+            completion_eval_ms: None,
+            prompt_tokens_per_sec: None,
+            completion_tokens_per_sec: None,
+        };
+
+        let stream = stream::try_unfold(state, |mut state| async move {
+            let Some(chunk) = state
+                .response
                 .chunk()
                 .await
-                .map_err(|e| Error::Communication(e.to_string()))?;
+                .map_err(|e| Error::Communication(e.to_string()))?
+            else {
+                if state.emitted_metrics {
+                    return Ok(None);
+                }
+                state.emitted_metrics = true;
+                let mut metrics = InferenceMetrics {
+                    resolved_model: Some(state.model_id.clone()),
+                    engine_type: Some("llama_cpp".to_string()),
+                    context_window: state.context_window,
+                    prompt_tokens: state.prompt_tokens,
+                    completion_tokens: state.completion_tokens,
+                    prompt_eval_ms: state.prompt_eval_ms,
+                    completion_eval_ms: state.completion_eval_ms,
+                    total_inference_ms: Some(state.inference_start.elapsed().as_millis() as u64),
+                    prompt_tokens_per_sec: state.prompt_tokens_per_sec,
+                    completion_tokens_per_sec: state.completion_tokens_per_sec,
+                    ..Default::default()
+                }
+                .with_computed_rates();
+                if metrics.prompt_tokens_per_sec.is_none() {
+                    metrics.prompt_tokens_per_sec = state.prompt_tokens_per_sec;
+                }
+                if metrics.completion_tokens_per_sec.is_none() {
+                    metrics.completion_tokens_per_sec = state.completion_tokens_per_sec;
+                }
+                let payload = format_sse_metrics(&metrics)
+                    .map_err(|e| Error::InferenceFailed(e.to_string()))?;
+                return Ok(Some((Bytes::from(payload), state)));
+            };
 
-            Ok(next.map(|chunk| (Bytes::from(chunk), response)))
+            if let Ok(text) = std::str::from_utf8(&chunk) {
+                state.buffer.push_str(text);
+                while let Some(event_end) = state.buffer.find("\n\n") {
+                    let event = state.buffer[..event_end].to_string();
+                    state.buffer.drain(..event_end + 2);
+                    if let Some(usage) = parse_llama_stream_usage(&event) {
+                        state.prompt_tokens = Some(usage.prompt_tokens);
+                        state.completion_tokens = Some(usage.completion_tokens);
+                        state.prompt_eval_ms = f64_ms_to_u64(usage.prompt_ms);
+                        state.completion_eval_ms = f64_ms_to_u64(usage.predicted_ms);
+                        state.prompt_tokens_per_sec = usage.prompt_per_second;
+                        state.completion_tokens_per_sec = usage.predicted_per_second;
+                    }
+                }
+            }
+
+            Ok(Some((Bytes::from(chunk), state)))
         });
 
         Ok(Box::pin(stream))

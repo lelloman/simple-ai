@@ -2,6 +2,53 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Inference-only performance metadata used internally by SimpleAI.
+///
+/// These timings describe model evaluation and intentionally exclude gateway
+/// queueing, wake-on-LAN, model load, and model unload time.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct InferenceMetrics {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_eval_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_inference_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_per_sec: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_per_sec: Option<f64>,
+}
+
+impl InferenceMetrics {
+    pub fn tokens_per_second(tokens: Option<u32>, duration_ms: Option<u64>) -> Option<f64> {
+        let tokens = tokens?;
+        let duration_ms = duration_ms?;
+        if duration_ms == 0 {
+            return None;
+        }
+        Some(tokens as f64 * 1000.0 / duration_ms as f64)
+    }
+
+    pub fn with_computed_rates(mut self) -> Self {
+        self.prompt_tokens_per_sec =
+            Self::tokens_per_second(self.prompt_tokens, self.prompt_eval_ms);
+        self.completion_tokens_per_sec =
+            Self::tokens_per_second(self.completion_tokens, self.completion_eval_ms);
+        self
+    }
+}
+
 /// OpenAI-compatible chat completion request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
@@ -54,6 +101,12 @@ pub struct ChatCompletionResponse {
     pub choices: Vec<Choice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
+    #[serde(
+        default,
+        rename = "_simple_ai_metrics",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub inference_metrics: Option<InferenceMetrics>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +171,13 @@ pub fn format_sse_done() -> String {
     "data: [DONE]\n\n".to_string()
 }
 
+pub fn format_sse_metrics(metrics: &InferenceMetrics) -> Result<String, serde_json::Error> {
+    Ok(format!(
+        "event: simple_ai_metrics\ndata: {}\n\n",
+        serde_json::to_string(metrics)?
+    ))
+}
+
 impl ChatCompletionResponse {
     pub fn new(model: String, message: ChatMessage, finish_reason: Option<String>) -> Self {
         let now = chrono::Utc::now().timestamp();
@@ -132,6 +192,7 @@ impl ChatCompletionResponse {
                 finish_reason,
             }],
             usage: None,
+            inference_metrics: None,
         }
     }
 
@@ -141,6 +202,16 @@ impl ChatCompletionResponse {
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
         });
+        self
+    }
+
+    pub fn with_inference_metrics(mut self, metrics: InferenceMetrics) -> Self {
+        self.inference_metrics = Some(metrics);
+        self
+    }
+
+    pub fn strip_internal_metrics(mut self) -> Self {
+        self.inference_metrics = None;
         self
     }
 }
@@ -234,6 +305,41 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.completion_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[test]
+    fn test_inference_metrics_tokens_per_second() {
+        assert_eq!(
+            InferenceMetrics::tokens_per_second(Some(50), Some(2_000)),
+            Some(25.0)
+        );
+        assert_eq!(InferenceMetrics::tokens_per_second(Some(50), Some(0)), None);
+        assert_eq!(InferenceMetrics::tokens_per_second(None, Some(1_000)), None);
+    }
+
+    #[test]
+    fn test_internal_metrics_can_be_stripped() {
+        let message = ChatMessage {
+            role: "assistant".to_string(),
+            content: Some("Hello!".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        let response =
+            ChatCompletionResponse::new("model".to_string(), message, Some("stop".to_string()))
+                .with_inference_metrics(InferenceMetrics {
+                    resolved_model: Some("model".to_string()),
+                    engine_type: Some("test".to_string()),
+                    context_window: Some(8192),
+                    ..Default::default()
+                });
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("_simple_ai_metrics"));
+
+        let stripped = response.strip_internal_metrics();
+        let json = serde_json::to_string(&stripped).unwrap();
+        assert!(!json.contains("_simple_ai_metrics"));
     }
 
     #[test]

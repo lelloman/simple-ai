@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use crate::models::request::{Request, Response};
 use crate::models::user::User;
+use simple_ai_common::InferenceMetrics;
 
 /// SQLite-based audit logger with user management.
 pub struct AuditLogger {
@@ -171,6 +172,52 @@ impl AuditLogger {
         )
         .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS response_inference_metrics (
+                response_id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL,
+                runner_id TEXT,
+                model_class TEXT,
+                requested_model TEXT,
+                resolved_model TEXT,
+                engine_type TEXT,
+                context_window INTEGER,
+                prompt_tokens INTEGER,
+                completion_tokens INTEGER,
+                prompt_eval_ms INTEGER,
+                completion_eval_ms INTEGER,
+                total_inference_ms INTEGER,
+                prompt_tokens_per_sec REAL,
+                completion_tokens_per_sec REAL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (response_id) REFERENCES responses(id),
+                FOREIGN KEY (request_id) REFERENCES requests(id)
+            )",
+            [],
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS model_context_metrics (
+                resolved_model TEXT NOT NULL,
+                runner_id TEXT NOT NULL,
+                context_window INTEGER NOT NULL,
+                sample_count INTEGER NOT NULL DEFAULT 0,
+                prompt_tokens_total INTEGER NOT NULL DEFAULT 0,
+                completion_tokens_total INTEGER NOT NULL DEFAULT 0,
+                prompt_weighted_tps_total REAL NOT NULL DEFAULT 0,
+                completion_weighted_tps_total REAL NOT NULL DEFAULT 0,
+                prompt_tps_min REAL,
+                prompt_tps_max REAL,
+                completion_tps_min REAL,
+                completion_tps_max REAL,
+                last_updated_at TEXT NOT NULL,
+                PRIMARY KEY (resolved_model, runner_id, context_window)
+            )",
+            [],
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
         tracing::info!("Audit logger initialized with database: {}", path);
 
         Ok(Self {
@@ -303,16 +350,157 @@ impl AuditLogger {
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        drop(conn);
+
         // Record inference metrics if we have runner_id and model_class
         if let (Some(ref runner_id), Some(ref model_class)) =
             (&response.runner_id, &response.model_class)
         {
-            // Use a separate connection lock scope - ignore errors from metrics recording
-            drop(conn);
             let _ = self.record_metric(runner_id, model_class, response.latency_ms);
         }
 
+        if let Some(ref metrics) = response.inference_metrics {
+            let _ = self.record_inference_metrics(response, metrics);
+        }
+
         tracing::debug!("Logged response for request: {}", response.request_id);
+        Ok(())
+    }
+
+    pub fn record_inference_metrics(
+        &self,
+        response: &Response,
+        metrics: &InferenceMetrics,
+    ) -> Result<(), AuditError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let requested_model: Option<String> = conn
+            .query_row(
+                "SELECT model FROM requests WHERE id = ?1",
+                params![response.request_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR REPLACE INTO response_inference_metrics (
+                response_id, request_id, runner_id, model_class, requested_model,
+                resolved_model, engine_type, context_window, prompt_tokens,
+                completion_tokens, prompt_eval_ms, completion_eval_ms,
+                total_inference_ms, prompt_tokens_per_sec, completion_tokens_per_sec,
+                created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            params![
+                response.id.as_str(),
+                response.request_id.as_str(),
+                response.runner_id.as_deref(),
+                response.model_class.as_deref(),
+                requested_model,
+                metrics.resolved_model.as_deref(),
+                metrics.engine_type.as_deref(),
+                metrics.context_window.map(|v| v as i64),
+                metrics.prompt_tokens.map(|v| v as i64),
+                metrics.completion_tokens.map(|v| v as i64),
+                metrics.prompt_eval_ms.map(|v| v as i64),
+                metrics.completion_eval_ms.map(|v| v as i64),
+                metrics.total_inference_ms.map(|v| v as i64),
+                metrics.prompt_tokens_per_sec,
+                metrics.completion_tokens_per_sec,
+                now,
+            ],
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        if let (Some(resolved_model), Some(runner_id), Some(context_window)) = (
+            metrics.resolved_model.as_deref(),
+            response.runner_id.as_deref(),
+            metrics.context_window,
+        ) {
+            Self::record_model_context_metric(
+                &conn,
+                resolved_model,
+                runner_id,
+                context_window,
+                metrics,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn record_model_context_metric(
+        conn: &Connection,
+        resolved_model: &str,
+        runner_id: &str,
+        context_window: u32,
+        metrics: &InferenceMetrics,
+    ) -> Result<(), AuditError> {
+        let now = Utc::now().to_rfc3339();
+        let prompt_tokens = metrics.prompt_tokens.unwrap_or(0) as i64;
+        let completion_tokens = metrics.completion_tokens.unwrap_or(0) as i64;
+        let prompt_weighted = metrics
+            .prompt_tokens_per_sec
+            .map(|tps| tps * prompt_tokens as f64)
+            .unwrap_or(0.0);
+        let completion_weighted = metrics
+            .completion_tokens_per_sec
+            .map(|tps| tps * completion_tokens as f64)
+            .unwrap_or(0.0);
+
+        conn.execute(
+            "INSERT INTO model_context_metrics (
+                resolved_model, runner_id, context_window, sample_count,
+                prompt_tokens_total, completion_tokens_total,
+                prompt_weighted_tps_total, completion_weighted_tps_total,
+                prompt_tps_min, prompt_tps_max, completion_tps_min, completion_tps_max,
+                last_updated_at
+             ) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?9, ?10)
+             ON CONFLICT(resolved_model, runner_id, context_window) DO UPDATE SET
+                sample_count = sample_count + 1,
+                prompt_tokens_total = prompt_tokens_total + ?4,
+                completion_tokens_total = completion_tokens_total + ?5,
+                prompt_weighted_tps_total = prompt_weighted_tps_total + ?6,
+                completion_weighted_tps_total = completion_weighted_tps_total + ?7,
+                prompt_tps_min = CASE
+                    WHEN ?8 IS NULL THEN prompt_tps_min
+                    WHEN prompt_tps_min IS NULL THEN ?8
+                    ELSE MIN(prompt_tps_min, ?8)
+                END,
+                prompt_tps_max = CASE
+                    WHEN ?8 IS NULL THEN prompt_tps_max
+                    WHEN prompt_tps_max IS NULL THEN ?8
+                    ELSE MAX(prompt_tps_max, ?8)
+                END,
+                completion_tps_min = CASE
+                    WHEN ?9 IS NULL THEN completion_tps_min
+                    WHEN completion_tps_min IS NULL THEN ?9
+                    ELSE MIN(completion_tps_min, ?9)
+                END,
+                completion_tps_max = CASE
+                    WHEN ?9 IS NULL THEN completion_tps_max
+                    WHEN completion_tps_max IS NULL THEN ?9
+                    ELSE MAX(completion_tps_max, ?9)
+                END,
+                last_updated_at = ?10",
+            params![
+                resolved_model,
+                runner_id,
+                context_window as i64,
+                prompt_tokens,
+                completion_tokens,
+                prompt_weighted,
+                completion_weighted,
+                metrics.prompt_tokens_per_sec,
+                metrics.completion_tokens_per_sec,
+                now,
+            ],
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
         Ok(())
     }
 
@@ -1162,6 +1350,94 @@ mod tests {
         response.tokens_prompt = Some(10);
         response.tokens_completion = Some(5);
         logger.log_response(&response).unwrap();
+    }
+
+    #[test]
+    fn test_log_response_records_inference_metrics() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let mut request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
+        request.model = Some("class:big".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+
+        let mut response = Response::new(request_id, 200);
+        response.runner_id = Some("runner-1".to_string());
+        response.model_class = Some("big".to_string());
+        response.inference_metrics = Some(
+            InferenceMetrics {
+                resolved_model: Some("qwen3.5:35b".to_string()),
+                engine_type: Some("llama_cpp".to_string()),
+                context_window: Some(8192),
+                prompt_tokens: Some(100),
+                completion_tokens: Some(50),
+                prompt_eval_ms: Some(1_000),
+                completion_eval_ms: Some(2_000),
+                total_inference_ms: Some(3_000),
+                ..Default::default()
+            }
+            .with_computed_rates(),
+        );
+
+        logger.log_response(&response).unwrap();
+
+        let conn = logger.conn.lock().unwrap();
+        let row: (String, String, i64, f64, f64) = conn
+            .query_row(
+                "SELECT resolved_model, engine_type, context_window, prompt_tokens_per_sec, completion_tokens_per_sec
+                 FROM response_inference_metrics WHERE response_id = ?1",
+                params![response.id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+
+        assert_eq!(row.0, "qwen3.5:35b");
+        assert_eq!(row.1, "llama_cpp");
+        assert_eq!(row.2, 8192);
+        assert_eq!(row.3, 100.0);
+        assert_eq!(row.4, 25.0);
+    }
+
+    #[test]
+    fn test_log_response_updates_model_context_metric() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
+        let request_id = logger.log_request(&request).unwrap();
+
+        for completion_tokens in [50, 100] {
+            let mut response = Response::new(request_id.clone(), 200);
+            response.runner_id = Some("runner-1".to_string());
+            response.inference_metrics = Some(
+                InferenceMetrics {
+                    resolved_model: Some("qwen3.5:35b".to_string()),
+                    context_window: Some(8192),
+                    prompt_tokens: Some(100),
+                    completion_tokens: Some(completion_tokens),
+                    prompt_eval_ms: Some(1_000),
+                    completion_eval_ms: Some(2_000),
+                    ..Default::default()
+                }
+                .with_computed_rates(),
+            );
+            logger.log_response(&response).unwrap();
+        }
+
+        let conn = logger.conn.lock().unwrap();
+        let row: (i64, i64, i64, f64, f64) = conn
+            .query_row(
+                "SELECT sample_count, prompt_tokens_total, completion_tokens_total, prompt_tps_min, completion_tps_max
+                 FROM model_context_metrics
+                 WHERE resolved_model = 'qwen3.5:35b' AND runner_id = 'runner-1' AND context_window = 8192",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+
+        assert_eq!(row.0, 2);
+        assert_eq!(row.1, 200);
+        assert_eq!(row.2, 150);
+        assert_eq!(row.3, 100.0);
+        assert_eq!(row.4, 50.0);
     }
 
     #[test]
