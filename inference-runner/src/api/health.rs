@@ -69,7 +69,9 @@ pub async fn health(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Hea
     }
 
     // If no engines registered, report starting/ok
-    let (status_code, status_str) = if engine_statuses.is_empty() {
+    let (status_code, status_str) = if engine_statuses.is_empty() && state.ocr_provider.is_some() {
+        (StatusCode::OK, "ok")
+    } else if engine_statuses.is_empty() {
         (StatusCode::OK, "starting")
     } else if any_healthy {
         (StatusCode::OK, "ok")

@@ -10,7 +10,7 @@ authors.workspace = true
 simple-ai-common = { workspace = true }
 
 # Web framework
-axum = { workspace = true, features = ["ws"] }
+axum = { workspace = true, features = ["ws", "multipart"] }
 tokio = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 
@@ -19,7 +19,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # HTTP client
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["multipart"] }
 
 # JWT/OIDC
 jsonwebtoken = "9"

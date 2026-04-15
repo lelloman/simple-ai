@@ -6,3 +6,4 @@ pub mod extract;
 pub mod health;
 pub mod language;
 pub mod models;
+pub mod ocr;

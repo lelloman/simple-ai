@@ -374,7 +374,8 @@ impl GatewayClient {
 mod tests {
     use super::*;
     use crate::config::{
-        AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig,
+        AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, OcrConfig,
+        RunnerConfig,
     };
     use crate::engine::EngineRegistry;
     use simple_ai_common::{RunnerStatus, PROTOCOL_VERSION};
@@ -392,6 +393,7 @@ mod tests {
             engines: EnginesConfig::default(),
             capabilities: CapabilitiesConfig::default(),
             aliases: AliasesConfig::default(),
+            ocr: OcrConfig::default(),
         }
     }
 
@@ -409,7 +411,11 @@ mod tests {
         let config = test_config();
         let gateway_config = test_gateway_config();
         let registry = Arc::new(EngineRegistry::new());
-        let status_collector = Arc::new(StatusCollector::new(config.clone(), registry.clone()));
+        let status_collector = Arc::new(StatusCollector::new(
+            config.clone(),
+            registry.clone(),
+            false,
+        ));
 
         let client = GatewayClient::new(
             gateway_config,

@@ -180,7 +180,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(simple_ai_backend::routes::embeddings::router(state.clone()))
         .merge(simple_ai_backend::routes::extract::router(state.clone()))
         .merge(simple_ai_backend::routes::language::router(state.clone()))
-        .merge(simple_ai_backend::routes::models::router(state.clone()));
+        .merge(simple_ai_backend::routes::models::router(state.clone()))
+        .merge(simple_ai_backend::routes::ocr::router(state.clone()));
 
     let v1_routes = if config.gateway.rate_limit_rpm > 0 {
         let limiter = Arc::new(simple_ai_backend::rate_limit::RateLimiter::new(

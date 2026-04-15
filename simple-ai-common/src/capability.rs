@@ -17,15 +17,18 @@ pub enum Capability {
     Embeddings,
     /// Language translation
     Translation,
+    /// Optical character recognition and document layout extraction
+    Ocr,
 }
 
 impl Capability {
     /// All capability variants for iteration.
-    pub const ALL: [Capability; 4] = [
+    pub const ALL: [Capability; 5] = [
         Capability::FastChat,
         Capability::LargeChat,
         Capability::Embeddings,
         Capability::Translation,
+        Capability::Ocr,
     ];
 }
 
@@ -36,6 +39,7 @@ impl std::fmt::Display for Capability {
             Capability::LargeChat => write!(f, "large_chat"),
             Capability::Embeddings => write!(f, "embeddings"),
             Capability::Translation => write!(f, "translation"),
+            Capability::Ocr => write!(f, "ocr"),
         }
     }
 }
@@ -88,6 +92,9 @@ pub struct CapabilityInfo {
     /// Average latency in milliseconds (if available)
     #[serde(default)]
     pub avg_latency_ms: Option<f64>,
+    /// Capability-specific metadata, such as OCR provider modes/features.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[cfg(test)]

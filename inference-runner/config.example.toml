@@ -76,3 +76,17 @@ max_loaded_models = 3
 # "llama3-8b" = "meta_llama-3-8b-instruct-Q4_K_M"
 # "mistral-7b" = "mistral-7b-instruct-v0.3-Q4_K_M"
 # "embedding:large" = "Qwen3-Embedding-8B-Q4_K_M"
+
+# Optional OCR provider. Disabled by default; only runners with a healthy
+# provider advertise the "ocr" capability and receive OCR requests.
+#
+# [ocr]
+# enabled = true
+# provider = "paddleocr"
+# command = ["python3", "scripts/paddle_ocr.py"]
+# modes = ["text", "layout", "document"]
+# features = ["text", "layout", "tables", "pdf"]
+# languages = ["en", "it"]
+# max_file_mb = 25
+# max_pages = 10
+# timeout_secs = 120

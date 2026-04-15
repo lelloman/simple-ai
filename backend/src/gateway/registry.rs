@@ -8,7 +8,9 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
-use simple_ai_common::{CommandResponse, GatewayMessage, RunnerStatus};
+use simple_ai_common::{
+    Capability, CommandResponse, GatewayMessage, OcrMode, OcrProviderInfo, RunnerStatus,
+};
 
 /// Event emitted when runner state changes.
 #[derive(Debug, Clone, Serialize)]
@@ -127,6 +129,29 @@ impl ConnectedRunner {
                 .get(model_id)
                 .map(|local| self.available_models().iter().any(|m| m == local))
                 .unwrap_or(false)
+    }
+
+    /// Check if a logical runner capability is currently ready.
+    pub fn has_ready_capability(&self, capability: Capability) -> bool {
+        self.status
+            .capabilities
+            .iter()
+            .any(|c| c.capability == capability && c.status.is_ready())
+    }
+
+    /// Check if the runner has OCR ready and supports the requested mode.
+    pub fn has_ocr_mode(&self, mode: OcrMode) -> bool {
+        self.status.capabilities.iter().any(|c| {
+            if c.capability != Capability::Ocr || !c.status.is_ready() {
+                return false;
+            }
+            let Some(metadata) = &c.metadata else {
+                return true;
+            };
+            serde_json::from_value::<OcrProviderInfo>(metadata.clone())
+                .map(|info| info.modes.contains(&mode))
+                .unwrap_or(false)
+        })
     }
 }
 

@@ -4,6 +4,7 @@ pub mod chat;
 pub mod embeddings;
 pub mod health;
 pub mod models;
+pub mod ocr;
 
 use std::sync::Arc;
 
@@ -17,4 +18,5 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(chat::router())
         .merge(embeddings::router())
         .merge(models::router())
+        .merge(ocr::router())
 }

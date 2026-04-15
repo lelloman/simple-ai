@@ -14,13 +14,15 @@ use crate::engine::EngineRegistry;
 pub struct StatusCollector {
     config: Config,
     engine_registry: Arc<EngineRegistry>,
+    ocr_available: bool,
 }
 
 impl StatusCollector {
-    pub fn new(config: Config, engine_registry: Arc<EngineRegistry>) -> Self {
+    pub fn new(config: Config, engine_registry: Arc<EngineRegistry>, ocr_available: bool) -> Self {
         Self {
             config,
             engine_registry,
+            ocr_available,
         }
     }
 
@@ -53,7 +55,11 @@ impl StatusCollector {
     pub async fn collect(&self) -> RunnerStatus {
         let engines = self.collect_engine_status().await;
         let capabilities = self.collect_capabilities(&engines).await;
-        let health = Self::compute_health(&engines);
+        let health = if engines.is_empty() && self.ocr_available {
+            RunnerHealth::Healthy
+        } else {
+            Self::compute_health(&engines)
+        };
 
         RunnerStatus {
             health,
@@ -150,6 +156,7 @@ impl StatusCollector {
                     model_id: model_id.clone(),
                     active_requests: 0,
                     avg_latency_ms: None,
+                    metadata: None,
                 });
             }
         }
@@ -164,8 +171,27 @@ impl StatusCollector {
                     model_id: model.to_string(),
                     active_requests: 0,
                     avg_latency_ms: None,
+                    metadata: None,
                 });
             }
+        }
+
+        if self.ocr_available {
+            let provider_info = simple_ai_common::OcrProviderInfo {
+                provider: self.config.ocr.provider.clone(),
+                provider_version: None,
+                modes: self.config.ocr.modes.clone(),
+                features: self.config.ocr.features.clone(),
+                languages: self.config.ocr.languages.clone(),
+            };
+            capabilities.push(CapabilityInfo {
+                capability: Capability::Ocr,
+                status: CapabilityStatus::Loaded,
+                model_id: self.config.ocr.provider.clone(),
+                active_requests: 0,
+                avg_latency_ms: None,
+                metadata: serde_json::to_value(provider_info).ok(),
+            });
         }
 
         capabilities
@@ -193,7 +219,8 @@ impl StatusCollector {
 mod tests {
     use super::*;
     use crate::config::{
-        AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, RunnerConfig,
+        AliasesConfig, ApiConfig, CapabilitiesConfig, Config, EnginesConfig, OcrConfig,
+        RunnerConfig,
     };
     use std::collections::HashMap;
 
@@ -210,6 +237,7 @@ mod tests {
             engines: EnginesConfig::default(),
             capabilities: CapabilitiesConfig::default(),
             aliases: AliasesConfig::default(),
+            ocr: OcrConfig::default(),
         }
     }
 
@@ -226,7 +254,7 @@ mod tests {
     async fn test_collect_capabilities_with_mappings() {
         let config = test_config_with_mappings();
         let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
-        let collector = StatusCollector::new(config, registry);
+        let collector = StatusCollector::new(config, registry, false);
 
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
@@ -260,7 +288,7 @@ mod tests {
     async fn test_collect_capabilities_default_behavior() {
         let config = test_config(); // No mappings
         let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
-        let collector = StatusCollector::new(config, registry);
+        let collector = StatusCollector::new(config, registry, false);
 
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
@@ -284,7 +312,7 @@ mod tests {
     async fn test_collect_capabilities_no_loaded_models() {
         let config = test_config();
         let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
-        let collector = StatusCollector::new(config, registry);
+        let collector = StatusCollector::new(config, registry, false);
 
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
@@ -300,6 +328,23 @@ mod tests {
 
         // No mappings + no loaded models = empty capabilities
         assert!(capabilities.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_with_ocr_provider() {
+        let config = test_config();
+        let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
+        let collector = StatusCollector::new(config, registry, true);
+
+        let capabilities = collector.collect_capabilities(&[]).await;
+        let ocr = capabilities
+            .iter()
+            .find(|c| c.capability == Capability::Ocr)
+            .expect("OCR capability should be advertised");
+
+        assert_eq!(ocr.status, CapabilityStatus::Loaded);
+        assert_eq!(ocr.model_id, "paddleocr");
+        assert!(ocr.metadata.is_some());
     }
 
     #[test]

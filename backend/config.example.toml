@@ -92,6 +92,7 @@ speculative_wake_enabled = false
 [routing.class_preferences]
 fast = ["gpu-server", "halo"]   # Prefer gpu-server for fast models
 big = ["halo", "gpu-server"]    # Prefer halo for big models
+ocr = ["gpu-server"]            # Prefer machines with OCR dependencies installed
 
 # Speculative wake targets by model class.
 # When speculative_wake_enabled=true and no runners are available,

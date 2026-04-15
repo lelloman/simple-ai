@@ -14,11 +14,13 @@ mod config;
 mod engine;
 mod error;
 mod gateway;
+mod ocr;
 mod state;
 
 use config::Config;
 use engine::{EngineRegistry, LlamaCppEngine, OllamaEngine};
 use gateway::{GatewayClient, StatusCollector};
+use ocr::{CliOcrProvider, OcrProvider};
 use state::AppState;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,6 +61,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create engine registry
     let registry = Arc::new(EngineRegistry::new());
+    let ocr_provider = if config.ocr.enabled {
+        match CliOcrProvider::new(config.ocr.clone()) {
+            Ok(provider) => {
+                let provider = Arc::new(provider);
+                match provider.health_check().await {
+                    Ok(info) => {
+                        tracing::info!(
+                            "Registered OCR provider {} with modes {:?}",
+                            info.provider,
+                            info.modes
+                        );
+                        Some(provider as Arc<dyn ocr::OcrProvider>)
+                    }
+                    Err(e) => {
+                        tracing::warn!("OCR enabled but health check failed: {}", e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("OCR enabled but provider config is invalid: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Register enabled engines
     if let Some(ref ollama_config) = config.engines.ollama {
@@ -89,11 +118,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create shared state
-    let state = Arc::new(AppState::new(config.clone(), registry.clone()));
+    let state = Arc::new(AppState::new(
+        config.clone(),
+        registry.clone(),
+        ocr_provider.clone(),
+    ));
 
     // Start gateway client if configured
     if let Some(ref gateway_config) = config.gateway {
-        let status_collector = Arc::new(StatusCollector::new(config.clone(), registry.clone()));
+        let status_collector = Arc::new(StatusCollector::new(
+            config.clone(),
+            registry.clone(),
+            ocr_provider.is_some(),
+        ));
         let client = GatewayClient::new(
             gateway_config.clone(),
             config.runner.id.clone(),

@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
-use simple_ai_common::ChatCompletionRequest;
+use simple_ai_common::{Capability, ChatCompletionRequest, OcrOptions, OcrResponse};
 
 use super::batch_queue::BatchQueue;
 use super::model_class::{classify_model, ModelClass, ModelRequest};
@@ -28,6 +28,8 @@ pub enum RouterError {
     ModelNotLoaded(String),
     #[error("No runners have models of class '{0}'")]
     NoModelsOfClass(String),
+    #[error("No runners have ready capability '{0}'")]
+    NoRunnersWithCapability(String),
     #[error("Failed to connect to runner: {0}")]
     ConnectionFailed(String),
     #[error("Runner returned error: {0}")]
@@ -252,6 +254,44 @@ impl InferenceRouter {
         })
     }
 
+    /// Route an OCR multipart request to a runner with ready OCR capability.
+    pub async fn ocr_multipart(
+        &self,
+        file_name: String,
+        file_bytes: Vec<u8>,
+        options_json: String,
+    ) -> Result<RoutedResponse<OcrResponse>, RouterError> {
+        let options: OcrOptions = serde_json::from_str(&options_json)
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+        let runner = self.select_runner_for_ocr(options.mode).await?;
+        let runner_id = runner.id.clone();
+
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(file_bytes).file_name(file_name),
+            )
+            .text("options", options_json);
+
+        self.registry.increment_requests(&runner_id).await;
+        let response = self.proxy_multipart(&runner, "/v1/ocr", form).await;
+        self.registry.decrement_requests(&runner_id).await;
+
+        if let Some(cb) = &self.circuit_breaker {
+            if response.is_ok() {
+                cb.record_success(&runner_id);
+            } else {
+                cb.record_failure(&runner_id);
+            }
+        }
+
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model: "ocr".to_string(),
+        })
+    }
+
     /// Route a chat completion request through the batch queue.
     ///
     /// This method enqueues the request and waits for it to be processed
@@ -410,6 +450,27 @@ impl InferenceRouter {
         } else {
             runners
         }
+    }
+
+    async fn select_runner_for_ocr(
+        &self,
+        mode: simple_ai_common::OcrMode,
+    ) -> Result<ConnectedRunner, RouterError> {
+        let candidates: Vec<ConnectedRunner> = self
+            .filter_available(self.registry.operational().await)
+            .into_iter()
+            .filter(|r| r.has_ocr_mode(mode))
+            .collect();
+
+        if candidates.is_empty() {
+            return Err(RouterError::NoRunnersWithCapability(format!(
+                "{}:{:?}",
+                Capability::Ocr,
+                mode
+            )));
+        }
+
+        Ok(self.select_from_candidates(&candidates))
     }
 
     /// Select a runner for a specific model.
@@ -824,6 +885,47 @@ impl InferenceRouter {
         }
 
         Ok(response)
+    }
+
+    async fn proxy_multipart<Resp>(
+        &self,
+        runner: &ConnectedRunner,
+        path: &str,
+        form: reqwest::multipart::Form,
+    ) -> Result<Resp, RouterError>
+    where
+        Resp: DeserializeOwned,
+    {
+        let base_url = runner
+            .http_base_url
+            .as_ref()
+            .ok_or_else(|| RouterError::ConnectionFailed("Runner has no HTTP URL".to_string()))?;
+
+        let url = format!("{}{}", base_url, path);
+        tracing::debug!(
+            "Proxying multipart request to {} (runner: {})",
+            url,
+            runner.id
+        );
+
+        let response = self
+            .http_client
+            .post(&url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(RouterError::RunnerError(format!(
+                "HTTP {}: {}",
+                status, body
+            )));
+        }
+
+        response.json().await.map_err(RouterError::RequestFailed)
     }
 }
 

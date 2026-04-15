@@ -2,7 +2,7 @@
 
 use config::{Config as ConfigLoader, ConfigError, Environment, File};
 use serde::Deserialize;
-use simple_ai_common::Capability;
+use simple_ai_common::{Capability, OcrFeature, OcrMode};
 use std::collections::HashMap;
 
 /// Model alias configuration for mapping canonical names to local engine names.
@@ -33,6 +33,9 @@ pub struct Config {
     /// Model aliases for mapping canonical names to local engine names.
     #[serde(default)]
     pub aliases: AliasesConfig,
+    /// Optional OCR provider configuration.
+    #[serde(default)]
+    pub ocr: OcrConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -180,6 +183,54 @@ pub struct PersistenceConfig {
     pub max_loaded_models: usize,
 }
 
+/// OCR provider configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OcrConfig {
+    /// Whether OCR is enabled for this runner.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider identifier. Currently "paddleocr" is supported by the CLI provider.
+    #[serde(default = "default_ocr_provider")]
+    pub provider: String,
+    /// Command to execute. The runner appends --input, --options, and --output.
+    #[serde(default)]
+    pub command: Vec<String>,
+    /// Supported output modes advertised by this runner.
+    #[serde(default = "default_ocr_modes")]
+    pub modes: Vec<OcrMode>,
+    /// Supported OCR features advertised by this runner.
+    #[serde(default = "default_ocr_features")]
+    pub features: Vec<OcrFeature>,
+    /// Supported languages. Empty means provider default.
+    #[serde(default)]
+    pub languages: Vec<String>,
+    /// Maximum input file size in MB.
+    #[serde(default = "default_ocr_max_file_mb")]
+    pub max_file_mb: u64,
+    /// Maximum pages to process from paged documents.
+    #[serde(default = "default_ocr_max_pages")]
+    pub max_pages: u32,
+    /// OCR provider timeout.
+    #[serde(default = "default_ocr_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+impl Default for OcrConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_ocr_provider(),
+            command: Vec::new(),
+            modes: default_ocr_modes(),
+            features: default_ocr_features(),
+            languages: Vec::new(),
+            max_file_mb: default_ocr_max_file_mb(),
+            max_pages: default_ocr_max_pages(),
+            timeout_secs: default_ocr_timeout_secs(),
+        }
+    }
+}
+
 impl Default for PersistenceConfig {
     fn default() -> Self {
         Self {
@@ -227,6 +278,29 @@ fn default_startup_timeout() -> u64 {
 fn default_shutdown_timeout() -> u64 {
     10
 }
+fn default_ocr_provider() -> String {
+    "paddleocr".to_string()
+}
+fn default_ocr_modes() -> Vec<OcrMode> {
+    vec![OcrMode::Text, OcrMode::Layout, OcrMode::Document]
+}
+fn default_ocr_features() -> Vec<OcrFeature> {
+    vec![
+        OcrFeature::Text,
+        OcrFeature::Layout,
+        OcrFeature::Tables,
+        OcrFeature::Pdf,
+    ]
+}
+fn default_ocr_max_file_mb() -> u64 {
+    25
+}
+fn default_ocr_max_pages() -> u32 {
+    10
+}
+fn default_ocr_timeout_secs() -> u64 {
+    120
+}
 
 impl Config {
     /// Load configuration from file and environment variables.
@@ -248,6 +322,11 @@ impl Config {
                 "capabilities.persistence.max_loaded_models",
                 default_max_loaded() as i64,
             )?
+            .set_default("ocr.enabled", false)?
+            .set_default("ocr.provider", default_ocr_provider())?
+            .set_default("ocr.max_file_mb", default_ocr_max_file_mb() as i64)?
+            .set_default("ocr.max_pages", default_ocr_max_pages() as i64)?
+            .set_default("ocr.timeout_secs", default_ocr_timeout_secs() as i64)?
             // Load from config.toml if exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (RUNNER__SECTION__KEY format)

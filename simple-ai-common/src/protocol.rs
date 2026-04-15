@@ -413,6 +413,7 @@ mod tests {
                 model_id: "llama3.2:3b".to_string(),
                 active_requests: 5,
                 avg_latency_ms: Some(150.5),
+                metadata: None,
             }],
             engines: vec![EngineStatus {
                 engine_type: "ollama".to_string(),
