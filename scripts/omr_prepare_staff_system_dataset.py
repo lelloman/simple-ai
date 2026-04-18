@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a staff+system-only YOLO dataset from OLA layout archives.
+"""Prepare a filtered YOLO dataset from OLA layout archives.
 
 Input is one or more extracted upstream dataset directories, each with:
 
@@ -14,10 +14,14 @@ The upstream class map is:
     3 system
     4 grand_staff
 
-This script keeps only:
+By default this script keeps only:
 
     0 staff   <- upstream 2
     1 system  <- upstream 3
+
+Use --classes to train richer layout detectors. For example:
+
+    --classes staff,system,grand_staff,staff_measure,system_measure
 """
 
 from __future__ import annotations
@@ -32,8 +36,14 @@ from pathlib import Path
 
 DEFAULT_ROOT = Path("/tmp/simple-ai-omr-training")
 IMAGE_SUFFIXES = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
-CLASS_REMAP = {"2": "0", "3": "1"}
-CLASS_NAMES = ["staff", "system"]
+UPSTREAM_CLASSES = {
+    "system_measure": "0",
+    "staff_measure": "1",
+    "staff": "2",
+    "system": "3",
+    "grand_staff": "4",
+}
+DEFAULT_CLASS_NAMES = ["staff", "system"]
 
 
 @dataclass(frozen=True)
@@ -44,7 +54,7 @@ class Example:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Filter OLA YOLO labels to staff+system.")
+    parser = argparse.ArgumentParser(description="Filter OLA YOLO labels to selected classes.")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument(
         "--source",
@@ -57,6 +67,14 @@ def parse_args() -> argparse.Namespace:
         "--out",
         type=Path,
         default=DEFAULT_ROOT / "datasets" / "staff-system-yolo",
+    )
+    parser.add_argument(
+        "--classes",
+        default=",".join(DEFAULT_CLASS_NAMES),
+        help=(
+            "Comma-separated upstream class names to keep. Available: "
+            f"{', '.join(UPSTREAM_CLASSES)}. Default: staff,system"
+        ),
     )
     parser.add_argument("--train-split", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=7)
@@ -73,6 +91,21 @@ def parse_args() -> argparse.Namespace:
         help="Keep images that have no staff/system boxes as negatives. Default: true",
     )
     return parser.parse_args()
+
+
+def parse_classes(raw: str) -> list[str]:
+    names = [name.strip() for name in raw.split(",") if name.strip()]
+    if not names:
+        raise SystemExit("--classes must select at least one class")
+    unknown = [name for name in names if name not in UPSTREAM_CLASSES]
+    if unknown:
+        raise SystemExit(
+            f"Unknown class(es): {', '.join(unknown)}. "
+            f"Available: {', '.join(UPSTREAM_CLASSES)}"
+        )
+    if len(set(names)) != len(names):
+        raise SystemExit("--classes contains duplicates")
+    return names
 
 
 def find_sources(root: Path, sources: list[Path] | None) -> list[Path]:
@@ -97,7 +130,7 @@ def iter_examples(source: Path) -> list[Example]:
     return examples
 
 
-def remap_label(input_path: Path) -> list[str]:
+def remap_label(input_path: Path, class_remap: dict[str, str]) -> list[str]:
     if not input_path.exists():
         return []
     output_lines: list[str] = []
@@ -105,7 +138,7 @@ def remap_label(input_path: Path) -> list[str]:
         parts = raw_line.split()
         if len(parts) != 5:
             continue
-        mapped = CLASS_REMAP.get(parts[0])
+        mapped = class_remap.get(parts[0])
         if mapped is None:
             continue
         output_lines.append(" ".join([mapped, *parts[1:]]))
@@ -130,18 +163,16 @@ def link_or_copy(src: Path, dst: Path, copy: bool) -> None:
         shutil.copy2(src, dst)
 
 
-def write_yaml(out_dir: Path) -> None:
-    yaml = "\n".join(
-        [
-            f"path: {out_dir}",
-            "train: images/train",
-            "val: images/val",
-            "names:",
-            "  0: staff",
-            "  1: system",
-            "",
-        ]
-    )
+def write_yaml(out_dir: Path, class_names: list[str]) -> None:
+    lines = [
+        f"path: {out_dir}",
+        "train: images/train",
+        "val: images/val",
+        "names:",
+    ]
+    lines.extend(f"  {index}: {name}" for index, name in enumerate(class_names))
+    lines.append("")
+    yaml = "\n".join(lines)
     (out_dir / "data.yaml").write_text(yaml, encoding="utf-8")
 
 
@@ -149,6 +180,10 @@ def main() -> int:
     args = parse_args()
     if not 0.0 < args.train_split < 1.0:
         raise SystemExit("--train-split must be between 0 and 1")
+    class_names = parse_classes(args.classes)
+    class_remap = {
+        UPSTREAM_CLASSES[name]: str(index) for index, name in enumerate(class_names)
+    }
 
     sources = find_sources(args.root, args.source)
     if not sources:
@@ -157,7 +192,7 @@ def main() -> int:
     examples: list[tuple[Example, list[str]]] = []
     for source in sources:
         for example in iter_examples(source):
-            labels = remap_label(example.label)
+            labels = remap_label(example.label, class_remap)
             if labels or args.keep_empty:
                 examples.append((example, labels))
 
@@ -175,7 +210,7 @@ def main() -> int:
     if args.out.exists():
         shutil.rmtree(args.out)
 
-    class_counts = {name: 0 for name in CLASS_NAMES}
+    class_counts = {name: 0 for name in class_names}
     for partition, partition_examples in partitions.items():
         for example, labels in partition_examples:
             image_name = stable_name(example)
@@ -191,9 +226,9 @@ def main() -> int:
                 encoding="utf-8",
             )
             for line in labels:
-                class_counts[CLASS_NAMES[int(line.split()[0])]] += 1
+                class_counts[class_names[int(line.split()[0])]] += 1
 
-    write_yaml(args.out)
+    write_yaml(args.out, class_names)
     print(f"Dataset written: {args.out}")
     print(f"Images: {len(examples)}")
     print(f"Train: {len(partitions['train'])}")

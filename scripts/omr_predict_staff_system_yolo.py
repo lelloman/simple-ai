@@ -22,8 +22,11 @@ except ImportError as exc:
 
 
 CLASS_COLORS = {
+    "system_measure": (117, 112, 179),
+    "staff_measure": (231, 41, 138),
     "staff": (35, 139, 69),
     "system": (217, 95, 14),
+    "grand_staff": (27, 158, 119),
 }
 
 
@@ -40,8 +43,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--imgsz", type=int, default=1536)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--show-staves", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--show-classes",
+        default=None,
+        help=(
+            "Comma-separated class names to draw. Overrides --show-staves. "
+            "Default: system only, or system,staff when --show-staves is set."
+        ),
+    )
     parser.add_argument("--annotated-pdf", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
+
+
+def parse_show_classes(raw: str | None, show_staves: bool) -> set[str]:
+    if raw is not None:
+        classes = {name.strip() for name in raw.split(",") if name.strip()}
+        if not classes:
+            raise SystemExit("--show-classes must include at least one class")
+        return classes
+    if show_staves:
+        return {"system", "staff"}
+    return {"system"}
 
 
 def require_yolo() -> Any:
@@ -119,7 +141,7 @@ def annotate_page(
     image_path: Path,
     output_path: Path,
     detections: list[dict[str, Any]],
-    show_staves: bool,
+    show_classes: set[str],
 ) -> None:
     Image, ImageDraw, ImageFont = omr_io.require_pillow()
     image = Image.open(image_path).convert("RGB")
@@ -129,11 +151,11 @@ def annotate_page(
     system_index = 0
     for detection in sorted(detections, key=lambda item: (item["bbox"][1], item["bbox"][0])):
         class_name = detection["class_name"]
-        if class_name == "staff" and not show_staves:
+        if class_name not in show_classes:
             continue
         left, top, right, bottom = detection["bbox"]
         color = CLASS_COLORS.get(class_name, (80, 80, 80))
-        width = 6 if class_name == "system" else 2
+        width = 6 if class_name == "system" else 3 if class_name == "grand_staff" else 2
         draw.rectangle((left, top, right, bottom), outline=color, width=width)
         if class_name == "system":
             system_index += 1
@@ -175,6 +197,7 @@ def main() -> int:
         raise SystemExit("No supported input files found.")
     if not args.weights.exists():
         raise SystemExit(f"Missing weights: {args.weights}")
+    show_classes = parse_show_classes(args.show_classes, args.show_staves)
 
     args.out.mkdir(parents=True, exist_ok=True)
     model = YOLO(str(args.weights))
@@ -208,7 +231,7 @@ def main() -> int:
             )
             image_name = f"{omr_io.safe_stem(page.source)}-p{page.page_index + 1:04d}.jpg"
             output_path = args.out / "annotated" / image_name
-            annotate_page(page.image_path, output_path, detections, args.show_staves)
+            annotate_page(page.image_path, output_path, detections, show_classes)
             annotated.append(output_path)
 
     (args.out / "detections.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
