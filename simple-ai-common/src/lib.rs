@@ -6,6 +6,7 @@ pub mod capability;
 pub mod chat;
 pub mod ocr;
 pub mod protocol;
+pub mod responses;
 
 pub use capability::{Capability, CapabilityInfo, CapabilityStatus};
 pub use chat::{
@@ -20,4 +21,9 @@ pub use ocr::{
 pub use protocol::{
     CommandResponse, EngineStatus, GatewayMessage, ModelInfo, RunnerHealth, RunnerMessage,
     RunnerMetrics, RunnerRegistration, RunnerStatus, PROTOCOL_VERSION,
+};
+pub use responses::{
+    ResponseContent, ResponseContentPart, ResponseCreateRequest, ResponseFunctionCall,
+    ResponseInput, ResponseInputItem, ResponseInputMessage, ResponseObject, ResponseOutputContent,
+    ResponseOutputItem, ResponseOutputMessage, ResponseTypedInputItem, ResponseUsage,
 };

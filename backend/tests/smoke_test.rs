@@ -11,6 +11,7 @@ use simple_ai_backend::{
     routes, AppState, Config, InferenceRouter, RequestScheduler, RouterTelemetry, RunnerRegistry,
     WakeService,
 };
+use simple_ai_backend::{ResponseCreateRequest, ResponseInput};
 use std::sync::Arc;
 use tower::ServiceExt;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -183,6 +184,25 @@ async fn test_chat_completions_requires_auth() {
 
     let body = Bytes::from(serde_json::to_string(&request).unwrap());
     let status = send_request(&app, http::Method::POST, "/v1/chat/completions", Some(body)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_responses_requires_auth() {
+    let state = create_test_state().await.unwrap();
+    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+
+    let request = ResponseCreateRequest {
+        model: "test-model".to_string(),
+        input: ResponseInput::Text("Hello".to_string()),
+        tools: None,
+        temperature: None,
+        max_output_tokens: None,
+        stream: None,
+    };
+
+    let body = Bytes::from(serde_json::to_string(&request).unwrap());
+    let status = send_request(&app, http::Method::POST, "/v1/responses", Some(body)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 

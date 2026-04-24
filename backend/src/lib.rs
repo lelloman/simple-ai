@@ -27,6 +27,11 @@ pub use models::chat::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ToolCall, ToolFunction,
 };
 pub use routes::language::{DetectLanguageRequest, DetectLanguageResponse};
+pub use simple_ai_common::{
+    ResponseContent, ResponseContentPart, ResponseCreateRequest, ResponseFunctionCall,
+    ResponseInput, ResponseInputItem, ResponseInputMessage, ResponseObject, ResponseOutputContent,
+    ResponseOutputItem, ResponseOutputMessage, ResponseTypedInputItem, ResponseUsage,
+};
 pub use wol::WakeService;
 
 use fasttext::FastText;

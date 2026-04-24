@@ -1,3 +1,3 @@
 mod ollama;
 
-pub use ollama::{OllamaClient, OllamaError};
+pub use ollama::{ChatStream, OllamaClient, OllamaError};
