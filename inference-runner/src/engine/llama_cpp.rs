@@ -78,6 +78,16 @@ impl ServerInstance {
         *self.state.write().await = state;
     }
 
+    #[cfg(unix)]
+    fn signal_process_group(pid: u32, signal: nix::sys::signal::Signal) -> nix::Result<()> {
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+
+        // The child is spawned as a process-group leader, so a negative pid
+        // signals the wrapper and any descendants that stayed in its group.
+        kill(Pid::from_raw(-(pid as i32)), signal)
+    }
+
     async fn touch(&self) {
         *self.last_used.write().await = Instant::now();
     }
@@ -102,14 +112,22 @@ impl ServerInstance {
 
         let mut process_guard = self.process.write().await;
         if let Some(mut child) = process_guard.take() {
+            let child_pid = child.id();
+
             // Try SIGTERM first on Unix
             #[cfg(unix)]
             {
-                use nix::sys::signal::{kill, Signal};
-                use nix::unistd::Pid;
+                use nix::sys::signal::Signal;
 
-                if let Some(pid) = child.id() {
-                    let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+                if let Some(pid) = child_pid {
+                    if let Err(e) = Self::signal_process_group(pid, Signal::SIGTERM) {
+                        tracing::warn!(
+                            "Failed to SIGTERM llama-server process group for {} (pid {}): {}",
+                            self.model_id,
+                            pid,
+                            e
+                        );
+                    }
                 }
             }
 
@@ -129,6 +147,23 @@ impl ServerInstance {
                         "llama-server {} didn't stop gracefully, killing",
                         self.model_id
                     );
+
+                    #[cfg(unix)]
+                    {
+                        use nix::sys::signal::Signal;
+
+                        if let Some(pid) = child_pid {
+                            if let Err(e) = Self::signal_process_group(pid, Signal::SIGKILL) {
+                                tracing::warn!(
+                                    "Failed to SIGKILL llama-server process group for {} (pid {}): {}",
+                                    self.model_id,
+                                    pid,
+                                    e
+                                );
+                            }
+                        }
+                    }
+
                     let _ = child.kill().await;
                 }
             }
@@ -558,6 +593,13 @@ impl LlamaCppEngine {
 
         // Configure process I/O
         cmd.stdin(Stdio::null()).kill_on_drop(true);
+
+        #[cfg(unix)]
+        {
+            // Put wrappers such as toolbox/podman and the llama-server they
+            // launch in an isolated group so unload can terminate all of them.
+            cmd.process_group(0);
+        }
 
         if self.config.log_server_output {
             // Inherit stdout/stderr for debugging
