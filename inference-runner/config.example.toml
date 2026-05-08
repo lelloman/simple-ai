@@ -45,7 +45,9 @@ base_url = "http://localhost:11434"
 # shutdown_timeout_secs = 10               # Graceful shutdown timeout (default: 10)
 # log_server_output = false                # Log llama-server output for debugging
 #
-# Example: Running llama-server via toolbox container:
+# Example: Running llama-server through a pre-created toolbox container:
+# Note: toolbox may fail in some rootless/service environments when it tries
+# to bind host files such as /etc/machine-id during container init.
 # [engines.llama_cpp]
 # enabled = true
 # server_binary = "toolbox"
@@ -53,6 +55,24 @@ base_url = "http://localhost:11434"
 # model_dir = "/home/user/.cache/huggingface/hub"
 # gpu_layers = 99
 # startup_timeout_secs = 300               # Large models need more startup time
+#
+# Example: Running the llama.cpp container directly with podman and AMD Vulkan:
+# [engines.llama_cpp]
+# enabled = true
+# server_binary = "podman"
+# server_args = [
+#   "run",
+#   "--rm",
+#   "--network", "host",
+#   "--device", "/dev/dri",
+#   "--security-opt", "label=disable",
+#   "--volume", "/home/user:/home/user:rslave",
+#   "docker.io/kyuz0/amd-strix-halo-toolboxes:vulkan-amdvlk",
+#   "llama-server",
+# ]
+# model_dir = "/home/user/.cache/huggingface/hub"
+# gpu_layers = 99
+# startup_timeout_secs = 300
 
 [capabilities.persistence]
 always_loaded = []
