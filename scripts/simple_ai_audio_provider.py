@@ -103,26 +103,32 @@ def decode_audio(
     clip_offset_seconds: float | None,
     clip_seconds: float | None,
 ) -> np.ndarray:
-    command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"]
-    if clip_offset_seconds is not None and clip_offset_seconds > 0:
-        command.extend(["-ss", str(clip_offset_seconds)])
-    if clip_seconds is not None and clip_seconds > 0:
-        command.extend(["-t", str(clip_seconds)])
-    command.extend(
-        [
-            "-i",
-            str(input_path),
-            "-ac",
-            "1",
-            "-ar",
-            str(sample_rate),
-            "-f",
-            "f32le",
-            "pipe:1",
-        ]
-    )
-    data = subprocess.check_output(command)
+    def run_ffmpeg(offset_seconds: float | None) -> bytes:
+        command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"]
+        if offset_seconds is not None and offset_seconds > 0:
+            command.extend(["-ss", str(offset_seconds)])
+        if clip_seconds is not None and clip_seconds > 0:
+            command.extend(["-t", str(clip_seconds)])
+        command.extend(
+            [
+                "-i",
+                str(input_path),
+                "-ac",
+                "1",
+                "-ar",
+                str(sample_rate),
+                "-f",
+                "f32le",
+                "pipe:1",
+            ]
+        )
+        return subprocess.check_output(command)
+
+    data = run_ffmpeg(clip_offset_seconds)
     audio = np.frombuffer(data, dtype=np.float32)
+    if audio.size == 0 and clip_offset_seconds is not None and clip_offset_seconds > 0:
+        data = run_ffmpeg(None)
+        audio = np.frombuffer(data, dtype=np.float32)
     if audio.size == 0:
         raise ValueError("ffmpeg returned empty audio")
     return np.clip(audio, -1.0, 1.0).astype(np.float32, copy=False)
