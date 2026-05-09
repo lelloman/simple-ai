@@ -74,6 +74,46 @@ base_url = "http://localhost:11434"
 # gpu_layers = 99
 # startup_timeout_secs = 300
 
+# Audio embedding engine. Disabled by default. Models are loaded on demand,
+# like LLM models: when the gateway sends LoadModel, the runner starts the
+# configured provider command with --model <id> --port <port>, then proxies
+# /v1/audio/embeddings to that local provider.
+#
+# [engines.audio_embeddings]
+# enabled = true
+# provider = "rustentia-audio"
+# command = ["python3", "/opt/simple-ai/audio_embedding_provider.py"]
+# max_file_mb = 100
+# startup_timeout_secs = 300
+# shutdown_timeout_secs = 10
+#
+# [[engines.audio_embeddings.models]]
+# id = "musicfm-msd"
+# name = "MusicFM MSD"
+# size_bytes = 1417339200
+#
+# [[engines.audio_embeddings.models.namespaces]]
+# namespace = "musicfm.mean.v1"
+# dim = 1024
+# dtype = "float32"
+# description = "Pooled MusicFM mean embedding"
+#
+# [[engines.audio_embeddings.models]]
+# id = "ast-audioset"
+# name = "MIT AST AudioSet"
+#
+# [[engines.audio_embeddings.models.namespaces]]
+# namespace = "ast.audioset.v1"
+# dim = 527
+# dtype = "float32"
+# description = "AST AudioSet probabilities"
+#
+# [[engines.audio_embeddings.models.namespaces]]
+# namespace = "ast.instruments.v1"
+# dim = 44
+# dtype = "float32"
+# description = "Compact AST-derived instrument axes"
+
 [capabilities.persistence]
 always_loaded = []
 idle_timeout_secs = 300

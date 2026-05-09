@@ -20,6 +20,8 @@ pub enum ModelClass {
     EmbedSmall,
     /// Large embedding models (e.g., mxbai-embed-large)
     EmbedLarge,
+    /// Audio embedding/label models exposed through `/v1/audio/embeddings`
+    AudioEmbeddings,
 }
 
 impl ModelClass {
@@ -30,6 +32,7 @@ impl ModelClass {
             "fast" => Some(Self::Fast),
             "embed_small" => Some(Self::EmbedSmall),
             "embed_large" => Some(Self::EmbedLarge),
+            "audio_embeddings" => Some(Self::AudioEmbeddings),
             _ => None,
         }
     }
@@ -41,6 +44,7 @@ impl ModelClass {
             Self::Fast => "fast",
             Self::EmbedSmall => "embed_small",
             Self::EmbedLarge => "embed_large",
+            Self::AudioEmbeddings => "audio_embeddings",
         }
     }
 }
@@ -60,6 +64,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
         Some("fast") => Some(ModelClass::Fast),
         Some("embed_small") => Some(ModelClass::EmbedSmall),
         Some("embed_large") => Some(ModelClass::EmbedLarge),
+        Some("audio_embeddings") => Some(ModelClass::AudioEmbeddings),
         _ => None,
     }
 }
@@ -194,6 +199,14 @@ mod tests {
         assert_eq!(ModelClass::from_str("BIG"), Some(ModelClass::Big));
         assert_eq!(ModelClass::from_str("fast"), Some(ModelClass::Fast));
         assert_eq!(ModelClass::from_str("Fast"), Some(ModelClass::Fast));
+        assert_eq!(
+            ModelClass::from_str("audio-embeddings"),
+            Some(ModelClass::AudioEmbeddings)
+        );
+        assert_eq!(
+            ModelClass::from_str("audio_embeddings"),
+            Some(ModelClass::AudioEmbeddings)
+        );
         assert_eq!(ModelClass::from_str("unknown"), None);
     }
 
@@ -201,6 +214,7 @@ mod tests {
     fn test_model_class_as_str() {
         assert_eq!(ModelClass::Big.as_str(), "big");
         assert_eq!(ModelClass::Fast.as_str(), "fast");
+        assert_eq!(ModelClass::AudioEmbeddings.as_str(), "audio_embeddings");
     }
 
     #[test]
@@ -212,6 +226,10 @@ mod tests {
         assert_eq!(
             ModelRequest::parse("class:big"),
             ModelRequest::Class(ModelClass::Big)
+        );
+        assert_eq!(
+            ModelRequest::parse("class:audio_embeddings"),
+            ModelRequest::Class(ModelClass::AudioEmbeddings)
         );
     }
 
@@ -238,6 +256,7 @@ mod tests {
         let config = ModelsConfig {
             big: vec!["llama3:70b".to_string()],
             fast: vec!["llama3:8b".to_string()],
+            audio_embeddings: vec!["musicfm-msd".to_string()],
             ..Default::default()
         };
 
@@ -259,6 +278,10 @@ mod tests {
         assert_eq!(
             ModelRequest::Specific("llama3:8b".to_string()).effective_class(&config),
             Some(ModelClass::Fast)
+        );
+        assert_eq!(
+            ModelRequest::Specific("musicfm-msd".to_string()).effective_class(&config),
+            Some(ModelClass::AudioEmbeddings)
         );
 
         // Unknown models return None
@@ -323,5 +346,9 @@ mod tests {
     fn test_model_class_display() {
         assert_eq!(format!("{}", ModelClass::Big), "big");
         assert_eq!(format!("{}", ModelClass::Fast), "fast");
+        assert_eq!(
+            format!("{}", ModelClass::AudioEmbeddings),
+            "audio_embeddings"
+        );
     }
 }

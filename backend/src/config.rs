@@ -157,6 +157,7 @@ pub struct WolConfig {
 /// Models are classified into classes for routing and permissions:
 /// - `big`: Large models (70B+ parameters) - slower but more capable
 /// - `fast`: Smaller models - faster inference
+/// - `audio_embeddings`: Audio embedding/label models exposed through `/v1/audio/embeddings`
 ///
 /// Models not listed in either list are not available for class-based requests.
 #[derive(Debug, Clone, Deserialize)]
@@ -177,6 +178,10 @@ pub struct ModelsConfig {
     /// Exact model IDs (case-insensitive).
     #[serde(default)]
     pub embed_large: Vec<String>,
+    /// Models classified as "audio_embeddings".
+    /// Exact model IDs (case-insensitive).
+    #[serde(default)]
+    pub audio_embeddings: Vec<String>,
 }
 
 impl Default for ModelsConfig {
@@ -186,6 +191,7 @@ impl Default for ModelsConfig {
             fast: vec![],
             embed_small: vec![],
             embed_large: vec![],
+            audio_embeddings: vec![],
         }
     }
 }
@@ -219,6 +225,12 @@ impl ModelsConfig {
         for id in &self.embed_large {
             if lower == id.to_lowercase() {
                 return Some("embed_large");
+            }
+        }
+
+        for id in &self.audio_embeddings {
+            if lower == id.to_lowercase() {
+                return Some("audio_embeddings");
             }
         }
 

@@ -3,10 +3,12 @@
 //! This module defines the `InferenceEngine` trait that abstracts different
 //! inference backends (Ollama, llama.cpp, etc.) behind a common interface.
 
+mod audio_embeddings;
 mod llama_cpp;
 mod ollama;
 mod registry;
 
+pub use audio_embeddings::AudioEmbeddingEngine;
 pub use llama_cpp::LlamaCppEngine;
 pub use ollama::OllamaEngine;
 pub use registry::EngineRegistry;
@@ -15,7 +17,9 @@ use async_trait::async_trait;
 use axum::body::Bytes;
 use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
-use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
+use simple_ai_common::{
+    AudioEmbeddingOptions, AudioEmbeddingResponse, ChatCompletionRequest, ChatCompletionResponse,
+};
 use std::pin::Pin;
 
 use crate::error::Result;
@@ -113,6 +117,20 @@ pub trait InferenceEngine: Send + Sync {
     async fn embed(&self, _model_id: &str, _input: &[String]) -> Result<Vec<Vec<f32>>> {
         Err(crate::error::Error::NotSupported(format!(
             "Embeddings not supported by {} engine",
+            self.engine_type()
+        )))
+    }
+
+    /// Generate one audio embedding for an uploaded audio file.
+    async fn audio_embedding(
+        &self,
+        _model_id: &str,
+        _file_name: String,
+        _file_bytes: Vec<u8>,
+        _options: &AudioEmbeddingOptions,
+    ) -> Result<AudioEmbeddingResponse> {
+        Err(crate::error::Error::NotSupported(format!(
+            "Audio embeddings not supported by {} engine",
             self.engine_type()
         )))
     }

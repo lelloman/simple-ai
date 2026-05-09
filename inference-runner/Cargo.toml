@@ -23,7 +23,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # HTTP client (for Ollama)
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["multipart"] }
 
 # Async traits
 async-trait = { workspace = true }

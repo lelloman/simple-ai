@@ -8,7 +8,10 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
 
-use simple_ai_common::{Capability, ChatCompletionRequest, OcrOptions, OcrResponse};
+use simple_ai_common::{
+    AudioEmbeddingOptions, AudioEmbeddingResponse, Capability, ChatCompletionRequest, OcrOptions,
+    OcrResponse,
+};
 
 use super::batch_queue::BatchQueue;
 use super::model_class::{classify_model, ModelClass, ModelRequest};
@@ -289,6 +292,48 @@ impl InferenceRouter {
             response: response?,
             runner_id,
             resolved_model: "ocr".to_string(),
+        })
+    }
+
+    /// Route an audio embedding multipart request to the selected runner.
+    pub async fn audio_embedding_multipart(
+        &self,
+        model: &str,
+        file_name: String,
+        file_bytes: Vec<u8>,
+        options_json: String,
+    ) -> Result<RoutedResponse<AudioEmbeddingResponse>, RouterError> {
+        let _options: AudioEmbeddingOptions = serde_json::from_str(&options_json)
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+        let selection = self.select_runner_for_model(model).await?;
+        let runner_id = selection.runner.id.clone();
+        let resolved_model = selection.resolved_model.clone();
+
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(file_bytes).file_name(file_name),
+            )
+            .text("options", options_json);
+
+        self.registry.increment_requests(&runner_id).await;
+        let response = self
+            .proxy_multipart(&selection.runner, "/v1/audio/embeddings", form)
+            .await;
+        self.registry.decrement_requests(&runner_id).await;
+
+        if let Some(cb) = &self.circuit_breaker {
+            if response.is_ok() {
+                cb.record_success(&runner_id);
+            } else {
+                cb.record_failure(&runner_id);
+            }
+        }
+
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model,
         })
     }
 

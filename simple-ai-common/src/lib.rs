@@ -2,12 +2,17 @@
 //!
 //! Shared types used by both the inference-runner and backend gateway.
 
+pub mod audio_embeddings;
 pub mod capability;
 pub mod chat;
 pub mod ocr;
 pub mod protocol;
 pub mod responses;
 
+pub use audio_embeddings::{
+    AudioEmbeddingModelInfo, AudioEmbeddingNamespaceInfo, AudioEmbeddingOptions,
+    AudioEmbeddingProviderInfo, AudioEmbeddingResponse,
+};
 pub use capability::{Capability, CapabilityInfo, CapabilityStatus};
 pub use chat::{
     format_sse_chunk, format_sse_done, format_sse_metrics, ChatCompletionChunk,

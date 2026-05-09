@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod audio_embeddings;
 pub mod auth_helpers;
 pub mod chat;
 pub mod embeddings;

@@ -272,6 +272,21 @@ async fn test_embeddings_requires_auth() {
 }
 
 #[tokio::test]
+async fn test_audio_embeddings_requires_auth() {
+    let state = create_test_state().await.unwrap();
+    let app = axum::Router::new().nest("/v1", routes::audio_embeddings::router(state));
+
+    let req = http::Request::builder()
+        .method(http::Method::POST)
+        .uri("/v1/audio/embeddings")
+        .header("Content-Type", "multipart/form-data; boundary=x")
+        .body(axum::body::Body::from("--x--\r\n"))
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn test_nonexistent_route_returns_404() {
     let state = create_test_state().await.unwrap();
     let app = routes::admin::router(state);

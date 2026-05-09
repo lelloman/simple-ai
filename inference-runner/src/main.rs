@@ -18,7 +18,7 @@ mod ocr;
 mod state;
 
 use config::Config;
-use engine::{EngineRegistry, LlamaCppEngine, OllamaEngine};
+use engine::{AudioEmbeddingEngine, EngineRegistry, LlamaCppEngine, OllamaEngine};
 use gateway::{GatewayClient, StatusCollector};
 use ocr::{CliOcrProvider, OcrProvider};
 use state::AppState;
@@ -113,6 +113,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Registered llama.cpp engine: model_dir={}, binary={}",
                 llama_config.model_dir,
                 llama_config.server_binary
+            );
+        }
+    }
+
+    if let Some(ref audio_config) = config.engines.audio_embeddings {
+        if audio_config.enabled {
+            let engine = Arc::new(AudioEmbeddingEngine::new(audio_config.clone()));
+            registry.register(engine).await;
+            tracing::info!(
+                "Registered audio embedding engine with {} models",
+                audio_config.models.len()
             );
         }
     }

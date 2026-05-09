@@ -194,6 +194,37 @@ impl StatusCollector {
             });
         }
 
+        if let Some(audio_config) = &self.config.engines.audio_embeddings {
+            if audio_config.enabled && !audio_config.models.is_empty() {
+                let provider_info = simple_ai_common::AudioEmbeddingProviderInfo {
+                    provider: audio_config.provider.clone(),
+                    provider_version: None,
+                    models: audio_config
+                        .models
+                        .iter()
+                        .map(|model| simple_ai_common::AudioEmbeddingModelInfo {
+                            id: model.id.clone(),
+                            provider: model
+                                .provider
+                                .clone()
+                                .unwrap_or_else(|| audio_config.provider.clone()),
+                            provider_version: None,
+                            namespaces: model.namespaces.clone(),
+                        })
+                        .collect(),
+                    max_file_bytes: audio_config.max_file_mb * 1024 * 1024,
+                };
+                capabilities.push(CapabilityInfo {
+                    capability: Capability::AudioEmbeddings,
+                    status: CapabilityStatus::Loaded,
+                    model_id: audio_config.provider.clone(),
+                    active_requests: 0,
+                    avg_latency_ms: None,
+                    metadata: serde_json::to_value(provider_info).ok(),
+                });
+            }
+        }
+
         capabilities
     }
 
@@ -345,6 +376,41 @@ mod tests {
         assert_eq!(ocr.status, CapabilityStatus::Loaded);
         assert_eq!(ocr.model_id, "paddleocr");
         assert!(ocr.metadata.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_with_audio_embedding_engine() {
+        let mut config = test_config();
+        config.engines.audio_embeddings = Some(crate::config::AudioEmbeddingEngineConfig {
+            enabled: true,
+            provider: "rustentia-audio".to_string(),
+            command: vec!["provider".to_string()],
+            models: vec![crate::config::AudioEmbeddingModelConfig {
+                id: "musicfm-msd".to_string(),
+                name: Some("MusicFM MSD".to_string()),
+                provider: None,
+                size_bytes: None,
+                namespaces: vec![simple_ai_common::AudioEmbeddingNamespaceInfo {
+                    namespace: "musicfm.mean.v1".to_string(),
+                    dim: 1024,
+                    dtype: "float32".to_string(),
+                    description: None,
+                }],
+            }],
+            max_file_mb: 100,
+            startup_timeout_secs: 300,
+            shutdown_timeout_secs: 10,
+        });
+        let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
+        let collector = StatusCollector::new(config, registry, false);
+
+        let capabilities = collector.collect_capabilities(&[]).await;
+        let audio = capabilities
+            .iter()
+            .find(|c| c.capability == Capability::AudioEmbeddings)
+            .expect("audio embedding capability");
+        assert_eq!(audio.status, CapabilityStatus::Loaded);
+        assert!(audio.metadata.is_some());
     }
 
     #[test]

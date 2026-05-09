@@ -2,7 +2,7 @@
 
 use config::{Config as ConfigLoader, ConfigError, Environment, File};
 use serde::Deserialize;
-use simple_ai_common::{Capability, OcrFeature, OcrMode};
+use simple_ai_common::{AudioEmbeddingNamespaceInfo, Capability, OcrFeature, OcrMode};
 use std::collections::HashMap;
 
 /// Model alias configuration for mapping canonical names to local engine names.
@@ -86,6 +86,8 @@ pub struct EnginesConfig {
     pub ollama: Option<OllamaEngineConfig>,
     /// llama.cpp engine configuration (Phase 3)
     pub llama_cpp: Option<LlamaCppEngineConfig>,
+    /// Process-backed audio embedding engine configuration.
+    pub audio_embeddings: Option<AudioEmbeddingEngineConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,6 +156,59 @@ pub struct LlamaCppEngineConfig {
     /// Maximum batch size for concurrent inference (default: 1 = no batching).
     #[serde(default = "default_batch_size")]
     pub batch_size: u32,
+}
+
+/// Process-backed audio embedding engine configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AudioEmbeddingEngineConfig {
+    /// Whether the audio embedding engine is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider family advertised by this engine.
+    #[serde(default = "default_audio_embedding_provider")]
+    pub provider: String,
+    /// Command to start a provider process. The runner appends --model and --port.
+    #[serde(default)]
+    pub command: Vec<String>,
+    /// Loadable audio embedding models.
+    #[serde(default)]
+    pub models: Vec<AudioEmbeddingModelConfig>,
+    /// Maximum input file size in MB.
+    #[serde(default = "default_audio_embedding_max_file_mb")]
+    pub max_file_mb: u64,
+    /// Provider startup timeout.
+    #[serde(default = "default_audio_embedding_startup_timeout_secs")]
+    pub startup_timeout_secs: u64,
+    /// Provider shutdown timeout.
+    #[serde(default = "default_audio_embedding_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AudioEmbeddingModelConfig {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    #[serde(default)]
+    pub namespaces: Vec<AudioEmbeddingNamespaceInfo>,
+}
+
+impl Default for AudioEmbeddingEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_audio_embedding_provider(),
+            command: Vec::new(),
+            models: Vec::new(),
+            max_file_mb: default_audio_embedding_max_file_mb(),
+            startup_timeout_secs: default_audio_embedding_startup_timeout_secs(),
+            shutdown_timeout_secs: default_audio_embedding_shutdown_timeout_secs(),
+        }
+    }
 }
 
 /// Capability configuration (Phase 2).
@@ -301,6 +356,18 @@ fn default_ocr_max_pages() -> u32 {
 fn default_ocr_timeout_secs() -> u64 {
     120
 }
+fn default_audio_embedding_provider() -> String {
+    "audio-embedding-provider".to_string()
+}
+fn default_audio_embedding_max_file_mb() -> u64 {
+    100
+}
+fn default_audio_embedding_startup_timeout_secs() -> u64 {
+    300
+}
+fn default_audio_embedding_shutdown_timeout_secs() -> u64 {
+    10
+}
 
 impl Config {
     /// Load configuration from file and environment variables.
@@ -327,6 +394,23 @@ impl Config {
             .set_default("ocr.max_file_mb", default_ocr_max_file_mb() as i64)?
             .set_default("ocr.max_pages", default_ocr_max_pages() as i64)?
             .set_default("ocr.timeout_secs", default_ocr_timeout_secs() as i64)?
+            .set_default("engines.audio_embeddings.enabled", false)?
+            .set_default(
+                "engines.audio_embeddings.provider",
+                default_audio_embedding_provider(),
+            )?
+            .set_default(
+                "engines.audio_embeddings.max_file_mb",
+                default_audio_embedding_max_file_mb() as i64,
+            )?
+            .set_default(
+                "engines.audio_embeddings.startup_timeout_secs",
+                default_audio_embedding_startup_timeout_secs() as i64,
+            )?
+            .set_default(
+                "engines.audio_embeddings.shutdown_timeout_secs",
+                default_audio_embedding_shutdown_timeout_secs() as i64,
+            )?
             // Load from config.toml if exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (RUNNER__SECTION__KEY format)
