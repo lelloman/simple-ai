@@ -411,10 +411,17 @@ impl LlamaCppEngine {
     }
 
     /// Find the least recently used server to evict, excluding a specific model.
-    /// Returns None if there are no servers to evict.
-    async fn find_lru_server(&self, exclude_model: &str) -> Option<(String, f32)> {
+    /// If `require_cooldown` is true, only models idle longer than the configured
+    /// opportunistic unload cooldown are considered.
+    async fn find_lru_server(
+        &self,
+        exclude_model: &str,
+        require_cooldown: bool,
+    ) -> Option<(String, f32, Duration)> {
         let servers = self.servers.read().await;
         let mut oldest: Option<(String, f32, Instant)> = None;
+        let now = Instant::now();
+        let cooldown = Duration::from_secs(self.config.opportunistic_unload_cooldown_secs);
 
         for (model_id, instance) in servers.iter() {
             // Skip the model we're trying to load
@@ -429,6 +436,9 @@ impl LlamaCppEngine {
             }
 
             let last_used = *instance.last_used.read().await;
+            if require_cooldown && now.duration_since(last_used) < cooldown {
+                continue;
+            }
 
             match &oldest {
                 None => oldest = Some((model_id.clone(), instance.memory_gb, last_used)),
@@ -439,7 +449,8 @@ impl LlamaCppEngine {
             }
         }
 
-        oldest.map(|(model_id, memory, _)| (model_id, memory))
+        oldest
+            .map(|(model_id, memory, last_used)| (model_id, memory, now.duration_since(last_used)))
     }
 
     /// Evict servers to make room for a new model based on memory constraints.
@@ -462,19 +473,37 @@ impl LlamaCppEngine {
                     return Ok(());
                 }
 
-                // Need to evict - find LRU server
-                let lru = self.find_lru_server(model_to_load).await;
+                // Prefer opportunistic eviction of models that have cooled down.
+                let mut lru = self.find_lru_server(model_to_load, true).await;
+                if lru.is_none() {
+                    lru = self.find_lru_server(model_to_load, false).await;
+                }
 
                 match lru {
-                    Some((model_id, memory)) => {
-                        tracing::info!(
-                            "Evicting LRU model {} ({:.2}GB) to free memory for {} ({:.2}GB needed, {:.2}GB available)",
-                            model_id,
-                            memory,
-                            model_to_load,
-                            required_memory_gb,
-                            available
-                        );
+                    Some((model_id, memory, idle_for)) => {
+                        let cooldown =
+                            Duration::from_secs(self.config.opportunistic_unload_cooldown_secs);
+                        if idle_for >= cooldown {
+                            tracing::info!(
+                                "Opportunistically unloading idle model {} ({:.2}GB, idle {:.1}s) to free memory for {} ({:.2}GB needed, {:.2}GB available)",
+                                model_id,
+                                memory,
+                                idle_for.as_secs_f64(),
+                                model_to_load,
+                                required_memory_gb,
+                                available
+                            );
+                        } else {
+                            tracing::info!(
+                                "Force-unloading LRU model {} ({:.2}GB, idle {:.1}s) to free memory for {} ({:.2}GB needed, {:.2}GB available)",
+                                model_id,
+                                memory,
+                                idle_for.as_secs_f64(),
+                                model_to_load,
+                                required_memory_gb,
+                                available
+                            );
+                        }
                         self.unload_model(&model_id).await?;
                     }
                     None => {
@@ -515,17 +544,33 @@ impl LlamaCppEngine {
                     return Ok(());
                 }
 
-                // Need to evict - find LRU server
-                let lru = self.find_lru_server(model_to_load).await;
+                // Prefer opportunistic eviction of models that have cooled down.
+                let mut lru = self.find_lru_server(model_to_load, true).await;
+                if lru.is_none() {
+                    lru = self.find_lru_server(model_to_load, false).await;
+                }
 
                 match lru {
-                    Some((model_id, _)) => {
-                        tracing::info!(
-                            "Evicting LRU model {} to make room (current: {}, max: {})",
-                            model_id,
-                            current_count,
-                            self.config.max_servers
-                        );
+                    Some((model_id, _, idle_for)) => {
+                        let cooldown =
+                            Duration::from_secs(self.config.opportunistic_unload_cooldown_secs);
+                        if idle_for >= cooldown {
+                            tracing::info!(
+                                "Opportunistically unloading idle model {} after {:.1}s idle to make room (current: {}, max: {})",
+                                model_id,
+                                idle_for.as_secs_f64(),
+                                current_count,
+                                self.config.max_servers
+                            );
+                        } else {
+                            tracing::info!(
+                                "Force-unloading LRU model {} after {:.1}s idle to make room because capacity is full (current: {}, max: {})",
+                                model_id,
+                                idle_for.as_secs_f64(),
+                                current_count,
+                                self.config.max_servers
+                            );
+                        }
                         self.unload_model(&model_id).await?;
                     }
                     None => {
@@ -1544,6 +1589,7 @@ mod tests {
             context_size: Some(4096),
             base_port: None,
             max_servers: 2,
+            opportunistic_unload_cooldown_secs: 600,
             max_vram_gb: None,
             model_memory_gb: HashMap::new(),
             startup_timeout_secs: 120,
@@ -1818,7 +1864,7 @@ mod tests {
         let config = test_config();
         let engine = LlamaCppEngine::new(config);
 
-        let lru = engine.find_lru_server("any-model").await;
+        let lru = engine.find_lru_server("any-model", false).await;
         assert!(lru.is_none());
     }
 

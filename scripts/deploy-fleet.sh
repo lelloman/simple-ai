@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$SCRIPT_DIR/deploy-hosts.toml"
 BINARY="$PROJECT_DIR/target/release/simple-ai-runner"
+AUDIO_PROVIDER="$PROJECT_DIR/scripts/simple_ai_audio_provider.py"
 
 # CLI options
 BUILD=false
@@ -247,6 +248,7 @@ deploy_host() {
         echo "[DRY-RUN] Would stop service on $ssh_target"
         echo "[DRY-RUN] Would kill processes on port $service_port"
         echo "[DRY-RUN] Would upload binary to $ssh_target:$deploy_dir/simple-ai-runner"
+        echo "[DRY-RUN] Would upload audio provider to $ssh_target:$deploy_dir/simple-ai-audio-provider.py"
         echo "[DRY-RUN] Would upload config from $config_path to $ssh_target:$deploy_dir/config.toml"
         echo "[DRY-RUN] Would install systemd service with deploy_dir=$deploy_dir"
         echo "[DRY-RUN] Would start and verify service"
@@ -275,6 +277,10 @@ deploy_host() {
     # Replace binary
     echo "  Installing binary..."
     ssh "$ssh_target" "mv $deploy_dir/simple-ai-runner-new $deploy_dir/simple-ai-runner && chmod +x $deploy_dir/simple-ai-runner"
+
+    # Upload audio provider helper used by audio embedding runners.
+    echo "  Uploading audio provider..."
+    scp -q "$AUDIO_PROVIDER" "$ssh_target:$deploy_dir/simple-ai-audio-provider.py"
 
     # Upload config
     echo "  Uploading config..."

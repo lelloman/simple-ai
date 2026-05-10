@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,6 +84,21 @@ INSTRUMENT_LABELS = [
 ]
 
 
+def ffmpeg_exe() -> str:
+    configured = os.environ.get("SIMPLE_AI_FFMPEG_PATH")
+    if configured:
+        return configured
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return "ffmpeg"
+
+
 def axis_id(label: str) -> str:
     out = label.lower()
     out = out.replace(", ", "_").replace(" (musical)", "")
@@ -104,7 +121,7 @@ def decode_audio(
     clip_seconds: float | None,
 ) -> np.ndarray:
     def run_ffmpeg(offset_seconds: float | None) -> bytes:
-        command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"]
+        command = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-nostdin"]
         if offset_seconds is not None and offset_seconds > 0:
             command.extend(["-ss", str(offset_seconds)])
         if clip_seconds is not None and clip_seconds > 0:

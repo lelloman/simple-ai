@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use reqwest::Client;
@@ -21,6 +21,7 @@ use crate::error::{Error, Result};
 struct AudioEmbeddingServer {
     port: u16,
     process: RwLock<Option<Child>>,
+    last_used: RwLock<Instant>,
 }
 
 impl AudioEmbeddingServer {
@@ -28,6 +29,7 @@ impl AudioEmbeddingServer {
         Self {
             port,
             process: RwLock::new(Some(process)),
+            last_used: RwLock::new(Instant::now()),
         }
     }
 
@@ -48,6 +50,25 @@ impl AudioEmbeddingServer {
         let _ = child.start_kill();
         let _ = tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait()).await;
     }
+
+    async fn touch(&self) {
+        *self.last_used.write().await = Instant::now();
+    }
+}
+
+fn select_eviction_candidate(
+    loaded: &[(String, Instant)],
+    target_model: &str,
+    cooldown: Duration,
+    force: bool,
+    now: Instant,
+) -> Option<String> {
+    loaded
+        .iter()
+        .filter(|(model_id, _)| model_id != target_model)
+        .filter(|(_, last_used)| force || now.duration_since(*last_used) >= cooldown)
+        .min_by_key(|(_, last_used)| *last_used)
+        .map(|(model_id, _)| model_id.clone())
 }
 
 /// Audio embedding models are loaded as long-lived local provider processes.
@@ -136,6 +157,67 @@ impl AudioEmbeddingEngine {
         }
         loaded
     }
+
+    async fn loaded_model_usage(&self) -> Vec<(String, Instant)> {
+        let servers = self.servers.read().await;
+        let mut loaded = Vec::new();
+        for (model_id, server) in servers.iter() {
+            if server.is_alive().await {
+                loaded.push((model_id.clone(), *server.last_used.read().await));
+            }
+        }
+        loaded
+    }
+
+    async fn ensure_capacity(&self, model_to_load: &str) -> Result<()> {
+        if self.config.max_loaded_models == 0 {
+            return Err(Error::Internal(
+                "engines.audio_embeddings.max_loaded_models must be at least 1".to_string(),
+            ));
+        }
+
+        loop {
+            let loaded = self.loaded_model_usage().await;
+            if loaded.len() < self.config.max_loaded_models
+                || loaded.iter().any(|(model_id, _)| model_id == model_to_load)
+            {
+                return Ok(());
+            }
+
+            let cooldown = Duration::from_secs(self.config.opportunistic_unload_cooldown_secs);
+            let now = Instant::now();
+            let candidate = select_eviction_candidate(&loaded, model_to_load, cooldown, false, now)
+                .or_else(|| select_eviction_candidate(&loaded, model_to_load, cooldown, true, now));
+            let Some(model_id) = candidate else {
+                return Err(Error::Internal(format!(
+                    "Cannot make room for audio embedding model {}: at capacity ({}) with no evictable providers",
+                    model_to_load, self.config.max_loaded_models
+                )));
+            };
+
+            let idle_for = loaded
+                .iter()
+                .find(|(loaded_model, _)| loaded_model == &model_id)
+                .map(|(_, last_used)| now.duration_since(*last_used))
+                .unwrap_or_default();
+            if idle_for >= cooldown {
+                tracing::info!(
+                    "Opportunistically unloading idle audio embedding model {} after {:.1}s idle to load {}",
+                    model_id,
+                    idle_for.as_secs_f64(),
+                    model_to_load
+                );
+            } else {
+                tracing::info!(
+                    "Force-unloading audio embedding model {} after {:.1}s idle to load {} because provider capacity is full",
+                    model_id,
+                    idle_for.as_secs_f64(),
+                    model_to_load
+                );
+            }
+            self.unload_model(&model_id).await?;
+        }
+    }
 }
 
 #[async_trait]
@@ -192,6 +274,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
         }
         self.model_config(model_id)
             .ok_or_else(|| Error::ModelNotFound(model_id.to_string()))?;
+        self.ensure_capacity(model_id).await?;
 
         let port = Self::allocate_port().await?;
         let mut command = self.build_command(model_id, port)?;
@@ -284,6 +367,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
                 model_id
             )));
         }
+        server.touch().await;
 
         let options_json =
             serde_json::to_string(options).map_err(|e| Error::InvalidRequest(e.to_string()))?;
@@ -335,6 +419,8 @@ mod tests {
                     description: None,
                 }],
             }],
+            max_loaded_models: 1,
+            opportunistic_unload_cooldown_secs: 600,
             max_file_mb: 10,
             startup_timeout_secs: 1,
             shutdown_timeout_secs: 1,
@@ -380,5 +466,37 @@ mod tests {
         let engine = test_engine();
         let err = engine.load_model("missing").await.unwrap_err();
         assert!(matches!(err, Error::ModelNotFound(_)));
+    }
+
+    #[test]
+    fn test_eviction_candidate_respects_cooldown() {
+        let now = Instant::now();
+        let loaded = vec![
+            ("recent".to_string(), now - Duration::from_secs(30)),
+            ("idle".to_string(), now - Duration::from_secs(700)),
+        ];
+
+        assert_eq!(
+            select_eviction_candidate(&loaded, "target", Duration::from_secs(600), false, now),
+            Some("idle".to_string())
+        );
+    }
+
+    #[test]
+    fn test_eviction_candidate_force_uses_lru_before_cooldown() {
+        let now = Instant::now();
+        let loaded = vec![
+            ("newer".to_string(), now - Duration::from_secs(10)),
+            ("older".to_string(), now - Duration::from_secs(20)),
+        ];
+
+        assert_eq!(
+            select_eviction_candidate(&loaded, "target", Duration::from_secs(600), true, now),
+            Some("older".to_string())
+        );
+        assert_eq!(
+            select_eviction_candidate(&loaded, "target", Duration::from_secs(600), false, now),
+            None
+        );
     }
 }

@@ -397,6 +397,8 @@ mod tests {
                     description: None,
                 }],
             }],
+            max_loaded_models: 1,
+            opportunistic_unload_cooldown_secs: 600,
             max_file_mb: 100,
             startup_timeout_secs: 300,
             shutdown_timeout_secs: 10,

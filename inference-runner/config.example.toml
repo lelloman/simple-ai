@@ -72,6 +72,7 @@ base_url = "http://localhost:11434"
 # ]
 # model_dir = "/home/user/.cache/huggingface/hub"
 # gpu_layers = 99
+# opportunistic_unload_cooldown_secs = 600
 # startup_timeout_secs = 300
 
 # Audio embedding engine. Disabled by default. Models are loaded on demand,
@@ -84,6 +85,8 @@ base_url = "http://localhost:11434"
 # provider = "rustentia-audio"
 # command = ["python3", "/opt/simple-ai/audio_embedding_provider.py"]
 # max_file_mb = 100
+# max_loaded_models = 1
+# opportunistic_unload_cooldown_secs = 600
 # startup_timeout_secs = 300
 # shutdown_timeout_secs = 10
 #

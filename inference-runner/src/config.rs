@@ -131,6 +131,9 @@ pub struct LlamaCppEngineConfig {
     /// Maximum number of concurrent model servers (default: 2).
     #[serde(default = "default_max_servers")]
     pub max_servers: usize,
+    /// Idle time before a loaded model becomes eligible for opportunistic eviction.
+    #[serde(default = "default_opportunistic_unload_cooldown_secs")]
+    pub opportunistic_unload_cooldown_secs: u64,
     /// Maximum VRAM available for loading models (in GB).
     /// If not set, falls back to max_servers count-based limiting.
     #[serde(default)]
@@ -173,6 +176,12 @@ pub struct AudioEmbeddingEngineConfig {
     /// Loadable audio embedding models.
     #[serde(default)]
     pub models: Vec<AudioEmbeddingModelConfig>,
+    /// Maximum number of audio embedding providers to keep loaded at once.
+    #[serde(default = "default_audio_embedding_max_loaded_models")]
+    pub max_loaded_models: usize,
+    /// Idle time before a loaded provider becomes eligible for opportunistic eviction.
+    #[serde(default = "default_opportunistic_unload_cooldown_secs")]
+    pub opportunistic_unload_cooldown_secs: u64,
     /// Maximum input file size in MB.
     #[serde(default = "default_audio_embedding_max_file_mb")]
     pub max_file_mb: u64,
@@ -204,6 +213,8 @@ impl Default for AudioEmbeddingEngineConfig {
             provider: default_audio_embedding_provider(),
             command: Vec::new(),
             models: Vec::new(),
+            max_loaded_models: default_audio_embedding_max_loaded_models(),
+            opportunistic_unload_cooldown_secs: default_opportunistic_unload_cooldown_secs(),
             max_file_mb: default_audio_embedding_max_file_mb(),
             startup_timeout_secs: default_audio_embedding_startup_timeout_secs(),
             shutdown_timeout_secs: default_audio_embedding_shutdown_timeout_secs(),
@@ -327,6 +338,9 @@ fn default_batch_size() -> u32 {
 fn default_max_servers() -> usize {
     2
 }
+fn default_opportunistic_unload_cooldown_secs() -> u64 {
+    600
+}
 fn default_startup_timeout() -> u64 {
     120
 }
@@ -358,6 +372,9 @@ fn default_ocr_timeout_secs() -> u64 {
 }
 fn default_audio_embedding_provider() -> String {
     "audio-embedding-provider".to_string()
+}
+fn default_audio_embedding_max_loaded_models() -> usize {
+    1
 }
 fn default_audio_embedding_max_file_mb() -> u64 {
     100
@@ -402,6 +419,14 @@ impl Config {
             .set_default(
                 "engines.audio_embeddings.max_file_mb",
                 default_audio_embedding_max_file_mb() as i64,
+            )?
+            .set_default(
+                "engines.audio_embeddings.max_loaded_models",
+                default_audio_embedding_max_loaded_models() as i64,
+            )?
+            .set_default(
+                "engines.audio_embeddings.opportunistic_unload_cooldown_secs",
+                default_opportunistic_unload_cooldown_secs() as i64,
             )?
             .set_default(
                 "engines.audio_embeddings.startup_timeout_secs",
