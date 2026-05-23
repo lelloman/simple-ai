@@ -8,6 +8,7 @@ pub mod chat;
 pub mod ocr;
 pub mod protocol;
 pub mod responses;
+pub mod speech;
 
 pub use audio_embeddings::{
     AudioEmbeddingModelInfo, AudioEmbeddingNamespaceInfo, AudioEmbeddingOptions,
@@ -31,4 +32,8 @@ pub use responses::{
     ResponseContent, ResponseContentPart, ResponseCreateRequest, ResponseFunctionCall,
     ResponseInput, ResponseInputItem, ResponseInputMessage, ResponseObject, ResponseOutputContent,
     ResponseOutputItem, ResponseOutputMessage, ResponseTypedInputItem, ResponseUsage,
+};
+pub use speech::{
+    SpeechModelInfo, SpeechProviderInfo, SpeechRequest, SpeechResponseFormat, SpeechStreamFormat,
+    SpeechVoice,
 };

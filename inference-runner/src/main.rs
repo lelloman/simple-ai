@@ -18,7 +18,7 @@ mod ocr;
 mod state;
 
 use config::Config;
-use engine::{AudioEmbeddingEngine, EngineRegistry, LlamaCppEngine, OllamaEngine};
+use engine::{AudioEmbeddingEngine, EngineRegistry, LlamaCppEngine, OllamaEngine, TtsEngine};
 use gateway::{GatewayClient, StatusCollector};
 use ocr::{CliOcrProvider, OcrProvider};
 use state::AppState;
@@ -124,6 +124,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!(
                 "Registered audio embedding engine with {} models",
                 audio_config.models.len()
+            );
+        }
+    }
+
+    if let Some(ref tts_config) = config.engines.tts {
+        if tts_config.enabled {
+            let engine = Arc::new(TtsEngine::new(tts_config.clone()));
+            registry.register(engine).await;
+            tracing::info!(
+                "Registered TTS engine with {} models",
+                tts_config.models.len()
             );
         }
     }

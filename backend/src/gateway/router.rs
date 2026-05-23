@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use simple_ai_common::{
     AudioEmbeddingOptions, AudioEmbeddingResponse, Capability, ChatCompletionRequest, OcrOptions,
-    OcrResponse,
+    OcrResponse, SpeechRequest,
 };
 
 use super::batch_queue::BatchQueue;
@@ -426,6 +426,45 @@ impl InferenceRouter {
             }
         } else if let Some(cb) = &self.circuit_breaker {
             cb.record_success(&runner_id);
+        }
+
+        response.map(|response| RoutedResponse {
+            response,
+            runner_id,
+            resolved_model: selection.resolved_model,
+        })
+    }
+
+    /// Route a speech request and return the raw audio/SSE response.
+    pub async fn speech_raw(
+        &self,
+        model: &str,
+        request: &SpeechRequest,
+    ) -> Result<RoutedResponse<reqwest::Response>, RouterError> {
+        let selection = self.select_runner_for_model(model).await?;
+        let runner_id = selection.runner.id.clone();
+        let local_model = selection
+            .runner
+            .resolve_model_alias(&selection.resolved_model);
+
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+        if let Some(obj) = request_value.as_object_mut() {
+            obj.insert("model".to_string(), serde_json::Value::String(local_model));
+        }
+
+        self.registry.increment_requests(&runner_id).await;
+        let response = self
+            .proxy_request_raw_value(&selection.runner, "/v1/audio/speech", request_value)
+            .await;
+        self.registry.decrement_requests(&runner_id).await;
+
+        if let Some(cb) = &self.circuit_breaker {
+            if response.is_ok() {
+                cb.record_success(&runner_id);
+            } else {
+                cb.record_failure(&runner_id);
+            }
         }
 
         response.map(|response| RoutedResponse {

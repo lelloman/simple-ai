@@ -52,7 +52,7 @@ port = 9
 [models]
 # Model classification for routing and permissions.
 # Users with "model:specific" role can request exact models.
-# Users without it can only request classes, plus configured audio embedding models.
+# Users without it can only request classes, plus configured audio embedding and TTS models.
 # Models not in either list are not available for class-based requests.
 big = [
     "llama3:70b",
@@ -73,6 +73,9 @@ embed_large = [
 audio_embeddings = [
     "musicfm-msd",
     "ast-audioset",
+]
+tts = [
+    "tts-local",
 ]
 
 [routing]
@@ -97,7 +100,8 @@ speculative_wake_enabled = false
 fast = ["gpu-server", "halo"]   # Prefer gpu-server for fast models
 big = ["halo", "gpu-server"]    # Prefer halo for big models
 audio_embeddings = ["gpu-server"] # Prefer RTX/CUDA for audio embedding models
-ocr = ["gpu-server"]            # Prefer machines with OCR dependencies installed
+tts = ["gpu-server"]              # Prefer machines with TTS provider dependencies installed
+ocr = ["gpu-server"]              # Prefer machines with OCR dependencies installed
 
 # Speculative wake targets by model class.
 # When speculative_wake_enabled=true and no runners are available,
@@ -106,3 +110,4 @@ ocr = ["gpu-server"]            # Prefer machines with OCR dependencies installe
 fast = ["halo", "gpu-server"]   # Wake both; use whichever boots first
 big = ["halo"]                  # Only halos can run big models
 audio_embeddings = ["gpu-server"]
+tts = ["gpu-server"]

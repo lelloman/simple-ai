@@ -9,3 +9,4 @@ pub mod language;
 pub mod models;
 pub mod ocr;
 pub mod responses;
+pub mod speech;

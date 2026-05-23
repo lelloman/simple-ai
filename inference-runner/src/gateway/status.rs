@@ -225,6 +225,39 @@ impl StatusCollector {
             }
         }
 
+        if let Some(tts_config) = &self.config.engines.tts {
+            if tts_config.enabled && !tts_config.models.is_empty() {
+                let provider_info = simple_ai_common::SpeechProviderInfo {
+                    provider: tts_config.provider.clone(),
+                    provider_version: None,
+                    models: tts_config
+                        .models
+                        .iter()
+                        .map(|model| simple_ai_common::SpeechModelInfo {
+                            id: model.id.clone(),
+                            provider: model
+                                .provider
+                                .clone()
+                                .unwrap_or_else(|| tts_config.provider.clone()),
+                            provider_version: None,
+                            voices: model.voices.clone(),
+                            response_formats: model.response_formats.clone(),
+                            supports_sse: model.supports_sse,
+                        })
+                        .collect(),
+                    max_input_chars: tts_config.max_input_chars,
+                };
+                capabilities.push(CapabilityInfo {
+                    capability: Capability::Tts,
+                    status: CapabilityStatus::Loaded,
+                    model_id: tts_config.provider.clone(),
+                    active_requests: 0,
+                    avg_latency_ms: None,
+                    metadata: serde_json::to_value(provider_info).ok(),
+                });
+            }
+        }
+
         capabilities
     }
 

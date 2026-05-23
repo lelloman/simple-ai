@@ -364,6 +364,7 @@ docker run \
 | `/health` | GET | No | Health check |
 | `/metrics` | GET | No | Prometheus metrics |
 | `/v1/chat/completions` | POST | Yes | OpenAI-compatible chat |
+| `/v1/audio/speech` | POST | Yes | OpenAI-compatible text-to-speech |
 | `/v1/detect-language` | POST | Yes | Language detection |
 | `/ws/runners` | WebSocket | Token | Runner registration |
 | `/admin/runners` | GET | Yes | List connected runners |
@@ -374,6 +375,7 @@ docker run \
 |----------|--------|-------------|
 | `/health` | GET | Runner health |
 | `/v1/chat/completions` | POST | Chat completion |
+| `/v1/audio/speech` | POST | Text-to-speech |
 
 ---
 

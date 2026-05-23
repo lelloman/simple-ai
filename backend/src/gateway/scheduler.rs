@@ -13,7 +13,7 @@ use super::{
     RunnerEvent, RunnerRegistry,
 };
 use crate::routes::embeddings::{EmbeddingRequest, EmbeddingResponse};
-use simple_ai_common::AudioEmbeddingResponse;
+use simple_ai_common::{AudioEmbeddingResponse, SpeechRequest};
 
 #[derive(Debug)]
 pub struct ScheduledResponse<T> {
@@ -153,6 +153,25 @@ impl RequestScheduler {
             .inference_router
             .audio_embedding_multipart(model, file_name, file_bytes, options_json)
             .await?;
+        Ok(ScheduledResponse {
+            response: routed.response,
+            runner_id: routed.runner_id,
+            resolved_model: routed.resolved_model,
+            wol_sent,
+        })
+    }
+
+    pub async fn speech(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        request: &SpeechRequest,
+    ) -> Result<ScheduledResponse<reqwest::Response>, SchedulerError> {
+        let wol_sent = self
+            .prepare_for_request(request_id, model, model_request)
+            .await?;
+        let routed = self.inference_router.speech_raw(model, request).await?;
         Ok(ScheduledResponse {
             response: routed.response,
             runner_id: routed.runner_id,

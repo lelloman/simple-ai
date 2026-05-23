@@ -117,6 +117,30 @@ base_url = "http://localhost:11434"
 # dtype = "float32"
 # description = "Compact AST-derived instrument axes"
 
+# Text-to-speech engine. Disabled by default. Models are loaded on demand,
+# like LLM and audio embedding models: when the gateway sends LoadModel, the
+# runner starts the configured provider command with --model <id> --port <port>,
+# then proxies /v1/audio/speech to that local provider. The provider should
+# return raw audio bytes or text/event-stream for stream_format = "sse".
+#
+# [engines.tts]
+# enabled = true
+# provider = "local-tts"
+# command = ["python3", "/opt/simple-ai/tts_provider.py"]
+# max_input_chars = 4096
+# max_loaded_models = 1
+# opportunistic_unload_cooldown_secs = 600
+# startup_timeout_secs = 120
+# shutdown_timeout_secs = 10
+#
+# [[engines.tts.models]]
+# id = "tts-local"
+# name = "Local TTS"
+# size_bytes = 512000000
+# voices = ["alloy", "nova"]
+# response_formats = ["mp3", "wav", "pcm"]
+# supports_sse = false
+
 [capabilities.persistence]
 always_loaded = []
 idle_timeout_secs = 300

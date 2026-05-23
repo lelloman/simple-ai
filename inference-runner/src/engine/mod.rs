@@ -7,11 +7,13 @@ mod audio_embeddings;
 mod llama_cpp;
 mod ollama;
 mod registry;
+mod tts;
 
 pub use audio_embeddings::AudioEmbeddingEngine;
 pub use llama_cpp::LlamaCppEngine;
 pub use ollama::OllamaEngine;
 pub use registry::EngineRegistry;
+pub use tts::TtsEngine;
 
 use async_trait::async_trait;
 use axum::body::Bytes;
@@ -19,6 +21,7 @@ use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
     AudioEmbeddingOptions, AudioEmbeddingResponse, ChatCompletionRequest, ChatCompletionResponse,
+    SpeechRequest,
 };
 use std::pin::Pin;
 
@@ -131,6 +134,14 @@ pub trait InferenceEngine: Send + Sync {
     ) -> Result<AudioEmbeddingResponse> {
         Err(crate::error::Error::NotSupported(format!(
             "Audio embeddings not supported by {} engine",
+            self.engine_type()
+        )))
+    }
+
+    /// Generate speech audio for the given input text.
+    async fn speech(&self, _model_id: &str, _request: &SpeechRequest) -> Result<reqwest::Response> {
+        Err(crate::error::Error::NotSupported(format!(
+            "TTS not supported by {} engine",
             self.engine_type()
         )))
     }

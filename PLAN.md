@@ -90,7 +90,8 @@
 - [ ] Privacy dashboard
   - Show users what data is processed locally vs cloud
 - [ ] Voice input/output integration (TTS)
-  - Add text-to-speech for voice command responses
+  - Backend/runner OpenAI-compatible text-to-speech provider routing added
+  - Android voice command response integration remains
 - [ ] Multi-language NLU support
   - Support languages beyond English
 

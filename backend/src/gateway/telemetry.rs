@@ -254,6 +254,8 @@ fn compute_protected_classes(
         ModelClass::Big,
         ModelClass::EmbedSmall,
         ModelClass::EmbedLarge,
+        ModelClass::AudioEmbeddings,
+        ModelClass::Tts,
     ] {
         let has_class = models
             .iter()

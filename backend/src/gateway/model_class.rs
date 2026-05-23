@@ -22,6 +22,8 @@ pub enum ModelClass {
     EmbedLarge,
     /// Audio embedding/label models exposed through `/v1/audio/embeddings`
     AudioEmbeddings,
+    /// Text-to-speech models exposed through `/v1/audio/speech`
+    Tts,
 }
 
 impl ModelClass {
@@ -33,6 +35,7 @@ impl ModelClass {
             "embed_small" => Some(Self::EmbedSmall),
             "embed_large" => Some(Self::EmbedLarge),
             "audio_embeddings" => Some(Self::AudioEmbeddings),
+            "tts" => Some(Self::Tts),
             _ => None,
         }
     }
@@ -45,6 +48,7 @@ impl ModelClass {
             Self::EmbedSmall => "embed_small",
             Self::EmbedLarge => "embed_large",
             Self::AudioEmbeddings => "audio_embeddings",
+            Self::Tts => "tts",
         }
     }
 }
@@ -65,6 +69,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
         Some("embed_small") => Some(ModelClass::EmbedSmall),
         Some("embed_large") => Some(ModelClass::EmbedLarge),
         Some("audio_embeddings") => Some(ModelClass::AudioEmbeddings),
+        Some("tts") => Some(ModelClass::Tts),
         _ => None,
     }
 }
@@ -207,6 +212,7 @@ mod tests {
             ModelClass::from_str("audio_embeddings"),
             Some(ModelClass::AudioEmbeddings)
         );
+        assert_eq!(ModelClass::from_str("tts"), Some(ModelClass::Tts));
         assert_eq!(ModelClass::from_str("unknown"), None);
     }
 
@@ -215,6 +221,7 @@ mod tests {
         assert_eq!(ModelClass::Big.as_str(), "big");
         assert_eq!(ModelClass::Fast.as_str(), "fast");
         assert_eq!(ModelClass::AudioEmbeddings.as_str(), "audio_embeddings");
+        assert_eq!(ModelClass::Tts.as_str(), "tts");
     }
 
     #[test]
@@ -230,6 +237,10 @@ mod tests {
         assert_eq!(
             ModelRequest::parse("class:audio_embeddings"),
             ModelRequest::Class(ModelClass::AudioEmbeddings)
+        );
+        assert_eq!(
+            ModelRequest::parse("class:tts"),
+            ModelRequest::Class(ModelClass::Tts)
         );
     }
 
@@ -257,6 +268,7 @@ mod tests {
             big: vec!["llama3:70b".to_string()],
             fast: vec!["llama3:8b".to_string()],
             audio_embeddings: vec!["musicfm-msd".to_string()],
+            tts: vec!["tts-local".to_string()],
             ..Default::default()
         };
 
@@ -282,6 +294,10 @@ mod tests {
         assert_eq!(
             ModelRequest::Specific("musicfm-msd".to_string()).effective_class(&config),
             Some(ModelClass::AudioEmbeddings)
+        );
+        assert_eq!(
+            ModelRequest::Specific("tts-local".to_string()).effective_class(&config),
+            Some(ModelClass::Tts)
         );
 
         // Unknown models return None
@@ -350,5 +366,6 @@ mod tests {
             format!("{}", ModelClass::AudioEmbeddings),
             "audio_embeddings"
         );
+        assert_eq!(format!("{}", ModelClass::Tts), "tts");
     }
 }

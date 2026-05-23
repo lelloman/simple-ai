@@ -272,6 +272,16 @@ async fn test_embeddings_requires_auth() {
 }
 
 #[tokio::test]
+async fn test_speech_requires_auth() {
+    let state = create_test_state().await.unwrap();
+    let app = axum::Router::new().nest("/v1", routes::speech::router(state));
+
+    let body = Bytes::from(r#"{"model":"tts-local","input":"hello","voice":"alloy"}"#);
+    let status = send_request(&app, http::Method::POST, "/v1/audio/speech", Some(body)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn test_audio_embeddings_requires_auth() {
     let state = create_test_state().await.unwrap();
     let app = axum::Router::new().nest("/v1", routes::audio_embeddings::router(state));

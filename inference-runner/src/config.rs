@@ -2,7 +2,9 @@
 
 use config::{Config as ConfigLoader, ConfigError, Environment, File};
 use serde::Deserialize;
-use simple_ai_common::{AudioEmbeddingNamespaceInfo, Capability, OcrFeature, OcrMode};
+use simple_ai_common::{
+    AudioEmbeddingNamespaceInfo, Capability, OcrFeature, OcrMode, SpeechResponseFormat,
+};
 use std::collections::HashMap;
 
 /// Model alias configuration for mapping canonical names to local engine names.
@@ -88,6 +90,8 @@ pub struct EnginesConfig {
     pub llama_cpp: Option<LlamaCppEngineConfig>,
     /// Process-backed audio embedding engine configuration.
     pub audio_embeddings: Option<AudioEmbeddingEngineConfig>,
+    /// Process-backed text-to-speech engine configuration.
+    pub tts: Option<TtsEngineConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -218,6 +222,74 @@ impl Default for AudioEmbeddingEngineConfig {
             max_file_mb: default_audio_embedding_max_file_mb(),
             startup_timeout_secs: default_audio_embedding_startup_timeout_secs(),
             shutdown_timeout_secs: default_audio_embedding_shutdown_timeout_secs(),
+        }
+    }
+}
+
+/// Process-backed text-to-speech engine configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TtsEngineConfig {
+    /// Whether the TTS engine is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider family advertised by this engine.
+    #[serde(default = "default_tts_provider")]
+    pub provider: String,
+    /// Command to start a provider process. The runner appends --model and --port.
+    #[serde(default)]
+    pub command: Vec<String>,
+    /// Loadable TTS models.
+    #[serde(default)]
+    pub models: Vec<TtsModelConfig>,
+    /// Maximum number of TTS providers to keep loaded at once.
+    #[serde(default = "default_tts_max_loaded_models")]
+    pub max_loaded_models: usize,
+    /// Idle time before a loaded provider becomes eligible for opportunistic eviction.
+    #[serde(default = "default_opportunistic_unload_cooldown_secs")]
+    pub opportunistic_unload_cooldown_secs: u64,
+    /// Maximum input text size in characters.
+    #[serde(default = "default_tts_max_input_chars")]
+    pub max_input_chars: usize,
+    /// Provider startup timeout.
+    #[serde(default = "default_tts_startup_timeout_secs")]
+    pub startup_timeout_secs: u64,
+    /// Provider shutdown timeout.
+    #[serde(default = "default_tts_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TtsModelConfig {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    /// Supported provider voice ids. Empty means provider default/unchecked.
+    #[serde(default)]
+    pub voices: Vec<String>,
+    /// Supported response formats. Empty means all standard formats are allowed.
+    #[serde(default)]
+    pub response_formats: Vec<SpeechResponseFormat>,
+    /// Whether this model/provider supports stream_format="sse".
+    #[serde(default)]
+    pub supports_sse: bool,
+}
+
+impl Default for TtsEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_tts_provider(),
+            command: Vec::new(),
+            models: Vec::new(),
+            max_loaded_models: default_tts_max_loaded_models(),
+            opportunistic_unload_cooldown_secs: default_opportunistic_unload_cooldown_secs(),
+            max_input_chars: default_tts_max_input_chars(),
+            startup_timeout_secs: default_tts_startup_timeout_secs(),
+            shutdown_timeout_secs: default_tts_shutdown_timeout_secs(),
         }
     }
 }
@@ -385,6 +457,21 @@ fn default_audio_embedding_startup_timeout_secs() -> u64 {
 fn default_audio_embedding_shutdown_timeout_secs() -> u64 {
     10
 }
+fn default_tts_provider() -> String {
+    "tts-provider".to_string()
+}
+fn default_tts_max_loaded_models() -> usize {
+    1
+}
+fn default_tts_max_input_chars() -> usize {
+    4096
+}
+fn default_tts_startup_timeout_secs() -> u64 {
+    120
+}
+fn default_tts_shutdown_timeout_secs() -> u64 {
+    10
+}
 
 impl Config {
     /// Load configuration from file and environment variables.
@@ -435,6 +522,28 @@ impl Config {
             .set_default(
                 "engines.audio_embeddings.shutdown_timeout_secs",
                 default_audio_embedding_shutdown_timeout_secs() as i64,
+            )?
+            .set_default("engines.tts.enabled", false)?
+            .set_default("engines.tts.provider", default_tts_provider())?
+            .set_default(
+                "engines.tts.max_loaded_models",
+                default_tts_max_loaded_models() as i64,
+            )?
+            .set_default(
+                "engines.tts.opportunistic_unload_cooldown_secs",
+                default_opportunistic_unload_cooldown_secs() as i64,
+            )?
+            .set_default(
+                "engines.tts.max_input_chars",
+                default_tts_max_input_chars() as i64,
+            )?
+            .set_default(
+                "engines.tts.startup_timeout_secs",
+                default_tts_startup_timeout_secs() as i64,
+            )?
+            .set_default(
+                "engines.tts.shutdown_timeout_secs",
+                default_tts_shutdown_timeout_secs() as i64,
             )?
             // Load from config.toml if exists
             .add_source(File::with_name("config").required(false))
