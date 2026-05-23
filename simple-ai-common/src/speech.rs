@@ -74,6 +74,10 @@ pub struct SpeechRequest {
     pub voice: SpeechVoice,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
+    /// Optional provider-specific language code. XTTS-style providers use this
+    /// when the language cannot be inferred from the configured voice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_format: Option<SpeechResponseFormat>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -143,11 +147,12 @@ mod tests {
     #[test]
     fn test_speech_voice_object() {
         let request: SpeechRequest = serde_json::from_str(
-            r#"{"model":"tts-local","input":"hello","voice":{"id":"nova"},"response_format":"wav","stream_format":"sse"}"#,
+            r#"{"model":"tts-local","input":"hello","voice":{"id":"nova"},"language":"en","response_format":"wav","stream_format":"sse"}"#,
         )
         .unwrap();
 
         assert_eq!(request.voice.id(), "nova");
+        assert_eq!(request.language.as_deref(), Some("en"));
         assert_eq!(
             request.response_format_or_default(),
             SpeechResponseFormat::Wav

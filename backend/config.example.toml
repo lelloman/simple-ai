@@ -75,7 +75,7 @@ audio_embeddings = [
     "ast-audioset",
 ]
 tts = [
-    "tts-local",
+    "xtts-v2",
 ]
 
 [routing]

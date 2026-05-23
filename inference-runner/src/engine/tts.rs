@@ -433,6 +433,7 @@ mod tests {
             input: "hello".to_string(),
             voice: SpeechVoice::Id("alloy".to_string()),
             instructions: None,
+            language: None,
             response_format: Some(SpeechResponseFormat::Mp3),
             speed: Some(1.0),
             stream_format: None,

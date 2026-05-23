@@ -123,10 +123,18 @@ base_url = "http://localhost:11434"
 # then proxies /v1/audio/speech to that local provider. The provider should
 # return raw audio bytes or text/event-stream for stream_format = "sse".
 #
+# XTTS-v2 is licensed under the Coqui Public Model License for non-commercial use.
+# Use reference voices only when you have the rights and consent to clone them.
+#
 # [engines.tts]
 # enabled = true
-# provider = "local-tts"
-# command = ["python3", "/opt/simple-ai/tts_provider.py"]
+# provider = "coqui-xtts"
+# command = [
+#   "python3",
+#   "/opt/simple-ai/scripts/simple_ai_xtts_provider.py",
+#   "--voices-dir", "/opt/simple-ai/voices",
+#   "--default-language", "en",
+# ]
 # max_input_chars = 4096
 # max_loaded_models = 1
 # opportunistic_unload_cooldown_secs = 600
@@ -134,11 +142,11 @@ base_url = "http://localhost:11434"
 # shutdown_timeout_secs = 10
 #
 # [[engines.tts.models]]
-# id = "tts-local"
-# name = "Local TTS"
-# size_bytes = 512000000
-# voices = ["alloy", "nova"]
-# response_formats = ["mp3", "wav", "pcm"]
+# id = "xtts-v2"
+# name = "Coqui XTTS v2"
+# size_bytes = 1800000000
+# voices = ["default", "lello"] # maps to /opt/simple-ai/voices/default.wav and lello.wav
+# response_formats = ["wav", "mp3", "pcm"]
 # supports_sse = false
 
 [capabilities.persistence]
