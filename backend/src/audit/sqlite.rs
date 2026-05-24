@@ -106,6 +106,7 @@ impl AuditLogger {
             "CREATE TABLE IF NOT EXISTS api_keys (
                 id TEXT PRIMARY KEY,
                 key_hash TEXT NOT NULL UNIQUE,
+                plaintext_key TEXT,
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 created_at TEXT NOT NULL,
@@ -116,6 +117,9 @@ impl AuditLogger {
             [],
         )
         .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        // Migration: store retrievable API key secrets for keys created after this migration.
+        let _ = conn.execute("ALTER TABLE api_keys ADD COLUMN plaintext_key TEXT", []);
 
         // Create indexes
         conn.execute(
@@ -820,9 +824,9 @@ impl AuditLogger {
         let now = chrono::Utc::now().to_rfc3339();
 
         conn.execute(
-            "INSERT INTO api_keys (id, key_hash, user_id, name, created_at, revoked)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0)",
-            params![id, key_hash, user_id, name, now],
+            "INSERT INTO api_keys (id, key_hash, plaintext_key, user_id, name, created_at, revoked)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            params![id, key_hash, plaintext_key, user_id, name, now],
         )
         .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -844,6 +848,7 @@ impl AuditLogger {
             created_at: now,
             last_used_at: None,
             revoked: false,
+            secret_available: true,
         };
 
         Ok((api_key, plaintext_key))
@@ -904,7 +909,7 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
-            "SELECT ak.id, ak.key_hash, ak.user_id, u.email, ak.name, ak.created_at, ak.last_used_at, ak.revoked
+            "SELECT ak.id, ak.key_hash, ak.user_id, u.email, ak.name, ak.created_at, ak.last_used_at, ak.revoked, ak.plaintext_key IS NOT NULL
              FROM api_keys ak
              LEFT JOIN users u ON u.id = ak.user_id
              ORDER BY ak.created_at DESC"
@@ -921,6 +926,7 @@ impl AuditLogger {
                     created_at: row.get(5)?,
                     last_used_at: row.get(6)?,
                     revoked: row.get::<_, i32>(7)? != 0,
+                    secret_available: row.get::<_, i32>(8)? != 0,
                 })
             })
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
@@ -931,6 +937,24 @@ impl AuditLogger {
         }
 
         Ok(keys)
+    }
+
+    /// Get the stored plaintext secret for an active API key, if available.
+    pub fn get_api_key_secret(&self, key_id: &str) -> Result<Option<String>, AuditError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        match conn.query_row(
+            "SELECT plaintext_key FROM api_keys WHERE id = ?1 AND revoked = 0",
+            params![key_id],
+            |row| row.get(0),
+        ) {
+            Ok(secret) => Ok(secret),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AuditError::DatabaseError(e.to_string())),
+        }
     }
 
     /// Revoke an API key.
@@ -1013,6 +1037,7 @@ pub struct ApiKey {
     pub created_at: String,
     pub last_used_at: Option<String>,
     pub revoked: bool,
+    pub secret_available: bool,
 }
 
 /// Persistent runner record for WOL and offline tracking.
@@ -2035,11 +2060,26 @@ mod tests {
         assert_eq!(key.name, "Test Key");
         assert_eq!(key.user_email, Some("user@example.com".to_string()));
         assert!(!key.revoked);
+        assert!(key.secret_available);
         assert!(key.last_used_at.is_none());
 
         // Secret should be in sk-<hex> format
         assert!(secret.starts_with("sk-"));
         assert_eq!(secret.len(), 35); // "sk-" + 32 hex chars
+        assert_eq!(logger.get_api_key_secret(&key.id).unwrap(), Some(secret));
+    }
+
+    #[test]
+    fn test_get_api_key_secret_revoked() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+
+        let (key, _) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        assert!(logger.get_api_key_secret(&key.id).unwrap().is_some());
+
+        let revoked = logger.revoke_api_key(&key.id).unwrap();
+        assert!(revoked);
+        assert!(logger.get_api_key_secret(&key.id).unwrap().is_none());
     }
 
     #[test]
@@ -2186,10 +2226,12 @@ mod tests {
             created_at: "2024-01-01T00:00:00Z".to_string(),
             last_used_at: Some("2024-01-02T00:00:00Z".to_string()),
             revoked: false,
+            secret_available: true,
         };
         assert_eq!(key.id, "key-123");
         assert_eq!(key.name, "Test Key");
         assert!(!key.revoked);
+        assert!(key.secret_available);
 
         // Verify key_hash is not serialized
         let json = serde_json::to_string(&key).unwrap();

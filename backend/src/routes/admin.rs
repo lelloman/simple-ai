@@ -609,11 +609,16 @@ struct CreateApiKeyRequest {
     name: String,
 }
 
-/// Response for creating an API key (includes the plaintext key, shown only once).
+/// Response for creating an API key.
 #[derive(Serialize)]
 struct CreateApiKeyResponse {
     key: ApiKey,
-    /// The plaintext API key - only shown once!
+    secret: String,
+}
+
+/// Response for retrieving a stored API key secret.
+#[derive(Serialize)]
+struct ApiKeySecretResponse {
     secret: String,
 }
 
@@ -634,6 +639,24 @@ async fn api_keys_create(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(CreateApiKeyResponse { key, secret }))
+}
+
+/// GET /admin/api/keys/:id/secret - Return a stored API key secret.
+async fn api_key_secret(
+    State(state): State<Arc<AppState>>,
+    Path(key_id): Path<String>,
+) -> Result<Json<ApiKeySecretResponse>, (StatusCode, String)> {
+    match state
+        .audit_logger
+        .get_api_key_secret(&key_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    {
+        Some(secret) => Ok(Json(ApiKeySecretResponse { secret })),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            "API key secret is unavailable".to_string(),
+        )),
+    }
 }
 
 /// DELETE /admin/api/keys/:id - Revoke an API key
@@ -1310,6 +1333,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/requests", get(api_requests_list))
         .route("/api/model-speeds", get(api_model_speeds))
         .route("/api/keys", get(api_keys_list).post(api_keys_create))
+        .route("/api/keys/:id/secret", get(api_key_secret))
         .route("/api/keys/:id", axum::routing::delete(api_keys_revoke))
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);
