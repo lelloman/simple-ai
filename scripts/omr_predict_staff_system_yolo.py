@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -28,6 +29,16 @@ CLASS_COLORS = {
     "system": (217, 95, 14),
     "grand_staff": (27, 158, 119),
 }
+
+REGION_COLOR = (31, 120, 180)
+
+
+@dataclass(frozen=True)
+class OwnershipRegion:
+    index: int
+    grand_staff_bbox: list[float]
+    region_bbox: list[float]
+    confidence: float
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +61,24 @@ def parse_args() -> argparse.Namespace:
             "Comma-separated class names to draw. Overrides --show-staves. "
             "Default: system only, or system,staff when --show-staves is set."
         ),
+    )
+    parser.add_argument(
+        "--show-grand-staff-regions",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Draw derived ownership regions around detected grand_staff boxes.",
+    )
+    parser.add_argument(
+        "--region-x-margin-ratio",
+        type=float,
+        default=0.02,
+        help="Horizontal page-width margin added to derived ownership regions.",
+    )
+    parser.add_argument(
+        "--region-y-margin-ratio",
+        type=float,
+        default=0.01,
+        help="Vertical page-height margin added to the inferred page music area.",
     )
     parser.add_argument("--annotated-pdf", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
@@ -137,16 +166,91 @@ def extract_detections(result: Any) -> list[dict[str, Any]]:
     return detections
 
 
+def compute_grand_staff_ownership_regions(
+    detections: list[dict[str, Any]],
+    page_width: int,
+    page_height: int,
+    x_margin_ratio: float = 0.02,
+    y_margin_ratio: float = 0.01,
+) -> list[OwnershipRegion]:
+    grand_staves = [
+        detection
+        for detection in detections
+        if detection["class_name"] == "grand_staff"
+    ]
+    grand_staves.sort(
+        key=lambda item: (
+            (item["bbox"][1] + item["bbox"][3]) / 2.0,
+            item["bbox"][0],
+        )
+    )
+    if not grand_staves:
+        return []
+
+    music_boxes = [
+        detection["bbox"]
+        for detection in detections
+        if detection["class_name"]
+        in {"system_measure", "staff_measure", "staff", "system", "grand_staff"}
+    ]
+    if not music_boxes:
+        music_boxes = [detection["bbox"] for detection in grand_staves]
+
+    x_margin = page_width * x_margin_ratio
+    y_margin = page_height * y_margin_ratio
+    music_left = max(0.0, min(box[0] for box in music_boxes) - x_margin)
+    music_right = min(float(page_width), max(box[2] for box in music_boxes) + x_margin)
+    music_top = max(0.0, min(box[1] for box in music_boxes) - y_margin)
+    music_bottom = min(float(page_height), max(box[3] for box in music_boxes) + y_margin)
+
+    regions: list[OwnershipRegion] = []
+    for index, detection in enumerate(grand_staves):
+        box = detection["bbox"]
+        if index == 0:
+            top = music_top
+        else:
+            previous = grand_staves[index - 1]["bbox"]
+            top = (previous[3] + box[1]) / 2.0
+
+        if index == len(grand_staves) - 1:
+            bottom = music_bottom
+        else:
+            next_box = grand_staves[index + 1]["bbox"]
+            bottom = (box[3] + next_box[1]) / 2.0
+
+        top = max(music_top, min(top, music_bottom))
+        bottom = max(top, min(bottom, music_bottom))
+        regions.append(
+            OwnershipRegion(
+                index=index + 1,
+                grand_staff_bbox=[float(value) for value in box],
+                region_bbox=[music_left, top, music_right, bottom],
+                confidence=float(detection["confidence"]),
+            )
+        )
+    return regions
+
+
 def annotate_page(
     image_path: Path,
     output_path: Path,
     detections: list[dict[str, Any]],
     show_classes: set[str],
+    ownership_regions: list[OwnershipRegion] | None = None,
 ) -> None:
     Image, ImageDraw, ImageFont = omr_io.require_pillow()
     image = Image.open(image_path).convert("RGB")
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default()
+
+    if ownership_regions:
+        for region in ownership_regions:
+            left, top, right, bottom = region.region_bbox
+            draw.rectangle((left, top, right, bottom), outline=REGION_COLOR, width=5)
+            label = f"grand_staff_region {region.index}"
+            text_bbox = draw.textbbox((left, top), label, font=font)
+            draw.rectangle(text_bbox, fill=REGION_COLOR)
+            draw.text((left, top), label, fill=(255, 255, 255), font=font)
 
     system_index = 0
     for detection in sorted(detections, key=lambda item: (item["bbox"][1], item["bbox"][0])):
@@ -197,6 +301,8 @@ def main() -> int:
         raise SystemExit("No supported input files found.")
     if not args.weights.exists():
         raise SystemExit(f"Missing weights: {args.weights}")
+    if args.region_x_margin_ratio < 0 or args.region_y_margin_ratio < 0:
+        raise SystemExit("--region-x-margin-ratio and --region-y-margin-ratio must be non-negative")
     show_classes = parse_show_classes(args.show_classes, args.show_staves)
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -219,6 +325,13 @@ def main() -> int:
                 verbose=False,
             )[0]
             detections = extract_detections(result)
+            grand_staff_regions = compute_grand_staff_ownership_regions(
+                detections,
+                width,
+                height,
+                args.region_x_margin_ratio,
+                args.region_y_margin_ratio,
+            )
             rows.append(
                 {
                     "source": str(page.source),
@@ -227,11 +340,26 @@ def main() -> int:
                     "height": height,
                     "latency_ms": (time.perf_counter() - start) * 1000.0,
                     "detections": detections,
+                    "grand_staff_regions": [
+                        {
+                            "index": region.index,
+                            "bbox": region.region_bbox,
+                            "grand_staff_bbox": region.grand_staff_bbox,
+                            "confidence": region.confidence,
+                        }
+                        for region in grand_staff_regions
+                    ],
                 }
             )
             image_name = f"{omr_io.safe_stem(page.source)}-p{page.page_index + 1:04d}.jpg"
             output_path = args.out / "annotated" / image_name
-            annotate_page(page.image_path, output_path, detections, show_classes)
+            annotate_page(
+                page.image_path,
+                output_path,
+                detections,
+                show_classes,
+                grand_staff_regions if args.show_grand_staff_regions else None,
+            )
             annotated.append(output_path)
 
     (args.out / "detections.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")

@@ -4,17 +4,29 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 
-DEFAULT_DATA = Path("/tmp/simple-ai-omr-training/datasets/staff-system-yolo/data.yaml")
-DEFAULT_PROJECT = Path("/tmp/simple-ai-omr-training/runs")
+DEFAULT_ROOT = Path(
+    os.environ.get("SIMPLE_AI_OMR_ROOT", Path.home() / ".cache" / "simple-ai" / "omr")
+)
+DEFAULT_DATA = DEFAULT_ROOT / "datasets" / "staff-system-yolo" / "data.yaml"
+DEFAULT_PROJECT = DEFAULT_ROOT / "runs"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YOLO on staff+system OMR boxes.")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
-    parser.add_argument("--model", default="yolo11n.pt")
+    parser.add_argument(
+        "--model",
+        default="yolo11n.pt",
+        help=(
+            "YOLO model name or checkpoint. For small reviewed datasets, pass an "
+            "existing .pt checkpoint and keep --resume false to start a fresh "
+            "fine-tune from those weights."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--imgsz", type=int, default=1536)
     parser.add_argument("--batch", type=int, default=2)
