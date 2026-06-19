@@ -365,6 +365,7 @@ docker run \
 | `/metrics` | GET | No | Prometheus metrics |
 | `/v1/chat/completions` | POST | Yes | OpenAI-compatible chat |
 | `/v1/audio/speech` | POST | Yes | OpenAI-compatible text-to-speech |
+| `/v1/audio/voices` | GET | Yes | List available text-to-speech voices |
 | `/v1/detect-language` | POST | Yes | Language detection |
 | `/ws/runners` | WebSocket | Token | Runner registration |
 | `/admin/runners` | GET | Yes | List connected runners |

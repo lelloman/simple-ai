@@ -1,15 +1,20 @@
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
 use axum::body::Body;
-use axum::extract::{ConnectInfo, State};
+use axum::extract::{ConnectInfo, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::Response as AxumResponse;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::stream;
-use simple_ai_common::{SpeechRequest, SpeechStreamFormat};
+use serde::{Deserialize, Serialize};
+use simple_ai_common::{
+    Capability, RunnerStatus, SpeechProviderInfo, SpeechRequest, SpeechResponseFormat,
+    SpeechStreamFormat,
+};
 
 use super::auth_helpers::{authenticate_request, extract_client_ip};
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
@@ -19,6 +24,7 @@ use crate::{AppState, RequestEvent};
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/audio/speech", post(create_speech))
+        .route("/audio/voices", get(list_voices))
         .with_state(state)
 }
 
@@ -30,6 +36,123 @@ fn can_request_tts_model(
 ) -> bool {
     can_request_model(roles, model_request)
         || classify_model(model, models_config) == Some(ModelClass::Tts)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct VoicesQuery {
+    #[serde(default)]
+    model: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct VoiceObject {
+    pub id: String,
+    pub object: String,
+    pub model: String,
+    pub provider: String,
+    pub runners: Vec<String>,
+    pub response_formats: Vec<SpeechResponseFormat>,
+    pub supports_sse: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct VoicesResponse {
+    pub object: String,
+    pub data: Vec<VoiceObject>,
+}
+
+fn collect_voice_objects<'a, I>(
+    statuses: I,
+    model_filter: Option<&str>,
+    roles: &[String],
+    models_config: &crate::config::ModelsConfig,
+) -> Vec<VoiceObject>
+where
+    I: IntoIterator<Item = (&'a str, &'a RunnerStatus)>,
+{
+    let mut voices: BTreeMap<(String, String, String), VoiceObject> = BTreeMap::new();
+
+    for (runner_id, status) in statuses {
+        if !status.health.is_operational() {
+            continue;
+        }
+
+        for capability in &status.capabilities {
+            if capability.capability != Capability::Tts {
+                continue;
+            }
+            let Some(metadata) = &capability.metadata else {
+                continue;
+            };
+            let Ok(provider_info) = serde_json::from_value::<SpeechProviderInfo>(metadata.clone())
+            else {
+                continue;
+            };
+
+            for model in provider_info.models {
+                if model_filter.is_some_and(|filter| filter != model.id) {
+                    continue;
+                }
+                let model_request = ModelRequest::Specific(model.id.clone());
+                if !can_request_tts_model(roles, &model_request, &model.id, models_config) {
+                    continue;
+                }
+
+                let model_provider = if model.provider.is_empty() {
+                    provider_info.provider.clone()
+                } else {
+                    model.provider.clone()
+                };
+
+                for voice in model.voices {
+                    let key = (model.id.clone(), model_provider.clone(), voice.clone());
+                    let entry = voices.entry(key).or_insert_with(|| VoiceObject {
+                        id: voice,
+                        object: "voice".to_string(),
+                        model: model.id.clone(),
+                        provider: model_provider.clone(),
+                        runners: Vec::new(),
+                        response_formats: model.response_formats.clone(),
+                        supports_sse: model.supports_sse,
+                    });
+                    if !entry.runners.iter().any(|id| id == runner_id) {
+                        entry.runners.push(runner_id.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    voices.into_values().collect()
+}
+
+async fn list_voices(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<VoicesQuery>,
+) -> Result<Json<VoicesResponse>, (StatusCode, String)> {
+    let (auth_user, _user) = authenticate_request(&state, &headers).await?;
+    if !state.config.gateway.enabled {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "voice listing requires gateway mode and a TTS-capable runner".to_string(),
+        ));
+    }
+
+    let runners = state.runner_registry.all().await;
+    let data = collect_voice_objects(
+        runners
+            .iter()
+            .map(|runner| (runner.id.as_str(), &runner.status)),
+        query.model.as_deref(),
+        &auth_user.roles,
+        &state.config.models,
+    );
+
+    Ok(Json(VoicesResponse {
+        object: "list".to_string(),
+        data,
+    }))
 }
 
 fn response_body(response: reqwest::Response) -> Body {
@@ -185,6 +308,80 @@ async fn create_speech(
 mod tests {
     use super::*;
     use crate::config::ModelsConfig;
+
+    fn tts_status(model_id: &str, voices: Vec<&str>) -> simple_ai_common::RunnerStatus {
+        use simple_ai_common::{
+            CapabilityInfo, CapabilityStatus, RunnerHealth, SpeechModelInfo, SpeechProviderInfo,
+        };
+
+        simple_ai_common::RunnerStatus {
+            health: RunnerHealth::Healthy,
+            capabilities: vec![CapabilityInfo {
+                capability: Capability::Tts,
+                status: CapabilityStatus::Loaded,
+                model_id: "coqui-xtts".to_string(),
+                active_requests: 0,
+                avg_latency_ms: None,
+                metadata: Some(
+                    serde_json::to_value(SpeechProviderInfo {
+                        provider: "Coqui XTTS".to_string(),
+                        provider_version: None,
+                        models: vec![SpeechModelInfo {
+                            id: model_id.to_string(),
+                            provider: "Coqui XTTS".to_string(),
+                            provider_version: None,
+                            voices: voices.into_iter().map(str::to_string).collect(),
+                            response_formats: vec![SpeechResponseFormat::Wav],
+                            supports_sse: false,
+                        }],
+                        max_input_chars: 4096,
+                    })
+                    .unwrap(),
+                ),
+            }],
+            engines: vec![],
+            metrics: None,
+            model_aliases: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_collect_voice_objects_from_tts_metadata() {
+        let status = tts_status("xtts-v2", vec!["Ana Florence"]);
+        let config = ModelsConfig {
+            tts: vec!["xtts-v2".to_string()],
+            ..Default::default()
+        };
+
+        let voices = collect_voice_objects(vec![("runner-a", &status)], None, &[], &config);
+
+        assert_eq!(voices.len(), 1);
+        assert_eq!(voices[0].id, "Ana Florence");
+        assert_eq!(voices[0].model, "xtts-v2");
+        assert_eq!(voices[0].provider, "Coqui XTTS");
+        assert_eq!(voices[0].runners, vec!["runner-a"]);
+        assert_eq!(voices[0].response_formats, vec![SpeechResponseFormat::Wav]);
+    }
+
+    #[test]
+    fn test_collect_voice_objects_filters_model_and_permissions() {
+        let xtts_status = tts_status("xtts-v2", vec!["Ana Florence"]);
+        let other_status = tts_status("private-tts", vec!["private"]);
+        let config = ModelsConfig {
+            tts: vec!["xtts-v2".to_string()],
+            ..Default::default()
+        };
+
+        let voices = collect_voice_objects(
+            vec![("runner-a", &xtts_status), ("runner-b", &other_status)],
+            Some("xtts-v2"),
+            &[],
+            &config,
+        );
+
+        assert_eq!(voices.len(), 1);
+        assert_eq!(voices[0].id, "Ana Florence");
+    }
 
     #[test]
     fn test_api_key_style_roles_can_request_configured_tts_model() {

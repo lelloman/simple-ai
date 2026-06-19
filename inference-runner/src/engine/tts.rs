@@ -125,13 +125,17 @@ impl TtsEngine {
     }
 
     fn build_command(&self, model_id: &str, port: u16) -> Result<Command> {
-        if self.config.command.is_empty() {
+        let model = self
+            .model_config(model_id)
+            .ok_or_else(|| Error::ModelNotFound(model_id.to_string()))?;
+        let command_config = model.command.as_ref().unwrap_or(&self.config.command);
+        if command_config.is_empty() {
             return Err(Error::InvalidRequest(
-                "engines.tts.command is required".to_string(),
+                "engines.tts.command or engines.tts.models[].command is required".to_string(),
             ));
         }
-        let mut command = Command::new(&self.config.command[0]);
-        for arg in self.config.command.iter().skip(1) {
+        let mut command = Command::new(&command_config[0]);
+        for arg in command_config.iter().skip(1) {
             command.arg(arg);
         }
         command
@@ -235,6 +239,29 @@ impl TtsEngine {
             if !(0.25..=4.0).contains(&speed) {
                 return Err(Error::InvalidRequest(
                     "speed must be between 0.25 and 4.0".to_string(),
+                ));
+            }
+        }
+        for (name, value) in [
+            ("exaggeration", request.exaggeration),
+            ("cfg_weight", request.cfg_weight),
+            ("temperature", request.temperature),
+            ("top_p", request.top_p),
+            ("min_p", request.min_p),
+        ] {
+            if let Some(value) = value {
+                if !(0.0..=2.0).contains(&value) {
+                    return Err(Error::InvalidRequest(format!(
+                        "{} must be between 0.0 and 2.0",
+                        name
+                    )));
+                }
+            }
+        }
+        if let Some(repetition_penalty) = request.repetition_penalty {
+            if !(0.5..=5.0).contains(&repetition_penalty) {
+                return Err(Error::InvalidRequest(
+                    "repetition_penalty must be between 0.5 and 5.0".to_string(),
                 ));
             }
         }
@@ -414,6 +441,7 @@ mod tests {
                 id: "tts-local".to_string(),
                 name: Some("Local TTS".to_string()),
                 provider: None,
+                command: None,
                 size_bytes: Some(456),
                 voices: vec!["alloy".to_string(), "nova".to_string()],
                 response_formats: vec![SpeechResponseFormat::Mp3, SpeechResponseFormat::Wav],
@@ -436,6 +464,13 @@ mod tests {
             language: None,
             response_format: Some(SpeechResponseFormat::Mp3),
             speed: Some(1.0),
+            exaggeration: None,
+            cfg_weight: None,
+            temperature: None,
+            top_p: None,
+            min_p: None,
+            repetition_penalty: None,
+            seed: None,
             stream_format: None,
         }
     }

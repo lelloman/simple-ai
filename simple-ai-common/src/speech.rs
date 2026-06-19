@@ -82,6 +82,29 @@ pub struct SpeechRequest {
     pub response_format: Option<SpeechResponseFormat>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speed: Option<f32>,
+    // Provider-specific expressiveness control. Chatterbox uses this as its
+    // exaggeration/emotion strength knob.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exaggeration: Option<f32>,
+    // Provider-specific classifier-free-guidance weight for expressive TTS
+    // models such as Chatterbox.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cfg_weight: Option<f32>,
+    // Optional sampling temperature for providers that expose stochastic TTS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    // Optional nucleus sampling threshold for providers that support it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    // Optional minimum probability threshold for providers that support it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_p: Option<f32>,
+    // Optional repetition penalty for providers that support it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition_penalty: Option<f32>,
+    // Optional deterministic seed for providers that support seeded sampling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream_format: Option<SpeechStreamFormat>,
 }

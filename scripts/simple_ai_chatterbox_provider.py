@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
-"""SimpleAI Coqui XTTS-v2 provider.
+"""SimpleAI Chatterbox Multilingual provider.
 
-XTTS-v2 is licensed under the Coqui Public Model License and is limited to
-non-commercial use of the model and its outputs. Use reference voices only when
-you have the rights and consent to clone them.
+Chatterbox is MIT licensed and embeds Resemble AI's PerTh watermark in
+generated audio. Use reference voices only when you have the rights and consent
+to clone them.
 
 The Rust runner starts this process with:
   --model <model-id> --port <port>
 
-The process keeps XTTS loaded and exposes:
+The process keeps Chatterbox loaded and exposes:
   GET  /health
   POST /v1/audio/speech
 
 Voice configuration can be provided with --voice-map JSON. Accepted shapes:
   {
-    "lello": {"speaker_wav": "/voices/lello.wav", "language": "it"},
-    "ana": {"speaker": "Ana Florence", "language": "en"},
+    "lello": {"audio_prompt_path": "/voices/lello.wav", "language": "it"},
     "clone": "/voices/clone.wav"
   }
 
 If --voices-dir is set and a requested voice is not in the map, the provider
-looks for <voices-dir>/<voice>.wav and uses it as speaker_wav.
+looks for <voices-dir>/<voice>.wav and uses it as audio_prompt_path.
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -41,7 +41,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-DEFAULT_COQUI_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 SUPPORTED_FORMATS = {"wav", "mp3", "flac", "opus", "aac", "pcm"}
 CONTENT_TYPES = {
     "wav": "audio/wav",
@@ -57,8 +56,7 @@ LANGUAGE_RE = re.compile(r"\blanguage\s*[:=]\s*([a-z]{2}(?:-[a-z]{2})?)\b", re.I
 @dataclass(frozen=True)
 class VoiceConfig:
     id: str
-    speaker_wav: list[str] | None = None
-    speaker: str | None = None
+    audio_prompt_path: str | None = None
     language: str | None = None
 
 
@@ -93,28 +91,28 @@ def normalize_format(value: Any) -> str:
     return fmt
 
 
+def optional_float(value: Any, default: float) -> float:
+    if value is None:
+        return default
+    return float(value)
+
+
 def parse_voice_entry(voice_id: str, value: Any) -> VoiceConfig:
     if isinstance(value, str):
-        return VoiceConfig(id=voice_id, speaker_wav=[value])
+        return VoiceConfig(id=voice_id, audio_prompt_path=value)
     if not isinstance(value, dict):
         raise ValueError(f"voice map entry for {voice_id} must be a string or object")
 
-    speaker_wav = value.get("speaker_wav") or value.get("speakerWav")
-    if isinstance(speaker_wav, str):
-        speaker_wavs = [speaker_wav]
-    elif isinstance(speaker_wav, list):
-        speaker_wavs = [str(item) for item in speaker_wav]
-    elif speaker_wav is None:
-        speaker_wavs = None
-    else:
-        raise ValueError(f"speaker_wav for {voice_id} must be a string or array")
-
-    speaker = value.get("speaker") or value.get("speaker_idx") or value.get("speakerIdx")
+    audio_prompt_path = (
+        value.get("audio_prompt_path")
+        or value.get("audioPromptPath")
+        or value.get("speaker_wav")
+        or value.get("speakerWav")
+    )
     language = value.get("language")
     return VoiceConfig(
         id=voice_id,
-        speaker_wav=speaker_wavs,
-        speaker=str(speaker) if speaker is not None else None,
+        audio_prompt_path=str(audio_prompt_path) if audio_prompt_path is not None else None,
         language=str(language) if language is not None else None,
     )
 
@@ -143,17 +141,16 @@ def parse_instruction_language(instructions: Any) -> str | None:
     return match.group(1).lower() if match else None
 
 
-def ensure_path_exists(paths: list[str]) -> list[str]:
-    resolved = []
-    for raw in paths:
-        path = Path(raw).expanduser()
-        if not path.exists():
-            raise ValueError(f"speaker_wav does not exist: {path}")
-        resolved.append(str(path))
-    return resolved
+def ensure_path_exists(path: str | None) -> str | None:
+    if not path:
+        return None
+    resolved = Path(path).expanduser()
+    if not resolved.exists():
+        raise ValueError(f"audio_prompt_path does not exist: {resolved}")
+    return str(resolved)
 
 
-def convert_wav(wav_path: Path, response_format: str) -> tuple[bytes, str]:
+def convert_wav(wav_path: Path, response_format: str, sample_rate: int) -> tuple[bytes, str]:
     if response_format == "wav":
         return wav_path.read_bytes(), CONTENT_TYPES[response_format]
 
@@ -173,7 +170,7 @@ def convert_wav(wav_path: Path, response_format: str) -> tuple[bytes, str]:
             "-ac",
             "1",
             "-ar",
-            "24000",
+            str(sample_rate),
             "-f",
             "s16le",
             "pipe:1",
@@ -205,7 +202,7 @@ def convert_wav(wav_path: Path, response_format: str) -> tuple[bytes, str]:
         return Path(converted.name).read_bytes(), CONTENT_TYPES[response_format]
 
 
-class XttsProvider:
+class ChatterboxProvider:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.model_id = args.model
@@ -214,33 +211,37 @@ class XttsProvider:
         self.voice_map = load_voice_map(args.voice_map)
         self.voices_dir = Path(args.voices_dir).expanduser() if args.voices_dir else None
         self.lock = threading.Lock()
-        if args.agree_coqui_tos:
-            os.environ["COQUI_TOS_AGREED"] = "1"
 
         try:
-            from TTS.api import TTS
+            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         except Exception as exc:
             raise RuntimeError(
-                "Failed to import Coqui TTS. Install the maintained package, for example: "
-                "pip install coqui-tts soundfile"
+                "Failed to import Chatterbox. Install it with: pip install chatterbox-tts"
             ) from exc
 
-        self.tts = TTS(args.coqui_model_name).to(self.device)
+        import torch
+
+        self.tts = ChatterboxMultilingualTTS.from_pretrained(
+            device=torch.device(self.device),
+        )
+        self.supported_languages = sorted(ChatterboxMultilingualTTS.get_supported_languages().keys())
 
     def health(self) -> dict[str, Any]:
         return {
             "status": "ok",
-            "provider": "coqui-xtts",
+            "provider": "chatterbox-multilingual",
             "model": self.model_id,
-            "coquiModel": self.args.coqui_model_name,
             "device": self.device,
             "loadedAt": self.loaded_at,
+            "sampleRate": self.tts.sr,
             "voices": sorted(self.available_voices()),
+            "defaultVoice": self.args.default_voice,
             "defaultLanguage": self.args.default_language,
+            "supportedLanguages": self.supported_languages,
         }
 
     def available_voices(self) -> set[str]:
-        voices = set(self.voice_map)
+        voices = {self.args.default_voice, *self.voice_map}
         if self.voices_dir and self.voices_dir.exists():
             voices.update(path.stem for path in self.voices_dir.glob("*.wav"))
         return voices
@@ -251,17 +252,23 @@ class XttsProvider:
         if self.voices_dir:
             candidate = self.voices_dir / f"{voice_id}.wav"
             if candidate.exists():
-                return VoiceConfig(id=voice_id, speaker_wav=[str(candidate)])
-        # Let Coqui try built-in speaker ids when no local mapping exists.
-        return VoiceConfig(id=voice_id, speaker=voice_id)
+                return VoiceConfig(id=voice_id, audio_prompt_path=str(candidate))
+        if voice_id == self.args.default_voice:
+            return VoiceConfig(id=voice_id)
+        raise ValueError(f"voice {voice_id} is not configured")
 
     def language_for(self, request: dict[str, Any], voice: VoiceConfig) -> str:
-        return str(
+        language = str(
             request.get("language")
             or parse_instruction_language(request.get("instructions"))
             or voice.language
             or self.args.default_language
         ).lower()
+        if language not in self.supported_languages:
+            raise ValueError(
+                f"unsupported language {language}; supported languages: {', '.join(self.supported_languages)}"
+            )
+        return language
 
     def synthesize(self, request: dict[str, Any]) -> tuple[bytes, str]:
         if request.get("model") != self.model_id:
@@ -269,7 +276,7 @@ class XttsProvider:
                 f"request.model {request.get('model')} does not match loaded model {self.model_id}"
             )
         if request.get("stream_format", "audio") == "sse":
-            raise ValueError("stream_format=sse is not implemented by the XTTS provider")
+            raise ValueError("stream_format=sse is not implemented by the Chatterbox provider")
 
         text = str(request.get("input") or "").strip()
         if not text:
@@ -278,36 +285,51 @@ class XttsProvider:
         voice = self.voice_config(voice_id)
         language = self.language_for(request, voice)
         response_format = normalize_format(request.get("response_format"))
-        speed = float(request.get("speed") or 1.0)
+        seed = request.get("seed")
 
-        with tempfile.TemporaryDirectory(prefix="simple_ai_xtts_") as tmpdir:
+        if seed is not None:
+            import numpy as np
+            import torch
+
+            seed_int = int(seed)
+            random.seed(seed_int)
+            np.random.seed(seed_int % (2**32))
+            torch.manual_seed(seed_int)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed_int)
+
+        generate_kwargs = {
+            "text": text,
+            "language_id": language,
+            "audio_prompt_path": ensure_path_exists(voice.audio_prompt_path),
+            "exaggeration": optional_float(request.get("exaggeration"), self.args.exaggeration),
+            "cfg_weight": optional_float(request.get("cfg_weight"), self.args.cfg_weight),
+            "temperature": optional_float(request.get("temperature"), self.args.temperature),
+            "repetition_penalty": optional_float(
+                request.get("repetition_penalty"), self.args.repetition_penalty
+            ),
+            "min_p": optional_float(request.get("min_p"), self.args.min_p),
+            "top_p": optional_float(request.get("top_p"), self.args.top_p),
+        }
+
+        with tempfile.TemporaryDirectory(prefix="simple_ai_chatterbox_") as tmpdir:
             output = Path(tmpdir) / "speech.wav"
-            kwargs: dict[str, Any] = {
-                "text": text,
-                "file_path": str(output),
-                "language": language,
-                "split_sentences": True,
-            }
-            if voice.speaker_wav:
-                kwargs["speaker_wav"] = ensure_path_exists(voice.speaker_wav)
-            elif voice.speaker:
-                kwargs["speaker"] = voice.speaker
-
             with self.lock:
-                try:
-                    self.tts.tts_to_file(**kwargs, speed=speed)
-                except TypeError:
-                    # Older wrappers may not expose speed in tts_to_file even though XTTS
-                    # supports it at the model API layer.
-                    self.tts.tts_to_file(**kwargs)
+                wav = self.tts.generate(**generate_kwargs)
 
+            try:
+                import torchaudio as ta
+            except Exception as exc:
+                raise RuntimeError("torchaudio is required by the Chatterbox provider") from exc
+
+            ta.save(str(output), wav, self.tts.sr)
             if not output.exists() or output.stat().st_size == 0:
-                raise RuntimeError("XTTS did not produce audio")
-            return convert_wav(output, response_format)
+                raise RuntimeError("Chatterbox did not produce audio")
+            return convert_wav(output, response_format, self.tts.sr)
 
 
 class Handler(BaseHTTPRequestHandler):
-    provider: XttsProvider
+    provider: ChatterboxProvider
 
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("%s - %s\n" % (self.log_date_time_string(), fmt % args))
@@ -355,26 +377,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", required=True)
     parser.add_argument("--port", required=True, type=int)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--device", default=os.environ.get("SIMPLE_AI_XTTS_DEVICE", "auto"))
-    parser.add_argument("--coqui-model-name", default=os.environ.get("SIMPLE_AI_XTTS_MODEL", DEFAULT_COQUI_MODEL))
-    parser.add_argument("--voices-dir", default=os.environ.get("SIMPLE_AI_XTTS_VOICES_DIR"))
-    parser.add_argument("--voice-map", default=os.environ.get("SIMPLE_AI_XTTS_VOICE_MAP"))
-    parser.add_argument("--default-language", default=os.environ.get("SIMPLE_AI_XTTS_LANGUAGE", "en"))
+    parser.add_argument("--device", default=os.environ.get("SIMPLE_AI_CHATTERBOX_DEVICE", "auto"))
+    parser.add_argument("--t3-model", default=os.environ.get("SIMPLE_AI_CHATTERBOX_T3_MODEL", "v2"))
+    parser.add_argument("--voices-dir", default=os.environ.get("SIMPLE_AI_CHATTERBOX_VOICES_DIR"))
+    parser.add_argument("--voice-map", default=os.environ.get("SIMPLE_AI_CHATTERBOX_VOICE_MAP"))
+    parser.add_argument("--default-language", default=os.environ.get("SIMPLE_AI_CHATTERBOX_LANGUAGE", "en"))
+    parser.add_argument("--default-voice", default=os.environ.get("SIMPLE_AI_CHATTERBOX_DEFAULT_VOICE", "default"))
+    parser.add_argument("--exaggeration", type=float, default=float(os.environ.get("SIMPLE_AI_CHATTERBOX_EXAGGERATION", "0.5")))
+    parser.add_argument("--cfg-weight", type=float, default=float(os.environ.get("SIMPLE_AI_CHATTERBOX_CFG_WEIGHT", "0.5")))
+    parser.add_argument("--temperature", type=float, default=float(os.environ.get("SIMPLE_AI_CHATTERBOX_TEMPERATURE", "0.8")))
+    parser.add_argument("--top-p", type=float, default=float(os.environ.get("SIMPLE_AI_CHATTERBOX_TOP_P", "1.0")))
+    parser.add_argument("--min-p", type=float, default=float(os.environ.get("SIMPLE_AI_CHATTERBOX_MIN_P", "0.05")))
     parser.add_argument(
-        "--agree-coqui-tos",
-        action="store_true",
-        default=os.environ.get("COQUI_TOS_AGREED") == "1",
-        help="Confirm CPML/non-commercial terms for non-interactive XTTS startup.",
+        "--repetition-penalty",
+        type=float,
+        default=float(os.environ.get("SIMPLE_AI_CHATTERBOX_REPETITION_PENALTY", "2.0")),
     )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    Handler.provider = XttsProvider(args)
+    Handler.provider = ChatterboxProvider(args)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(
-        f"simple-ai-xtts-provider model={args.model} host={args.host} port={args.port} device={Handler.provider.device}",
+        f"simple-ai-chatterbox-provider model={args.model} host={args.host} port={args.port} device={Handler.provider.device}",
         flush=True,
     )
     server.serve_forever()

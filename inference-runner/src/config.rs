@@ -265,6 +265,10 @@ pub struct TtsModelConfig {
     pub name: Option<String>,
     #[serde(default)]
     pub provider: Option<String>,
+    // Optional provider command override for this model. When omitted,
+    // engines.tts.command is used.
+    #[serde(default)]
+    pub command: Option<Vec<String>>,
     #[serde(default)]
     pub size_bytes: Option<u64>,
     /// Supported provider voice ids. Empty means provider default/unchecked.
