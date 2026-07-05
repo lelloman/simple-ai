@@ -133,43 +133,59 @@ impl BatchDispatcher {
         cache.clear();
     }
 
-    /// Dispatch a batch of requests to a runner.
+    /// Dispatch a batch of queued requests.
     async fn dispatch_batch(&self, batch: RequestBatch) -> Result<(), RouterError> {
-        let model = &batch.model;
+        let model = batch.model;
+        let mut dispatches = Vec::with_capacity(batch.requests.len());
+        let mut first_error = None;
 
-        // Select a runner for this model
-        let runner = self.select_runner(model).await?;
-        let runner_id = runner.id.clone();
-
-        // Resolve model alias
-        let local_model = runner.resolve_model_alias(model);
-
-        // Track active requests
-        self.registry.increment_requests(&runner_id).await;
-
-        // Process each request in the batch
-        // Note: For true batching, we'd send all requests together.
-        // For now, we process them sequentially but benefit from the queue
-        // organizing requests and reducing contention.
         for queued in batch.requests {
-            let result = self
-                .send_request(&runner, &local_model, &queued.request)
-                .await;
-
-            let response = match result {
-                Ok(resp) => Ok(BatchedResponse {
-                    response: resp,
-                    runner_id: runner_id.clone(),
-                    resolved_model: model.clone(),
-                }),
-                Err(e) => Err(e),
+            let runner = match self.select_runner(&model).await {
+                Ok(runner) => runner,
+                Err(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err.to_string());
+                    }
+                    let _ = queued.response_tx.send(Err(err));
+                    continue;
+                }
             };
 
-            // Send response back to caller (ignore if receiver dropped)
-            let _ = queued.response_tx.send(response);
+            let runner_id = runner.id.clone();
+            let local_model = runner.resolve_model_alias(&model);
+            let resolved_model = model.clone();
+
+            // Reserve capacity before selecting the next queued request so a
+            // drained batch is distributed across runners instead of seeing the
+            // same active-request counts for every request in the batch.
+            self.registry.increment_requests(&runner_id).await;
+
+            dispatches.push(async move {
+                let result = self
+                    .send_request(&runner, &local_model, &queued.request)
+                    .await;
+
+                self.registry.decrement_requests(&runner_id).await;
+
+                let response = match result {
+                    Ok(resp) => Ok(BatchedResponse {
+                        response: resp,
+                        runner_id,
+                        resolved_model,
+                    }),
+                    Err(e) => Err(e),
+                };
+
+                // Send response back to caller (ignore if receiver dropped)
+                let _ = queued.response_tx.send(response);
+            });
         }
 
-        self.registry.decrement_requests(&runner_id).await;
+        futures_util::future::join_all(dispatches).await;
+
+        if let Some(error) = first_error {
+            return Err(RouterError::ConnectionFailed(error));
+        }
 
         Ok(())
     }
@@ -242,11 +258,144 @@ impl BatchDispatcher {
 mod tests {
     use super::*;
     use crate::gateway::batch_queue::BatchQueueConfig;
+    use axum::{extract::State, routing::post, Json, Router};
+    use simple_ai_common::{ChatMessage, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_dispatcher_creation() {
         let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
         let registry = Arc::new(RunnerRegistry::new());
         let _dispatcher = BatchDispatcher::new(queue, registry);
+    }
+
+    fn create_test_request() -> simple_ai_common::ChatCompletionRequest {
+        simple_ai_common::ChatCompletionRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: Some("Hello".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            model: None,
+            temperature: None,
+            max_tokens: None,
+            tools: None,
+            stream: None,
+        }
+    }
+
+    fn create_test_status(model: &str, batch_size: u32) -> RunnerStatus {
+        RunnerStatus {
+            health: RunnerHealth::Healthy,
+            capabilities: vec![],
+            engines: vec![EngineStatus {
+                engine_type: "test".to_string(),
+                is_healthy: true,
+                version: None,
+                loaded_models: vec![model.to_string()],
+                available_models: vec![ModelInfo {
+                    id: model.to_string(),
+                    name: model.to_string(),
+                    size_bytes: None,
+                    parameter_count: None,
+                    context_length: None,
+                    quantization: None,
+                    modified_at: None,
+                }],
+                error: None,
+                batch_size,
+            }],
+            metrics: None,
+            model_aliases: std::collections::HashMap::new(),
+        }
+    }
+
+    async fn chat_handler(
+        State(counter): State<Arc<AtomicUsize>>,
+        Json(_request): Json<serde_json::Value>,
+    ) -> Json<ChatCompletionResponse> {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Json(ChatCompletionResponse::new(
+            "model-a".to_string(),
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: Some("ok".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            Some("stop".to_string()),
+        ))
+    }
+
+    async fn start_test_runner(counter: Arc<AtomicUsize>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/v1/chat/completions", post(chat_handler))
+            .with_state(counter);
+
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{}", addr)
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_batch_distributes_across_runners() {
+        let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
+        let registry = Arc::new(RunnerRegistry::new());
+        let runner_1_count = Arc::new(AtomicUsize::new(0));
+        let runner_2_count = Arc::new(AtomicUsize::new(0));
+        let runner_1_url = start_test_runner(runner_1_count.clone()).await;
+        let runner_2_url = start_test_runner(runner_2_count.clone()).await;
+
+        let (tx1, _) = mpsc::channel(32);
+        let (tx2, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status("model-a", 4),
+                Some(runner_1_url),
+                tx1,
+                None,
+            )
+            .await;
+        registry
+            .register(
+                "runner-2".to_string(),
+                "Runner 2".to_string(),
+                None,
+                create_test_status("model-a", 4),
+                Some(runner_2_url),
+                tx2,
+                None,
+            )
+            .await;
+
+        let dispatcher = BatchDispatcher::new(queue.clone(), registry.clone());
+        let receivers: Vec<_> = futures_util::future::join_all(
+            (0..4).map(|_| queue.enqueue("model-a".to_string(), create_test_request())),
+        )
+        .await;
+
+        let batch = queue.take_batch("model-a", 4).await.unwrap();
+        dispatcher.dispatch_batch(batch).await.unwrap();
+
+        let mut handled_by = Vec::new();
+        for receiver in receivers {
+            handled_by.push(receiver.await.unwrap().unwrap().runner_id);
+        }
+
+        assert_eq!(runner_1_count.load(Ordering::SeqCst), 2);
+        assert_eq!(runner_2_count.load(Ordering::SeqCst), 2);
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
+        assert_eq!(registry.get_active_requests("runner-2").await, 0);
+        assert_eq!(handled_by.iter().filter(|id| *id == "runner-1").count(), 2);
+        assert_eq!(handled_by.iter().filter(|id| *id == "runner-2").count(), 2);
     }
 }
