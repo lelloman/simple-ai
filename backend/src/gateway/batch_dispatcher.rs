@@ -136,7 +136,6 @@ impl BatchDispatcher {
     /// Dispatch a batch of queued requests.
     async fn dispatch_batch(&self, batch: RequestBatch) -> Result<(), RouterError> {
         let model = batch.model;
-        let mut dispatches = Vec::with_capacity(batch.requests.len());
         let mut first_error = None;
 
         for queued in batch.requests {
@@ -160,12 +159,18 @@ impl BatchDispatcher {
             // same active-request counts for every request in the batch.
             self.registry.increment_requests(&runner_id).await;
 
-            dispatches.push(async move {
-                let result = self
-                    .send_request(&runner, &local_model, &queued.request)
-                    .await;
+            let registry = self.registry.clone();
+            let http_client = self.http_client.clone();
+            tokio::spawn(async move {
+                let result = Self::send_request_with_client(
+                    http_client,
+                    &runner,
+                    &local_model,
+                    &queued.request,
+                )
+                .await;
 
-                self.registry.decrement_requests(&runner_id).await;
+                registry.decrement_requests(&runner_id).await;
 
                 let response = match result {
                     Ok(resp) => Ok(BatchedResponse {
@@ -181,8 +186,6 @@ impl BatchDispatcher {
             });
         }
 
-        futures_util::future::join_all(dispatches).await;
-
         if let Some(error) = first_error {
             return Err(RouterError::ConnectionFailed(error));
         }
@@ -192,26 +195,34 @@ impl BatchDispatcher {
 
     /// Select a runner for the given model.
     async fn select_runner(&self, model: &str) -> Result<ConnectedRunner, RouterError> {
-        let runners = self.registry.with_model(model).await;
+        let mut runners = self.registry.with_model(model).await;
+        let compatible = self.registry.with_available_model(model).await;
 
-        if runners.is_empty() {
-            let compatible = self.registry.with_available_model(model).await;
-            if compatible.is_empty() {
-                return Err(RouterError::NoRunners);
+        for runner in compatible {
+            if !runners.iter().any(|loaded| loaded.id == runner.id) {
+                runners.push(runner);
             }
-            return Ok(compatible.into_iter().next().unwrap());
         }
 
-        // Select runner with fewest active requests
+        if runners.is_empty() {
+            return Err(RouterError::NoRunners);
+        }
+
+        // Select runner with fewest active requests, preferring already-loaded
+        // runners only when queue depth is otherwise tied.
         runners
             .into_iter()
-            .min_by_key(|r| r.active_requests.load(std::sync::atomic::Ordering::SeqCst))
+            .min_by_key(|r| {
+                (
+                    r.active_requests.load(std::sync::atomic::Ordering::SeqCst),
+                    !r.has_model_or_alias(model),
+                )
+            })
             .ok_or(RouterError::NoRunners)
     }
 
-    /// Send a single request to a runner.
-    async fn send_request(
-        &self,
+    async fn send_request_with_client(
+        http_client: reqwest::Client,
         runner: &ConnectedRunner,
         local_model: &str,
         request: &simple_ai_common::ChatCompletionRequest,
@@ -233,8 +244,7 @@ impl BatchDispatcher {
             );
         }
 
-        let response = self
-            .http_client
+        let response = http_client
             .post(&url)
             .json(&request_value)
             .send()
@@ -287,6 +297,10 @@ mod tests {
     }
 
     fn create_test_status(model: &str, batch_size: u32) -> RunnerStatus {
+        create_test_status_with_loaded(model, batch_size, true)
+    }
+
+    fn create_test_status_with_loaded(model: &str, batch_size: u32, loaded: bool) -> RunnerStatus {
         RunnerStatus {
             health: RunnerHealth::Healthy,
             capabilities: vec![],
@@ -294,7 +308,11 @@ mod tests {
                 engine_type: "test".to_string(),
                 is_healthy: true,
                 version: None,
-                loaded_models: vec![model.to_string()],
+                loaded_models: if loaded {
+                    vec![model.to_string()]
+                } else {
+                    vec![]
+                },
                 available_models: vec![ModelInfo {
                     id: model.to_string(),
                     name: model.to_string(),
@@ -317,6 +335,7 @@ mod tests {
         Json(_request): Json<serde_json::Value>,
     ) -> Json<ChatCompletionResponse> {
         counter.fetch_add(1, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         Json(ChatCompletionResponse::new(
             "model-a".to_string(),
             ChatMessage {
@@ -397,5 +416,63 @@ mod tests {
         assert_eq!(registry.get_active_requests("runner-2").await, 0);
         assert_eq!(handled_by.iter().filter(|id| *id == "runner-1").count(), 2);
         assert_eq!(handled_by.iter().filter(|id| *id == "runner-2").count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_single_request_batches_can_run_concurrently_on_compatible_runners() {
+        let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
+        let registry = Arc::new(RunnerRegistry::new());
+        let runner_1_count = Arc::new(AtomicUsize::new(0));
+        let runner_2_count = Arc::new(AtomicUsize::new(0));
+        let runner_1_url = start_test_runner(runner_1_count.clone()).await;
+        let runner_2_url = start_test_runner(runner_2_count.clone()).await;
+
+        let (tx1, _) = mpsc::channel(32);
+        let (tx2, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status_with_loaded("model-a", 1, true),
+                Some(runner_1_url),
+                tx1,
+                None,
+            )
+            .await;
+        registry
+            .register(
+                "runner-2".to_string(),
+                "Runner 2".to_string(),
+                None,
+                create_test_status_with_loaded("model-a", 1, false),
+                Some(runner_2_url),
+                tx2,
+                None,
+            )
+            .await;
+
+        let dispatcher = BatchDispatcher::new(queue.clone(), registry.clone());
+        let rx1 = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+        let rx2 = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+
+        let batch = queue.take_batch("model-a", 1).await.unwrap();
+        dispatcher.dispatch_batch(batch).await.unwrap();
+        let batch = queue.take_batch("model-a", 1).await.unwrap();
+        dispatcher.dispatch_batch(batch).await.unwrap();
+
+        let runner_1 = rx1.await.unwrap().unwrap().runner_id;
+        let runner_2 = rx2.await.unwrap().unwrap().runner_id;
+
+        assert_eq!(runner_1, "runner-1");
+        assert_eq!(runner_2, "runner-2");
+        assert_eq!(runner_1_count.load(Ordering::SeqCst), 1);
+        assert_eq!(runner_2_count.load(Ordering::SeqCst), 1);
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
+        assert_eq!(registry.get_active_requests("runner-2").await, 0);
     }
 }
