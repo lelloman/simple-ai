@@ -23,6 +23,12 @@ pub struct ScheduledResponse<T> {
     pub wol_sent: bool,
 }
 
+#[derive(Debug)]
+struct PreparedRequest {
+    plan: RoutePlan,
+    wol_sent: bool,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SchedulerError {
     #[error("{0}")]
@@ -67,7 +73,7 @@ impl RequestScheduler {
         request: &ChatCompletionRequest,
         use_batching: bool,
     ) -> Result<ScheduledResponse<ChatCompletionResponse>, SchedulerError> {
-        let wol_sent = self
+        let prepared = self
             .prepare_for_request(request_id, model, model_request)
             .await?;
         let routed = if use_batching {
@@ -78,7 +84,7 @@ impl RequestScheduler {
                     "Batch queue unavailable".to_string(),
                 ))?;
             self.inference_router
-                .chat_completion_batched(model, request, batch_queue)
+                .chat_completion_batched(&prepared.plan.resolved_model, request, batch_queue)
                 .await?
         } else {
             self.inference_router
@@ -89,7 +95,7 @@ impl RequestScheduler {
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
-            wol_sent,
+            wol_sent: prepared.wol_sent,
         })
     }
 
@@ -100,7 +106,7 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         request: &ChatCompletionRequest,
     ) -> Result<ScheduledResponse<reqwest::Response>, SchedulerError> {
-        let wol_sent = self
+        let prepared = self
             .prepare_for_request(request_id, model, model_request)
             .await?;
         let routed = self
@@ -111,7 +117,7 @@ impl RequestScheduler {
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
-            wol_sent,
+            wol_sent: prepared.wol_sent,
         })
     }
 
@@ -122,7 +128,7 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         request: &EmbeddingRequest,
     ) -> Result<ScheduledResponse<EmbeddingResponse>, SchedulerError> {
-        let wol_sent = self
+        let prepared = self
             .prepare_for_request(request_id, model, model_request)
             .await?;
         let routed = self
@@ -133,7 +139,7 @@ impl RequestScheduler {
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
-            wol_sent,
+            wol_sent: prepared.wol_sent,
         })
     }
 
@@ -146,7 +152,7 @@ impl RequestScheduler {
         file_bytes: Vec<u8>,
         options_json: String,
     ) -> Result<ScheduledResponse<AudioEmbeddingResponse>, SchedulerError> {
-        let wol_sent = self
+        let prepared = self
             .prepare_for_request(request_id, model, model_request)
             .await?;
         let routed = self
@@ -157,7 +163,7 @@ impl RequestScheduler {
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
-            wol_sent,
+            wol_sent: prepared.wol_sent,
         })
     }
 
@@ -168,7 +174,7 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         request: &SpeechRequest,
     ) -> Result<ScheduledResponse<reqwest::Response>, SchedulerError> {
-        let wol_sent = self
+        let prepared = self
             .prepare_for_request(request_id, model, model_request)
             .await?;
         let routed = self.inference_router.speech_raw(model, request).await?;
@@ -176,7 +182,7 @@ impl RequestScheduler {
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
-            wol_sent,
+            wol_sent: prepared.wol_sent,
         })
     }
 
@@ -185,7 +191,7 @@ impl RequestScheduler {
         request_id: &str,
         model: &str,
         model_request: &ModelRequest,
-    ) -> Result<bool, SchedulerError> {
+    ) -> Result<PreparedRequest, SchedulerError> {
         self.router_telemetry
             .emit(
                 "request_received",
@@ -215,7 +221,10 @@ impl RequestScheduler {
                 if !plan.is_loaded {
                     self.prepare_runner_model(request_id, &plan).await?;
                 }
-                Ok(false)
+                Ok(PreparedRequest {
+                    plan,
+                    wol_sent: false,
+                })
             }
             Err(RouterError::NoRunners) | Err(RouterError::NoModelsOfClass(_)) => {
                 if self.wake_service.is_enabled()
@@ -299,7 +308,10 @@ impl RequestScheduler {
                     if !plan.is_loaded {
                         self.prepare_runner_model(request_id, &plan).await?;
                     }
-                    Ok(true)
+                    Ok(PreparedRequest {
+                        plan,
+                        wol_sent: true,
+                    })
                 } else {
                     Err(RouterError::NoRunners.into())
                 }

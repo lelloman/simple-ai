@@ -159,6 +159,13 @@ impl BatchDispatcher {
             // same active-request counts for every request in the batch.
             self.registry.increment_requests(&runner_id).await;
 
+            tracing::info!(
+                "Dispatching queued request for model {} to runner {} (loaded={})",
+                resolved_model,
+                runner_id,
+                runner.has_model_or_alias(&resolved_model)
+            );
+
             let registry = self.registry.clone();
             let http_client = self.http_client.clone();
             tokio::spawn(async move {
