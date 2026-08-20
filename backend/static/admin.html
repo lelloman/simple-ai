@@ -261,7 +261,10 @@
                                         <textarea id="chat-user-input" rows="5" placeholder="Ask something, then switch the model and ask again." class="mt-1 block w-full rounded-md border border-gray-300 p-3 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500"></textarea>
                                         <div class="mt-3 flex items-center justify-between gap-3">
                                             <p id="chat-last-metadata" class="text-xs text-gray-500">Ready.</p>
-                                            <button id="chat-send-button" onclick="sendChatMessage()" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Send</button>
+                                            <div class="flex items-center gap-2">
+                                                <button id="chat-stop-button" onclick="stopChatMessage()" class="hidden rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">Stop</button>
+                                                <button id="chat-send-button" onclick="sendChatMessage()" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">Send</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -384,6 +387,7 @@
         let chatModelsState = [];
         let chatMessagesState = [];
         let chatRequestInFlight = false;
+        let chatAbortController = null;
         let chatModelsLoading = false;
 
         // Token refresh state
@@ -745,7 +749,8 @@
                     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
                     ...options.headers
                 },
-                ...(options.body ? { body: options.body } : {})
+                ...(options.body ? { body: options.body } : {}),
+                ...(options.signal ? { signal: options.signal } : {})
             };
 
             const response = await fetch(endpoint, fetchOptions);
@@ -1609,6 +1614,7 @@
 
         function syncChatSendState() {
             const button = document.getElementById('chat-send-button');
+            const stopButton = document.getElementById('chat-stop-button');
             const input = document.getElementById('chat-user-input');
             if (button) {
                 button.disabled = chatRequestInFlight;
@@ -1616,9 +1622,19 @@
                 button.classList.toggle('opacity-60', chatRequestInFlight);
                 button.classList.toggle('cursor-not-allowed', chatRequestInFlight);
             }
+            if (stopButton) {
+                stopButton.classList.toggle('hidden', !chatRequestInFlight);
+                stopButton.disabled = !chatRequestInFlight;
+            }
             if (input) {
                 input.disabled = chatRequestInFlight;
             }
+        }
+
+        function stopChatMessage() {
+            if (!chatAbortController) return;
+            setChatStatus('Stopping', 'busy');
+            chatAbortController.abort();
         }
 
         function renderChatQuickModels() {
@@ -1761,7 +1777,8 @@
                     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
                     ...options.headers
                 },
-                ...(options.body ? { body: options.body } : {})
+                ...(options.body ? { body: options.body } : {}),
+                ...(options.signal ? { signal: options.signal } : {})
             });
 
             if (!response.ok) {
@@ -1893,6 +1910,7 @@
 
             const startedAt = performance.now();
             chatRequestInFlight = true;
+            chatAbortController = new AbortController();
             syncChatSendState();
             setChatStatus(requestBody.stream ? 'Streaming' : 'Generating', 'busy');
             if (meta) {
@@ -1911,6 +1929,7 @@
                     const response = await apiFetchRaw('/v1/chat/completions', {
                         method: 'POST',
                         body: JSON.stringify(requestBody),
+                        signal: chatAbortController.signal,
                     });
 
                     let streamedModel = model;
@@ -1954,6 +1973,7 @@
                     const response = await apiFetch('/v1/chat/completions', {
                         method: 'POST',
                         body: JSON.stringify(requestBody),
+                        signal: chatAbortController.signal,
                     });
 
                     const assistantMessage = response?.choices?.[0]?.message?.content || '';
@@ -1975,6 +1995,18 @@
                     setChatStatus('Complete', 'ok');
                 }
             } catch (e) {
+                if (e.name === 'AbortError') {
+                    const lastMessage = chatMessagesState[chatMessagesState.length - 1];
+                    if (lastMessage?.role === 'assistant' && !lastMessage.content && !lastMessage.reasoning) {
+                        lastMessage.content = '[Stopped]';
+                    }
+                    renderChatTranscript();
+                    if (meta) {
+                        meta.textContent = `Stopped ${model}`;
+                    }
+                    setChatStatus('Stopped', 'idle');
+                    return;
+                }
                 console.error('Chat request failed:', e);
                 chatMessagesState.push({
                     role: 'assistant',
@@ -1988,6 +2020,7 @@
                 setChatStatus('Failed', 'error');
             } finally {
                 chatRequestInFlight = false;
+                chatAbortController = null;
                 syncChatSendState();
             }
         }

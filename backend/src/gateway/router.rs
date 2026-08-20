@@ -88,6 +88,10 @@ pub struct RoutedResponse<T> {
 pub struct InferenceRouter {
     registry: Arc<RunnerRegistry>,
     http_client: Client,
+    /// Streaming responses must not have a total request timeout: long model
+    /// generations can legitimately run for longer than the regular 5-minute
+    /// request budget. Dropping the downstream body still cancels the request.
+    streaming_http_client: Client,
     strategy: LoadBalanceStrategy,
     round_robin_counter: AtomicUsize,
     models_config: ModelsConfig,
@@ -110,6 +114,10 @@ impl InferenceRouter {
                 .timeout(std::time::Duration::from_secs(300)) // 5 min for long generations
                 .build()
                 .expect("Failed to create HTTP client"),
+            streaming_http_client: Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("Failed to create streaming HTTP client"),
             strategy: LoadBalanceStrategy::SmartRouting,
             round_robin_counter: AtomicUsize::new(0),
             models_config,
@@ -133,6 +141,10 @@ impl InferenceRouter {
                 .timeout(std::time::Duration::from_secs(300))
                 .build()
                 .expect("Failed to create HTTP client"),
+            streaming_http_client: Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .build()
+                .expect("Failed to create streaming HTTP client"),
             strategy,
             round_robin_counter: AtomicUsize::new(0),
             models_config,
@@ -952,7 +964,7 @@ impl InferenceRouter {
         );
 
         let response = self
-            .http_client
+            .streaming_http_client
             .post(&url)
             .json(&request)
             .send()

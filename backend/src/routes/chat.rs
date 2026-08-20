@@ -33,16 +33,38 @@ struct StreamLogContext {
 
 struct GatewayStreamState {
     response: reqwest::Response,
-    buffer: String,
+    buffer: Vec<u8>,
     pending: VecDeque<Bytes>,
     metrics: Option<InferenceMetrics>,
     log_context: Option<StreamLogContext>,
 }
 
+impl Drop for GatewayStreamState {
+    fn drop(&mut self) {
+        let Some(log_context) = self.log_context.take() else {
+            return;
+        };
+        let metrics = self.metrics.clone();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(finalize_stream_response(
+                log_context,
+                metrics,
+                StreamOutcome::Interrupted,
+            ));
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum StreamOutcome {
+    Completed,
+    Interrupted,
+}
+
 fn filter_gateway_stream(response: reqwest::Response, log_context: StreamLogContext) -> Body {
     let state = GatewayStreamState {
         response,
-        buffer: String::new(),
+        buffer: Vec::new(),
         pending: VecDeque::new(),
         metrics: None,
         log_context: Some(log_context),
@@ -60,33 +82,54 @@ fn filter_gateway_stream(response: reqwest::Response, log_context: StreamLogCont
                 .await
                 .map_err(|e| std::io::Error::other(e.to_string()))?
             else {
+                if !state.buffer.is_empty() {
+                    let trailing = Bytes::from(std::mem::take(&mut state.buffer));
+                    return Ok(Some((trailing, state)));
+                }
                 if let Some(log_context) = state.log_context.take() {
-                    log_stream_response(log_context, state.metrics).await;
+                    finalize_stream_response(
+                        log_context,
+                        state.metrics.clone(),
+                        StreamOutcome::Completed,
+                    )
+                    .await;
                 }
                 return Ok(None);
             };
 
-            let text =
-                std::str::from_utf8(&chunk).map_err(|e| std::io::Error::other(e.to_string()))?;
-            state.buffer.push_str(text);
-
-            while let Some(event_end) = state.buffer.find("\n\n") {
-                let event = state.buffer[..event_end].to_string();
-                state.buffer.drain(..event_end + 2);
-
-                if let Some(metrics) = parse_internal_metrics_event(&event) {
-                    state.metrics = Some(metrics);
-                    continue;
-                }
-
-                state
-                    .pending
-                    .push_back(Bytes::from(format!("{}\n\n", event)));
-            }
+            buffer_gateway_chunk(
+                &mut state.buffer,
+                &mut state.pending,
+                &mut state.metrics,
+                &chunk,
+            );
         }
     });
 
     Body::from_stream(stream)
+}
+
+fn buffer_gateway_chunk(
+    buffer: &mut Vec<u8>,
+    pending: &mut VecDeque<Bytes>,
+    metrics: &mut Option<InferenceMetrics>,
+    chunk: &[u8],
+) {
+    buffer.extend_from_slice(chunk);
+
+    while let Some(event_end) = buffer.windows(2).position(|window| window == b"\n\n") {
+        let event_with_delimiter: Vec<u8> = buffer.drain(..event_end + 2).collect();
+        let event = &event_with_delimiter[..event_end];
+
+        if let Ok(event) = std::str::from_utf8(event) {
+            if let Some(parsed_metrics) = parse_internal_metrics_event(event) {
+                *metrics = Some(parsed_metrics);
+                continue;
+            }
+        }
+
+        pending.push_back(Bytes::from(event_with_delimiter));
+    }
 }
 
 fn parse_internal_metrics_event(event: &str) -> Option<InferenceMetrics> {
@@ -106,9 +149,30 @@ fn parse_internal_metrics_event(event: &str) -> Option<InferenceMetrics> {
     serde_json::from_str(&data).ok()
 }
 
-async fn log_stream_response(log_context: StreamLogContext, metrics: Option<InferenceMetrics>) {
-    let mut resp_log = AuditResponse::new(log_context.request_id, 200);
-    resp_log.response_body = "[stream]".to_string();
+async fn finalize_stream_response(
+    log_context: StreamLogContext,
+    metrics: Option<InferenceMetrics>,
+    outcome: StreamOutcome,
+) {
+    if let Some(runner_id) = &log_context.runner_id {
+        log_context
+            .state
+            .runner_registry
+            .decrement_requests(runner_id)
+            .await;
+    }
+
+    let (status, response_body, event_name, event_description) = match outcome {
+        StreamOutcome::Completed => (200, "[stream]", "request_completed", "completed"),
+        StreamOutcome::Interrupted => (
+            499,
+            "[stream interrupted]",
+            "request_cancelled",
+            "interrupted",
+        ),
+    };
+    let mut resp_log = AuditResponse::new(log_context.request_id, status);
+    resp_log.response_body = response_body.to_string();
     resp_log.latency_ms = log_context.start.elapsed().as_millis() as u64;
     resp_log.runner_id = log_context.runner_id.clone();
     resp_log.wol_sent = log_context.wol_sent;
@@ -124,9 +188,11 @@ async fn log_stream_response(log_context: StreamLogContext, metrics: Option<Infe
         .state
         .router_telemetry
         .emit(
-            "request_completed",
+            event_name,
             format!(
-                "Streaming request completed with status 200 on {}",
+                "Streaming request {} with status {} on {}",
+                event_description,
+                status,
                 log_context
                     .runner_id
                     .clone()
@@ -497,8 +563,10 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_internal_metrics_event;
+    use super::{buffer_gateway_chunk, parse_internal_metrics_event};
     use crate::models::chat::{ChatCompletionRequest, ChatMessage};
+    use bytes::Bytes;
+    use std::collections::VecDeque;
 
     fn create_test_request() -> ChatCompletionRequest {
         ChatCompletionRequest {
@@ -581,5 +649,26 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
         assert_eq!(metrics.context_window, Some(8192));
         assert_eq!(metrics.prompt_tokens, Some(10));
         assert_eq!(metrics.completion_tokens, Some(5));
+    }
+
+    #[test]
+    fn test_gateway_stream_buffers_split_utf8_codepoint() {
+        let event = "data: {\"choices\":[{\"delta\":{\"content\":\"città\"}}]}\n\n";
+        let bytes = event.as_bytes();
+        let split = bytes
+            .windows(2)
+            .position(|window| window == "à".as_bytes())
+            .expect("test event contains a multibyte character")
+            + 1;
+        let mut buffer = Vec::new();
+        let mut pending = VecDeque::<Bytes>::new();
+        let mut metrics = None;
+
+        buffer_gateway_chunk(&mut buffer, &mut pending, &mut metrics, &bytes[..split]);
+        assert!(pending.is_empty());
+
+        buffer_gateway_chunk(&mut buffer, &mut pending, &mut metrics, &bytes[split..]);
+        assert_eq!(pending.pop_front().unwrap().as_ref(), bytes);
+        assert!(buffer.is_empty());
     }
 }
