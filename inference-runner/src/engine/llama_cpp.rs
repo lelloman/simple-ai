@@ -29,7 +29,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{RwLock, Semaphore};
 
 use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
-use crate::config::LlamaCppEngineConfig;
+use crate::config::{LlamaCppEngineConfig, LlamaCppModelConfig};
 use crate::error::{Error, Result};
 
 /// State of a llama-server process.
@@ -292,6 +292,62 @@ impl LlamaCppEngine {
         self.config
             .context_size
             .or_else(|| Self::read_gguf_context_length(model_path))
+    }
+
+    /// Find typed settings for a discovered model ID.
+    ///
+    /// The config loader can normalize TOML map keys while GGUF-derived IDs
+    /// preserve filename casing, so matching is intentionally case-insensitive.
+    fn model_config(&self, model_id: &str) -> Option<&LlamaCppModelConfig> {
+        self.config.models.get(model_id).or_else(|| {
+            self.config
+                .models
+                .iter()
+                .find(|(configured_id, _)| configured_id.eq_ignore_ascii_case(model_id))
+                .map(|(_, config)| config)
+        })
+    }
+
+    fn legacy_model_args(&self, model_id: &str) -> Option<&Vec<String>> {
+        self.config.model_extra_args.get(model_id).or_else(|| {
+            self.config
+                .model_extra_args
+                .iter()
+                .find(|(configured_id, _)| configured_id.eq_ignore_ascii_case(model_id))
+                .map(|(_, args)| args)
+        })
+    }
+
+    fn request_max_tokens(&self, model_id: &str, request: &ChatCompletionRequest) -> Option<u32> {
+        request.max_tokens.or_else(|| {
+            self.model_config(model_id)
+                .and_then(|config| config.default_max_tokens)
+        })
+    }
+
+    fn apply_model_config(cmd: &mut Command, model_config: &LlamaCppModelConfig) {
+        if let Some(reasoning) = model_config.reasoning {
+            cmd.arg("--reasoning")
+                .arg(if reasoning { "on" } else { "off" });
+        }
+        if let Some(fit) = model_config.fit {
+            cmd.arg("-fit").arg(if fit { "on" } else { "off" });
+        }
+        if let Some(parallel) = model_config.parallel {
+            cmd.arg("--parallel").arg(parallel.to_string());
+        }
+        if let Some(mtp) = &model_config.mtp {
+            cmd.arg("--spec-type")
+                .arg("draft-mtp")
+                .arg("--spec-draft-n-max")
+                .arg(mtp.draft_tokens.to_string());
+            if let Some(gpu_layers) = mtp.gpu_layers {
+                cmd.arg("--spec-draft-ngl").arg(gpu_layers.to_string());
+            }
+        }
+        for arg in &model_config.extra_args {
+            cmd.arg(arg);
+        }
     }
 
     /// Refresh the model paths cache by scanning the model directory.
@@ -634,6 +690,17 @@ impl LlamaCppEngine {
         // Append extra llama-server arguments (e.g., --flash-attn on --no-mmap)
         for arg in &self.config.extra_args {
             cmd.arg(arg);
+        }
+
+        if let Some(model_config) = self.model_config(model_id) {
+            tracing::info!("Applying typed llama.cpp model profile for {}", model_id);
+            Self::apply_model_config(&mut cmd, model_config);
+        } else if let Some(args) = self.legacy_model_args(model_id) {
+            tracing::warn!(
+                "Applying legacy model_extra_args for {}; migrate this entry to engines.llama_cpp.models",
+                model_id
+            );
+            cmd.args(args);
         }
 
         // Configure process I/O
@@ -1198,7 +1265,7 @@ impl InferenceEngine for LlamaCppEngine {
             messages,
             tools: request.tools.clone(),
             temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            max_tokens: self.request_max_tokens(model_id, request),
             stream: false,
             stream_options: None,
         };
@@ -1368,7 +1435,7 @@ impl InferenceEngine for LlamaCppEngine {
             messages,
             tools: request.tools.clone(),
             temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            max_tokens: self.request_max_tokens(model_id, request),
             stream: true,
             stream_options: Some(LlamaStreamOptions {
                 include_usage: true,
@@ -1578,6 +1645,7 @@ impl Drop for LlamaCppEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::LlamaCppMtpConfig;
 
     fn test_config() -> LlamaCppEngineConfig {
         LlamaCppEngineConfig {
@@ -1596,6 +1664,8 @@ mod tests {
             shutdown_timeout_secs: 10,
             log_server_output: false,
             extra_args: vec![],
+            models: HashMap::new(),
+            model_extra_args: HashMap::new(),
             batch_size: 1,
         }
     }
@@ -1604,6 +1674,97 @@ mod tests {
     fn test_engine_type() {
         let engine = LlamaCppEngine::new(test_config());
         assert_eq!(engine.engine_type(), "llama_cpp");
+    }
+
+    #[test]
+    fn test_model_profile_is_case_insensitive_and_sets_default_max_tokens() {
+        let mut config = test_config();
+        config.models.insert(
+            "qwen3.8-27b-ud-q4_k_xl".to_string(),
+            LlamaCppModelConfig {
+                default_max_tokens: Some(4096),
+                ..Default::default()
+            },
+        );
+        let engine = LlamaCppEngine::new(config);
+        let request = ChatCompletionRequest {
+            messages: Vec::new(),
+            tools: None,
+            model: None,
+            temperature: None,
+            max_tokens: None,
+            stream: Some(true),
+        };
+
+        assert_eq!(
+            engine.request_max_tokens("Qwen3.8-27B-UD-Q4_K_XL", &request),
+            Some(4096)
+        );
+
+        let request_override = ChatCompletionRequest {
+            max_tokens: Some(128),
+            ..request
+        };
+        assert_eq!(
+            engine.request_max_tokens("Qwen3.8-27B-UD-Q4_K_XL", &request_override),
+            Some(128)
+        );
+    }
+
+    #[test]
+    fn test_model_profile_builds_llama_server_arguments() {
+        let profile = LlamaCppModelConfig {
+            reasoning: Some(true),
+            fit: Some(false),
+            parallel: Some(1),
+            default_max_tokens: Some(4096),
+            mtp: Some(LlamaCppMtpConfig {
+                draft_tokens: 3,
+                gpu_layers: Some(999),
+            }),
+            extra_args: vec!["--reasoning-preserve".to_string()],
+        };
+        let mut command = Command::new("llama-server");
+        LlamaCppEngine::apply_model_config(&mut command, &profile);
+        let args = command
+            .as_std()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            vec![
+                "--reasoning",
+                "on",
+                "-fit",
+                "off",
+                "--parallel",
+                "1",
+                "--spec-type",
+                "draft-mtp",
+                "--spec-draft-n-max",
+                "3",
+                "--spec-draft-ngl",
+                "999",
+                "--reasoning-preserve",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_legacy_model_args_are_case_insensitive() {
+        let mut config = test_config();
+        config.model_extra_args.insert(
+            "qwen3.8-27b-ud-q4_k_xl".to_string(),
+            vec!["--reasoning".to_string(), "on".to_string()],
+        );
+        let engine = LlamaCppEngine::new(config);
+
+        assert_eq!(
+            engine.legacy_model_args("Qwen3.8-27B-UD-Q4_K_XL"),
+            Some(&vec!["--reasoning".to_string(), "on".to_string()])
+        );
     }
 
     #[test]

@@ -45,6 +45,16 @@ base_url = "http://localhost:11434"
 # shutdown_timeout_secs = 10               # Graceful shutdown timeout (default: 10)
 # log_server_output = false                # Log llama-server output for debugging
 #
+# Typed settings for one local model. Table keys match discovered GGUF model IDs
+# case-insensitively. Request max_tokens always overrides default_max_tokens.
+#[engines.llama_cpp.models."Qwen3.8-27B-UD-Q4_K_XL"]
+#reasoning = true
+#fit = false
+#parallel = 1
+#default_max_tokens = 4096
+#mtp = { draft_tokens = 3, gpu_layers = 999 }
+#extra_args = []                           # Escape hatch for unsupported llama.cpp flags
+#
 # Example: Running llama-server through a pre-created toolbox container:
 # Note: toolbox may fail in some rootless/service environments when it tries
 # to bind host files such as /etc/machine-id during container init.

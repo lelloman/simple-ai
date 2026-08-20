@@ -160,9 +160,57 @@ pub struct LlamaCppEngineConfig {
     /// Use this for flags like `["--flash-attn", "on", "--no-mmap"]`
     #[serde(default)]
     pub extra_args: Vec<String>,
+    /// Typed llama.cpp settings for specific model IDs.
+    #[serde(default)]
+    pub models: HashMap<String, LlamaCppModelConfig>,
+    /// Legacy per-model raw arguments. Prefer `models`; retained so runners can
+    /// be upgraded before their host configuration is migrated.
+    #[serde(default)]
+    pub model_extra_args: HashMap<String, Vec<String>>,
     /// Maximum batch size for concurrent inference (default: 1 = no batching).
     #[serde(default = "default_batch_size")]
     pub batch_size: u32,
+}
+
+/// llama.cpp settings that apply to one discovered local model ID.
+///
+/// Keep commonly used options typed here so model configuration remains
+/// readable and conflicting command-line flags are less likely. `extra_args`
+/// is retained as an escape hatch for llama.cpp options not represented yet.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct LlamaCppModelConfig {
+    /// Enable or disable the model's reasoning mode.
+    #[serde(default)]
+    pub reasoning: Option<bool>,
+    /// Enable or disable llama.cpp automatic fit behavior.
+    #[serde(default)]
+    pub fit: Option<bool>,
+    /// Number of parallel inference slots.
+    #[serde(default)]
+    pub parallel: Option<u32>,
+    /// Completion limit used when the API request omits `max_tokens`.
+    #[serde(default)]
+    pub default_max_tokens: Option<u32>,
+    /// Optional model-native MTP speculative decoding configuration.
+    #[serde(default)]
+    pub mtp: Option<LlamaCppMtpConfig>,
+    /// Additional model-specific llama-server arguments.
+    #[serde(default)]
+    pub extra_args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlamaCppMtpConfig {
+    /// Maximum number of draft tokens proposed per step.
+    #[serde(default = "default_mtp_draft_tokens")]
+    pub draft_tokens: u32,
+    /// GPU layers used by the MTP draft model.
+    #[serde(default)]
+    pub gpu_layers: Option<u32>,
+}
+
+fn default_mtp_draft_tokens() -> u32 {
+    3
 }
 
 /// Process-backed audio embedding engine configuration.
@@ -566,6 +614,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use config::FileFormat;
 
     #[test]
     fn test_default_api_config() {
@@ -580,5 +629,40 @@ mod tests {
         assert!(persistence.always_loaded.is_empty());
         assert_eq!(persistence.idle_timeout_secs, 300);
         assert_eq!(persistence.max_loaded_models, 3);
+    }
+
+    #[test]
+    fn test_llama_cpp_typed_model_profile_deserialization() {
+        let source = r#"
+            enabled = true
+            model_dir = "/models"
+            server_binary = "llama-server"
+
+            [models."Qwen3.8-27B-UD-Q4_K_XL"]
+            reasoning = true
+            fit = false
+            parallel = 1
+            default_max_tokens = 4096
+            mtp = { draft_tokens = 3, gpu_layers = 999 }
+            extra_args = ["--reasoning-preserve"]
+        "#;
+        let loaded = ConfigLoader::builder()
+            .add_source(File::from_str(source, FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config: LlamaCppEngineConfig = loaded.try_deserialize().unwrap();
+        let profile = config
+            .models
+            .values()
+            .next()
+            .expect("model profile should deserialize");
+
+        assert_eq!(profile.reasoning, Some(true));
+        assert_eq!(profile.fit, Some(false));
+        assert_eq!(profile.parallel, Some(1));
+        assert_eq!(profile.default_max_tokens, Some(4096));
+        assert_eq!(profile.mtp.as_ref().unwrap().draft_tokens, 3);
+        assert_eq!(profile.mtp.as_ref().unwrap().gpu_layers, Some(999));
+        assert_eq!(profile.extra_args, vec!["--reasoning-preserve"]);
     }
 }
