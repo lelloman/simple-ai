@@ -247,6 +247,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
                 context_length: None,
                 quantization: None,
                 modified_at: None,
+                reasoning: None,
             })
             .collect())
     }
@@ -260,6 +261,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
             context_length: None,
             quantization: None,
             modified_at: None,
+            reasoning: None,
         }))
     }
 

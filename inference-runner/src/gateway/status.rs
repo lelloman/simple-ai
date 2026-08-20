@@ -94,6 +94,7 @@ impl StatusCollector {
                                     context_length: m.context_length,
                                     quantization: m.quantization,
                                     modified_at: m.modified_at,
+                                    reasoning: m.reasoning,
                                 }
                             })
                             .collect(),

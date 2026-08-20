@@ -48,12 +48,10 @@ base_url = "http://localhost:11434"
 # Typed settings for one local model. Table keys match discovered GGUF model IDs
 # case-insensitively. Request max_tokens always overrides default_max_tokens.
 #[engines.llama_cpp.models."Qwen3.8-27B-UD-Q4_K_XL"]
-#reasoning = true
+#reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "xhigh", supports_thinking_budget = true }
 #fit = false
 #parallel = 1
 #default_max_tokens = 4096
-#default_reasoning_effort = "medium"       # none/default/minimal/low/medium/high/xhigh/max
-#default_thinking_budget_tokens = 2048     # 0 disables thinking; -1 is unrestricted
 #mtp = { draft_tokens = 3, gpu_layers = 999 }
 #extra_args = []                           # Escape hatch for unsupported llama.cpp flags
 #

@@ -192,6 +192,8 @@ pub struct AdminModelInfo {
     pub quantization: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<simple_ai_common::ReasoningCapabilities>,
     pub loaded: bool,
     /// Runner IDs that have this model loaded (in GPU memory).
     pub runners: Vec<String>,
@@ -245,6 +247,7 @@ async fn list_models(State(state): State<Arc<AppState>>) -> Json<AdminModelsResp
             context_length: m.context_length,
             quantization: m.quantization,
             modified_at: m.modified_at,
+            reasoning: m.reasoning,
             loaded: m.loaded,
             runners: m.runners,
             available_on: m.available_on,
@@ -1156,6 +1159,7 @@ async fn get_models_snapshot(state: &AppState) -> Vec<AdminModelInfo> {
             context_length: m.context_length,
             quantization: m.quantization,
             modified_at: m.modified_at,
+            reasoning: m.reasoning,
             loaded: m.loaded,
             runners: m.runners,
             available_on: m.available_on,
@@ -1375,6 +1379,7 @@ mod tests {
                         context_length: None,
                         quantization: None,
                         modified_at: None,
+                        reasoning: None,
                     })
                     .collect(),
                 error: None,

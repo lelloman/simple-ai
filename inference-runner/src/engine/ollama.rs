@@ -360,6 +360,7 @@ impl InferenceEngine for OllamaEngine {
                 context_length,
                 quantization,
                 modified_at: m.modified_at,
+                reasoning: None,
             });
         }
 

@@ -21,7 +21,7 @@ use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
     AudioEmbeddingOptions, AudioEmbeddingResponse, ChatCompletionRequest, ChatCompletionResponse,
-    SpeechRequest,
+    ReasoningCapabilities, SpeechRequest,
 };
 use std::pin::Pin;
 
@@ -51,6 +51,9 @@ pub struct ModelInfo {
     /// When the model was last modified
     #[serde(default)]
     pub modified_at: Option<String>,
+    /// Request-time reasoning controls supported by this model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningCapabilities>,
 }
 
 /// Health status of an inference engine (used in Phase 2 health endpoint).

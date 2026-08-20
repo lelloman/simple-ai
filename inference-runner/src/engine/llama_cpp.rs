@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_ai_common::{
     format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
-    InferenceMetrics, ReasoningEffort, ToolCall, ToolFunction,
+    InferenceMetrics, ReasoningCapabilities, ReasoningEffort, ToolCall, ToolFunction,
 };
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
@@ -331,8 +331,8 @@ impl LlamaCppEngine {
         request: &ChatCompletionRequest,
     ) -> Option<ReasoningEffort> {
         request.reasoning_effort.or_else(|| {
-            self.model_config(model_id)
-                .and_then(|config| config.default_reasoning_effort)
+            self.reasoning_capabilities(model_id)
+                .and_then(|reasoning| reasoning.default_effort)
         })
     }
 
@@ -342,9 +342,75 @@ impl LlamaCppEngine {
         request: &ChatCompletionRequest,
     ) -> Option<i32> {
         request.thinking_budget_tokens.or_else(|| {
-            self.model_config(model_id)
-                .and_then(|config| config.default_thinking_budget_tokens)
+            self.reasoning_capabilities(model_id)
+                .and_then(|reasoning| reasoning.default_thinking_budget_tokens)
         })
+    }
+
+    fn reasoning_capabilities(&self, model_id: &str) -> Option<ReasoningCapabilities> {
+        let controls = self
+            .model_config(model_id)
+            .and_then(|config| config.reasoning.as_ref())
+            .and_then(|reasoning| reasoning.controls())?;
+        if controls.supported_efforts.is_empty() && !controls.supports_thinking_budget {
+            return None;
+        }
+
+        Some(ReasoningCapabilities {
+            supported_efforts: controls.supported_efforts.clone(),
+            supports_thinking_budget: controls.supports_thinking_budget,
+            default_effort: controls
+                .default_effort
+                .filter(|effort| controls.supported_efforts.contains(effort)),
+            default_thinking_budget_tokens: controls
+                .default_thinking_budget_tokens
+                .filter(|budget| controls.supports_thinking_budget && *budget >= -1),
+        })
+    }
+
+    fn validate_reasoning_request(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+    ) -> Result<()> {
+        if request.reasoning_effort.is_none() && request.thinking_budget_tokens.is_none() {
+            return Ok(());
+        }
+
+        let capabilities = self.reasoning_capabilities(model_id).ok_or_else(|| {
+            Error::InvalidRequest(format!(
+                "model '{model_id}' does not support configurable reasoning"
+            ))
+        })?;
+
+        if let Some(effort) = request.reasoning_effort {
+            if !capabilities.supported_efforts.contains(&effort) {
+                return Err(Error::InvalidRequest(format!(
+                    "reasoning_effort '{effort}' is not supported by model '{model_id}'; supported values: {}",
+                    capabilities
+                        .supported_efforts
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
+            }
+        }
+
+        if let Some(budget) = request.thinking_budget_tokens {
+            if !capabilities.supports_thinking_budget {
+                return Err(Error::InvalidRequest(format!(
+                    "model '{model_id}' does not support thinking_budget_tokens"
+                )));
+            }
+            if budget < -1 {
+                return Err(Error::InvalidRequest(
+                    "thinking_budget_tokens must be -1 or greater".to_string(),
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     fn chat_template_kwargs(
@@ -357,9 +423,9 @@ impl LlamaCppEngine {
     }
 
     fn apply_model_config(cmd: &mut Command, model_config: &LlamaCppModelConfig) {
-        if let Some(reasoning) = model_config.reasoning {
+        if let Some(reasoning) = &model_config.reasoning {
             cmd.arg("--reasoning")
-                .arg(if reasoning { "on" } else { "off" });
+                .arg(if reasoning.enabled() { "on" } else { "off" });
         }
         if let Some(fit) = model_config.fit {
             cmd.arg("-fit").arg(if fit { "on" } else { "off" });
@@ -1229,6 +1295,7 @@ impl InferenceEngine for LlamaCppEngine {
                 context_length,
                 quantization,
                 modified_at: None,
+                reasoning: self.reasoning_capabilities(model_id),
             });
         }
 
@@ -1269,6 +1336,8 @@ impl InferenceEngine for LlamaCppEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
+        self.validate_reasoning_request(model_id, request)?;
+
         // Ensure server is running
         let instance = self.ensure_server(model_id).await?;
 
@@ -1446,6 +1515,8 @@ impl InferenceEngine for LlamaCppEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionStream> {
+        self.validate_reasoning_request(model_id, request)?;
+
         let instance = self.ensure_server(model_id).await?;
 
         if instance.state().await != ServerState::Ready {
@@ -1697,7 +1768,7 @@ impl Drop for LlamaCppEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::LlamaCppMtpConfig;
+    use crate::config::{LlamaCppMtpConfig, LlamaCppReasoningConfig, LlamaCppReasoningControls};
 
     fn test_config() -> LlamaCppEngineConfig {
         LlamaCppEngineConfig {
@@ -1735,8 +1806,19 @@ mod tests {
             "qwen3.8-27b-ud-q4_k_xl".to_string(),
             LlamaCppModelConfig {
                 default_max_tokens: Some(4096),
-                default_reasoning_effort: Some(ReasoningEffort::Medium),
-                default_thinking_budget_tokens: Some(2048),
+                reasoning: Some(LlamaCppReasoningConfig::Controls(
+                    LlamaCppReasoningControls {
+                        enabled: true,
+                        supported_efforts: vec![
+                            ReasoningEffort::None,
+                            ReasoningEffort::Medium,
+                            ReasoningEffort::Xhigh,
+                        ],
+                        default_effort: Some(ReasoningEffort::Medium),
+                        supports_thinking_budget: true,
+                        default_thinking_budget_tokens: Some(2048),
+                    },
+                )),
                 ..Default::default()
             },
         );
@@ -1814,14 +1896,75 @@ mod tests {
     }
 
     #[test]
+    fn test_reasoning_controls_are_validated_per_model() {
+        let mut config = test_config();
+        config.models.insert(
+            "qwen3.8".to_string(),
+            LlamaCppModelConfig {
+                reasoning: Some(LlamaCppReasoningConfig::Controls(
+                    LlamaCppReasoningControls {
+                        enabled: true,
+                        supported_efforts: vec![
+                            ReasoningEffort::None,
+                            ReasoningEffort::Medium,
+                            ReasoningEffort::Xhigh,
+                        ],
+                        default_effort: Some(ReasoningEffort::Xhigh),
+                        supports_thinking_budget: true,
+                        default_thinking_budget_tokens: None,
+                    },
+                )),
+                ..Default::default()
+            },
+        );
+        let engine = LlamaCppEngine::new(config);
+        let base_request = ChatCompletionRequest {
+            messages: Vec::new(),
+            tools: None,
+            model: Some("qwen3.8".to_string()),
+            temperature: None,
+            max_tokens: None,
+            reasoning_effort: Some(ReasoningEffort::Medium),
+            thinking_budget_tokens: Some(1024),
+            stream: None,
+        };
+
+        assert!(engine
+            .validate_reasoning_request("qwen3.8", &base_request)
+            .is_ok());
+
+        let bad_effort = ChatCompletionRequest {
+            reasoning_effort: Some(ReasoningEffort::High),
+            ..base_request.clone()
+        };
+        let error = engine
+            .validate_reasoning_request("qwen3.8", &bad_effort)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("supported values: none, medium, xhigh"));
+
+        let error = engine
+            .validate_reasoning_request("ordinary-model", &base_request)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("does not support configurable reasoning"));
+    }
+
+    #[test]
     fn test_model_profile_builds_llama_server_arguments() {
         let profile = LlamaCppModelConfig {
-            reasoning: Some(true),
+            reasoning: Some(LlamaCppReasoningConfig::Controls(
+                LlamaCppReasoningControls {
+                    enabled: true,
+                    supported_efforts: vec![],
+                    default_effort: None,
+                    supports_thinking_budget: false,
+                    default_thinking_budget_tokens: None,
+                },
+            )),
             fit: Some(false),
             parallel: Some(1),
             default_max_tokens: Some(4096),
-            default_reasoning_effort: None,
-            default_thinking_budget_tokens: None,
             mtp: Some(LlamaCppMtpConfig {
                 draft_tokens: 3,
                 gpu_layers: Some(999),

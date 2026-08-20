@@ -180,9 +180,9 @@ pub struct LlamaCppEngineConfig {
 /// is retained as an escape hatch for llama.cpp options not represented yet.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct LlamaCppModelConfig {
-    /// Enable or disable the model's reasoning mode.
+    /// Model-specific reasoning capabilities and defaults.
     #[serde(default)]
-    pub reasoning: Option<bool>,
+    pub reasoning: Option<LlamaCppReasoningConfig>,
     /// Enable or disable llama.cpp automatic fit behavior.
     #[serde(default)]
     pub fit: Option<bool>,
@@ -192,18 +192,56 @@ pub struct LlamaCppModelConfig {
     /// Completion limit used when the API request omits `max_tokens`.
     #[serde(default)]
     pub default_max_tokens: Option<u32>,
-    /// Model-native reasoning effort used when the request omits it.
-    #[serde(default)]
-    pub default_reasoning_effort: Option<ReasoningEffort>,
-    /// Hard reasoning-token limit used when the request omits it.
-    #[serde(default)]
-    pub default_thinking_budget_tokens: Option<i32>,
     /// Optional model-native MTP speculative decoding configuration.
     #[serde(default)]
     pub mtp: Option<LlamaCppMtpConfig>,
     /// Additional model-specific llama-server arguments.
     #[serde(default)]
     pub extra_args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum LlamaCppReasoningConfig {
+    /// Backward-compatible startup-only form: `reasoning = true`.
+    Enabled(bool),
+    /// Capability-aware form used to expose and validate request-time knobs.
+    Controls(LlamaCppReasoningControls),
+}
+
+impl LlamaCppReasoningConfig {
+    pub fn enabled(&self) -> bool {
+        match self {
+            Self::Enabled(enabled) => *enabled,
+            Self::Controls(controls) => controls.enabled,
+        }
+    }
+
+    pub fn controls(&self) -> Option<&LlamaCppReasoningControls> {
+        match self {
+            Self::Enabled(_) => None,
+            Self::Controls(controls) => Some(controls),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlamaCppReasoningControls {
+    /// Enable reasoning when llama-server starts.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Exact effort values accepted by this model's chat template.
+    #[serde(default)]
+    pub supported_efforts: Vec<ReasoningEffort>,
+    /// Model-native effort used when the request omits it.
+    #[serde(default)]
+    pub default_effort: Option<ReasoningEffort>,
+    /// Whether per-request hard thinking budgets are supported.
+    #[serde(default)]
+    pub supports_thinking_budget: bool,
+    /// Hard reasoning-token limit used when the request omits it.
+    #[serde(default)]
+    pub default_thinking_budget_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -646,12 +684,10 @@ mod tests {
             server_binary = "llama-server"
 
             [models."Qwen3.8-27B-UD-Q4_K_XL"]
-            reasoning = true
+            reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "xhigh", supports_thinking_budget = true, default_thinking_budget_tokens = 2048 }
             fit = false
             parallel = 1
             default_max_tokens = 4096
-            default_reasoning_effort = "medium"
-            default_thinking_budget_tokens = 2048
             mtp = { draft_tokens = 3, gpu_layers = 999 }
             extra_args = ["--reasoning-preserve"]
         "#;
@@ -666,17 +702,46 @@ mod tests {
             .next()
             .expect("model profile should deserialize");
 
-        assert_eq!(profile.reasoning, Some(true));
+        let reasoning = profile.reasoning.as_ref().unwrap().controls().unwrap();
+        assert!(reasoning.enabled);
+        assert_eq!(
+            reasoning.supported_efforts,
+            vec![
+                ReasoningEffort::None,
+                ReasoningEffort::Low,
+                ReasoningEffort::Medium,
+                ReasoningEffort::Xhigh
+            ]
+        );
+        assert_eq!(reasoning.default_effort, Some(ReasoningEffort::Xhigh));
+        assert!(reasoning.supports_thinking_budget);
+        assert_eq!(reasoning.default_thinking_budget_tokens, Some(2048));
         assert_eq!(profile.fit, Some(false));
         assert_eq!(profile.parallel, Some(1));
         assert_eq!(profile.default_max_tokens, Some(4096));
-        assert_eq!(
-            profile.default_reasoning_effort,
-            Some(ReasoningEffort::Medium)
-        );
-        assert_eq!(profile.default_thinking_budget_tokens, Some(2048));
         assert_eq!(profile.mtp.as_ref().unwrap().draft_tokens, 3);
         assert_eq!(profile.mtp.as_ref().unwrap().gpu_layers, Some(999));
         assert_eq!(profile.extra_args, vec!["--reasoning-preserve"]);
+    }
+
+    #[test]
+    fn test_llama_cpp_legacy_reasoning_bool_remains_supported() {
+        let source = r#"
+            enabled = true
+            model_dir = "/models"
+            server_binary = "llama-server"
+
+            [models."legacy-model"]
+            reasoning = true
+        "#;
+        let loaded = ConfigLoader::builder()
+            .add_source(File::from_str(source, FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config: LlamaCppEngineConfig = loaded.try_deserialize().unwrap();
+        let reasoning = config.models["legacy-model"].reasoning.as_ref().unwrap();
+
+        assert!(reasoning.enabled());
+        assert!(reasoning.controls().is_none());
     }
 }

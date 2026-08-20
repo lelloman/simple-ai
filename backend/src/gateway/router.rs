@@ -495,6 +495,7 @@ impl InferenceRouter {
                 id: m.id,
                 object: "model".to_string(),
                 owned_by: "local".to_string(),
+                reasoning: m.reasoning,
             })
             .collect())
     }
@@ -1031,6 +1032,8 @@ pub struct ModelEntry {
     pub id: String,
     pub object: String,
     pub owned_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<simple_ai_common::ReasoningCapabilities>,
 }
 
 #[cfg(test)]
@@ -1059,6 +1062,7 @@ mod tests {
                         context_length: None,
                         quantization: None,
                         modified_at: None,
+                        reasoning: None,
                     })
                     .collect(),
                 error: None,

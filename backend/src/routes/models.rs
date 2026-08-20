@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use axum::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
+use simple_ai_common::ReasoningCapabilities;
 
 use crate::AppState;
 
@@ -14,6 +15,8 @@ pub struct ModelObject {
     pub object: String,
     pub created: i64,
     pub owned_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningCapabilities>,
 }
 
 /// Response from /v1/models endpoint.
@@ -38,6 +41,7 @@ async fn list_models(State(state): State<Arc<AppState>>) -> Json<ModelsResponse>
                 object: "model".to_string(),
                 created: 0,
                 owned_by: "local".to_string(),
+                reasoning: m.reasoning,
             })
             .collect()
     } else {
@@ -47,6 +51,7 @@ async fn list_models(State(state): State<Arc<AppState>>) -> Json<ModelsResponse>
             object: "model".to_string(),
             created: 0,
             owned_by: "ollama".to_string(),
+            reasoning: None,
         }]
     };
 
@@ -65,6 +70,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use simple_ai_common::ReasoningEffort;
 
     #[test]
     fn test_models_response_serialization() {
@@ -75,10 +81,18 @@ mod tests {
                 object: "model".to_string(),
                 created: 1234567890,
                 owned_by: "local".to_string(),
+                reasoning: Some(ReasoningCapabilities {
+                    supported_efforts: vec![ReasoningEffort::Low, ReasoningEffort::Xhigh],
+                    supports_thinking_budget: true,
+                    default_effort: Some(ReasoningEffort::Xhigh),
+                    default_thinking_budget_tokens: None,
+                }),
             }],
         };
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("test-model"));
         assert!(json.contains(r#""object":"list""#));
+        assert!(json.contains(r#""supported_efforts":["low","xhigh"]"#));
+        assert!(json.contains(r#""supports_thinking_budget":true"#));
     }
 }

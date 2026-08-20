@@ -6,6 +6,7 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
+use simple_ai_common::ReasoningCapabilities;
 
 use crate::engine::ModelInfo;
 use crate::error::Result;
@@ -31,6 +32,8 @@ struct ModelData {
     owned_by: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     permission: Option<Vec<()>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<ReasoningCapabilities>,
 }
 
 impl From<ModelInfo> for ModelData {
@@ -41,6 +44,7 @@ impl From<ModelInfo> for ModelData {
             created: 0, // Ollama doesn't provide creation time
             owned_by: "local",
             permission: None,
+            reasoning: info.reasoning,
         }
     }
 }

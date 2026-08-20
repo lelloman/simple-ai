@@ -30,7 +30,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::CapabilityInfo;
+use crate::{CapabilityInfo, ReasoningCapabilities};
 
 /// Messages sent from runner to gateway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +153,9 @@ pub struct ModelInfo {
     /// When the model was last modified
     #[serde(default)]
     pub modified_at: Option<String>,
+    /// Request-time reasoning controls supported by this model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningCapabilities>,
 }
 
 /// Status of a single inference engine.

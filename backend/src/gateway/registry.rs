@@ -9,7 +9,8 @@ use serde::Serialize;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
 use simple_ai_common::{
-    Capability, CommandResponse, GatewayMessage, OcrMode, OcrProviderInfo, RunnerStatus,
+    Capability, CommandResponse, GatewayMessage, OcrMode, OcrProviderInfo, ReasoningCapabilities,
+    RunnerStatus,
 };
 
 /// Event emitted when runner state changes.
@@ -408,6 +409,7 @@ impl RunnerRegistry {
                 for available_model in &engine.available_models {
                     let model_id = &available_model.id;
                     let is_loaded = loaded_ids.contains(model_id);
+                    let already_present = models.contains_key(model_id);
 
                     let entry = models.entry(model_id.clone()).or_insert_with(|| ModelInfo {
                         id: model_id.clone(),
@@ -417,10 +419,18 @@ impl RunnerRegistry {
                         context_length: available_model.context_length,
                         quantization: available_model.quantization.clone(),
                         modified_at: available_model.modified_at.clone(),
+                        reasoning: available_model.reasoning.clone(),
                         loaded: false,
                         runners: vec![],
                         available_on: vec![],
                     });
+
+                    if already_present {
+                        entry.reasoning = intersect_reasoning_capabilities(
+                            entry.reasoning.take(),
+                            available_model.reasoning.clone(),
+                        );
+                    }
 
                     // Track which runners have this model available
                     if !entry.available_on.contains(&runner.id) {
@@ -495,6 +505,8 @@ pub struct ModelInfo {
     pub quantization: Option<String>,
     /// When the model was last modified.
     pub modified_at: Option<String>,
+    /// Controls supported consistently by every runner advertising this model.
+    pub reasoning: Option<ReasoningCapabilities>,
     /// Whether this model is currently loaded on any runner.
     pub loaded: bool,
     /// Runner IDs that have this model loaded (in GPU memory).
@@ -503,10 +515,73 @@ pub struct ModelInfo {
     pub available_on: Vec<String>,
 }
 
+fn intersect_reasoning_capabilities(
+    left: Option<ReasoningCapabilities>,
+    right: Option<ReasoningCapabilities>,
+) -> Option<ReasoningCapabilities> {
+    let (left, right) = (left?, right?);
+    let supported_efforts = left
+        .supported_efforts
+        .into_iter()
+        .filter(|effort| right.supported_efforts.contains(effort))
+        .collect::<Vec<_>>();
+    let supports_thinking_budget = left.supports_thinking_budget && right.supports_thinking_budget;
+    let default_effort = (left.default_effort == right.default_effort)
+        .then_some(left.default_effort)
+        .flatten()
+        .filter(|effort| supported_efforts.contains(effort));
+    let default_thinking_budget_tokens = (left.default_thinking_budget_tokens
+        == right.default_thinking_budget_tokens)
+        .then_some(left.default_thinking_budget_tokens)
+        .flatten();
+
+    if supported_efforts.is_empty() && !supports_thinking_budget {
+        None
+    } else {
+        Some(ReasoningCapabilities {
+            supported_efforts,
+            supports_thinking_budget,
+            default_effort,
+            default_thinking_budget_tokens,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_ai_common::{EngineStatus, ModelInfo as ProtocolModelInfo, RunnerHealth};
+    use simple_ai_common::{
+        EngineStatus, ModelInfo as ProtocolModelInfo, ReasoningEffort, RunnerHealth,
+    };
+
+    #[test]
+    fn reasoning_capabilities_are_intersected_across_runners() {
+        let left = ReasoningCapabilities {
+            supported_efforts: vec![
+                ReasoningEffort::None,
+                ReasoningEffort::Low,
+                ReasoningEffort::Medium,
+                ReasoningEffort::Xhigh,
+            ],
+            supports_thinking_budget: true,
+            default_effort: Some(ReasoningEffort::Xhigh),
+            default_thinking_budget_tokens: None,
+        };
+        let right = ReasoningCapabilities {
+            supported_efforts: vec![ReasoningEffort::Low, ReasoningEffort::Medium],
+            supports_thinking_budget: false,
+            default_effort: Some(ReasoningEffort::Medium),
+            default_thinking_budget_tokens: None,
+        };
+
+        let merged = intersect_reasoning_capabilities(Some(left), Some(right)).unwrap();
+        assert_eq!(
+            merged.supported_efforts,
+            vec![ReasoningEffort::Low, ReasoningEffort::Medium]
+        );
+        assert!(!merged.supports_thinking_budget);
+        assert_eq!(merged.default_effort, None);
+    }
 
     fn create_test_status(models: Vec<String>) -> RunnerStatus {
         RunnerStatus {
@@ -527,6 +602,7 @@ mod tests {
                         context_length: None,
                         quantization: None,
                         modified_at: None,
+                        reasoning: None,
                     })
                     .collect(),
                 error: None,

@@ -330,6 +330,7 @@ mod tests {
                     context_length: None,
                     quantization: None,
                     modified_at: None,
+                    reasoning: None,
                 }],
                 error: None,
                 batch_size,

@@ -19,6 +19,42 @@ pub enum ReasoningEffort {
     Max,
 }
 
+impl ReasoningEffort {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Default => "default",
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+}
+
+impl std::fmt::Display for ReasoningEffort {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Reasoning controls supported by one concrete model.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReasoningCapabilities {
+    /// Effort values accepted by this model's chat template.
+    #[serde(default)]
+    pub supported_efforts: Vec<ReasoningEffort>,
+    /// Whether this runtime/model combination accepts a hard thinking budget.
+    #[serde(default)]
+    pub supports_thinking_budget: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_effort: Option<ReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_thinking_budget_tokens: Option<i32>,
+}
+
 /// Inference-only performance metadata used internally by SimpleAI.
 ///
 /// These timings describe model evaluation and intentionally exclude gateway

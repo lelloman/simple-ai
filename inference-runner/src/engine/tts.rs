@@ -316,6 +316,7 @@ impl InferenceEngine for TtsEngine {
                 context_length: None,
                 quantization: None,
                 modified_at: None,
+                reasoning: None,
             })
             .collect())
     }
@@ -329,6 +330,7 @@ impl InferenceEngine for TtsEngine {
             context_length: None,
             quantization: None,
             modified_at: None,
+            reasoning: None,
         }))
     }
 

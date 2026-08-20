@@ -196,7 +196,7 @@
                                         <div>
                                             <label for="chat-model-select" class="block text-sm font-medium text-gray-700">Model</label>
                                             <div class="mt-1 flex gap-2">
-                                                <select id="chat-model-select" class="block w-full rounded-md border border-gray-300 bg-white p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                                <select id="chat-model-select" onchange="syncChatReasoningControls()" class="block w-full rounded-md border border-gray-300 bg-white p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
                                                     <option value="">Loading models...</option>
                                                 </select>
                                                 <button onclick="refreshChatModels()" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Refresh</button>
@@ -206,7 +206,7 @@
 
                                         <div>
                                             <label for="chat-model-override" class="block text-sm font-medium text-gray-700">Manual Model Override</label>
-                                            <input type="text" id="chat-model-override" placeholder="e.g. class:fast or llama3.2:3b" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                            <input type="text" id="chat-model-override" oninput="syncChatReasoningControls()" placeholder="e.g. class:fast or llama3.2:3b" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
                                         </div>
 
                                         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -220,8 +220,8 @@
                                             </div>
                                         </div>
 
-                                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                            <div>
+                                        <div id="chat-reasoning-controls" hidden class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <div id="chat-reasoning-effort-control">
                                                 <label for="chat-reasoning-effort" class="block text-sm font-medium text-gray-700">Reasoning Effort</label>
                                                 <select id="chat-reasoning-effort" class="mt-1 block w-full rounded-md border border-gray-300 bg-white p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
                                                     <option value="">Model default</option>
@@ -234,7 +234,7 @@
                                                     <option value="max">Maximum</option>
                                                 </select>
                                             </div>
-                                            <div>
+                                            <div id="chat-thinking-budget-control">
                                                 <label for="chat-thinking-budget" class="block text-sm font-medium text-gray-700">Thinking Budget</label>
                                                 <input type="number" id="chat-thinking-budget" min="-1" step="1" placeholder="Model default" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
                                                 <p class="mt-1 text-xs text-gray-500">Tokens; 0 disables, -1 is unlimited.</p>
@@ -1616,6 +1616,51 @@
             return document.getElementById('chat-model-select')?.value || '';
         }
 
+        function getSelectedChatModelMetadata() {
+            const selected = getSelectedChatModel();
+            return chatModelsState.find(model => model.id === selected) || null;
+        }
+
+        function syncChatReasoningControls() {
+            const container = document.getElementById('chat-reasoning-controls');
+            const effortControl = document.getElementById('chat-reasoning-effort-control');
+            const effortSelect = document.getElementById('chat-reasoning-effort');
+            const budgetControl = document.getElementById('chat-thinking-budget-control');
+            const budgetInput = document.getElementById('chat-thinking-budget');
+            if (!container || !effortControl || !effortSelect || !budgetControl || !budgetInput) return;
+
+            const capabilities = getSelectedChatModelMetadata()?.reasoning || null;
+            container.hidden = !capabilities;
+            if (!capabilities) {
+                effortSelect.value = '';
+                budgetInput.value = '';
+                return;
+            }
+
+            const efforts = Array.isArray(capabilities.supported_efforts)
+                ? capabilities.supported_efforts
+                : [];
+            const previousEffort = effortSelect.value;
+            const defaultLabel = capabilities.default_effort
+                ? `Model default (${capabilities.default_effort})`
+                : 'Model default';
+            effortSelect.innerHTML = [
+                `<option value="">${escapeHtml(defaultLabel)}</option>`,
+                ...efforts.map(effort => `<option value="${escapeAttr(effort)}">${escapeHtml(effort)}</option>`)
+            ].join('');
+            effortControl.hidden = efforts.length === 0;
+            effortSelect.value = efforts.includes(previousEffort) ? previousEffort : '';
+
+            budgetControl.hidden = !capabilities.supports_thinking_budget;
+            if (!capabilities.supports_thinking_budget) {
+                budgetInput.value = '';
+            } else if (capabilities.default_thinking_budget_tokens != null) {
+                budgetInput.placeholder = `Model default (${capabilities.default_thinking_budget_tokens})`;
+            } else {
+                budgetInput.placeholder = 'Model default';
+            }
+        }
+
         function setChatStatus(label, tone = 'idle') {
             const badge = document.getElementById('chat-status-badge');
             if (!badge) return;
@@ -1689,6 +1734,7 @@
             if (models.length === 0) {
                 select.innerHTML = '<option value="">No models available</option>';
                 renderChatQuickModels();
+                syncChatReasoningControls();
                 return;
             }
 
@@ -1701,6 +1747,7 @@
             }
 
             renderChatQuickModels();
+            syncChatReasoningControls();
         }
 
         function renderChatTranscript() {
@@ -1768,6 +1815,7 @@
             if (select) {
                 select.value = model;
             }
+            syncChatReasoningControls();
         }
 
         function buildChatMessages() {
