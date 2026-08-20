@@ -245,6 +245,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 3. Integrate with your app using the AIDL interface (see [android/README.md](android/README.md))
 
+### Local Model Evaluation
+
+For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-eval.md](docs/qwen36-local-eval.md).
+
 ---
 
 ## Development

@@ -181,6 +181,11 @@ max_loaded_models = 3
 # "llama3-8b" = "meta_llama-3-8b-instruct-Q4_K_M"
 # "mistral-7b" = "mistral-7b-instruct-v0.3-Q4_K_M"
 # "embedding:large" = "Qwen3-Embedding-8B-Q4_K_M"
+#
+# Qwen3.6 local evaluation candidates. Uncomment after downloading matching
+# GGUF files and adding the canonical names to backend [models].big.
+# "qwen3.6-27b" = "Qwen3.6-27B-Q4_K_M"
+# "qwen3.6-35b-a3b" = "Qwen3.6-35B-A3B-Q4_K_M"
 
 # Optional OCR provider. Disabled by default; only runners with a healthy
 # provider advertise the "ocr" capability and receive OCR requests.

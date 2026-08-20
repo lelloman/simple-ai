@@ -58,11 +58,17 @@ big = [
     "llama3:70b",
     "qwen2:72b",
     "deepseek:67b",
+    # Candidate local coding models for 24GB-class GPUs. Configure matching
+    # runner aliases in inference-runner/config.toml if GGUF names differ.
+    # "qwen3.8-27b",
+    # "qwen3.6-27b",
 ]
 fast = [
     "llama3:8b",
     "mistral:7b",
     "phi3:mini",
+    # Fast MoE candidate: large resident model, low active params.
+    # "qwen3.6-35b-a3b",
 ]
 embed_small = [
     "nomic-embed-text",
