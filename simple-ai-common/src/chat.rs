@@ -93,12 +93,61 @@ pub struct ChatCompletionRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_chat_message_content")]
     pub content: Option<String>,
     #[serde(default)]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(default)]
     pub tool_call_id: Option<String>,
+}
+
+/// Deserialize the two text content forms accepted by OpenAI's Chat
+/// Completions API. Internally SimpleAI still uses a string because its model
+/// runners currently support text-only chat messages.
+fn deserialize_chat_message_content<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    let Some(value) = value else {
+        return Ok(None);
+    };
+
+    match value {
+        serde_json::Value::String(text) => Ok(Some(text)),
+        serde_json::Value::Array(parts) => {
+            let mut text = String::new();
+
+            for part in parts {
+                let object = part
+                    .as_object()
+                    .ok_or_else(|| D::Error::custom("message content parts must be objects"))?;
+                let part_type = object
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| D::Error::custom("message content part is missing its type"))?;
+
+                if part_type != "text" {
+                    return Err(D::Error::custom(format!(
+                        "unsupported message content part type: {part_type}"
+                    )));
+                }
+
+                let part_text = object
+                    .get("text")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| D::Error::custom("text content part is missing its text"))?;
+                text.push_str(part_text);
+            }
+
+            Ok(Some(text))
+        }
+        _ => Err(D::Error::custom(
+            "message content must be a string, an array of text parts, or null",
+        )),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,6 +335,35 @@ mod tests {
         assert!(req.max_tokens.is_none());
         assert!(req.reasoning_effort.is_none());
         assert!(req.thinking_budget_tokens.is_none());
+    }
+
+    #[test]
+    fn test_chat_message_accepts_openai_text_content_parts() {
+        let json = r#"{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Hello, "},
+                {"type": "text", "text": "Qwen!"}
+            ]
+        }"#;
+
+        let message: ChatMessage = serde_json::from_str(json).unwrap();
+
+        assert_eq!(message.content.as_deref(), Some("Hello, Qwen!"));
+    }
+
+    #[test]
+    fn test_chat_message_rejects_unsupported_content_parts() {
+        let json = r#"{
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "example"}}]
+        }"#;
+
+        let error = serde_json::from_str::<ChatMessage>(json).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("unsupported message content part type: image_url"));
     }
 
     #[test]
