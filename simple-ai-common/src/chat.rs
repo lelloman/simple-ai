@@ -136,9 +136,40 @@ pub struct ChatCompletionChunk {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkChoice {
     pub index: u32,
-    pub delta: ChatMessage,
+    pub delta: ChatCompletionDelta,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<String>,
+}
+
+/// Incremental fields emitted by an OpenAI-compatible chat stream.
+///
+/// Unlike a complete `ChatMessage`, the role is commonly present only in the
+/// first event. Some reasoning models emit intermediate tokens through the
+/// llama.cpp-compatible `reasoning_content` extension.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChatCompletionDelta {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl From<ChatMessage> for ChatCompletionDelta {
+    fn from(message: ChatMessage) -> Self {
+        Self {
+            role: Some(message.role),
+            content: message.content,
+            reasoning_content: None,
+            tool_calls: message.tool_calls,
+            tool_call_id: message.tool_call_id,
+        }
+    }
 }
 
 impl ChatCompletionChunk {
@@ -156,7 +187,7 @@ impl ChatCompletionChunk {
             model,
             choices: vec![ChunkChoice {
                 index: 0,
-                delta,
+                delta: delta.into(),
                 finish_reason,
             }],
         }
@@ -365,6 +396,27 @@ mod tests {
         };
         let response = ChatCompletionResponse::new("model".to_string(), message, None);
         assert_eq!(response.choices[0].finish_reason, None);
+    }
+
+    #[test]
+    fn test_stream_delta_accepts_reasoning_without_repeated_role() {
+        let json = r#"{
+            "id":"chatcmpl-1",
+            "object":"chat.completion.chunk",
+            "created":123,
+            "model":"qwen3.8-27b",
+            "choices":[{
+                "index":0,
+                "delta":{"reasoning_content":"We need"},
+                "finish_reason":null
+            }]
+        }"#;
+        let chunk: ChatCompletionChunk = serde_json::from_str(json).unwrap();
+        let delta = &chunk.choices[0].delta;
+
+        assert!(delta.role.is_none());
+        assert!(delta.content.is_none());
+        assert_eq!(delta.reasoning_content.as_deref(), Some("We need"));
     }
 
     #[test]

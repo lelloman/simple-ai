@@ -17,8 +17,8 @@ pub use audio_embeddings::{
 pub use capability::{Capability, CapabilityInfo, CapabilityStatus};
 pub use chat::{
     format_sse_chunk, format_sse_done, format_sse_metrics, ChatCompletionChunk,
-    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice, ChunkChoice,
-    InferenceMetrics, ToolCall, ToolFunction, Usage,
+    ChatCompletionDelta, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice,
+    ChunkChoice, InferenceMetrics, ToolCall, ToolFunction, Usage,
 };
 pub use ocr::{
     OcrBlock, OcrFeature, OcrMetadata, OcrMode, OcrOptions, OcrPage, OcrProviderInfo, OcrResponse,
