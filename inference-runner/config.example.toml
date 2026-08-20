@@ -52,6 +52,8 @@ base_url = "http://localhost:11434"
 #fit = false
 #parallel = 1
 #default_max_tokens = 4096
+#default_reasoning_effort = "medium"       # none/default/minimal/low/medium/high/xhigh/max
+#default_thinking_budget_tokens = 2048     # 0 disables thinking; -1 is unrestricted
 #mtp = { draft_tokens = 3, gpu_layers = 999 }
 #extra_args = []                           # Escape hatch for unsupported llama.cpp flags
 #

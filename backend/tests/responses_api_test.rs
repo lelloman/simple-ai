@@ -208,6 +208,8 @@ async fn test_responses_non_streaming_success_maps_text_output() {
         tools: None,
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: Some(false),
     };
 
@@ -269,6 +271,8 @@ async fn test_responses_non_streaming_success_maps_tool_calls() {
         })]),
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: Some(false),
     };
 
@@ -332,6 +336,8 @@ async fn test_responses_accepts_function_call_output_input() {
         tools: None,
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: Some(false),
     };
 
@@ -380,6 +386,8 @@ async fn test_responses_streaming_emits_responses_events_and_filters_internal_me
         tools: None,
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: Some(true),
     };
 
@@ -425,6 +433,8 @@ async fn test_responses_rejects_specific_model_for_api_key_user_without_roles() 
         tools: None,
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: Some(false),
     };
 
@@ -462,6 +472,8 @@ async fn test_responses_surfaces_upstream_error() {
         tools: None,
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: Some(false),
     };
 

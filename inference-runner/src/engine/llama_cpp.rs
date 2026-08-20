@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_ai_common::{
     format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
-    InferenceMetrics, ToolCall, ToolFunction,
+    InferenceMetrics, ReasoningEffort, ToolCall, ToolFunction,
 };
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
@@ -322,6 +322,37 @@ impl LlamaCppEngine {
         request.max_tokens.or_else(|| {
             self.model_config(model_id)
                 .and_then(|config| config.default_max_tokens)
+        })
+    }
+
+    fn request_reasoning_effort(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+    ) -> Option<ReasoningEffort> {
+        request.reasoning_effort.or_else(|| {
+            self.model_config(model_id)
+                .and_then(|config| config.default_reasoning_effort)
+        })
+    }
+
+    fn request_thinking_budget_tokens(
+        &self,
+        model_id: &str,
+        request: &ChatCompletionRequest,
+    ) -> Option<i32> {
+        request.thinking_budget_tokens.or_else(|| {
+            self.model_config(model_id)
+                .and_then(|config| config.default_thinking_budget_tokens)
+        })
+    }
+
+    fn chat_template_kwargs(
+        reasoning_effort: Option<ReasoningEffort>,
+    ) -> Option<LlamaChatTemplateKwargs> {
+        reasoning_effort.map(|effort| LlamaChatTemplateKwargs {
+            enable_thinking: !matches!(effort, ReasoningEffort::None),
+            reasoning_effort: (!matches!(effort, ReasoningEffort::None)).then_some(effort),
         })
     }
 
@@ -1006,9 +1037,22 @@ struct LlamaChatRequest {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<ReasoningEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking_budget_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chat_template_kwargs: Option<LlamaChatTemplateKwargs>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_options: Option<LlamaStreamOptions>,
+}
+
+#[derive(Debug, Serialize)]
+struct LlamaChatTemplateKwargs {
+    enable_thinking: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1260,12 +1304,16 @@ impl InferenceEngine for LlamaCppEngine {
             })
             .collect();
 
+        let reasoning_effort = self.request_reasoning_effort(model_id, request);
         let llama_request = LlamaChatRequest {
             model: model_id.to_string(),
             messages,
             tools: request.tools.clone(),
             temperature: request.temperature,
             max_tokens: self.request_max_tokens(model_id, request),
+            reasoning_effort,
+            thinking_budget_tokens: self.request_thinking_budget_tokens(model_id, request),
+            chat_template_kwargs: Self::chat_template_kwargs(reasoning_effort),
             stream: false,
             stream_options: None,
         };
@@ -1430,12 +1478,16 @@ impl InferenceEngine for LlamaCppEngine {
             })
             .collect();
 
+        let reasoning_effort = self.request_reasoning_effort(model_id, request);
         let llama_request = LlamaChatRequest {
             model: model_id.to_string(),
             messages,
             tools: request.tools.clone(),
             temperature: request.temperature,
             max_tokens: self.request_max_tokens(model_id, request),
+            reasoning_effort,
+            thinking_budget_tokens: self.request_thinking_budget_tokens(model_id, request),
+            chat_template_kwargs: Self::chat_template_kwargs(reasoning_effort),
             stream: true,
             stream_options: Some(LlamaStreamOptions {
                 include_usage: true,
@@ -1677,12 +1729,14 @@ mod tests {
     }
 
     #[test]
-    fn test_model_profile_is_case_insensitive_and_sets_default_max_tokens() {
+    fn test_model_profile_defaults_are_case_insensitive_and_request_overrides_win() {
         let mut config = test_config();
         config.models.insert(
             "qwen3.8-27b-ud-q4_k_xl".to_string(),
             LlamaCppModelConfig {
                 default_max_tokens: Some(4096),
+                default_reasoning_effort: Some(ReasoningEffort::Medium),
+                default_thinking_budget_tokens: Some(2048),
                 ..Default::default()
             },
         );
@@ -1693,6 +1747,8 @@ mod tests {
             model: None,
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
+            thinking_budget_tokens: None,
             stream: Some(true),
         };
 
@@ -1700,15 +1756,61 @@ mod tests {
             engine.request_max_tokens("Qwen3.8-27B-UD-Q4_K_XL", &request),
             Some(4096)
         );
+        assert_eq!(
+            engine.request_reasoning_effort("Qwen3.8-27B-UD-Q4_K_XL", &request),
+            Some(ReasoningEffort::Medium)
+        );
+        assert_eq!(
+            engine.request_thinking_budget_tokens("Qwen3.8-27B-UD-Q4_K_XL", &request),
+            Some(2048)
+        );
 
         let request_override = ChatCompletionRequest {
             max_tokens: Some(128),
+            reasoning_effort: Some(ReasoningEffort::High),
+            thinking_budget_tokens: Some(512),
             ..request
         };
         assert_eq!(
             engine.request_max_tokens("Qwen3.8-27B-UD-Q4_K_XL", &request_override),
             Some(128)
         );
+        assert_eq!(
+            engine.request_reasoning_effort("Qwen3.8-27B-UD-Q4_K_XL", &request_override),
+            Some(ReasoningEffort::High)
+        );
+        assert_eq!(
+            engine.request_thinking_budget_tokens("Qwen3.8-27B-UD-Q4_K_XL", &request_override),
+            Some(512)
+        );
+    }
+
+    #[test]
+    fn test_llama_request_serializes_reasoning_controls_for_the_chat_template() {
+        let effort = Some(ReasoningEffort::High);
+        let request = LlamaChatRequest {
+            model: "qwen3.8-27b".to_string(),
+            messages: Vec::new(),
+            tools: None,
+            temperature: None,
+            max_tokens: Some(4096),
+            reasoning_effort: effort,
+            thinking_budget_tokens: Some(1024),
+            chat_template_kwargs: LlamaCppEngine::chat_template_kwargs(effort),
+            stream: true,
+            stream_options: None,
+        };
+
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["reasoning_effort"], "high");
+        assert_eq!(value["thinking_budget_tokens"], 1024);
+        assert_eq!(value["chat_template_kwargs"]["enable_thinking"], true);
+        assert_eq!(value["chat_template_kwargs"]["reasoning_effort"], "high");
+
+        let disabled = LlamaCppEngine::chat_template_kwargs(Some(ReasoningEffort::None));
+        let disabled = serde_json::to_value(disabled).unwrap();
+        assert_eq!(disabled["enable_thinking"], false);
+        assert!(disabled.get("reasoning_effort").is_none());
     }
 
     #[test]
@@ -1718,6 +1820,8 @@ mod tests {
             fit: Some(false),
             parallel: Some(1),
             default_max_tokens: Some(4096),
+            default_reasoning_effort: None,
+            default_thinking_budget_tokens: None,
             mtp: Some(LlamaCppMtpConfig {
                 draft_tokens: 3,
                 gpu_layers: Some(999),

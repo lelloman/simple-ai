@@ -220,6 +220,27 @@
                                             </div>
                                         </div>
 
+                                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                            <div>
+                                                <label for="chat-reasoning-effort" class="block text-sm font-medium text-gray-700">Reasoning Effort</label>
+                                                <select id="chat-reasoning-effort" class="mt-1 block w-full rounded-md border border-gray-300 bg-white p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                                    <option value="">Model default</option>
+                                                    <option value="none">None</option>
+                                                    <option value="minimal">Minimal</option>
+                                                    <option value="low">Low</option>
+                                                    <option value="medium">Medium</option>
+                                                    <option value="high">High</option>
+                                                    <option value="xhigh">Extra high</option>
+                                                    <option value="max">Maximum</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label for="chat-thinking-budget" class="block text-sm font-medium text-gray-700">Thinking Budget</label>
+                                                <input type="number" id="chat-thinking-budget" min="-1" step="1" placeholder="Model default" class="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                                <p class="mt-1 text-xs text-gray-500">Tokens; 0 disables, -1 is unlimited.</p>
+                                            </div>
+                                        </div>
+
                                         <label class="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                                             <input type="checkbox" id="chat-streaming-enabled" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500">
                                             <span>Stream responses</span>
@@ -1895,6 +1916,8 @@
 
             const temperatureRaw = document.getElementById('chat-temperature')?.value.trim();
             const maxTokensRaw = document.getElementById('chat-max-tokens')?.value.trim();
+            const reasoningEffort = document.getElementById('chat-reasoning-effort')?.value || '';
+            const thinkingBudgetRaw = document.getElementById('chat-thinking-budget')?.value.trim();
             const requestBody = {
                 model,
                 messages: [...buildChatMessages(), { role: 'user', content }],
@@ -1906,6 +1929,12 @@
             }
             if (maxTokensRaw !== '') {
                 requestBody.max_tokens = Number(maxTokensRaw);
+            }
+            if (reasoningEffort !== '') {
+                requestBody.reasoning_effort = reasoningEffort;
+            }
+            if (thinkingBudgetRaw !== '') {
+                requestBody.thinking_budget_tokens = Number(thinkingBudgetRaw);
             }
 
             chatMessagesState.push({ role: 'user', content, model });

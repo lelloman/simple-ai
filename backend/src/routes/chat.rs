@@ -579,6 +579,8 @@ mod tests {
             model: None,
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
+            thinking_budget_tokens: None,
             tools: None,
             stream: None,
         }
@@ -599,6 +601,8 @@ mod tests {
             model: None,
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
+            thinking_budget_tokens: None,
             tools: None,
             stream: None,
         };
@@ -630,6 +634,8 @@ mod tests {
             model: Some("custom-model".to_string()),
             temperature: Some(0.5),
             max_tokens: Some(100),
+            reasoning_effort: None,
+            thinking_budget_tokens: None,
             tools: None,
             stream: None,
         };

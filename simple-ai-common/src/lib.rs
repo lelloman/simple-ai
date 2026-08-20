@@ -18,7 +18,7 @@ pub use capability::{Capability, CapabilityInfo, CapabilityStatus};
 pub use chat::{
     format_sse_chunk, format_sse_done, format_sse_metrics, ChatCompletionChunk,
     ChatCompletionDelta, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Choice,
-    ChunkChoice, InferenceMetrics, ToolCall, ToolFunction, Usage,
+    ChunkChoice, InferenceMetrics, ReasoningEffort, ToolCall, ToolFunction, Usage,
 };
 pub use ocr::{
     OcrBlock, OcrFeature, OcrMetadata, OcrMode, OcrOptions, OcrPage, OcrProviderInfo, OcrResponse,
@@ -31,7 +31,8 @@ pub use protocol::{
 pub use responses::{
     ResponseContent, ResponseContentPart, ResponseCreateRequest, ResponseFunctionCall,
     ResponseInput, ResponseInputItem, ResponseInputMessage, ResponseObject, ResponseOutputContent,
-    ResponseOutputItem, ResponseOutputMessage, ResponseTypedInputItem, ResponseUsage,
+    ResponseOutputItem, ResponseOutputMessage, ResponseReasoning, ResponseTypedInputItem,
+    ResponseUsage,
 };
 pub use speech::{
     SpeechModelInfo, SpeechProviderInfo, SpeechRequest, SpeechResponseFormat, SpeechStreamFormat,

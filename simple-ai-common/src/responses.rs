@@ -2,7 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ChatCompletionResponse, ChatMessage, ToolCall};
+use crate::{ChatCompletionResponse, ChatMessage, ReasoningEffort, ToolCall};
+
+/// Reasoning controls for the OpenAI-compatible Responses API.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ResponseReasoning {
+    #[serde(default)]
+    pub effort: Option<ReasoningEffort>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseCreateRequest {
@@ -14,6 +21,11 @@ pub struct ResponseCreateRequest {
     pub temperature: Option<f32>,
     #[serde(default, rename = "max_output_tokens")]
     pub max_output_tokens: Option<u32>,
+    #[serde(default)]
+    pub reasoning: Option<ResponseReasoning>,
+    /// llama.cpp-compatible hard limit for reasoning tokens.
+    #[serde(default)]
+    pub thinking_budget_tokens: Option<i32>,
     #[serde(default)]
     pub stream: Option<bool>,
 }

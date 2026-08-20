@@ -2,6 +2,23 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Model-native reasoning depth requested for a completion.
+///
+/// `none` disables reasoning. The remaining values are interpreted by models
+/// whose chat templates support native reasoning effort.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    None,
+    Default,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
 /// Inference-only performance metadata used internally by SimpleAI.
 ///
 /// These timings describe model evaluation and intentionally exclude gateway
@@ -61,6 +78,13 @@ pub struct ChatCompletionRequest {
     pub temperature: Option<f32>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    /// Model-native reasoning depth. This is distinct from a token budget.
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+    /// Per-request hard limit for reasoning tokens. Zero disables thinking;
+    /// `-1` means unrestricted for runtimes that support that convention.
+    #[serde(default)]
+    pub thinking_budget_tokens: Option<i32>,
     /// Whether to stream the response.
     #[serde(default)]
     pub stream: Option<bool>,
@@ -260,6 +284,8 @@ mod tests {
         assert!(req.model.is_none());
         assert!(req.temperature.is_none());
         assert!(req.max_tokens.is_none());
+        assert!(req.reasoning_effort.is_none());
+        assert!(req.thinking_budget_tokens.is_none());
     }
 
     #[test]
@@ -275,12 +301,16 @@ mod tests {
             model: Some("gpt-4".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(100),
+            reasoning_effort: Some(ReasoningEffort::High),
+            thinking_budget_tokens: Some(2048),
             stream: Some(false),
         };
         assert_eq!(req.messages.len(), 1);
         assert_eq!(req.model, Some("gpt-4".to_string()));
         assert_eq!(req.temperature, Some(0.7));
         assert_eq!(req.max_tokens, Some(100));
+        assert_eq!(req.reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(req.thinking_budget_tokens, Some(2048));
     }
 
     #[test]
@@ -463,6 +493,8 @@ mod tests {
             model: Some("llama2".to_string()),
             temperature: Some(0.5),
             max_tokens: Some(50),
+            reasoning_effort: Some(ReasoningEffort::Medium),
+            thinking_budget_tokens: Some(1024),
             tools: None,
             stream: None,
         };
@@ -471,6 +503,11 @@ mod tests {
         assert_eq!(deserialized.model, original.model);
         assert_eq!(deserialized.temperature, original.temperature);
         assert_eq!(deserialized.max_tokens, original.max_tokens);
+        assert_eq!(deserialized.reasoning_effort, original.reasoning_effort);
+        assert_eq!(
+            deserialized.thinking_budget_tokens,
+            original.thinking_budget_tokens
+        );
         assert_eq!(deserialized.messages.len(), original.messages.len());
     }
 

@@ -3,7 +3,8 @@
 use config::{Config as ConfigLoader, ConfigError, Environment, File};
 use serde::Deserialize;
 use simple_ai_common::{
-    AudioEmbeddingNamespaceInfo, Capability, OcrFeature, OcrMode, SpeechResponseFormat,
+    AudioEmbeddingNamespaceInfo, Capability, OcrFeature, OcrMode, ReasoningEffort,
+    SpeechResponseFormat,
 };
 use std::collections::HashMap;
 
@@ -191,6 +192,12 @@ pub struct LlamaCppModelConfig {
     /// Completion limit used when the API request omits `max_tokens`.
     #[serde(default)]
     pub default_max_tokens: Option<u32>,
+    /// Model-native reasoning effort used when the request omits it.
+    #[serde(default)]
+    pub default_reasoning_effort: Option<ReasoningEffort>,
+    /// Hard reasoning-token limit used when the request omits it.
+    #[serde(default)]
+    pub default_thinking_budget_tokens: Option<i32>,
     /// Optional model-native MTP speculative decoding configuration.
     #[serde(default)]
     pub mtp: Option<LlamaCppMtpConfig>,
@@ -643,6 +650,8 @@ mod tests {
             fit = false
             parallel = 1
             default_max_tokens = 4096
+            default_reasoning_effort = "medium"
+            default_thinking_budget_tokens = 2048
             mtp = { draft_tokens = 3, gpu_layers = 999 }
             extra_args = ["--reasoning-preserve"]
         "#;
@@ -661,6 +670,11 @@ mod tests {
         assert_eq!(profile.fit, Some(false));
         assert_eq!(profile.parallel, Some(1));
         assert_eq!(profile.default_max_tokens, Some(4096));
+        assert_eq!(
+            profile.default_reasoning_effort,
+            Some(ReasoningEffort::Medium)
+        );
+        assert_eq!(profile.default_thinking_budget_tokens, Some(2048));
         assert_eq!(profile.mtp.as_ref().unwrap().draft_tokens, 3);
         assert_eq!(profile.mtp.as_ref().unwrap().gpu_layers, Some(999));
         assert_eq!(profile.extra_args, vec!["--reasoning-preserve"]);

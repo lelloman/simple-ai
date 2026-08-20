@@ -404,6 +404,8 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
         tools,
         temperature,
         max_output_tokens,
+        reasoning,
+        thinking_budget_tokens,
         stream,
     } = request;
 
@@ -416,6 +418,8 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
         model: Some(model),
         temperature,
         max_tokens: max_output_tokens,
+        reasoning_effort: reasoning.and_then(|reasoning| reasoning.effort),
+        thinking_budget_tokens,
         stream,
     }
 }
@@ -758,7 +762,8 @@ mod tests {
     };
     use serde_json::Value;
     use simple_ai_common::{
-        ResponseContent, ResponseContentPart, ResponseInputItem, ResponseTypedInputItem,
+        ReasoningEffort, ResponseContent, ResponseContentPart, ResponseInputItem,
+        ResponseReasoning, ResponseTypedInputItem,
     };
     use std::collections::VecDeque;
 
@@ -770,6 +775,10 @@ mod tests {
             tools: None,
             temperature: Some(0.4),
             max_output_tokens: Some(32),
+            reasoning: Some(ResponseReasoning {
+                effort: Some(ReasoningEffort::High),
+            }),
+            thinking_budget_tokens: Some(1024),
             stream: Some(false),
         });
 
@@ -777,6 +786,8 @@ mod tests {
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].role, "user");
         assert_eq!(chat.max_tokens, Some(32));
+        assert_eq!(chat.reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(chat.thinking_budget_tokens, Some(1024));
     }
 
     #[test]
@@ -806,6 +817,8 @@ mod tests {
             tools: None,
             temperature: None,
             max_output_tokens: None,
+            reasoning: None,
+            thinking_budget_tokens: None,
             stream: Some(false),
         });
 

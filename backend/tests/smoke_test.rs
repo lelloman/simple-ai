@@ -178,6 +178,8 @@ async fn test_chat_completions_requires_auth() {
         model: None,
         temperature: None,
         max_tokens: None,
+        reasoning_effort: None,
+        thinking_budget_tokens: None,
         tools: None,
         stream: None,
     };
@@ -198,6 +200,8 @@ async fn test_responses_requires_auth() {
         tools: None,
         temperature: None,
         max_output_tokens: None,
+        reasoning: None,
+        thinking_budget_tokens: None,
         stream: None,
     };
 

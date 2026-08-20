@@ -298,6 +298,8 @@ mod tests {
             model: None,
             temperature: None,
             max_tokens: None,
+            reasoning_effort: None,
+            thinking_budget_tokens: None,
             tools: None,
             stream: None,
         }
