@@ -333,6 +333,10 @@
                                         <label for="api-key-name" class="block text-sm font-medium text-gray-700">Key Name</label>
                                         <input type="text" id="api-key-name" placeholder="e.g., Chrome Extension" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm border p-2">
                                     </div>
+                                    <label class="flex items-center gap-2 pb-2 text-sm text-gray-700">
+                                        <input type="checkbox" id="api-key-model-specific" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                                        Allow specific models
+                                    </label>
                                     <button onclick="createApiKey()" class="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-500">
                                         Create Key
                                     </button>
@@ -2735,6 +2739,13 @@
                                     Created: ${new Date(key.created_at).toLocaleDateString()}
                                     ${key.last_used_at ? ` | Last used: ${new Date(key.last_used_at).toLocaleString()}` : ' | Never used'}
                                 </p>
+                                <label class="mt-2 inline-flex items-center gap-2 text-xs text-gray-700">
+                                    <input type="checkbox"
+                                        ${key.roles.includes('model:specific') ? 'checked' : ''}
+                                        onchange="updateApiKeySpecificModelRole('${escapeAttr(key.id)}', this)"
+                                        class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                                    Allow specific models
+                                </label>
                                 ${key.secret_available ? `
                                     <div id="api-key-secret-${escapeAttr(key.id)}" class="hidden mt-3 flex items-center gap-2">
                                         <code id="api-key-secret-value-${escapeAttr(key.id)}" class="flex-1 min-w-0 overflow-x-auto whitespace-nowrap rounded border bg-gray-50 p-2 font-mono text-xs text-gray-900 select-all"></code>
@@ -2762,6 +2773,7 @@
             }
 
             const name = document.getElementById('api-key-name').value.trim();
+            const allowSpecificModels = document.getElementById('api-key-model-specific').checked;
             if (!name) {
                 alert('Please enter a key name');
                 return;
@@ -2770,7 +2782,11 @@
             try {
                 const data = await apiFetch('/admin/api/keys', {
                     method: 'POST',
-                    body: JSON.stringify({ user_id: selectedUserId, name: name }),
+                    body: JSON.stringify({
+                        user_id: selectedUserId,
+                        name: name,
+                        roles: allowSpecificModels ? ['model:specific'] : [],
+                    }),
                 });
 
                 // Show the secret key (only shown once!)
@@ -2779,12 +2795,31 @@
 
                 // Clear the form
                 document.getElementById('api-key-name').value = '';
+                document.getElementById('api-key-model-specific').checked = false;
 
                 // Reload the list
                 await loadUserApiKeys();
             } catch (e) {
                 console.error('Failed to create API key:', e);
                 alert('Failed to create API key: ' + e.message);
+            }
+        }
+
+        async function updateApiKeySpecificModelRole(keyId, checkbox) {
+            checkbox.disabled = true;
+            try {
+                await apiFetch(`/admin/api/keys/${encodeURIComponent(keyId)}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        roles: checkbox.checked ? ['model:specific'] : [],
+                    }),
+                });
+            } catch (e) {
+                checkbox.checked = !checkbox.checked;
+                console.error('Failed to update API key roles:', e);
+                alert('Failed to update API key permissions: ' + e.message);
+            } finally {
+                checkbox.disabled = false;
             }
         }
 

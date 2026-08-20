@@ -109,6 +109,7 @@ impl AuditLogger {
                 plaintext_key TEXT,
                 user_id TEXT NOT NULL,
                 name TEXT NOT NULL,
+                roles TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 last_used_at TEXT,
                 revoked INTEGER NOT NULL DEFAULT 0,
@@ -120,6 +121,12 @@ impl AuditLogger {
 
         // Migration: store retrievable API key secrets for keys created after this migration.
         let _ = conn.execute("ALTER TABLE api_keys ADD COLUMN plaintext_key TEXT", []);
+        // Migration: existing keys remain class-only until an administrator
+        // explicitly grants additional roles.
+        let _ = conn.execute(
+            "ALTER TABLE api_keys ADD COLUMN roles TEXT NOT NULL DEFAULT '[]'",
+            [],
+        );
 
         // Create indexes
         conn.execute(
@@ -803,6 +810,7 @@ impl AuditLogger {
         &self,
         user_id: &str,
         name: &str,
+        roles: &[String],
     ) -> Result<(ApiKey, String), AuditError> {
         use sha2::{Digest, Sha256};
 
@@ -822,11 +830,13 @@ impl AuditLogger {
 
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
+        let roles_json =
+            serde_json::to_string(roles).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
-            "INSERT INTO api_keys (id, key_hash, plaintext_key, user_id, name, created_at, revoked)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
-            params![id, key_hash, plaintext_key, user_id, name, now],
+            "INSERT INTO api_keys (id, key_hash, plaintext_key, user_id, name, roles, created_at, revoked)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
+            params![id, key_hash, plaintext_key, user_id, name, roles_json, now],
         )
         .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -845,6 +855,7 @@ impl AuditLogger {
             user_id: user_id.to_string(),
             user_email,
             name: name.to_string(),
+            roles: roles.to_vec(),
             created_at: now,
             last_used_at: None,
             revoked: false,
@@ -859,7 +870,7 @@ impl AuditLogger {
     pub fn validate_api_key(
         &self,
         plaintext_key: &str,
-    ) -> Result<Option<(String, Option<String>)>, AuditError> {
+    ) -> Result<Option<(String, Option<String>, Vec<String>)>, AuditError> {
         use sha2::{Digest, Sha256};
 
         if !plaintext_key.starts_with("sk-") {
@@ -877,24 +888,26 @@ impl AuditLogger {
         let key_hash = hex::encode(hasher.finalize());
 
         // Look up the key
-        let result: Result<(String, String, Option<String>), _> = conn.query_row(
-            "SELECT ak.id, ak.user_id, u.email
+        let result: Result<(String, String, Option<String>, String), _> = conn.query_row(
+            "SELECT ak.id, ak.user_id, u.email, ak.roles
              FROM api_keys ak
              LEFT JOIN users u ON u.id = ak.user_id
              WHERE ak.key_hash = ?1 AND ak.revoked = 0",
             params![key_hash],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         );
 
         match result {
-            Ok((key_id, user_id, email)) => {
+            Ok((key_id, user_id, email, roles_json)) => {
+                let roles = serde_json::from_str(&roles_json)
+                    .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
                 // Update last_used_at
                 let now = chrono::Utc::now().to_rfc3339();
                 let _ = conn.execute(
                     "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2",
                     params![now, key_id],
                 );
-                Ok(Some((user_id, email)))
+                Ok(Some((user_id, email, roles)))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AuditError::DatabaseError(e.to_string())),
@@ -909,7 +922,7 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
-            "SELECT ak.id, ak.key_hash, ak.user_id, u.email, ak.name, ak.created_at, ak.last_used_at, ak.revoked, ak.plaintext_key IS NOT NULL
+            "SELECT ak.id, ak.key_hash, ak.user_id, u.email, ak.name, ak.roles, ak.created_at, ak.last_used_at, ak.revoked, ak.plaintext_key IS NOT NULL
              FROM api_keys ak
              LEFT JOIN users u ON u.id = ak.user_id
              ORDER BY ak.created_at DESC"
@@ -917,16 +930,25 @@ impl AuditLogger {
 
         let rows = stmt
             .query_map([], |row| {
+                let roles_json: String = row.get(5)?;
+                let roles = serde_json::from_str(&roles_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        5,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?;
                 Ok(ApiKey {
                     id: row.get(0)?,
                     key_hash: row.get(1)?,
                     user_id: row.get(2)?,
                     user_email: row.get(3)?,
                     name: row.get(4)?,
-                    created_at: row.get(5)?,
-                    last_used_at: row.get(6)?,
-                    revoked: row.get::<_, i32>(7)? != 0,
-                    secret_available: row.get::<_, i32>(8)? != 0,
+                    roles,
+                    created_at: row.get(6)?,
+                    last_used_at: row.get(7)?,
+                    revoked: row.get::<_, i32>(8)? != 0,
+                    secret_available: row.get::<_, i32>(9)? != 0,
                 })
             })
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
@@ -937,6 +959,25 @@ impl AuditLogger {
         }
 
         Ok(keys)
+    }
+
+    /// Replace the roles assigned to an active API key.
+    pub fn update_api_key_roles(&self, key_id: &str, roles: &[String]) -> Result<bool, AuditError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let roles_json =
+            serde_json::to_string(roles).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        let rows_affected = conn
+            .execute(
+                "UPDATE api_keys SET roles = ?1 WHERE id = ?2 AND revoked = 0",
+                params![roles_json, key_id],
+            )
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+
+        Ok(rows_affected > 0)
     }
 
     /// Get the stored plaintext secret for an active API key, if available.
@@ -1034,6 +1075,7 @@ pub struct ApiKey {
     pub user_id: String,
     pub user_email: Option<String>,
     pub name: String,
+    pub roles: Vec<String>,
     pub created_at: String,
     pub last_used_at: Option<String>,
     pub revoked: bool,
@@ -1389,6 +1431,44 @@ mod tests {
         let logger = AuditLogger::new(&test_db_path).unwrap();
         drop(logger);
         assert!(fs::metadata(&test_db_path).is_ok());
+        cleanup_db(&test_db_path);
+    }
+
+    #[test]
+    fn test_existing_api_keys_table_gets_roles_migration() {
+        let test_db_path = format!(
+            "test_api_key_roles_migration_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
+        let conn = Connection::open(&test_db_path).unwrap();
+        conn.execute(
+            "CREATE TABLE api_keys (
+                id TEXT PRIMARY KEY,
+                key_hash TEXT NOT NULL UNIQUE,
+                plaintext_key TEXT,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT,
+                revoked INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let logger = AuditLogger::new(&test_db_path).unwrap();
+        let conn = logger.conn.lock().unwrap();
+        let roles: String = conn
+            .query_row(
+                "SELECT dflt_value FROM pragma_table_info('api_keys') WHERE name = 'roles'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(roles, "'[]'");
+        drop(conn);
+        drop(logger);
         cleanup_db(&test_db_path);
     }
 
@@ -2053,11 +2133,13 @@ mod tests {
             .find_or_create_user("user123", Some("user@example.com"))
             .unwrap();
 
-        let (key, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        let roles = vec!["model:specific".to_string()];
+        let (key, secret) = logger.create_api_key(&user.id, "Test Key", &roles).unwrap();
 
         assert!(!key.id.is_empty());
         assert_eq!(key.user_id, "user123");
         assert_eq!(key.name, "Test Key");
+        assert_eq!(key.roles, roles);
         assert_eq!(key.user_email, Some("user@example.com".to_string()));
         assert!(!key.revoked);
         assert!(key.secret_available);
@@ -2074,7 +2156,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
 
-        let (key, _) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        let (key, _) = logger.create_api_key(&user.id, "Test Key", &[]).unwrap();
         assert!(logger.get_api_key_secret(&key.id).unwrap().is_some());
 
         let revoked = logger.revoke_api_key(&key.id).unwrap();
@@ -2089,15 +2171,17 @@ mod tests {
             .find_or_create_user("user123", Some("user@example.com"))
             .unwrap();
 
-        let (_, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        let roles = vec!["model:specific".to_string()];
+        let (_, secret) = logger.create_api_key(&user.id, "Test Key", &roles).unwrap();
 
         // Validate the key
         let result = logger.validate_api_key(&secret).unwrap();
         assert!(result.is_some());
 
-        let (user_id, email) = result.unwrap();
+        let (user_id, email, validated_roles) = result.unwrap();
         assert_eq!(user_id, "user123");
         assert_eq!(email, Some("user@example.com".to_string()));
+        assert_eq!(validated_roles, roles);
     }
 
     #[test]
@@ -2125,7 +2209,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
 
-        let (key, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        let (key, secret) = logger.create_api_key(&user.id, "Test Key", &[]).unwrap();
 
         // Validate before revocation - should work
         let result = logger.validate_api_key(&secret).unwrap();
@@ -2145,7 +2229,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
 
-        let (_, secret) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        let (_, secret) = logger.create_api_key(&user.id, "Test Key", &[]).unwrap();
 
         // Validate the key
         logger.validate_api_key(&secret).unwrap();
@@ -2154,6 +2238,20 @@ mod tests {
         let keys = logger.list_api_keys().unwrap();
         assert_eq!(keys.len(), 1);
         assert!(keys[0].last_used_at.is_some());
+    }
+
+    #[test]
+    fn test_update_api_key_roles_changes_authenticated_roles() {
+        let logger = create_test_logger();
+        let user = logger.find_or_create_user("user123", None).unwrap();
+        let (key, secret) = logger.create_api_key(&user.id, "Test Key", &[]).unwrap();
+        let roles = vec!["model:specific".to_string()];
+
+        assert!(logger.update_api_key_roles(&key.id, &roles).unwrap());
+
+        let (_, _, validated_roles) = logger.validate_api_key(&secret).unwrap().unwrap();
+        assert_eq!(validated_roles, roles);
+        assert_eq!(logger.list_api_keys().unwrap()[0].roles, roles);
     }
 
     #[test]
@@ -2173,9 +2271,11 @@ mod tests {
             .find_or_create_user("user2", Some("user2@example.com"))
             .unwrap();
 
-        logger.create_api_key(&user1.id, "Key 1").unwrap();
-        logger.create_api_key(&user1.id, "Key 2").unwrap();
-        logger.create_api_key(&user2.id, "Key 3").unwrap();
+        logger.create_api_key(&user1.id, "Key 1", &[]).unwrap();
+        logger
+            .create_api_key(&user1.id, "Key 2", &["model:specific".to_string()])
+            .unwrap();
+        logger.create_api_key(&user2.id, "Key 3", &[]).unwrap();
 
         let keys = logger.list_api_keys().unwrap();
         assert_eq!(keys.len(), 3);
@@ -2187,6 +2287,9 @@ mod tests {
         assert!(keys
             .iter()
             .any(|k| k.user_email == Some("user2@example.com".to_string())));
+        assert!(keys
+            .iter()
+            .any(|k| k.roles == vec!["model:specific".to_string()]));
     }
 
     #[test]
@@ -2194,7 +2297,7 @@ mod tests {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
 
-        let (key, _) = logger.create_api_key(&user.id, "Test Key").unwrap();
+        let (key, _) = logger.create_api_key(&user.id, "Test Key", &[]).unwrap();
 
         // Revoke the key
         let revoked = logger.revoke_api_key(&key.id).unwrap();
@@ -2223,6 +2326,7 @@ mod tests {
             user_id: "user-456".to_string(),
             user_email: Some("user@example.com".to_string()),
             name: "Test Key".to_string(),
+            roles: vec!["model:specific".to_string()],
             created_at: "2024-01-01T00:00:00Z".to_string(),
             last_used_at: Some("2024-01-02T00:00:00Z".to_string()),
             revoked: false,
@@ -2232,6 +2336,7 @@ mod tests {
         assert_eq!(key.name, "Test Key");
         assert!(!key.revoked);
         assert!(key.secret_available);
+        assert_eq!(key.roles, vec!["model:specific".to_string()]);
 
         // Verify key_hash is not serialized
         let json = serde_json::to_string(&key).unwrap();

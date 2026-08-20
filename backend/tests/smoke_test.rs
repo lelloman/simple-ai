@@ -1,5 +1,7 @@
 use bytes::Bytes;
+use http::header::AUTHORIZATION;
 use http::StatusCode;
+use http::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
@@ -187,6 +189,33 @@ async fn test_chat_completions_requires_auth() {
     let body = Bytes::from(serde_json::to_string(&request).unwrap());
     let status = send_request(&app, http::Method::POST, "/v1/chat/completions", Some(body)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_api_key_authentication_preserves_key_roles() {
+    let state = create_test_state().await.unwrap();
+    let user = state
+        .audit_logger
+        .find_or_create_user("qwen-user", Some("qwen@example.com"))
+        .unwrap();
+    let roles = vec!["model:specific".to_string()];
+    let (_, secret) = state
+        .audit_logger
+        .create_api_key(&user.id, "Qwen Code", &roles)
+        .unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {secret}")).unwrap(),
+    );
+
+    let (auth_user, authenticated_user) =
+        routes::auth_helpers::authenticate_request(&state, &headers)
+            .await
+            .unwrap();
+
+    assert_eq!(auth_user.roles, roles);
+    assert_eq!(authenticated_user.id, user.id);
 }
 
 #[tokio::test]

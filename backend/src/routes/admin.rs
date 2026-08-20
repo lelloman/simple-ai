@@ -610,6 +610,31 @@ async fn api_keys_list(State(state): State<Arc<AppState>>) -> Json<ApiKeysRespon
 struct CreateApiKeyRequest {
     user_id: String,
     name: String,
+    #[serde(default)]
+    roles: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateApiKeyRolesRequest {
+    roles: Vec<String>,
+}
+
+fn normalize_api_key_roles(mut roles: Vec<String>) -> Result<Vec<String>, (StatusCode, String)> {
+    roles.sort();
+    roles.dedup();
+
+    for role in &roles {
+        if role != crate::gateway::model_class::roles::MODEL_CLASS
+            && role != crate::gateway::model_class::roles::MODEL_SPECIFIC
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Unsupported API key role: {role}"),
+            ));
+        }
+    }
+
+    Ok(roles)
 }
 
 /// Response for creating an API key.
@@ -630,6 +655,8 @@ async fn api_keys_create(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateApiKeyRequest>,
 ) -> Result<Json<CreateApiKeyResponse>, (StatusCode, String)> {
+    let roles = normalize_api_key_roles(body.roles)?;
+
     // Verify the user exists
     let user = state
         .audit_logger
@@ -638,10 +665,29 @@ async fn api_keys_create(
 
     let (key, secret) = state
         .audit_logger
-        .create_api_key(&user.id, &body.name)
+        .create_api_key(&user.id, &body.name, &roles)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(CreateApiKeyResponse { key, secret }))
+}
+
+/// PATCH /admin/api/keys/:id - Replace an active key's roles.
+async fn api_key_roles_update(
+    State(state): State<Arc<AppState>>,
+    Path(key_id): Path<String>,
+    Json(body): Json<UpdateApiKeyRolesRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let roles = normalize_api_key_roles(body.roles)?;
+    let updated = state
+        .audit_logger
+        .update_api_key_roles(&key_id, &roles)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if updated {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((StatusCode::NOT_FOUND, "API key not found".to_string()))
+    }
 }
 
 /// GET /admin/api/keys/:id/secret - Return a stored API key secret.
@@ -1338,7 +1384,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/model-speeds", get(api_model_speeds))
         .route("/api/keys", get(api_keys_list).post(api_keys_create))
         .route("/api/keys/:id/secret", get(api_key_secret))
-        .route("/api/keys/:id", axum::routing::delete(api_keys_revoke))
+        .route(
+            "/api/keys/:id",
+            axum::routing::patch(api_key_roles_update).delete(api_keys_revoke),
+        )
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);
 
@@ -1441,5 +1490,28 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains(r#""success":true"#));
         assert!(json.contains("Loading model"));
+    }
+
+    #[test]
+    fn test_normalize_api_key_roles_deduplicates_known_roles() {
+        let roles = normalize_api_key_roles(vec![
+            "model:specific".to_string(),
+            "model:class".to_string(),
+            "model:specific".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            roles,
+            vec!["model:class".to_string(), "model:specific".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_normalize_api_key_roles_rejects_unknown_role() {
+        let error = normalize_api_key_roles(vec!["admin".to_string()]).unwrap_err();
+
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert!(error.1.contains("Unsupported API key role: admin"));
     }
 }

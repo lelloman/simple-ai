@@ -143,7 +143,7 @@ async fn create_api_key(state: &Arc<AppState>) -> String {
         .unwrap();
     let (_, secret) = state
         .audit_logger
-        .create_api_key(&user.id, "Integration Test Key")
+        .create_api_key(&user.id, "Integration Test Key", &[])
         .unwrap();
     secret
 }

@@ -138,7 +138,8 @@ fast = ["llama3:8b", "mistral:7b"]
 
 ### Permission Roles
 
-Access is controlled via JWT roles:
+Access is controlled via JWT roles or roles assigned to individual API keys in
+the admin dashboard:
 
 | Role | Can Request |
 |------|-------------|
@@ -146,6 +147,8 @@ Access is controlled via JWT roles:
 | (default) | Only classes (e.g., `"model": "class:fast"` or `"model": "class:big"`) |
 
 Users without `model:specific` role default to `class:fast` if no model is specified.
+Existing and newly created API keys are class-only by default. Administrators
+can grant or revoke `model:specific` independently for each active key.
 
 ### Wake-on-Demand
 

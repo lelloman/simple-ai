@@ -32,7 +32,7 @@ pub async fn authenticate_request(
     if let Some(token) = auth_header.strip_prefix("Bearer ") {
         if token.starts_with("sk-") {
             match state.audit_logger.validate_api_key(token) {
-                Ok(Some((user_id, email))) => {
+                Ok(Some((user_id, email, roles))) => {
                     let user = state
                         .audit_logger
                         .find_or_create_user(&user_id, email.as_deref())
@@ -40,7 +40,7 @@ pub async fn authenticate_request(
                     if !user.is_enabled {
                         return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
                     }
-                    let auth_user = AuthUser::new(user_id, email, vec![]);
+                    let auth_user = AuthUser::new(user_id, email, roles);
                     return Ok((auth_user, user));
                 }
                 Ok(None) => {
