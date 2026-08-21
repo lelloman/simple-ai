@@ -1186,6 +1186,13 @@
                 // If we're on the requests page, prepend the new request to the list
                 if (currentPage === 'requests') {
                     prependNewRequest(data);
+                    // Registration happens immediately after the pending audit
+                    // event, so refresh once to reveal its Cancel button.
+                    if (data.status === null || data.status === undefined) {
+                        setTimeout(() => {
+                            if (currentPage === 'requests') loadRequests(requestsPage);
+                        }, 100);
+                    }
                 }
                 // Update dashboard stats (increment request count)
                 if (statsState) {
@@ -2524,36 +2531,10 @@
                     return;
                 }
 
+                const cancellableIds = new Set(data.cancellable_request_ids || []);
                 const requestsHtml = data.requests.map(req => `
-                    <li class="px-4 py-4">
-                        <div class="flex items-center justify-between">
-                            <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(req.request_path)}</p>
-                                <p class="text-xs text-gray-500">
-                                    ${req.user_email ? escapeHtml(req.user_email) : escapeHtml(req.user_id.substring(0, 8) + '...')}
-                                    ${req.client_ip ? `<span class="text-gray-400">from</span> ${escapeHtml(req.client_ip)}` : ''}
-                                    <span class="text-gray-400">at</span> ${new Date(req.timestamp).toLocaleString()}
-                                </p>
-                                <p class="text-xs text-gray-400">
-                                    ${req.model ? `Model: ${escapeHtml(req.model)}` : ''}
-                                    ${req.runner_id ? ` <span class="text-gray-400">on</span> ${escapeHtml(req.runner_id)}` : ''}
-                                    ${req.wol_sent ? ' <span class="text-blue-500" title="Wake-on-LAN sent">WOL</span>' : ''}
-                                </p>
-                            </div>
-                            <div class="flex items-center space-x-3 ml-4">
-                                ${req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
-                                ${req.tokens_prompt !== null || req.tokens_completion !== null ? `
-                                    <span class="text-xs text-gray-500" title="Prompt / Completion tokens">
-                                        ${req.tokens_prompt || 0} / ${req.tokens_completion || 0} tokens
-                                    </span>
-                                ` : ''}
-                                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                    req.status === 200 ? 'bg-green-100 text-green-800' :
-                                    req.status >= 400 ? 'bg-red-100 text-red-800' :
-                                    'bg-gray-100 text-gray-600'
-                                }">${req.status || 'pending'}</span>
-                            </div>
-                        </div>
+                    <li class="px-4 py-4" data-request-id="${escapeAttr(req.id)}">
+                        ${renderRequestHtml(req, cancellableIds.has(req.id))}
                     </li>
                 `).join('');
 
@@ -2585,7 +2566,7 @@
         }
 
         // Render a request item HTML
-        function renderRequestHtml(req) {
+        function renderRequestHtml(req, cancellable = false) {
             const isPending = req.status === null || req.status === undefined;
             return `
                 <div class="flex items-center justify-between">
@@ -2610,6 +2591,7 @@
                             </span>
                         ` : ''}
                         ${isPending ? `
+                            ${cancellable ? `<button onclick="cancelRequest('${escapeAttr(req.id)}', this)" class="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50">Cancel</button>` : ''}
                             <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
                                 <svg class="animate-spin -ml-0.5 mr-1.5 h-3 w-3 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -2627,6 +2609,23 @@
                     </div>
                 </div>
             `;
+        }
+
+        async function cancelRequest(requestId, button) {
+            button.disabled = true;
+            button.textContent = 'Cancelling...';
+            button.classList.add('opacity-60', 'cursor-not-allowed');
+            try {
+                await apiFetch(`/admin/api/requests/${encodeURIComponent(requestId)}/cancel`, {
+                    method: 'POST',
+                });
+                button.textContent = 'Cancelled';
+                setTimeout(() => loadRequests(requestsPage), 250);
+            } catch (e) {
+                console.error('Failed to cancel request:', e);
+                button.textContent = 'No longer active';
+                setTimeout(() => loadRequests(requestsPage), 1000);
+            }
         }
 
         // Prepend a new request or update an existing one

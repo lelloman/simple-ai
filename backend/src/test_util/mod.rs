@@ -98,6 +98,7 @@ pub async fn create_test_state() -> AppState {
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        request_cancellations: std::sync::Arc::new(crate::RequestCancellationRegistry::new()),
         router_telemetry,
         batch_queue: None,
         batch_dispatcher: None,

@@ -134,6 +134,9 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        request_cancellations: std::sync::Arc::new(
+            simple_ai_backend::RequestCancellationRegistry::new(),
+        ),
         router_telemetry,
         batch_queue: None,
         batch_dispatcher: None,
@@ -291,6 +294,21 @@ async fn test_admin_stats_requires_auth() {
     let app = routes::admin::router(state);
 
     let status = send_request(&app, http::Method::GET, "/stats", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_admin_request_cancel_requires_auth() {
+    let state = create_test_state().await.unwrap();
+    let app = routes::admin::router(state);
+
+    let status = send_request(
+        &app,
+        http::Method::POST,
+        "/api/requests/request-1/cancel",
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 

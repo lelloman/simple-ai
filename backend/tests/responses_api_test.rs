@@ -129,6 +129,9 @@ async fn create_test_state(
         wol_config,
         wake_service,
         request_events: request_events_tx,
+        request_cancellations: std::sync::Arc::new(
+            simple_ai_backend::RequestCancellationRegistry::new(),
+        ),
         router_telemetry,
         batch_queue: None,
         batch_dispatcher: None,

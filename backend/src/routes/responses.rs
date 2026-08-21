@@ -7,7 +7,7 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use futures_util::{stream, StreamExt};
+use futures_util::{future::Abortable, stream, StreamExt};
 use simple_ai_common::{
     ChatCompletionChunk, ChatCompletionRequest, InferenceMetrics, ResponseCreateRequest,
     ResponseInput, ResponseObject, ResponseOutputContent, ResponseOutputItem,
@@ -607,58 +607,109 @@ async fn create_response(
         return Ok(response);
     }
 
-    let result = if state.config.gateway.enabled {
-        match state
-            .request_scheduler
-            .chat_completion(
-                &req_log.id,
-                &model,
-                &model_request,
-                &chat_request,
-                use_batching,
-            )
-            .await
-        {
-            Ok(scheduled) => {
-                runner_id = Some(scheduled.runner_id.clone());
-                wol_sent = scheduled.wol_sent;
-                state
-                    .wake_service
-                    .keepalive_runner(scheduled.runner_id.clone());
-                state
-                    .router_telemetry
-                    .emit(
-                        "request_dispatched",
-                        format!(
-                            "Responses request dispatched to {} using {}",
-                            scheduled.runner_id, scheduled.resolved_model
-                        ),
-                        Some(req_log.id.clone()),
-                        Some(scheduled.runner_id.clone()),
-                        Some(scheduled.resolved_model.clone()),
+    let mut cancellation = state.request_cancellations.register(&req_log.id);
+    let abort_registration = cancellation.take_abort_registration();
+    let result = Abortable::new(
+        async {
+            if state.config.gateway.enabled {
+                match state
+                    .request_scheduler
+                    .chat_completion(
+                        &req_log.id,
+                        &model,
+                        &model_request,
+                        &chat_request,
+                        use_batching,
                     )
-                    .await;
-                Ok(scheduled.response)
+                    .await
+                {
+                    Ok(scheduled) => {
+                        runner_id = Some(scheduled.runner_id.clone());
+                        wol_sent = scheduled.wol_sent;
+                        state
+                            .wake_service
+                            .keepalive_runner(scheduled.runner_id.clone());
+                        state
+                            .router_telemetry
+                            .emit(
+                                "request_dispatched",
+                                format!(
+                                    "Responses request dispatched to {} using {}",
+                                    scheduled.runner_id, scheduled.resolved_model
+                                ),
+                                Some(req_log.id.clone()),
+                                Some(scheduled.runner_id.clone()),
+                                Some(scheduled.resolved_model.clone()),
+                            )
+                            .await;
+                        Ok(scheduled.response)
+                    }
+                    Err(SchedulerError::Wake(e)) => Err(crate::llm::OllamaError::ConnectionFailed(
+                        format!("Failed to wake inference runners: {}", e),
+                    )),
+                    Err(SchedulerError::Router(e)) => {
+                        Err(crate::llm::OllamaError::ConnectionFailed(e.to_string()))
+                    }
+                }
+            } else if !state.circuit_breaker.is_available("ollama") {
+                Err(crate::llm::OllamaError::ConnectionFailed(
+                    "Circuit breaker open: Ollama backend is unavailable".to_string(),
+                ))
+            } else {
+                let result = state.ollama_client.chat(&chat_request, &model).await;
+                if result.is_ok() {
+                    state.circuit_breaker.record_success("ollama");
+                } else {
+                    state.circuit_breaker.record_failure("ollama");
+                }
+                result
             }
-            Err(SchedulerError::Wake(e)) => Err(crate::llm::OllamaError::ConnectionFailed(
-                format!("Failed to wake inference runners: {}", e),
-            )),
-            Err(SchedulerError::Router(e)) => {
-                Err(crate::llm::OllamaError::ConnectionFailed(e.to_string()))
-            }
+        },
+        abort_registration,
+    )
+    .await;
+    drop(cancellation);
+
+    let result = match result {
+        Ok(result) => result,
+        Err(_) => {
+            let mut resp_log = AuditResponse::new(request_id, 499);
+            resp_log.response_body = "Cancelled by administrator".to_string();
+            resp_log.latency_ms = start.elapsed().as_millis() as u64;
+            resp_log.runner_id = runner_id.clone();
+            resp_log.wol_sent = wol_sent;
+            resp_log.model_class = model_class_str.clone();
+            let _ = state.audit_logger.log_response(&resp_log);
+            state
+                .router_telemetry
+                .emit(
+                    "request_cancelled",
+                    "Responses request cancelled by administrator",
+                    Some(req_log.id.clone()),
+                    runner_id.clone(),
+                    req_log.model.clone(),
+                )
+                .await;
+            let _ = state.request_events.send(RequestEvent {
+                id: req_log.id.clone(),
+                timestamp: req_log.timestamp.to_rfc3339(),
+                user_id: req_log.user_id.clone(),
+                user_email: auth_user.email.clone(),
+                request_path: req_log.request_path.clone(),
+                model: req_log.model.clone(),
+                client_ip: req_log.client_ip.clone(),
+                status: Some(499),
+                latency_ms: Some(resp_log.latency_ms as i64),
+                tokens_prompt: None,
+                tokens_completion: None,
+                runner_id,
+                wol_sent,
+            });
+            return Err((
+                StatusCode::from_u16(499).expect("499 is a valid HTTP status"),
+                "Request cancelled by administrator".to_string(),
+            ));
         }
-    } else if !state.circuit_breaker.is_available("ollama") {
-        Err(crate::llm::OllamaError::ConnectionFailed(
-            "Circuit breaker open: Ollama backend is unavailable".to_string(),
-        ))
-    } else {
-        let result = state.ollama_client.chat(&chat_request, &model).await;
-        if result.is_ok() {
-            state.circuit_breaker.record_success("ollama");
-        } else {
-            state.circuit_breaker.record_failure("ollama");
-        }
-        result
     };
 
     let (response, resp_log) = match result {

@@ -111,6 +111,12 @@ impl ModelQueue {
     }
 
     fn take_batch(&mut self, max_size: usize) -> Vec<QueuedRequest> {
+        // A cancelled caller drops its receiver. Prune those entries before
+        // dispatch so cancellation does not consume runner capacity.
+        self.requests
+            .retain(|request| !request.response_tx.is_closed());
+        self.first_request_at = self.requests.first().map(|r| r.enqueued_at);
+
         let take_count = max_size.min(self.requests.len());
         let batch: Vec<_> = self.requests.drain(..take_count).collect();
 
@@ -365,10 +371,13 @@ mod tests {
         let queue = BatchQueue::new(BatchQueueConfig::default());
 
         // Enqueue 5 requests
+        let mut receivers = Vec::new();
         for _ in 0..5 {
-            let _rx = queue
-                .enqueue("model-a".to_string(), create_test_request())
-                .await;
+            receivers.push(
+                queue
+                    .enqueue("model-a".to_string(), create_test_request())
+                    .await,
+            );
         }
 
         // Take batch of 3
@@ -386,6 +395,24 @@ mod tests {
         // Queue empty
         assert_eq!(queue.pending_count("model-a").await, 0);
         assert!(queue.take_batch("model-a", 10).await.is_none());
+        drop(receivers);
+    }
+
+    #[tokio::test]
+    async fn test_take_batch_prunes_cancelled_callers() {
+        let queue = BatchQueue::new(BatchQueueConfig::default());
+        let cancelled = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+        let active = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+        drop(cancelled);
+
+        let batch = queue.take_batch("model-a", 10).await.unwrap();
+        assert_eq!(batch.requests.len(), 1);
+        assert!(!batch.requests[0].response_tx.is_closed());
+        drop(active);
     }
 
     #[tokio::test]

@@ -541,6 +541,7 @@ struct RequestsApiQuery {
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestsApiResponse {
     pub requests: Vec<RequestWithResponse>,
+    pub cancellable_request_ids: Vec<String>,
     pub page: u32,
     pub per_page: u32,
     pub total_pages: u32,
@@ -573,10 +574,31 @@ async fn api_requests_list(
 
     Json(RequestsApiResponse {
         requests,
+        cancellable_request_ids: state.request_cancellations.active_request_ids(),
         page,
         per_page,
         total_pages,
     })
+}
+
+#[derive(Debug, Serialize)]
+struct CancelRequestResponse {
+    cancelled: bool,
+}
+
+/// POST /admin/api/requests/:id/cancel - Cancel active inference work.
+async fn api_request_cancel(
+    State(state): State<Arc<AppState>>,
+    Path(request_id): Path<String>,
+) -> Result<Json<CancelRequestResponse>, (StatusCode, Json<CancelRequestResponse>)> {
+    if state.request_cancellations.cancel(&request_id) {
+        Ok(Json(CancelRequestResponse { cancelled: true }))
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(CancelRequestResponse { cancelled: false }),
+        ))
+    }
 }
 
 /// GET /admin/api/model-speeds - Aggregate model inference speed metrics.
@@ -1381,6 +1403,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         // JSON API endpoints (for SPA dashboard)
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
+        .route("/api/requests/:id/cancel", post(api_request_cancel))
         .route("/api/model-speeds", get(api_model_speeds))
         .route("/api/keys", get(api_keys_list).post(api_keys_create))
         .route("/api/keys/:id/secret", get(api_key_secret))

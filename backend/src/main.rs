@@ -153,6 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wol_config: config.wol.clone(),
         wake_service,
         request_events: request_events_tx,
+        request_cancellations: Arc::new(simple_ai_backend::RequestCancellationRegistry::new()),
         router_telemetry,
         batch_queue,
         batch_dispatcher,

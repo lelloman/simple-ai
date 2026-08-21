@@ -1,6 +1,7 @@
 pub mod arp;
 pub mod audit;
 pub mod auth;
+pub mod cancellation;
 pub mod circuit_breaker;
 pub mod config;
 pub mod gateway;
@@ -16,6 +17,7 @@ pub use audit::AuditLogger;
 pub use audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithStats};
 pub use auth::AuthUser;
 pub use auth::JwksClient;
+pub use cancellation::RequestCancellationRegistry;
 pub use circuit_breaker::CircuitBreaker;
 pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
 pub use gateway::{
@@ -76,6 +78,8 @@ pub struct AppState {
     pub wake_service: Arc<WakeService>,
     /// Broadcast channel for request events (for admin dashboard).
     pub request_events: broadcast::Sender<RequestEvent>,
+    /// In-flight inference requests that an administrator can cancel.
+    pub request_cancellations: Arc<RequestCancellationRegistry>,
     /// Router telemetry for scheduler state and recent events.
     pub router_telemetry: Arc<RouterTelemetry>,
     /// Batch queue for request batching (if enabled).
