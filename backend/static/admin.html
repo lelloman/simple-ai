@@ -5,6 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - SimpleAI</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.7/dist/purify.min.js"></script>
+    <style>
+        .chat-markdown > :first-child { margin-top: 0; }
+        .chat-markdown > :last-child { margin-bottom: 0; }
+        .chat-markdown p, .chat-markdown ul, .chat-markdown ol,
+        .chat-markdown pre, .chat-markdown blockquote, .chat-markdown table {
+            margin: 0.65rem 0;
+        }
+        .chat-markdown h1, .chat-markdown h2, .chat-markdown h3,
+        .chat-markdown h4, .chat-markdown h5, .chat-markdown h6 {
+            margin: 0.9rem 0 0.45rem;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+        .chat-markdown h1 { font-size: 1.35rem; }
+        .chat-markdown h2 { font-size: 1.2rem; }
+        .chat-markdown h3 { font-size: 1.08rem; }
+        .chat-markdown ul { list-style: disc; padding-left: 1.5rem; }
+        .chat-markdown ol { list-style: decimal; padding-left: 1.5rem; }
+        .chat-markdown blockquote { border-left: 3px solid #d1d5db; padding-left: 0.85rem; color: #4b5563; }
+        .chat-markdown code { border-radius: 0.25rem; background: #f3f4f6; padding: 0.1rem 0.3rem; font-family: ui-monospace, monospace; font-size: 0.85em; }
+        .chat-markdown pre { overflow-x: auto; border-radius: 0.5rem; background: #111827; padding: 0.85rem; color: #f9fafb; }
+        .chat-markdown pre code { background: transparent; padding: 0; color: inherit; }
+        .chat-markdown a { color: #15803d; text-decoration: underline; }
+        .chat-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+        .chat-markdown th, .chat-markdown td { border: 1px solid #d1d5db; padding: 0.35rem 0.55rem; text-align: left; }
+        .chat-markdown th { background: #f3f4f6; font-weight: 600; }
+    </style>
     <script>
         tailwind.config = {
             theme: {
@@ -272,10 +301,13 @@
                                             <p id="chat-session-summary" class="mt-1 text-xs text-gray-500">No messages yet.</p>
                                         </div>
                                     </div>
-                                    <div id="chat-transcript" class="flex min-h-[28rem] max-h-[36rem] flex-col gap-4 overflow-y-auto bg-gray-50 p-4">
-                                        <div class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
-                                            Start a session by sending a message. Model responses will appear here.
+                                    <div class="relative">
+                                        <div id="chat-transcript" onscroll="handleChatTranscriptScroll()" class="flex min-h-[28rem] max-h-[36rem] flex-col gap-4 overflow-y-auto bg-gray-50 p-4">
+                                            <div class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
+                                                Start a session by sending a message. Model responses will appear here.
+                                            </div>
                                         </div>
+                                        <button id="chat-follow-stream-button" onclick="resumeChatStreamFollow()" class="hidden absolute bottom-4 right-6 rounded-full bg-gray-900 px-3 py-2 text-xs font-medium text-white shadow-lg hover:bg-gray-800">Follow stream ↓</button>
                                     </div>
                                     <div class="border-t border-gray-200 bg-white p-4">
                                         <label for="chat-user-input" class="block text-sm font-medium text-gray-700">Message</label>
@@ -415,7 +447,10 @@
         let chatAbortController = null;
         let chatModelsLoading = false;
         let chatRenderTimer = null;
+        let chatFollowStream = true;
+        let chatTranscriptScrollProgrammatic = false;
         const CHAT_STREAM_RENDER_INTERVAL_MS = 100;
+        const CHAT_FOLLOW_BOTTOM_THRESHOLD_PX = 32;
 
         // Token refresh state
         let refreshToken = null;
@@ -836,6 +871,21 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        function renderMarkdown(value) {
+            const source = String(value || '');
+            if (!window.marked || !window.DOMPurify) {
+                return escapeHtml(source);
+            }
+
+            const rendered = window.marked.parse(source, {
+                breaks: true,
+                gfm: true,
+            });
+            return window.DOMPurify.sanitize(rendered, {
+                USE_PROFILES: { html: true },
+            });
         }
 
         // Escape string for use in HTML attributes
@@ -1708,6 +1758,7 @@
             if (input) {
                 input.disabled = chatRequestInFlight;
             }
+            updateChatFollowButton();
         }
 
         function stopChatMessage() {
@@ -1768,6 +1819,8 @@
             const summary = document.getElementById('chat-session-summary');
             if (!transcript || !summary) return;
 
+            const previousScrollTop = transcript.scrollTop;
+
             if (chatMessagesState.length === 0) {
                 transcript.innerHTML = `
                     <div class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
@@ -1775,6 +1828,7 @@
                     </div>
                 `;
                 summary.textContent = 'No messages yet.';
+                updateChatFollowButton();
                 return;
             }
 
@@ -1799,7 +1853,7 @@
                                     <div class="mt-2 whitespace-pre-wrap break-words text-xs leading-5">${escapeHtml(message.reasoning)}</div>
                                 </details>
                             ` : ''}
-                            <div class="whitespace-pre-wrap break-words text-sm leading-6">${escapeHtml(message.content || '')}</div>
+                            <div class="${message.role === 'assistant' ? 'chat-markdown' : 'whitespace-pre-wrap'} break-words text-sm leading-6">${message.role === 'assistant' ? renderMarkdown(message.content) : escapeHtml(message.content || '')}</div>
                             ${message.streamError ? `<div class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Stream interrupted: ${escapeHtml(message.streamError)}. Partial output was preserved.</div>` : ''}
                             ${message.model ? `<div class="mt-2 text-[11px] ${isUser ? 'text-gray-300' : 'text-gray-400'}">model: ${escapeHtml(message.model)}</div>` : ''}
                         </div>
@@ -1807,7 +1861,47 @@
                 `;
             }).join('');
 
-            transcript.scrollTop = transcript.scrollHeight;
+            chatTranscriptScrollProgrammatic = true;
+            transcript.scrollTop = chatFollowStream ? transcript.scrollHeight : previousScrollTop;
+            requestAnimationFrame(() => {
+                chatTranscriptScrollProgrammatic = false;
+            });
+            updateChatFollowButton();
+        }
+
+        function isChatTranscriptNearBottom(transcript) {
+            return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight <= CHAT_FOLLOW_BOTTOM_THRESHOLD_PX;
+        }
+
+        function handleChatTranscriptScroll() {
+            if (chatTranscriptScrollProgrammatic) return;
+            const transcript = document.getElementById('chat-transcript');
+            if (!transcript) return;
+            chatFollowStream = isChatTranscriptNearBottom(transcript);
+            updateChatFollowButton();
+        }
+
+        function updateChatFollowButton() {
+            const button = document.getElementById('chat-follow-stream-button');
+            const transcript = document.getElementById('chat-transcript');
+            if (!button || !transcript) return;
+
+            const canScroll = transcript.scrollHeight > transcript.clientHeight + CHAT_FOLLOW_BOTTOM_THRESHOLD_PX;
+            button.classList.toggle('hidden', chatFollowStream || !canScroll);
+            button.textContent = chatRequestInFlight ? 'Follow stream ↓' : 'Jump to latest ↓';
+        }
+
+        function resumeChatStreamFollow() {
+            const transcript = document.getElementById('chat-transcript');
+            chatFollowStream = true;
+            if (transcript) {
+                chatTranscriptScrollProgrammatic = true;
+                transcript.scrollTop = transcript.scrollHeight;
+                requestAnimationFrame(() => {
+                    chatTranscriptScrollProgrammatic = false;
+                });
+            }
+            updateChatFollowButton();
         }
 
         function scheduleChatTranscriptRender() {
@@ -1951,6 +2045,7 @@
 
         function startNewChatSession() {
             chatMessagesState = [];
+            chatFollowStream = true;
             const input = document.getElementById('chat-user-input');
             const meta = document.getElementById('chat-last-metadata');
             if (input) {
@@ -1965,6 +2060,7 @@
 
         function clearChatMessages() {
             chatMessagesState = [];
+            chatFollowStream = true;
             const meta = document.getElementById('chat-last-metadata');
             if (meta) {
                 meta.textContent = 'Cleared all messages.';
