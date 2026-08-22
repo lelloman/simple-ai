@@ -126,64 +126,90 @@ pub struct ChatCompletionRequest {
     pub stream: Option<bool>,
 }
 
+impl ChatCompletionRequest {
+    pub fn has_images(&self) -> bool {
+        self.messages
+            .iter()
+            .filter_map(|message| message.content.as_ref())
+            .any(ChatContent::has_images)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ChatContent {
+    Text(String),
+    Parts(Vec<ChatContentPart>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type")]
+pub enum ChatContentPart {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image_url")]
+    ImageUrl { image_url: ImageUrl },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImageUrl {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl From<String> for ChatContent {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for ChatContent {
+    fn from(value: &str) -> Self {
+        Self::Text(value.to_string())
+    }
+}
+
+impl ChatContent {
+    pub fn text_only(&self) -> Result<String, &'static str> {
+        match self {
+            Self::Text(text) => Ok(text.clone()),
+            Self::Parts(parts) => {
+                let mut text = String::new();
+                for part in parts {
+                    match part {
+                        ChatContentPart::Text { text: part } => text.push_str(part),
+                        ChatContentPart::ImageUrl { .. } => {
+                            return Err("image content is not supported by this engine")
+                        }
+                    }
+                }
+                Ok(text)
+            }
+        }
+    }
+
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            Self::Parts(_) => None,
+        }
+    }
+
+    pub fn has_images(&self) -> bool {
+        matches!(self, Self::Parts(parts) if parts.iter().any(|part| matches!(part, ChatContentPart::ImageUrl { .. })))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
-    #[serde(default, deserialize_with = "deserialize_chat_message_content")]
-    pub content: Option<String>,
+    #[serde(default)]
+    pub content: Option<ChatContent>,
     #[serde(default)]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(default)]
     pub tool_call_id: Option<String>,
-}
-
-/// Deserialize the two text content forms accepted by OpenAI's Chat
-/// Completions API. Internally SimpleAI still uses a string because its model
-/// runners currently support text-only chat messages.
-fn deserialize_chat_message_content<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::de::Error;
-
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    let Some(value) = value else {
-        return Ok(None);
-    };
-
-    match value {
-        serde_json::Value::String(text) => Ok(Some(text)),
-        serde_json::Value::Array(parts) => {
-            let mut text = String::new();
-
-            for part in parts {
-                let object = part
-                    .as_object()
-                    .ok_or_else(|| D::Error::custom("message content parts must be objects"))?;
-                let part_type = object
-                    .get("type")
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or_else(|| D::Error::custom("message content part is missing its type"))?;
-
-                if part_type != "text" {
-                    return Err(D::Error::custom(format!(
-                        "unsupported message content part type: {part_type}"
-                    )));
-                }
-
-                let part_text = object
-                    .get("text")
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or_else(|| D::Error::custom("text content part is missing its text"))?;
-                text.push_str(part_text);
-            }
-
-            Ok(Some(text))
-        }
-        _ => Err(D::Error::custom(
-            "message content must be a string, an array of text parts, or null",
-        )),
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,7 +299,9 @@ impl From<ChatMessage> for ChatCompletionDelta {
     fn from(message: ChatMessage) -> Self {
         Self {
             role: Some(message.role),
-            content: message.content,
+            content: message
+                .content
+                .and_then(|content| content.as_text().map(str::to_owned)),
             reasoning_content: None,
             tool_calls: message.tool_calls,
             tool_call_id: message.tool_call_id,
@@ -385,21 +413,22 @@ mod tests {
 
         let message: ChatMessage = serde_json::from_str(json).unwrap();
 
-        assert_eq!(message.content.as_deref(), Some("Hello, Qwen!"));
+        assert_eq!(
+            message.content.as_ref().unwrap().text_only().unwrap(),
+            "Hello, Qwen!"
+        );
     }
 
     #[test]
-    fn test_chat_message_rejects_unsupported_content_parts() {
+    fn test_chat_message_accepts_image_content_parts() {
         let json = r#"{
             "role": "user",
             "content": [{"type": "image_url", "image_url": {"url": "example"}}]
         }"#;
 
-        let error = serde_json::from_str::<ChatMessage>(json).unwrap_err();
-
-        assert!(error
-            .to_string()
-            .contains("unsupported message content part type: image_url"));
+        let message = serde_json::from_str::<ChatMessage>(json).unwrap();
+        assert!(message.content.as_ref().unwrap().has_images());
+        assert!(message.content.as_ref().unwrap().text_only().is_err());
     }
 
     #[test]
@@ -407,7 +436,7 @@ mod tests {
         let req = ChatCompletionRequest {
             messages: vec![ChatMessage {
                 role: "user".to_string(),
-                content: Some("Hello".to_string()),
+                content: Some("Hello".into()),
                 tool_calls: None,
                 tool_call_id: None,
             }],
@@ -442,7 +471,7 @@ mod tests {
     fn test_chat_completion_response_new() {
         let message = ChatMessage {
             role: "assistant".to_string(),
-            content: Some("Hello!".to_string()),
+            content: Some("Hello!".into()),
             tool_calls: None,
             tool_call_id: None,
         };
@@ -464,7 +493,7 @@ mod tests {
     fn test_chat_completion_response_with_usage() {
         let message = ChatMessage {
             role: "assistant".to_string(),
-            content: Some("Hello!".to_string()),
+            content: Some("Hello!".into()),
             tool_calls: None,
             tool_call_id: None,
         };
@@ -496,7 +525,7 @@ mod tests {
     fn test_internal_metrics_can_be_stripped() {
         let message = ChatMessage {
             role: "assistant".to_string(),
-            content: Some("Hello!".to_string()),
+            content: Some("Hello!".into()),
             tool_calls: None,
             tool_call_id: None,
         };
@@ -534,7 +563,7 @@ mod tests {
     fn test_finish_reason_none_when_not_done() {
         let message = ChatMessage {
             role: "assistant".to_string(),
-            content: Some("Streaming...".to_string()),
+            content: Some("Streaming...".into()),
             tool_calls: None,
             tool_call_id: None,
         };
@@ -600,7 +629,7 @@ mod tests {
         let original = ChatCompletionRequest {
             messages: vec![ChatMessage {
                 role: "user".to_string(),
-                content: Some("What is 2+2?".to_string()),
+                content: Some("What is 2+2?".into()),
                 tool_calls: None,
                 tool_call_id: None,
             }],
@@ -629,7 +658,7 @@ mod tests {
     fn test_chat_message_with_tool_call_id() {
         let msg = ChatMessage {
             role: "tool".to_string(),
-            content: Some("Result: 42".to_string()),
+            content: Some("Result: 42".into()),
             tool_calls: None,
             tool_call_id: Some("call_123".to_string()),
         };

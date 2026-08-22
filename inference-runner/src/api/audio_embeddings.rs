@@ -67,13 +67,16 @@ async fn create_audio_embedding(
     let mut resolved_options = options.clone();
     resolved_options.model = resolved_model.clone();
 
-    let engine = state
-        .engine_registry
-        .find_engine_for_model(&resolved_model)
-        .await
-        .ok_or_else(|| Error::ModelNotFound(options.model.clone()))?;
-    let response = engine
-        .audio_embedding(&resolved_model, file_name, file_bytes, &resolved_options)
+    let lease = state.engine_registry.acquire_model(&resolved_model).await?;
+    resolved_options.model = lease.engine_model.clone();
+    let response = lease
+        .engine
+        .audio_embedding(
+            &lease.engine_model,
+            file_name,
+            file_bytes,
+            &resolved_options,
+        )
         .await?;
     Ok(Json(response))
 }

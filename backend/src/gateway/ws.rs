@@ -162,12 +162,18 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     }
 
     // Extract available models from runner status
-    let available_models: Vec<String> = registration
+    let mut available_models: Vec<String> = registration
         .status
         .engines
         .iter()
         .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
         .collect();
+    // Persist public aliases too. Offline WOL matching operates on this
+    // snapshot and otherwise cannot match a canonical request to a routed
+    // engine-local model name.
+    available_models.extend(registration.status.model_aliases.keys().cloned());
+    available_models.sort();
+    available_models.dedup();
 
     // Persist runner to database for WOL and offline tracking
     if let Err(e) = state.audit_logger.upsert_runner(

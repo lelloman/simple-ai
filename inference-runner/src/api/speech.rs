@@ -12,26 +12,27 @@ use axum::{Json, Router};
 use futures_util::stream;
 use simple_ai_common::{SpeechRequest, SpeechStreamFormat};
 
-use crate::error::{Error, Result};
+use crate::engine::ModelLease;
+use crate::error::Result;
 use crate::state::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/audio/speech", post(create_speech))
 }
 
-fn response_body(response: reqwest::Response) -> Body {
+fn response_body(response: reqwest::Response, lease: ModelLease) -> Body {
     let stream = stream::try_unfold(
-        (response, VecDeque::<Bytes>::new()),
-        |(mut response, mut pending)| async move {
+        (response, VecDeque::<Bytes>::new(), lease),
+        |(mut response, mut pending, lease)| async move {
             if let Some(bytes) = pending.pop_front() {
-                return Ok::<_, std::io::Error>(Some((bytes, (response, pending))));
+                return Ok::<_, std::io::Error>(Some((bytes, (response, pending, lease))));
             }
             match response
                 .chunk()
                 .await
                 .map_err(|e| std::io::Error::other(e.to_string()))?
             {
-                Some(chunk) => Ok(Some((chunk, (response, pending)))),
+                Some(chunk) => Ok(Some((chunk, (response, pending, lease)))),
                 None => Ok(None),
             }
         },
@@ -54,12 +55,12 @@ async fn create_speech(
     let mut resolved_request = request.clone();
     resolved_request.model = resolved_model.clone();
 
-    let engine = state
-        .engine_registry
-        .find_engine_for_model(&resolved_model)
-        .await
-        .ok_or_else(|| Error::ModelNotFound(requested_model.clone()))?;
-    let provider_response = engine.speech(&resolved_model, &resolved_request).await?;
+    let lease = state.engine_registry.acquire_model(&resolved_model).await?;
+    resolved_request.model = lease.engine_model.clone();
+    let provider_response = lease
+        .engine
+        .speech(&lease.engine_model, &resolved_request)
+        .await?;
 
     let content_type = provider_response
         .headers()
@@ -75,7 +76,7 @@ async fn create_speech(
             }
         });
 
-    let mut response = Response::new(response_body(provider_response));
+    let mut response = Response::new(response_body(provider_response, lease));
     *response.status_mut() = StatusCode::OK;
     response
         .headers_mut()

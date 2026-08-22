@@ -297,8 +297,13 @@ impl GatewayClient {
         tracing::debug!("Loading model: {} (local: {})", model_id, local_id);
 
         // Find an engine that has this model
-        if let Some(engine) = self.engine_registry.find_engine_for_model(local_id).await {
-            engine.load_model(local_id).await?;
+        if self
+            .engine_registry
+            .resolve_engine_for_model(local_id)
+            .await
+            .is_some()
+        {
+            self.engine_registry.load_model(local_id).await?;
             tracing::info!("Loaded model: {} (local: {})", model_id, local_id);
             return Ok(());
         }
@@ -353,9 +358,12 @@ impl GatewayClient {
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();
 
-        // Try each engine
-        for engine in self.engine_registry.all().await {
-            if engine.unload_model(local_id).await.is_ok() {
+        if let Some((engine, engine_model)) = self
+            .engine_registry
+            .resolve_engine_for_model(local_id)
+            .await
+        {
+            if engine.unload_model(&engine_model).await.is_ok() {
                 tracing::info!(
                     "Unloaded model {} (local: {}) from {}",
                     model_id,
@@ -393,6 +401,8 @@ mod tests {
             engines: EnginesConfig::default(),
             capabilities: CapabilitiesConfig::default(),
             aliases: AliasesConfig::default(),
+            model_routes: Default::default(),
+            engine_resources: Default::default(),
             ocr: OcrConfig::default(),
         }
     }

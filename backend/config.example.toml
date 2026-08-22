@@ -98,6 +98,9 @@ latency_weight = 0.3
 # speculative_wake_enabled: Wake multiple machines in parallel for faster response.
 # When enabled, the system wakes all configured targets and uses the first to connect.
 speculative_wake_enabled = false
+# When listed here, a class resolves to the first configured model even when
+# its preferred runner must be woken instead of using a lower-priority online model.
+wake_preferred_classes = [] # e.g. ["big"]
 
 # Machine type preferences by model class.
 # First machine type in the list is most preferred.

@@ -1336,6 +1336,11 @@ impl InferenceEngine for LlamaCppEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
+        if request.has_images() {
+            return Err(Error::NotSupported(
+                "image content is not supported by the configured llama.cpp engine".to_string(),
+            ));
+        }
         self.validate_reasoning_request(model_id, request)?;
 
         // Ensure server is running
@@ -1355,7 +1360,10 @@ impl InferenceEngine for LlamaCppEngine {
             .iter()
             .map(|m| LlamaMessage {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: m
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.text_only().ok()),
                 tool_calls: m.tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
@@ -1463,7 +1471,7 @@ impl InferenceEngine for LlamaCppEngine {
 
         let message = ChatMessage {
             role: choice.message.role,
-            content: response_content,
+            content: response_content.map(Into::into),
             tool_calls,
             tool_call_id: None,
         };
@@ -1515,6 +1523,11 @@ impl InferenceEngine for LlamaCppEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionStream> {
+        if request.has_images() {
+            return Err(Error::NotSupported(
+                "image content is not supported by the configured llama.cpp engine".to_string(),
+            ));
+        }
         self.validate_reasoning_request(model_id, request)?;
 
         let instance = self.ensure_server(model_id).await?;
@@ -1531,7 +1544,10 @@ impl InferenceEngine for LlamaCppEngine {
             .iter()
             .map(|m| LlamaMessage {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: m
+                    .content
+                    .as_ref()
+                    .and_then(|content| content.text_only().ok()),
                 tool_calls: m.tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()

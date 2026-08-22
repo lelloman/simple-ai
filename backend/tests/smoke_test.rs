@@ -176,7 +176,7 @@ async fn test_chat_completions_requires_auth() {
     let request = ChatCompletionRequest {
         messages: vec![ChatMessage {
             role: "user".to_string(),
-            content: Some("Hello".to_string()),
+            content: Some("Hello".into()),
             tool_calls: None,
             tool_call_id: None,
         }],

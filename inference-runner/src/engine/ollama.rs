@@ -71,7 +71,7 @@ impl OllamaEngine {
 
                 OllamaMessage {
                     role: m.role.clone(),
-                    content: m.content.clone(),
+                    content: m.content.as_ref().and_then(|content| content.text_only().ok()),
                     tool_calls,
                     tool_call_id: m.tool_call_id.clone(),
                 }
@@ -440,6 +440,11 @@ impl InferenceEngine for OllamaEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
+        if request.has_images() {
+            return Err(Error::NotSupported(
+                "image content is not supported by the Ollama adapter".to_string(),
+            ));
+        }
         let context_length = self.cached_model_context_length(model_id).await;
         let ollama_request = self.build_chat_request(model_id, request, false, context_length);
 
@@ -484,7 +489,7 @@ impl InferenceEngine for OllamaEngine {
 
         let message = ChatMessage {
             role: ollama_response.message.role,
-            content: ollama_response.message.content,
+            content: ollama_response.message.content.map(Into::into),
             tool_calls,
             tool_call_id: None,
         };
@@ -534,6 +539,11 @@ impl InferenceEngine for OllamaEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionStream> {
+        if request.has_images() {
+            return Err(Error::NotSupported(
+                "image content is not supported by the Ollama adapter".to_string(),
+            ));
+        }
         let context_length = self.cached_model_context_length(model_id).await;
         let ollama_request = self.build_chat_request(model_id, request, true, context_length);
         let url = format!("{}/api/chat", self.base_url);
@@ -645,7 +655,7 @@ impl InferenceEngine for OllamaEngine {
                             } else {
                                 parsed.message.role.clone()
                             },
-                            content: parsed.message.content.clone(),
+                            content: parsed.message.content.clone().map(Into::into),
                             tool_calls: tool_calls.clone(),
                             tool_call_id: None,
                         };

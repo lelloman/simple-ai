@@ -264,6 +264,9 @@ pub struct RoutingConfig {
     /// First machine type in the list is most preferred.
     #[serde(default)]
     pub class_preferences: HashMap<String, Vec<String>>,
+    /// Classes whose first configured model is preferred even when it requires WOL.
+    #[serde(default)]
+    pub wake_preferred_classes: Vec<String>,
     /// Weight for queue depth in runner scoring (0.0 to 1.0).
     /// Higher values prefer runners with fewer pending requests.
     #[serde(default = "default_queue_weight")]
@@ -319,6 +322,7 @@ impl Default for RoutingConfig {
     fn default() -> Self {
         Self {
             class_preferences: HashMap::new(),
+            wake_preferred_classes: Vec::new(),
             queue_weight: default_queue_weight(),
             latency_weight: default_latency_weight(),
             speculative_wake_enabled: false,

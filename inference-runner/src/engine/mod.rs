@@ -8,12 +8,14 @@ mod llama_cpp;
 mod ollama;
 mod registry;
 mod tts;
+mod vllm;
 
 pub use audio_embeddings::AudioEmbeddingEngine;
 pub use llama_cpp::LlamaCppEngine;
 pub use ollama::OllamaEngine;
-pub use registry::EngineRegistry;
+pub use registry::{EngineRegistry, ModelLease};
 pub use tts::TtsEngine;
+pub use vllm::VllmEngine;
 
 use async_trait::async_trait;
 use axum::body::Bytes;

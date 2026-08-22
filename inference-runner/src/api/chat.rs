@@ -8,6 +8,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
+use futures_util::{stream, StreamExt};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
 
 use crate::error::{Error, Result};
@@ -44,18 +45,17 @@ async fn chat_completions(
         resolved_model
     );
 
-    // Find an engine that can serve this model
-    let engine = state
-        .engine_registry
-        .find_engine_for_model(resolved_model)
-        .await
-        .ok_or_else(|| Error::ModelNotFound(model.to_string()))?;
+    let lease = state.engine_registry.acquire_model(resolved_model).await?;
 
     if request.stream.unwrap_or(false) {
-        let stream = engine
-            .chat_completion_stream(resolved_model, &request)
+        let upstream = lease
+            .engine
+            .chat_completion_stream(&lease.engine_model, &request)
             .await?;
-        let mut response = Response::new(Body::from_stream(stream));
+        let guarded = stream::unfold((upstream, lease), |(mut upstream, lease)| async move {
+            upstream.next().await.map(|item| (item, (upstream, lease)))
+        });
+        let mut response = Response::new(Body::from_stream(guarded));
         *response.status_mut() = StatusCode::OK;
         response.headers_mut().insert(
             header::CONTENT_TYPE,
@@ -69,8 +69,10 @@ async fn chat_completions(
             .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
         Ok(response)
     } else {
-        let response: ChatCompletionResponse =
-            engine.chat_completion(resolved_model, &request).await?;
+        let response: ChatCompletionResponse = lease
+            .engine
+            .chat_completion(&lease.engine_model, &request)
+            .await?;
         Ok(Json(response.strip_internal_metrics()).into_response())
     }
 }

@@ -137,7 +137,10 @@ impl OllamaClient {
 
                 OllamaMessage {
                     role: m.role.clone(),
-                    content: m.content.clone(),
+                    content: m
+                        .content
+                        .as_ref()
+                        .and_then(|content| content.text_only().ok()),
                     tool_calls,
                     tool_call_id: m.tool_call_id.clone(),
                 }
@@ -212,7 +215,7 @@ impl OllamaClient {
         // Convert to OpenAI format
         let message = ChatMessage {
             role: ollama_response.message.role,
-            content: ollama_response.message.content,
+            content: ollama_response.message.content.map(Into::into),
             tool_calls,
             tool_call_id: None,
         };
@@ -366,7 +369,7 @@ impl OllamaClient {
                             } else {
                                 parsed.message.role.clone()
                             },
-                            content: parsed.message.content.clone(),
+                            content: parsed.message.content.clone().map(Into::into),
                             tool_calls: tool_calls.clone(),
                             tool_call_id: None,
                         };

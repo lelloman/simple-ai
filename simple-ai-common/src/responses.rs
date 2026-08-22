@@ -2,7 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ChatCompletionResponse, ChatMessage, ReasoningEffort, ToolCall};
+use crate::{
+    ChatCompletionResponse, ChatContent, ChatContentPart, ChatMessage, ImageUrl, ReasoningEffort,
+    ToolCall,
+};
 
 /// Reasoning controls for the OpenAI-compatible Responses API.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -79,6 +82,10 @@ pub struct ResponseContentPart {
     pub part_type: String,
     #[serde(default)]
     pub text: Option<String>,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,10 +141,28 @@ pub struct ResponseUsage {
 }
 
 impl ResponseContent {
-    pub fn into_text(self) -> String {
+    pub fn into_chat_content(self) -> ChatContent {
         match self {
-            Self::Text(text) => text,
-            Self::Parts(parts) => parts.into_iter().filter_map(|part| part.text).collect(),
+            Self::Text(text) => ChatContent::Text(text),
+            Self::Parts(parts) => ChatContent::Parts(
+                parts
+                    .into_iter()
+                    .filter_map(|part| match part.part_type.as_str() {
+                        "input_text" | "text" => {
+                            part.text.map(|text| ChatContentPart::Text { text })
+                        }
+                        "input_image" | "image_url" => {
+                            part.image_url.map(|url| ChatContentPart::ImageUrl {
+                                image_url: ImageUrl {
+                                    url,
+                                    detail: part.detail,
+                                },
+                            })
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+            ),
         }
     }
 }
@@ -147,7 +172,7 @@ impl ResponseInput {
         match self {
             Self::Text(text) => vec![ChatMessage {
                 role: "user".to_string(),
-                content: Some(text),
+                content: Some(text.into()),
                 tool_calls: None,
                 tool_call_id: None,
             }],
@@ -168,21 +193,21 @@ impl ResponseInputItem {
                 tool_call_id,
             }) => ChatMessage {
                 role,
-                content: Some(content.into_text()),
+                content: Some(content.into_chat_content()),
                 tool_calls: None,
                 tool_call_id,
             },
             Self::Typed(ResponseTypedInputItem::FunctionCallOutput { call_id, output }) => {
                 ChatMessage {
                     role: "tool".to_string(),
-                    content: Some(output),
+                    content: Some(output.into()),
                     tool_calls: None,
                     tool_call_id: Some(call_id),
                 }
             }
             Self::Message(message) => ChatMessage {
                 role: message.role,
-                content: Some(message.content.into_text()),
+                content: Some(message.content.into_chat_content()),
                 tool_calls: None,
                 tool_call_id: message.tool_call_id,
             },
@@ -196,15 +221,20 @@ impl ResponseObject {
         let mut output_text = String::new();
 
         if let Some(choice) = response.choices.first() {
-            if let Some(text) = &choice.message.content {
-                output_text = text.clone();
+            if let Some(text) = choice
+                .message
+                .content
+                .as_ref()
+                .and_then(ChatContent::as_text)
+            {
+                output_text = text.to_string();
                 if !text.is_empty() {
                     output.push(ResponseOutputItem::Message(ResponseOutputMessage {
                         id: format!("msg_{}", uuid::Uuid::new_v4()),
                         role: choice.message.role.clone(),
                         content: vec![ResponseOutputContent {
                             content_type: "output_text".to_string(),
-                            text: text.clone(),
+                            text: text.to_string(),
                         }],
                     }));
                 }
@@ -259,7 +289,10 @@ mod tests {
         let messages = ResponseInput::Text("Hello".to_string()).into_chat_messages();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
-        assert_eq!(messages[0].content.as_deref(), Some("Hello"));
+        assert_eq!(
+            messages[0].content.as_ref().and_then(ChatContent::as_text),
+            Some("Hello")
+        );
     }
 
     #[test]
@@ -274,7 +307,10 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "tool");
         assert_eq!(messages[0].tool_call_id.as_deref(), Some("call_123"));
-        assert_eq!(messages[0].content.as_deref(), Some("42"));
+        assert_eq!(
+            messages[0].content.as_ref().and_then(ChatContent::as_text),
+            Some("42")
+        );
     }
 
     #[test]
@@ -288,7 +324,7 @@ mod tests {
                 index: 0,
                 message: ChatMessage {
                     role: "assistant".to_string(),
-                    content: Some("Hi".to_string()),
+                    content: Some("Hi".into()),
                     tool_calls: Some(vec![ToolCall {
                         id: "call_1".to_string(),
                         call_type: "function".to_string(),

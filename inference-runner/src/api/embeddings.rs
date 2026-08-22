@@ -7,7 +7,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::state::AppState;
 
 /// OpenAI-compatible embedding request.
@@ -85,14 +85,8 @@ async fn create_embeddings(
 
     let inputs = request.input.into_vec();
 
-    // Find an engine that can serve this model
-    let engine = state
-        .engine_registry
-        .find_engine_for_model(resolved_model)
-        .await
-        .ok_or_else(|| Error::ModelNotFound(model.to_string()))?;
-
-    let embeddings = engine.embed(resolved_model, &inputs).await?;
+    let lease = state.engine_registry.acquire_model(resolved_model).await?;
+    let embeddings = lease.engine.embed(&lease.engine_model, &inputs).await?;
 
     // Approximate token count
     let prompt_tokens: u32 = inputs

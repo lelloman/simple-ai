@@ -349,6 +349,27 @@ impl WakeService {
                 runner.available_models.iter().any(|m| m == model_id)
             }
             ModelRequest::Class(class) => {
+                if self
+                    .routing_config
+                    .wake_preferred_classes
+                    .iter()
+                    .any(|configured| configured.eq_ignore_ascii_case(class.as_str()))
+                {
+                    let preferred = match class {
+                        ModelClass::Big => self.models_config.big.first(),
+                        ModelClass::Fast => self.models_config.fast.first(),
+                        ModelClass::EmbedSmall => self.models_config.embed_small.first(),
+                        ModelClass::EmbedLarge => self.models_config.embed_large.first(),
+                        ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
+                        ModelClass::Tts => self.models_config.tts.first(),
+                    };
+                    return preferred.is_some_and(|model| {
+                        runner
+                            .available_models
+                            .iter()
+                            .any(|available| available == model)
+                    });
+                }
                 // Check if runner has any model of this class
                 runner
                     .available_models

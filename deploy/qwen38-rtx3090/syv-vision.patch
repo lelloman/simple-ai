@@ -1,0 +1,33 @@
+diff --git a/prepare/build_draft_vocab.py b/prepare/build_draft_vocab.py
+index 250096c..116b23b 100644
+--- a/prepare/build_draft_vocab.py
++++ b/prepare/build_draft_vocab.py
+@@ -106 +106 @@ print(f"draft head: packed {tuple(sub_p.shape)} {sub_p.dtype}, scales {tuple(sub
+-extra = "model_extra_tensors.safetensors"
++extra = wm.get("mtp.fc.weight_packed") or wm.get("mtp.fc.weight") or "model_extra_tensors.safetensors"
+diff --git a/prepare/quant_mtp.py b/prepare/quant_mtp.py
+index 177dd70..dad2e3c 100644
+--- a/prepare/quant_mtp.py
++++ b/prepare/quant_mtp.py
+@@ -81 +81,4 @@ qc = c["quantization_config"]
+-qc["ignore"] = [i for i in qc["ignore"] if i not in MTP_LINEARS]
++qc["ignore"] = [
++    i for i in qc["ignore"]
++    if i not in MTP_LINEARS and i not in ("mtp", "re:.*mtp.*", "re:^mtp\\..*")
++]
+diff --git a/single-user/start_qwen.sh b/single-user/start_qwen.sh
+index a43e1d5..013d866 100755
+--- a/single-user/start_qwen.sh
++++ b/single-user/start_qwen.sh
+@@ -276,0 +277,7 @@ TOOL_ARGS=$([ "${TOOLS:-1}" = 1 ] && echo --enable-auto-tool-choice --tool-call-
++if [ "${VISION:-0}" = 1 ]; then
++  LM_ONLY_ARGS=""
++  VISION_ARGS="--mm-processor-kwargs {\"max_pixels\":2097152} --limit-mm-per-prompt {\"image\":4,\"video\":0}"
++else
++  LM_ONLY_ARGS="--language-model-only"
++  VISION_ARGS=""
++fi
+@@ -296 +303,2 @@ exec venv/bin/vllm serve "$MODEL" \
+-  --language-model-only \
++  $LM_ONLY_ARGS \
++  $VISION_ARGS \

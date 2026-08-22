@@ -61,13 +61,15 @@ impl StatusCollector {
             Self::compute_health(&engines)
         };
 
+        let mut model_aliases = self.config.aliases.mappings.clone();
+        model_aliases.extend(self.engine_registry.gateway_model_aliases().await);
         RunnerStatus {
             health,
             capabilities,
             engines,
             // TODO: Implement actual metrics collection (request counts, latency, GPU/CPU usage)
             metrics: None,
-            model_aliases: self.config.aliases.mappings.clone(),
+            model_aliases,
         }
     }
 
@@ -302,6 +304,8 @@ mod tests {
             engines: EnginesConfig::default(),
             capabilities: CapabilitiesConfig::default(),
             aliases: AliasesConfig::default(),
+            model_routes: Default::default(),
+            engine_resources: Default::default(),
             ocr: OcrConfig::default(),
         }
     }

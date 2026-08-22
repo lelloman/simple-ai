@@ -28,6 +28,67 @@ port = 8080
 enabled = true
 base_url = "http://localhost:11434"
 
+# Engines in the same resource group are unloaded before another engine in
+# that group starts a model. This prevents cross-engine CUDA OOMs.
+# [engine_resources]
+# vllm = "cuda:0"
+# llama_cpp = "cuda:0"
+# ollama = "cuda:0"
+# audio_embeddings = "cuda:0"
+# tts = "cuda:0"
+
+# Managed vLLM service. The runner starts/stops a pinned Docker Compose stack
+# and proxies authenticated OpenAI-compatible requests to loopback.
+# [engines.vllm]
+# enabled = true
+# base_url = "http://127.0.0.1:18020"
+# api_key_file = "/home/user/qwen38-serving/api_key.txt"
+# compose_dir = "/home/user/qwen38-serving"
+# startup_timeout_secs = 900
+# shutdown_timeout_secs = 60
+# batch_size = 4
+#
+# The prepared base profile is the tested shortest path: text-only, 49k context,
+# no checkpoint-specific calibration required.
+# [engines.vllm.models.qwen38-base]
+# served_model = "qwen3.8-27b"
+# profile = "base"
+# env_file = "profiles/base.env"
+# compose_profile = "single"
+# compose_service = "single"
+# context_length = 49152
+# quantization = "W4A16-AWQ"
+# reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "medium", supports_thinking_budget = false }
+#
+# [engines.vllm.models.qwen38-fast]
+# served_model = "qwen3.8-27b"
+# profile = "fast"
+# env_file = "profiles/fast.env"
+# compose_profile = "single"
+# compose_service = "single"
+# context_length = 65536
+# quantization = "W4A16-GPTQ"
+#
+# [engines.vllm.models.qwen38-long]
+# served_model = "qwen3.8-27b"
+# profile = "long"
+# env_file = "profiles/long.env"
+# compose_profile = "single"
+# compose_service = "single"
+# context_length = 131072
+# quantization = "W4A16-GPTQ"
+
+# Explicit routes win over engine discovery. Route aliases resolve to the
+# canonical public model; duplicate aliases or ambiguous discovery are errors.
+# [model_routes."qwen3.8-27b"]
+# engine = "vllm"
+# engine_model = "qwen38-base"
+# aliases = ["qwen3.8-27b-uncensored", "qwen3.8-27b-vllm"]
+#
+# [model_routes."qwen3.8-27b-long"]
+# engine = "vllm"
+# engine_model = "qwen38-long"
+
 # llama.cpp engine configuration
 # Manages llama-server subprocesses for inference. Each loaded model runs
 # in its own server process for isolation.

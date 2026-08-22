@@ -852,10 +852,14 @@ mod tests {
                         ResponseContentPart {
                             part_type: "input_text".to_string(),
                             text: Some("Hello".to_string()),
+                            image_url: None,
+                            detail: None,
                         },
                         ResponseContentPart {
                             part_type: "input_text".to_string(),
                             text: Some(" world".to_string()),
+                            image_url: None,
+                            detail: None,
                         },
                     ]),
                     tool_call_id: None,
@@ -875,10 +879,31 @@ mod tests {
 
         assert_eq!(chat.messages.len(), 2);
         assert_eq!(chat.messages[0].role, "user");
-        assert_eq!(chat.messages[0].content.as_deref(), Some("Hello world"));
+        assert_eq!(
+            chat.messages[0]
+                .content
+                .as_ref()
+                .and_then(simple_ai_common::ChatContent::as_text),
+            None
+        );
+        assert_eq!(
+            chat.messages[0]
+                .content
+                .as_ref()
+                .unwrap()
+                .text_only()
+                .unwrap(),
+            "Hello world"
+        );
         assert_eq!(chat.messages[1].role, "tool");
         assert_eq!(chat.messages[1].tool_call_id.as_deref(), Some("call_1"));
-        assert_eq!(chat.messages[1].content.as_deref(), Some("{\"ok\":true}"));
+        assert_eq!(
+            chat.messages[1]
+                .content
+                .as_ref()
+                .and_then(simple_ai_common::ChatContent::as_text),
+            Some("{\"ok\":true}")
+        );
     }
 
     #[test]

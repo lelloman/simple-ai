@@ -36,6 +36,12 @@ pub struct Config {
     /// Model aliases for mapping canonical names to local engine names.
     #[serde(default)]
     pub aliases: AliasesConfig,
+    /// Deterministic public-model to engine/model routes.
+    #[serde(default)]
+    pub model_routes: HashMap<String, ModelRouteConfig>,
+    /// Engine type to exclusive resource group (for example `cuda:0`).
+    #[serde(default)]
+    pub engine_resources: HashMap<String, String>,
     /// Optional OCR provider configuration.
     #[serde(default)]
     pub ocr: OcrConfig,
@@ -93,6 +99,49 @@ pub struct EnginesConfig {
     pub audio_embeddings: Option<AudioEmbeddingEngineConfig>,
     /// Process-backed text-to-speech engine configuration.
     pub tts: Option<TtsEngineConfig>,
+    /// Managed OpenAI-compatible vLLM engine.
+    pub vllm: Option<VllmEngineConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelRouteConfig {
+    pub engine: String,
+    pub engine_model: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VllmEngineConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    pub base_url: String,
+    pub api_key_file: String,
+    pub compose_dir: String,
+    #[serde(default = "default_vllm_startup_timeout_secs")]
+    pub startup_timeout_secs: u64,
+    #[serde(default = "default_vllm_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u32,
+    #[serde(default)]
+    pub models: HashMap<String, VllmModelConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VllmModelConfig {
+    pub served_model: String,
+    pub profile: String,
+    pub env_file: String,
+    #[serde(default = "default_vllm_compose_profile")]
+    pub compose_profile: String,
+    #[serde(default = "default_vllm_compose_service")]
+    pub compose_service: String,
+    pub context_length: u32,
+    #[serde(default)]
+    pub quantization: Option<String>,
+    #[serde(default)]
+    pub reasoning: Option<LlamaCppReasoningControls>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -504,6 +553,18 @@ fn default_true() -> bool {
 fn default_batch_size() -> u32 {
     1
 }
+fn default_vllm_startup_timeout_secs() -> u64 {
+    900
+}
+fn default_vllm_shutdown_timeout_secs() -> u64 {
+    60
+}
+fn default_vllm_compose_profile() -> String {
+    "single".to_string()
+}
+fn default_vllm_compose_service() -> String {
+    "single".to_string()
+}
 fn default_max_servers() -> usize {
     2
 }
@@ -743,5 +804,27 @@ mod tests {
 
         assert!(reasoning.enabled());
         assert!(reasoning.controls().is_none());
+    }
+
+    #[test]
+    fn rtx_deployment_config_deserializes() {
+        let source = include_str!("../../scripts/configs/rtx.toml");
+        let loaded = ConfigLoader::builder()
+            .add_source(File::from_str(source, FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config: Config = loaded.try_deserialize().unwrap();
+        let vllm = config.engines.vllm.expect("vLLM must be configured");
+
+        assert!(vllm.models.contains_key("qwen38-fast"));
+        assert!(vllm.models.contains_key("qwen38-long"));
+        assert_eq!(
+            config.engine_resources.get("vllm").map(String::as_str),
+            Some("cuda:0")
+        );
+        assert_eq!(
+            config.model_routes["qwen3.8-27b"].engine_model,
+            "qwen38-fast"
+        );
     }
 }

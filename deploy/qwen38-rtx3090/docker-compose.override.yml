@@ -1,0 +1,21 @@
+services:
+  prepare:
+    env_file: !override
+      - path: ${QWEN_ENV_FILE:-.env}
+        required: false
+  single:
+    # Older NVIDIA Container Toolkit installations (including this host's
+    # Snap Docker setup) require the runtime explicitly instead of CDI mode.
+    runtime: nvidia
+    env_file: !override
+      - path: ${QWEN_ENV_FILE:-.env}
+        required: false
+    ports: !override
+      - "127.0.0.1:${PORT:-18020}:${PORT:-18020}"
+  batch:
+    runtime: nvidia
+    env_file: !override
+      - path: ${QWEN_ENV_FILE:-.env}
+        required: false
+    ports: !override
+      - "127.0.0.1:${PORT:-18020}:${PORT:-18020}"

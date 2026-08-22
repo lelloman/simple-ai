@@ -291,7 +291,7 @@ mod tests {
         simple_ai_common::ChatCompletionRequest {
             messages: vec![ChatMessage {
                 role: "user".to_string(),
-                content: Some("Hello".to_string()),
+                content: Some("Hello".into()),
                 tool_calls: None,
                 tool_call_id: None,
             }],
@@ -350,7 +350,7 @@ mod tests {
             "model-a".to_string(),
             ChatMessage {
                 role: "assistant".to_string(),
-                content: Some("ok".to_string()),
+                content: Some("ok".into()),
                 tool_calls: None,
                 tool_call_id: None,
             },

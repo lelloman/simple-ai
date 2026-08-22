@@ -18,7 +18,9 @@ mod ocr;
 mod state;
 
 use config::Config;
-use engine::{AudioEmbeddingEngine, EngineRegistry, LlamaCppEngine, OllamaEngine, TtsEngine};
+use engine::{
+    AudioEmbeddingEngine, EngineRegistry, LlamaCppEngine, OllamaEngine, TtsEngine, VllmEngine,
+};
 use gateway::{GatewayClient, StatusCollector};
 use ocr::{CliOcrProvider, OcrProvider};
 use state::AppState;
@@ -61,6 +63,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create engine registry
     let registry = Arc::new(EngineRegistry::new());
+    registry
+        .configure_routes(config.model_routes.clone())
+        .await
+        .map_err(|e| format!("Invalid model_routes configuration: {e}"))?;
+    registry
+        .set_engine_resources(config.engine_resources.clone())
+        .await;
     let ocr_provider = if config.ocr.enabled {
         match CliOcrProvider::new(config.ocr.clone()) {
             Ok(provider) => {
@@ -135,6 +144,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!(
                 "Registered TTS engine with {} models",
                 tts_config.models.len()
+            );
+        }
+    }
+
+    if let Some(ref vllm_config) = config.engines.vllm {
+        if vllm_config.enabled {
+            let engine = Arc::new(VllmEngine::new(vllm_config.clone())?);
+            registry.register(engine).await;
+            tracing::info!(
+                "Registered managed vLLM engine at {} with {} models",
+                vllm_config.base_url,
+                vllm_config.models.len()
             );
         }
     }

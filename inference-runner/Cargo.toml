@@ -23,7 +23,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # HTTP client (for Ollama)
-reqwest = { workspace = true, features = ["multipart"] }
+reqwest = { workspace = true, features = ["multipart", "stream"] }
 
 # Async traits
 async-trait = { workspace = true }
@@ -40,6 +40,8 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 tempfile = "3.8"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 
 # WebSocket (Phase 2)
 tokio-tungstenite = { workspace = true }

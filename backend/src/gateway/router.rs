@@ -620,6 +620,30 @@ impl InferenceRouter {
         &self,
         class: ModelClass,
     ) -> Result<SelectedRunner, RouterError> {
+        if self
+            .routing_config
+            .wake_preferred_classes
+            .iter()
+            .any(|configured| configured.eq_ignore_ascii_case(class.as_str()))
+        {
+            let preferred = match class {
+                ModelClass::Big => self.models_config.big.first(),
+                ModelClass::Fast => self.models_config.fast.first(),
+                ModelClass::EmbedSmall => self.models_config.embed_small.first(),
+                ModelClass::EmbedLarge => self.models_config.embed_large.first(),
+                ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
+                ModelClass::Tts => self.models_config.tts.first(),
+            };
+            if let Some(model_id) = preferred {
+                let runner = self.select_runner_for_specific(model_id).await?;
+                let is_loaded = runner.has_model_or_alias(model_id);
+                return Ok(SelectedRunner {
+                    runner,
+                    resolved_model: model_id.clone(),
+                    is_loaded,
+                });
+            }
+        }
         let operational = self.filter_available(self.registry.operational().await);
         if operational.is_empty() {
             return Err(RouterError::NoRunners);
