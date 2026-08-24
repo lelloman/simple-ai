@@ -4,16 +4,16 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::{io::Cursor, net::SocketAddr};
+use std::{collections::VecDeque, io::Cursor, net::SocketAddr};
 
 use async_trait::async_trait;
 use axum::body::Bytes;
 use base64::Engine as _;
-use futures_util::{Stream, StreamExt};
+use futures_util::{stream, Stream, StreamExt};
 use serde_json::{json, Value};
 use simple_ai_common::{
-    ChatCompletionRequest, ChatCompletionResponse, InferenceMetrics, ReasoningCapabilities,
-    ReasoningEffort,
+    format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, InferenceMetrics,
+    ReasoningCapabilities, ReasoningEffort,
 };
 use tokio::process::Command;
 use tokio::sync::{Mutex, RwLock};
@@ -627,6 +627,13 @@ impl InferenceEngine for VllmEngine {
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionStream> {
         self.ensure_loaded(model_id).await?;
+        let mut body = self.normalized_request(model_id, request).await?;
+        let object = body
+            .as_object_mut()
+            .ok_or_else(|| Error::InvalidRequest("chat request must be an object".to_string()))?;
+        object.insert("stream".to_string(), Value::Bool(true));
+        object.insert("stream_options".to_string(), json!({"include_usage": true}));
+        let inference_start = Instant::now();
         let response = self
             .client
             .post(format!(
@@ -634,7 +641,7 @@ impl InferenceEngine for VllmEngine {
                 self.config.base_url.trim_end_matches('/')
             ))
             .bearer_auth(&self.api_key)
-            .json(&self.normalized_request(model_id, request).await?)
+            .json(&body)
             .send()
             .await
             .map_err(|e| Error::Communication(e.to_string()))?;
@@ -644,11 +651,208 @@ impl InferenceEngine for VllmEngine {
                 response.status()
             )));
         }
-        let stream = response.bytes_stream().map(|chunk| {
-            chunk.map_err(|e| Error::Communication(format!("vLLM stream failed: {e}")))
+        struct StreamState {
+            response: reqwest::Response,
+            buffer: Vec<u8>,
+            pending: VecDeque<Bytes>,
+            emitted_metrics: bool,
+            model_id: String,
+            context_window: u32,
+            inference_start: Instant,
+            first_token_at: Option<Instant>,
+            prompt_tokens: Option<u32>,
+            completion_tokens: Option<u32>,
+        }
+
+        let state = StreamState {
+            response,
+            buffer: Vec::new(),
+            pending: VecDeque::new(),
+            emitted_metrics: false,
+            model_id: model_id.to_string(),
+            context_window: self.model(model_id)?.context_length,
+            inference_start,
+            first_token_at: None,
+            prompt_tokens: None,
+            completion_tokens: None,
+        };
+
+        let stream = stream::try_unfold(state, |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.pop_front() {
+                    return Ok(Some((item, state)));
+                }
+
+                let Some(chunk) = state
+                    .response
+                    .chunk()
+                    .await
+                    .map_err(|e| Error::Communication(format!("vLLM stream failed: {e}")))?
+                else {
+                    if !state.buffer.is_empty() {
+                        let trailing = Bytes::from(std::mem::take(&mut state.buffer));
+                        state.pending.push_back(trailing);
+                    }
+                    if !state.emitted_metrics {
+                        state.emitted_metrics = true;
+                        state.pending.push_back(vllm_metrics_event(
+                            &state.model_id,
+                            state.context_window,
+                            state.inference_start,
+                            state.first_token_at,
+                            state.prompt_tokens,
+                            state.completion_tokens,
+                        )?);
+                    }
+                    if let Some(item) = state.pending.pop_front() {
+                        return Ok(Some((item, state)));
+                    }
+                    return Ok(None);
+                };
+
+                state.buffer.extend_from_slice(&chunk);
+                while let Some(event_end) =
+                    state.buffer.windows(2).position(|window| window == b"\n\n")
+                {
+                    let event_with_delimiter: Vec<u8> =
+                        state.buffer.drain(..event_end + 2).collect();
+                    let event = &event_with_delimiter[..event_end];
+                    let observation = observe_vllm_event(event);
+                    if observation.has_token && state.first_token_at.is_none() {
+                        state.first_token_at = Some(Instant::now());
+                    }
+                    if observation.prompt_tokens.is_some() {
+                        state.prompt_tokens = observation.prompt_tokens;
+                    }
+                    if observation.completion_tokens.is_some() {
+                        state.completion_tokens = observation.completion_tokens;
+                    }
+                    if observation.done && !state.emitted_metrics {
+                        state.emitted_metrics = true;
+                        state.pending.push_back(vllm_metrics_event(
+                            &state.model_id,
+                            state.context_window,
+                            state.inference_start,
+                            state.first_token_at,
+                            state.prompt_tokens,
+                            state.completion_tokens,
+                        )?);
+                    }
+                    state.pending.push_back(Bytes::from(event_with_delimiter));
+                }
+            }
         });
         Ok(Box::pin(stream) as Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>)
     }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct VllmEventObservation {
+    done: bool,
+    has_token: bool,
+    prompt_tokens: Option<u32>,
+    completion_tokens: Option<u32>,
+}
+
+fn observe_vllm_event(event: &[u8]) -> VllmEventObservation {
+    let Ok(event) = std::str::from_utf8(event) else {
+        return VllmEventObservation::default();
+    };
+    let data = event
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:").map(str::trim_start))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if data == "[DONE]" {
+        return VllmEventObservation {
+            done: true,
+            ..Default::default()
+        };
+    }
+    let Ok(value) = serde_json::from_str::<Value>(&data) else {
+        return VllmEventObservation::default();
+    };
+    let usage = value.get("usage");
+    let has_token = value
+        .get("choices")
+        .and_then(Value::as_array)
+        .is_some_and(|choices| {
+            choices.iter().any(|choice| {
+                let Some(delta) = choice.get("delta") else {
+                    return false;
+                };
+                ["content", "reasoning_content", "reasoning"]
+                    .iter()
+                    .any(|field| {
+                        delta
+                            .get(field)
+                            .and_then(Value::as_str)
+                            .is_some_and(|text| !text.is_empty())
+                    })
+                    || delta
+                        .get("tool_calls")
+                        .and_then(Value::as_array)
+                        .is_some_and(|calls| !calls.is_empty())
+            })
+        });
+    VllmEventObservation {
+        done: false,
+        has_token,
+        prompt_tokens: usage
+            .and_then(|usage| usage.get("prompt_tokens"))
+            .and_then(Value::as_u64)
+            .and_then(|tokens| u32::try_from(tokens).ok()),
+        completion_tokens: usage
+            .and_then(|usage| usage.get("completion_tokens"))
+            .and_then(Value::as_u64)
+            .and_then(|tokens| u32::try_from(tokens).ok()),
+    }
+}
+
+fn vllm_metrics_event(
+    model_id: &str,
+    context_window: u32,
+    inference_start: Instant,
+    first_token_at: Option<Instant>,
+    prompt_tokens: Option<u32>,
+    completion_tokens: Option<u32>,
+) -> Result<Bytes> {
+    let finished_at = Instant::now();
+    let prompt_eval_ms = first_token_at.map(|first| {
+        first
+            .saturating_duration_since(inference_start)
+            .as_millis()
+            .max(1) as u64
+    });
+    let completion_eval_ms = first_token_at.map(|first| {
+        finished_at
+            .saturating_duration_since(first)
+            .as_millis()
+            .max(1) as u64
+    });
+    let mut metrics = InferenceMetrics {
+        resolved_model: Some(model_id.to_string()),
+        engine_type: Some("vllm".to_string()),
+        context_window: Some(context_window),
+        prompt_tokens,
+        completion_tokens,
+        prompt_eval_ms,
+        completion_eval_ms,
+        total_inference_ms: Some(
+            finished_at
+                .saturating_duration_since(inference_start)
+                .as_millis() as u64,
+        ),
+        ..Default::default()
+    }
+    .with_computed_rates();
+    metrics.completion_tokens_per_sec = InferenceMetrics::tokens_per_second(
+        completion_tokens.map(|tokens| tokens.saturating_sub(1)),
+        completion_eval_ms,
+    );
+    format_sse_metrics(&metrics)
+        .map(Bytes::from)
+        .map_err(|e| Error::InferenceFailed(e.to_string()))
 }
 
 #[cfg(test)]
@@ -691,6 +895,35 @@ mod tests {
         assert_eq!(
             body.pointer("/messages/0/tool_calls/0/function/arguments/a"),
             Some(&json!(1))
+        );
+    }
+
+    #[test]
+    fn observes_stream_tokens_usage_and_done() {
+        let token = observe_vllm_event(
+            br#"data: {"choices":[{"delta":{"reasoning_content":"checking"}}]}"#,
+        );
+        assert!(token.has_token);
+        assert!(!token.done);
+
+        let usage = observe_vllm_event(
+            br#"data: {"choices":[],"usage":{"prompt_tokens":23,"completion_tokens":41}}"#,
+        );
+        assert_eq!(usage.prompt_tokens, Some(23));
+        assert_eq!(usage.completion_tokens, Some(41));
+
+        assert!(observe_vllm_event(b"data: [DONE]").done);
+    }
+
+    #[test]
+    fn ignores_empty_and_malformed_stream_events() {
+        assert_eq!(
+            observe_vllm_event(br#"data: {"choices":[{"delta":{"content":""}}]}"#),
+            VllmEventObservation::default()
+        );
+        assert_eq!(
+            observe_vllm_event(b"event: ping\ndata: not-json"),
+            VllmEventObservation::default()
         );
     }
 }
