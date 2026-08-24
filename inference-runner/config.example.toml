@@ -83,7 +83,7 @@ base_url = "http://localhost:11434"
 # [model_routes."qwen3.8-27b"]
 # engine = "vllm"
 # engine_model = "qwen38-base"
-# aliases = ["qwen3.8-27b-uncensored", "qwen3.8-27b-vllm"]
+# aliases = ["qwen3.8-27b-uncensored", "qwen3.8-27b-vllm", "Qwen3.8-27B-Uncensored-Q4_K_M"]
 #
 # [model_routes."qwen3.8-27b-long"]
 # engine = "vllm"

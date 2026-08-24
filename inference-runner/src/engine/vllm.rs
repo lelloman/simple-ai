@@ -99,6 +99,12 @@ impl VllmEngine {
         let Some(served_model) = served_model else {
             return true;
         };
+        self.upstream_model_ids()
+            .await
+            .is_some_and(|models| models.iter().any(|model| model == served_model))
+    }
+
+    async fn upstream_model_ids(&self) -> Option<Vec<String>> {
         let response = self
             .client
             .get(format!(
@@ -108,19 +114,45 @@ impl VllmEngine {
             .bearer_auth(&self.api_key)
             .send()
             .await;
-        let Ok(response) = response.and_then(reqwest::Response::error_for_status) else {
-            return false;
-        };
-        let Ok(body) = response.json::<Value>().await else {
-            return false;
-        };
-        body.get("data")
-            .and_then(Value::as_array)
-            .is_some_and(|models| {
-                models
-                    .iter()
-                    .any(|model| model.get("id").and_then(Value::as_str) == Some(served_model))
-            })
+        let response = response
+            .and_then(reqwest::Response::error_for_status)
+            .ok()?;
+        let body = response.json::<Value>().await.ok()?;
+        body.get("data").and_then(Value::as_array).map(|models| {
+            models
+                .iter()
+                .filter_map(|model| model.get("id").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+    }
+
+    async fn adopt_running_model(&self) -> Option<String> {
+        if let Some(loaded) = self.loaded.read().await.clone() {
+            return Some(loaded);
+        }
+        if !self.upstream_healthy(None).await {
+            return None;
+        }
+        let served = self.upstream_model_ids().await?;
+        let mut candidates: Vec<&String> = self
+            .config
+            .models
+            .iter()
+            .filter(|(_, model)| served.iter().any(|id| id == &model.served_model))
+            .map(|(id, _)| id)
+            .collect();
+        candidates.sort();
+        let adopted = (*candidates.first()?).clone();
+        let mut loaded = self.loaded.write().await;
+        if loaded.is_none() {
+            tracing::info!(
+                "Adopted already-running vLLM model {} after runner restart",
+                adopted
+            );
+            *loaded = Some(adopted.clone());
+        }
+        loaded.clone()
     }
 
     async fn wait_ready(&self, served_model: &str) -> Result<()> {
@@ -481,7 +513,7 @@ impl InferenceEngine for VllmEngine {
     }
 
     async fn health_check(&self) -> Result<EngineHealth> {
-        let loaded = self.loaded.read().await.clone();
+        let loaded = self.adopt_running_model().await;
         let served = loaded
             .as_deref()
             .and_then(|id| self.config.models.get(id))
@@ -533,7 +565,7 @@ impl InferenceEngine for VllmEngine {
 
     async fn load_model(&self, model_id: &str) -> Result<()> {
         let _guard = self.lifecycle.lock().await;
-        if self.loaded.read().await.as_deref() == Some(model_id) {
+        if self.adopt_running_model().await.as_deref() == Some(model_id) {
             return Ok(());
         }
         let model = self.model(model_id)?.clone();
@@ -565,7 +597,7 @@ impl InferenceEngine for VllmEngine {
 
     async fn unload_model(&self, model_id: &str) -> Result<()> {
         let _guard = self.lifecycle.lock().await;
-        if self.loaded.read().await.as_deref() != Some(model_id) {
+        if self.adopt_running_model().await.as_deref() != Some(model_id) {
             return Ok(());
         }
         let model = self.model(model_id)?.clone();
