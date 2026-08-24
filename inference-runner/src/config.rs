@@ -816,15 +816,19 @@ mod tests {
         let config: Config = loaded.try_deserialize().unwrap();
         let vllm = config.engines.vllm.expect("vLLM must be configured");
 
-        assert!(vllm.models.contains_key("qwen38-fast"));
-        assert!(vllm.models.contains_key("qwen38-long"));
+        let qwen38 = &vllm.models["qwen38-base"];
+        assert_eq!(qwen38.profile, "base");
+        assert_eq!(qwen38.context_length, 49_152);
         assert_eq!(
             config.engine_resources.get("vllm").map(String::as_str),
             Some("cuda:0")
         );
         assert_eq!(
             config.model_routes["qwen3.8-27b"].engine_model,
-            "qwen38-fast"
+            "qwen38-base"
         );
+        assert!(config.model_routes["qwen3.8-27b"]
+            .aliases
+            .contains(&"Qwen3.8-27B-Uncensored-Q4_K_M".to_owned()));
     }
 }
