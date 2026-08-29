@@ -236,7 +236,6 @@ impl VllmEngine {
                 json!({"enable_thinking": enable_thinking, "reasoning_effort": effort}),
             );
         }
-        normalize_tool_arguments(&mut body)?;
         normalize_images(&mut body).await?;
         Ok(body)
     }
@@ -247,28 +246,6 @@ impl VllmEngine {
         }
         self.load_model(model_id).await
     }
-}
-
-fn normalize_tool_arguments(body: &mut Value) -> Result<()> {
-    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
-        return Ok(());
-    };
-    for message in messages {
-        let Some(calls) = message.get_mut("tool_calls").and_then(Value::as_array_mut) else {
-            continue;
-        };
-        for call in calls {
-            let Some(arguments) = call.pointer_mut("/function/arguments") else {
-                continue;
-            };
-            if let Some(encoded) = arguments.as_str() {
-                *arguments = serde_json::from_str(encoded).map_err(|e| {
-                    Error::InvalidRequest(format!("tool call arguments must contain JSON: {e}"))
-                })?;
-            }
-        }
-    }
-    Ok(())
 }
 
 const MAX_IMAGES: usize = 4;
@@ -919,14 +896,17 @@ mod tests {
     }
 
     #[test]
-    fn historical_tool_arguments_become_objects() {
-        let mut body = json!({"messages":[{"role":"assistant","tool_calls":[{
+    fn historical_tool_arguments_remain_strings_for_openai_compatibility() {
+        let request: ChatCompletionRequest = serde_json::from_value(json!({
+            "messages":[{"role":"assistant","tool_calls":[{
             "id":"call_1","type":"function","function":{"name":"x","arguments":"{\"a\":1}"}
-        }]}]});
-        normalize_tool_arguments(&mut body).unwrap();
+        }]}]
+        }))
+        .unwrap();
+        let body = serde_json::to_value(request).unwrap();
         assert_eq!(
-            body.pointer("/messages/0/tool_calls/0/function/arguments/a"),
-            Some(&json!(1))
+            body.pointer("/messages/0/tool_calls/0/function/arguments"),
+            Some(&json!("{\"a\":1}"))
         );
     }
 
