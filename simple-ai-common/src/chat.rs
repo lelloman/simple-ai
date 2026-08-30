@@ -81,6 +81,9 @@ pub struct InferenceMetrics {
     pub prompt_tokens_per_sec: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_tokens_per_sec: Option<f64>,
+    /// Prompt tokens served from an engine cache, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_prompt_tokens: Option<u32>,
 }
 
 impl InferenceMetrics {
@@ -124,6 +127,9 @@ pub struct ChatCompletionRequest {
     /// Whether to stream the response.
     #[serde(default)]
     pub stream: Option<bool>,
+    /// Caller-provided logical prompt cache identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
 }
 
 impl ChatCompletionRequest {
@@ -447,6 +453,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::High),
             thinking_budget_tokens: Some(2048),
             stream: Some(false),
+            prompt_cache_key: Some("conversation".to_string()),
         };
         assert_eq!(req.messages.len(), 1);
         assert_eq!(req.model, Some("gpt-4".to_string()));
@@ -640,6 +647,7 @@ mod tests {
             thinking_budget_tokens: Some(1024),
             tools: None,
             stream: None,
+            prompt_cache_key: None,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: ChatCompletionRequest = serde_json::from_str(&json).unwrap();

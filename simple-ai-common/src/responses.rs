@@ -31,6 +31,8 @@ pub struct ResponseCreateRequest {
     pub thinking_budget_tokens: Option<i32>,
     #[serde(default)]
     pub stream: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

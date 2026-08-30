@@ -187,6 +187,7 @@ async fn test_chat_completions_requires_auth() {
         thinking_budget_tokens: None,
         tools: None,
         stream: None,
+        prompt_cache_key: None,
     };
 
     let body = Bytes::from(serde_json::to_string(&request).unwrap());
@@ -235,6 +236,7 @@ async fn test_responses_requires_auth() {
         reasoning: None,
         thinking_budget_tokens: None,
         stream: None,
+        prompt_cache_key: None,
     };
 
     let body = Bytes::from(serde_json::to_string(&request).unwrap());

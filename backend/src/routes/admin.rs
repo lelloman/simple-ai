@@ -45,7 +45,9 @@ async fn require_admin(
     next: Next,
 ) -> Response {
     // Get Authorization header
-    let auth_result = state.jwks_client.authenticate(request.headers()).await;
+    let auth_result = crate::routes::auth_helpers::authenticate_request(&state, request.headers())
+        .await
+        .map(|(auth_user, _)| auth_user);
 
     match auth_result {
         Ok(user) => {
@@ -1284,8 +1286,24 @@ async fn get_router_state_snapshot(state: &AppState) -> RouterStateSnapshot {
             &state.audit_logger,
             state.batch_queue.as_ref(),
             &state.config.models,
+            &state.config.routing,
+            &state.inference_router,
         )
         .await
+}
+
+async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> Response {
+    match state.inference_router.affinity_store().metrics().encode() {
+        Ok(body) => (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "application/openmetrics-text; version=1.0.0; charset=utf-8",
+            )],
+            body,
+        )
+            .into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 /// Validate a JWT token for admin access.
@@ -1405,6 +1423,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/requests", get(api_requests_list))
         .route("/api/requests/:id/cancel", post(api_request_cancel))
         .route("/api/model-speeds", get(api_model_speeds))
+        .route("/metrics", get(prometheus_metrics))
         .route("/api/keys", get(api_keys_list).post(api_keys_create))
         .route("/api/keys/:id/secret", get(api_key_secret))
         .route(
@@ -1421,49 +1440,6 @@ pub fn router(state: Arc<AppState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_ai_common::{
-        EngineStatus, GatewayMessage, ModelInfo as ProtocolModelInfo, RunnerHealth, RunnerStatus,
-    };
-    use tokio::sync::mpsc;
-
-    fn create_test_runner_with_models(
-        loaded_models: Vec<String>,
-        available_models: Vec<String>,
-    ) -> (String, mpsc::Receiver<GatewayMessage>) {
-        let (tx, rx) = mpsc::channel(32);
-        let runner_id = "test-runner".to_string();
-
-        let status = RunnerStatus {
-            health: RunnerHealth::Healthy,
-            capabilities: vec![],
-            engines: vec![EngineStatus {
-                engine_type: "test".to_string(),
-                is_healthy: true,
-                version: None,
-                loaded_models,
-                available_models: available_models
-                    .into_iter()
-                    .map(|id| ProtocolModelInfo {
-                        id: id.clone(),
-                        name: id.clone(),
-                        size_bytes: None,
-                        parameter_count: None,
-                        context_length: None,
-                        quantization: None,
-                        modified_at: None,
-                        reasoning: None,
-                    })
-                    .collect(),
-                error: None,
-                batch_size: 1,
-            }],
-            metrics: None,
-            model_aliases: std::collections::HashMap::new(),
-        };
-
-        // We can't create a full ConnectedRunner here, so we'll just return what we need
-        (runner_id, rx)
-    }
 
     #[tokio::test]
     async fn test_dashboard_stats_default() {

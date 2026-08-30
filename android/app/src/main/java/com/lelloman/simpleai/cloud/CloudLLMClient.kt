@@ -62,6 +62,7 @@ class CloudLLMClient {
         messages: JsonArray,
         tools: JsonArray?,
         systemPrompt: String?,
+        promptCacheKey: String?,
         authToken: String
     ): Result<ChatResponse> = withContext(Dispatchers.IO) {
         try {
@@ -69,7 +70,7 @@ class CloudLLMClient {
             val fullMessages = buildMessages(messages, systemPrompt)
 
             // Build request body
-            val requestBody = buildRequestBody(fullMessages, tools)
+            val requestBody = buildRequestBody(fullMessages, tools, promptCacheKey)
             val requestJson = json.encodeToString(requestBody)
 
             Log.d(TAG, "Sending request to $endpoint/v1/chat/completions")
@@ -126,13 +127,20 @@ class CloudLLMClient {
         return JsonArray(listOf(systemMessage) + messages)
     }
 
-    private fun buildRequestBody(messages: JsonArray, tools: JsonArray?): JsonObject {
+    private fun buildRequestBody(
+        messages: JsonArray,
+        tools: JsonArray?,
+        promptCacheKey: String?
+    ): JsonObject {
         val fields = mutableMapOf<String, JsonElement>(
             "messages" to messages
         )
 
         if (tools != null && tools.isNotEmpty()) {
             fields["tools"] = tools
+        }
+        if (promptCacheKey != null) {
+            fields["prompt_cache_key"] = kotlinx.serialization.json.JsonPrimitive(promptCacheKey)
         }
 
         return JsonObject(fields)

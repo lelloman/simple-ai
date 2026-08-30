@@ -118,6 +118,7 @@ impl StatusCollector {
                         available_models,
                         error: None,
                         batch_size: engine.batch_size(),
+                        prompt_cache: None,
                     }
                 }
                 Err(e) => EngineStatus {
@@ -128,6 +129,7 @@ impl StatusCollector {
                     available_models: vec![],
                     error: Some(e.to_string()),
                     batch_size: engine.batch_size(),
+                    prompt_cache: None,
                 },
             };
             statuses.push(status);
@@ -333,6 +335,7 @@ mod tests {
             available_models: vec![],
             error: None,
             batch_size: 1,
+            prompt_cache: None,
         }];
 
         let capabilities = collector.collect_capabilities(&engines).await;
@@ -367,6 +370,7 @@ mod tests {
             available_models: vec![],
             error: None,
             batch_size: 1,
+            prompt_cache: None,
         }];
 
         let capabilities = collector.collect_capabilities(&engines).await;
@@ -391,6 +395,7 @@ mod tests {
             available_models: vec![],
             error: None,
             batch_size: 1,
+            prompt_cache: None,
         }];
 
         let capabilities = collector.collect_capabilities(&engines).await;
@@ -464,6 +469,7 @@ mod tests {
                 available_models: vec![],
                 error: None,
                 batch_size: 1,
+                prompt_cache: None,
             },
             EngineStatus {
                 engine_type: "llama_cpp".to_string(),
@@ -473,6 +479,7 @@ mod tests {
                 available_models: vec![],
                 error: None,
                 batch_size: 1,
+                prompt_cache: None,
             },
         ];
         assert_eq!(
@@ -492,6 +499,7 @@ mod tests {
                 available_models: vec![],
                 error: None,
                 batch_size: 1,
+                prompt_cache: None,
             },
             EngineStatus {
                 engine_type: "llama_cpp".to_string(),
@@ -501,6 +509,7 @@ mod tests {
                 available_models: vec![],
                 error: Some("Connection failed".to_string()),
                 batch_size: 1,
+                prompt_cache: None,
             },
         ];
         assert_eq!(
@@ -519,6 +528,7 @@ mod tests {
             available_models: vec![],
             error: Some("Down".to_string()),
             batch_size: 1,
+            prompt_cache: None,
         }];
         assert_eq!(
             StatusCollector::compute_health(&engines),

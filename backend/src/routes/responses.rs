@@ -20,6 +20,7 @@ use std::time::Instant;
 
 use super::auth_helpers::{authenticate_request, extract_client_ip};
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
+use crate::gateway::{CapacityReservation, RoutedStream};
 use crate::models::request::{Request, Response as AuditResponse};
 use crate::{AppState, RequestEvent};
 
@@ -36,6 +37,7 @@ struct ResponsesStreamLogContext {
 
 struct ResponsesStreamState {
     response: Option<reqwest::Response>,
+    _reservation: Option<CapacityReservation>,
     buffer: String,
     pending: VecDeque<Bytes>,
     metrics: Option<InferenceMetrics>,
@@ -225,12 +227,10 @@ fn map_chat_chunk_event(
     Ok(())
 }
 
-fn filter_responses_stream(
-    response: reqwest::Response,
-    log_context: ResponsesStreamLogContext,
-) -> Body {
+fn filter_responses_stream(routed: RoutedStream, log_context: ResponsesStreamLogContext) -> Body {
     let state = ResponsesStreamState {
-        response: Some(response),
+        response: Some(routed.response),
+        _reservation: Some(routed.reservation),
         buffer: String::new(),
         pending: VecDeque::new(),
         metrics: None,
@@ -292,6 +292,7 @@ fn filter_responses_stream_from_chat_stream(
 ) -> Body {
     let state = ResponsesStreamState {
         response: None,
+        _reservation: None,
         buffer: String::new(),
         pending: VecDeque::new(),
         metrics: None,
@@ -407,6 +408,7 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
         reasoning,
         thinking_budget_tokens,
         stream,
+        prompt_cache_key,
     } = request;
 
     ChatCompletionRequest {
@@ -421,6 +423,7 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
         reasoning_effort: reasoning.and_then(|reasoning| reasoning.effort),
         thinking_budget_tokens,
         stream,
+        prompt_cache_key,
     }
 }
 
@@ -433,7 +436,7 @@ async fn create_response(
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) = authenticate_request(&state, &headers).await?;
-    let chat_request = build_chat_request(request);
+    let mut chat_request = build_chat_request(request);
 
     let model_request = ModelRequest::parse(
         chat_request
@@ -454,6 +457,17 @@ async fn create_response(
         ModelRequest::Specific(m) => m.clone(),
         ModelRequest::Class(class) => format!("class:{}", class),
     };
+
+    let affinity = chat_request
+        .prompt_cache_key
+        .take()
+        .map(|raw| {
+            state
+                .inference_router
+                .derive_affinity_context(&user.id, &model, raw)
+                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))
+        })
+        .transpose()?;
 
     let mut req_log = Request::new(user.id.clone(), "/v1/responses".to_string());
     req_log.request_body = serde_json::to_string(&chat_request).unwrap_or_default();
@@ -493,7 +507,13 @@ async fn create_response(
         let stream_body = if state.config.gateway.enabled {
             let scheduled = match state
                 .request_scheduler
-                .chat_completion_stream(&req_log.id, &model, &model_request, &chat_request)
+                .chat_completion_stream(
+                    &req_log.id,
+                    &model,
+                    &model_request,
+                    affinity.clone(),
+                    &chat_request,
+                )
                 .await
             {
                 Ok(scheduled) => scheduled,
@@ -618,6 +638,7 @@ async fn create_response(
                         &req_log.id,
                         &model,
                         &model_request,
+                        affinity.clone(),
                         &chat_request,
                         use_batching,
                     )
@@ -831,6 +852,7 @@ mod tests {
             }),
             thinking_budget_tokens: Some(1024),
             stream: Some(false),
+            prompt_cache_key: None,
         });
 
         assert_eq!(chat.model.as_deref(), Some("test-model"));
@@ -875,6 +897,7 @@ mod tests {
             reasoning: None,
             thinking_budget_tokens: None,
             stream: Some(false),
+            prompt_cache_key: None,
         });
 
         assert_eq!(chat.messages.len(), 2);
@@ -921,6 +944,7 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
     fn test_map_chat_chunk_event_to_responses_events() {
         let mut state = ResponsesStreamState {
             response: None,
+            _reservation: None,
             buffer: String::new(),
             pending: VecDeque::new(),
             metrics: None,
@@ -945,6 +969,7 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
     fn test_map_reasoning_chunk_to_visible_responses_delta() {
         let mut state = ResponsesStreamState {
             response: None,
+            _reservation: None,
             buffer: String::new(),
             pending: VecDeque::new(),
             metrics: None,
@@ -972,6 +997,7 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
     fn test_map_chat_chunk_event_with_tool_call() {
         let mut state = ResponsesStreamState {
             response: None,
+            _reservation: None,
             buffer: String::new(),
             pending: VecDeque::new(),
             metrics: None,
@@ -1036,6 +1062,7 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
     fn test_map_chat_done_event_emits_completed() {
         let mut state = ResponsesStreamState {
             response: None,
+            _reservation: None,
             buffer: String::new(),
             pending: VecDeque::new(),
             metrics: None,

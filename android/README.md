@@ -82,7 +82,7 @@ class MyActivity : AppCompatActivity() {
 All AIDL methods require a `protocolVersion` parameter. This enables backward compatibility:
 
 ```kotlin
-const val PROTOCOL_VERSION = 1
+const val PROTOCOL_VERSION = 2
 
 // Check service compatibility
 val infoJson = simpleAi?.getServiceInfo(PROTOCOL_VERSION)
@@ -109,14 +109,14 @@ All methods return JSON strings with this structure:
 // Success
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": { ... }
 }
 
 // Error
 {
   "status": "error",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "error": {
     "code": "ERROR_CODE",
     "message": "Human-readable message",
@@ -130,14 +130,14 @@ All methods return JSON strings with this structure:
 Get service version and capabilities status.
 
 ```kotlin
-val result = simpleAi.getServiceInfo(protocolVersion = 1)
+val result = simpleAi.getServiceInfo(protocolVersion = 2)
 ```
 
 **Response:**
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "serviceVersion": 1,
     "minProtocol": 1,
@@ -175,7 +175,7 @@ val configFd = contentResolver.openFileDescriptor(configUri, "r")
 
 try {
     val result = simpleAi.classify(
-        protocolVersion = 1,
+        protocolVersion = 2,
         text = "remind me to call John tomorrow",
         adapterId = "my-app",
         adapterVersion = "1.0.0",
@@ -197,7 +197,7 @@ try {
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "intent": "add_reminder",
     "intentConfidence": 0.94,
@@ -220,7 +220,7 @@ try {
 Remove the currently applied adapter and restore the pristine model.
 
 ```kotlin
-val result = simpleAi.clearAdapter(protocolVersion = 1)
+val result = simpleAi.clearAdapter(protocolVersion = 2)
 ```
 
 ---
@@ -233,7 +233,7 @@ Translate text between languages.
 
 ```kotlin
 val result = simpleAi.translate(
-    protocolVersion = 1,
+    protocolVersion = 2,
     text = "Hello, how are you?",
     sourceLang = "en",      // or "auto" for detection
     targetLang = "it"
@@ -244,7 +244,7 @@ val result = simpleAi.translate(
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "translatedText": "Ciao, come stai?",
     "detectedSourceLang": "en"
@@ -257,14 +257,14 @@ val result = simpleAi.translate(
 Get list of downloaded translation languages.
 
 ```kotlin
-val result = simpleAi.getTranslationLanguages(protocolVersion = 1)
+val result = simpleAi.getTranslationLanguages(protocolVersion = 2)
 ```
 
 **Response:**
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "languages": ["en", "it", "fr", "de"]
   }
@@ -320,10 +320,11 @@ val messages = """[
 ]"""
 
 val result = simpleAi.cloudChat(
-    protocolVersion = 1,
+    protocolVersion = 2,
     messagesJson = messages,
     toolsJson = null,           // optional tool definitions
     systemPrompt = null,        // optional system prompt
+    promptCacheKey = "conversation-42", // optional sticky cache affinity
     authToken = "your-api-key"  // client's auth token
 )
 ```
@@ -332,7 +333,7 @@ val result = simpleAi.cloudChat(
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "role": "assistant",
     "content": "The capital of France is Paris.",
@@ -350,7 +351,7 @@ val result = simpleAi.cloudChat(
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "role": "assistant",
     "content": null,
@@ -379,7 +380,7 @@ Generate text using the local LLM.
 
 ```kotlin
 val result = simpleAi.localGenerate(
-    protocolVersion = 1,
+    protocolVersion = 2,
     prompt = "Explain quantum computing in simple terms:",
     maxTokens = 256,
     temperature = 0.7f
@@ -390,7 +391,7 @@ val result = simpleAi.localGenerate(
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "text": "Quantum computing uses quantum mechanics principles..."
   }
@@ -407,7 +408,7 @@ val messages = """[
 ]"""
 
 val result = simpleAi.localChat(
-    protocolVersion = 1,
+    protocolVersion = 2,
     messagesJson = messages,
     toolsJson = null,
     systemPrompt = "You are a helpful assistant."
@@ -418,7 +419,7 @@ val result = simpleAi.localChat(
 ```json
 {
   "status": "success",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "data": {
     "role": "assistant",
     "content": "Hello! How can I help you today?"
@@ -578,9 +579,9 @@ app/src/main/
 Protocol versioning is configured in `app/build.gradle.kts`:
 
 ```kotlin
-buildConfigField("int", "SERVICE_VERSION", "1")       // Bump every release
-buildConfigField("int", "MIN_PROTOCOL_VERSION", "1")  // Bump when dropping old protocols
-buildConfigField("int", "MAX_PROTOCOL_VERSION", "1")  // Bump when adding new features
+buildConfigField("int", "SERVICE_VERSION", "2")       // Bump every release
+buildConfigField("int", "MIN_PROTOCOL_VERSION", "2")  // Bump when dropping old protocols
+buildConfigField("int", "MAX_PROTOCOL_VERSION", "2")  // Bump when adding new features
 ```
 
 ---

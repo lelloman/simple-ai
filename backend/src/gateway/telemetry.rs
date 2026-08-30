@@ -6,9 +6,12 @@ use serde::Serialize;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::audit::AuditLogger;
-use crate::config::ModelsConfig;
+use crate::config::{ModelsConfig, RoutingConfig};
 
-use super::{BatchQueue, ConnectedRunner, ModelClass, RunnerRegistry};
+use super::{
+    AffinityMetricsSnapshot, BatchQueue, ConnectedRunner, InferenceRouter, ModelClass,
+    RunnerRegistry,
+};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +45,18 @@ pub struct RouterStateSnapshot {
     pub runners: Vec<RouterRunnerState>,
     pub queues: HashMap<String, usize>,
     pub recent_events: Vec<RouterEventRecord>,
+    pub affinity: RouterAffinityState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RouterAffinityState {
+    pub enabled: bool,
+    pub bindings: usize,
+    pub max_entries: usize,
+    pub ttl_secs: u64,
+    pub max_extra_wait_ms: u64,
+    pub decisions: HashMap<String, u64>,
+    pub evictions: HashMap<String, u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +140,8 @@ impl RouterTelemetry {
         audit_logger: &Arc<AuditLogger>,
         batch_queue: Option<&Arc<BatchQueue>>,
         models_config: &ModelsConfig,
+        routing_config: &RoutingConfig,
+        inference_router: &Arc<InferenceRouter>,
     ) -> RouterStateSnapshot {
         let connected = registry.all().await;
         let connected_map: HashMap<String, ConnectedRunner> = connected
@@ -225,10 +242,28 @@ impl RouterTelemetry {
             HashMap::new()
         };
 
+        let AffinityMetricsSnapshot {
+            bindings,
+            decisions,
+            evictions,
+        } = inference_router
+            .affinity_store()
+            .metrics()
+            .snapshot(inference_router.affinity_store().len());
+
         RouterStateSnapshot {
             runners,
             queues,
             recent_events,
+            affinity: RouterAffinityState {
+                enabled: routing_config.prompt_cache_affinity_enabled,
+                bindings,
+                max_entries: routing_config.prompt_cache_affinity_max_entries,
+                ttl_secs: routing_config.prompt_cache_affinity_ttl_secs,
+                max_extra_wait_ms: routing_config.prompt_cache_affinity_max_extra_wait_ms,
+                decisions,
+                evictions,
+            },
         }
     }
 }

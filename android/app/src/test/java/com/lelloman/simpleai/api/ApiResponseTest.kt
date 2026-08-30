@@ -16,10 +16,10 @@ class ApiResponseTest {
     @Test
     fun `success response has correct structure`() {
         val data = buildJsonObject { put("test", "value") }
-        val response = ApiResponse.success(protocolVersion = 1, data = data)
+        val response = ApiResponse.success(protocolVersion = 2, data = data)
 
         assertEquals("success", response.status)
-        assertEquals(1, response.protocolVersion)
+        assertEquals(2, response.protocolVersion)
         assertNotNull(response.data)
         assertNull(response.error)
     }
@@ -27,13 +27,13 @@ class ApiResponseTest {
     @Test
     fun `error response has correct structure`() {
         val response = ApiResponse.error(
-            protocolVersion = 1,
+            protocolVersion = 2,
             code = ErrorCode.CAPABILITY_NOT_READY,
             message = "Test error"
         )
 
         assertEquals("error", response.status)
-        assertEquals(1, response.protocolVersion)
+        assertEquals(2, response.protocolVersion)
         assertNull(response.data)
         assertNotNull(response.error)
         assertEquals(ErrorCode.CAPABILITY_NOT_READY, response.error?.code)
@@ -60,13 +60,13 @@ class ApiResponseTest {
             put("intent", "test_intent")
             put("confidence", 0.95)
         }
-        val response = ApiResponse.success(protocolVersion = 1, data = data)
+        val response = ApiResponse.success(protocolVersion = 2, data = data)
 
         val jsonString = response.toJson()
         val parsed = json.parseToJsonElement(jsonString).jsonObject
 
         assertEquals("success", parsed["status"]?.jsonPrimitive?.content)
-        assertEquals(1, parsed["protocolVersion"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(2, parsed["protocolVersion"]?.jsonPrimitive?.content?.toInt())
         assertNotNull(parsed["data"])
         assertEquals("test_intent", parsed["data"]?.jsonObject?.get("intent")?.jsonPrimitive?.content)
     }
@@ -74,7 +74,7 @@ class ApiResponseTest {
     @Test
     fun `error response serializes to valid JSON`() {
         val response = ApiResponse.error(
-            protocolVersion = 1,
+            protocolVersion = 2,
             code = ErrorCode.CLOUD_AUTH_FAILED,
             message = "Invalid token"
         )
@@ -83,7 +83,7 @@ class ApiResponseTest {
         val parsed = json.parseToJsonElement(jsonString).jsonObject
 
         assertEquals("error", parsed["status"]?.jsonPrimitive?.content)
-        assertEquals(1, parsed["protocolVersion"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(2, parsed["protocolVersion"]?.jsonPrimitive?.content?.toInt())
         assertNotNull(parsed["error"])
         assertEquals("CLOUD_AUTH_FAILED", parsed["error"]?.jsonObject?.get("code")?.jsonPrimitive?.content)
         assertEquals("Invalid token", parsed["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content)
@@ -117,7 +117,7 @@ class ApiResponseTest {
     fun `all ErrorCode values can be serialized`() {
         for (code in ErrorCode.entries) {
             val response = ApiResponse.error(
-                protocolVersion = 1,
+                protocolVersion = 2,
                 code = code,
                 message = "Test"
             )

@@ -9,8 +9,8 @@ use crate::config::RoutingConfig;
 use crate::wol::{WakeError, WakeService};
 
 use super::{
-    BatchQueue, InferenceRouter, ModelRequest, RoutePlan, RouterError, RouterTelemetry,
-    RunnerEvent, RunnerRegistry,
+    AffinityContext, AffinityDecision, BatchQueue, InferenceRouter, ModelRequest, RoutePlan,
+    RoutedStream, RouterError, RouterTelemetry, RunnerEvent, RunnerRegistry,
 };
 use crate::routes::embeddings::{EmbeddingRequest, EmbeddingResponse};
 use simple_ai_common::{AudioEmbeddingResponse, SpeechRequest};
@@ -70,11 +70,12 @@ impl RequestScheduler {
         request_id: &str,
         model: &str,
         model_request: &ModelRequest,
+        affinity: Option<AffinityContext>,
         request: &ChatCompletionRequest,
         use_batching: bool,
     ) -> Result<ScheduledResponse<ChatCompletionResponse>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request)
+            .prepare_for_request(request_id, model, model_request, affinity.clone())
             .await?;
         let routed = if use_batching {
             let batch_queue = self
@@ -83,12 +84,45 @@ impl RequestScheduler {
                 .ok_or(RouterError::ConnectionFailed(
                     "Batch queue unavailable".to_string(),
                 ))?;
-            self.inference_router
-                .chat_completion_batched(&prepared.plan.resolved_model, request, batch_queue)
-                .await?
+            let queue_plan = prepared.plan.clone();
+            let rx = batch_queue
+                .enqueue_with_context(
+                    queue_plan.resolved_model,
+                    request_id.to_string(),
+                    model.to_string(),
+                    queue_plan.class_hint,
+                    affinity.clone(),
+                    request.clone(),
+                )
+                .await;
+            let batched = rx.await.map_err(|_| {
+                RouterError::ConnectionFailed("Batch queue response channel closed".to_string())
+            })??;
+            super::RoutedResponse {
+                response: batched.response,
+                runner_id: batched.runner_id,
+                resolved_model: batched.resolved_model,
+            }
         } else {
+            let plan = prepared.plan;
+            let reserved = match self.inference_router.reserve_plan(plan).await {
+                Ok(reserved) => reserved,
+                Err(RouterError::StalePlan) => {
+                    let retry = self
+                        .inference_router
+                        .plan_chat_request(model, affinity.clone())
+                        .await?;
+                    if !retry.is_loaded {
+                        self.prepare_runner_model(request_id, &retry).await?;
+                    }
+                    self.inference_router.reserve_plan(retry).await?
+                }
+                Err(error) => return Err(error.into()),
+            };
+            self.emit_affinity_decision(request_id, &reserved.plan)
+                .await;
             self.inference_router
-                .chat_completion(model, request)
+                .execute_chat_plan(reserved, request)
                 .await?
         };
         Ok(ScheduledResponse {
@@ -104,19 +138,37 @@ impl RequestScheduler {
         request_id: &str,
         model: &str,
         model_request: &ModelRequest,
+        affinity: Option<AffinityContext>,
         request: &ChatCompletionRequest,
-    ) -> Result<ScheduledResponse<reqwest::Response>, SchedulerError> {
+    ) -> Result<ScheduledResponse<RoutedStream>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request)
+            .prepare_for_request(request_id, model, model_request, affinity.clone())
             .await?;
+        let plan = prepared.plan;
+        let reserved = match self.inference_router.reserve_plan(plan).await {
+            Ok(reserved) => reserved,
+            Err(RouterError::StalePlan) => {
+                let retry = self
+                    .inference_router
+                    .plan_chat_request(model, affinity.clone())
+                    .await?;
+                if !retry.is_loaded {
+                    self.prepare_runner_model(request_id, &retry).await?;
+                }
+                self.inference_router.reserve_plan(retry).await?
+            }
+            Err(error) => return Err(error.into()),
+        };
+        self.emit_affinity_decision(request_id, &reserved.plan)
+            .await;
         let routed = self
             .inference_router
-            .chat_completion_raw(model, request)
+            .execute_chat_stream_plan(reserved, request)
             .await?;
         Ok(ScheduledResponse {
-            response: routed.response,
-            runner_id: routed.runner_id,
-            resolved_model: routed.resolved_model,
+            runner_id: routed.runner_id.clone(),
+            resolved_model: routed.resolved_model.clone(),
+            response: routed,
             wol_sent: prepared.wol_sent,
         })
     }
@@ -129,7 +181,7 @@ impl RequestScheduler {
         request: &EmbeddingRequest,
     ) -> Result<ScheduledResponse<EmbeddingResponse>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request)
+            .prepare_for_request(request_id, model, model_request, None)
             .await?;
         let routed = self
             .inference_router
@@ -153,7 +205,7 @@ impl RequestScheduler {
         options_json: String,
     ) -> Result<ScheduledResponse<AudioEmbeddingResponse>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request)
+            .prepare_for_request(request_id, model, model_request, None)
             .await?;
         let routed = self
             .inference_router
@@ -175,7 +227,7 @@ impl RequestScheduler {
         request: &SpeechRequest,
     ) -> Result<ScheduledResponse<reqwest::Response>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request)
+            .prepare_for_request(request_id, model, model_request, None)
             .await?;
         let routed = self.inference_router.speech_raw(model, request).await?;
         Ok(ScheduledResponse {
@@ -186,11 +238,33 @@ impl RequestScheduler {
         })
     }
 
+    async fn emit_affinity_decision(&self, request_id: &str, plan: &RoutePlan) {
+        if matches!(
+            plan.affinity_decision,
+            AffinityDecision::Unkeyed | AffinityDecision::Disabled
+        ) {
+            return;
+        }
+        self.router_telemetry
+            .emit(
+                plan.affinity_decision.as_str(),
+                format!(
+                    "Cache affinity decision: {}",
+                    plan.affinity_decision.as_str()
+                ),
+                Some(request_id.to_string()),
+                Some(plan.runner.id.clone()),
+                Some(plan.resolved_model.clone()),
+            )
+            .await;
+    }
+
     async fn prepare_for_request(
         &self,
         request_id: &str,
         model: &str,
         model_request: &ModelRequest,
+        affinity: Option<AffinityContext>,
     ) -> Result<PreparedRequest, SchedulerError> {
         self.router_telemetry
             .emit(
@@ -202,7 +276,7 @@ impl RequestScheduler {
             )
             .await;
 
-        match self.inference_router.plan_request(model).await {
+        match self.plan_chat_request(model, affinity.clone()).await {
             Ok(plan) => {
                 self.router_telemetry
                     .emit(
@@ -292,7 +366,7 @@ impl RequestScheduler {
                             Some(model.to_string()),
                         )
                         .await;
-                    let plan = self.inference_router.plan_request(model).await?;
+                    let plan = self.plan_chat_request(model, affinity).await?;
                     self.router_telemetry
                         .emit(
                             "scheduler_planned",
@@ -317,6 +391,21 @@ impl RequestScheduler {
                 }
             }
             Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn plan_chat_request(
+        &self,
+        model: &str,
+        affinity: Option<AffinityContext>,
+    ) -> Result<RoutePlan, RouterError> {
+        match affinity {
+            Some(context) => {
+                self.inference_router
+                    .plan_chat_request(model, Some(context))
+                    .await
+            }
+            None => self.inference_router.plan_request(model).await,
         }
     }
 

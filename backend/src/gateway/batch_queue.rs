@@ -12,7 +12,7 @@ use tokio::sync::{oneshot, Notify, RwLock};
 
 use simple_ai_common::ChatCompletionRequest;
 
-use crate::gateway::RouterError;
+use crate::gateway::{AffinityContext, ModelClass, RouterError};
 
 /// Configuration for the batch queue.
 #[derive(Debug, Clone)]
@@ -56,6 +56,10 @@ pub struct QueuedRequest {
     pub response_tx: oneshot::Sender<Result<BatchedResponse, RouterError>>,
     /// When this request was enqueued.
     pub enqueued_at: Instant,
+    pub request_id: String,
+    pub requested_selector: String,
+    pub class_hint: Option<ModelClass>,
+    pub affinity: Option<AffinityContext>,
 }
 
 /// Response from a batched request.
@@ -160,9 +164,13 @@ impl BatchQueue {
     /// Enqueue a request for the given model.
     ///
     /// Returns a receiver that will receive the response when the request is processed.
-    pub async fn enqueue(
+    pub async fn enqueue_with_context(
         &self,
         model: String,
+        request_id: String,
+        requested_selector: String,
+        class_hint: Option<ModelClass>,
+        affinity: Option<AffinityContext>,
         request: ChatCompletionRequest,
     ) -> oneshot::Receiver<Result<BatchedResponse, RouterError>> {
         let (tx, rx) = oneshot::channel();
@@ -171,6 +179,10 @@ impl BatchQueue {
             request,
             response_tx: tx,
             enqueued_at: Instant::now(),
+            request_id,
+            requested_selector,
+            class_hint,
+            affinity,
         };
 
         {
@@ -185,6 +197,15 @@ impl BatchQueue {
         self.notify.notify_one();
 
         rx
+    }
+
+    pub async fn enqueue(
+        &self,
+        model: String,
+        request: ChatCompletionRequest,
+    ) -> oneshot::Receiver<Result<BatchedResponse, RouterError>> {
+        self.enqueue_with_context(model.clone(), String::new(), model, None, None, request)
+            .await
     }
 
     /// Check if a batch should be dispatched for the given model.
@@ -308,6 +329,7 @@ mod tests {
             thinking_budget_tokens: None,
             tools: None,
             stream: None,
+            prompt_cache_key: None,
         }
     }
 

@@ -136,6 +136,7 @@ interface ISimpleAI {
      * @param messagesJson JSON array of chat messages
      * @param toolsJson JSON array of tool definitions (optional, can be null)
      * @param systemPrompt System prompt (optional, can be null)
+     * @param promptCacheKey Prompt cache identity (optional, can be null)
      * @param authToken Client's auth token for cloud service
      * @return JSON response with LLM response or tool calls
      */
@@ -144,6 +145,7 @@ interface ISimpleAI {
         String messagesJson,
         String toolsJson,
         String systemPrompt,
+        String promptCacheKey,
         String authToken
     );
 

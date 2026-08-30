@@ -8,30 +8,32 @@ use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use simple_ai_common::ChatCompletionResponse;
-
 use super::batch_queue::{BatchQueue, BatchedResponse, RequestBatch};
-use super::{ConnectedRunner, RouterError, RunnerRegistry};
+use super::{AffinityDecision, InferenceRouter, RouterError, RouterTelemetry, RunnerRegistry};
 
 /// Batch dispatcher that processes queued requests.
 pub struct BatchDispatcher {
     queue: Arc<BatchQueue>,
     registry: Arc<RunnerRegistry>,
-    http_client: reqwest::Client,
+    router: Arc<InferenceRouter>,
+    telemetry: Arc<RouterTelemetry>,
     /// Cache of max batch sizes by model (updated periodically).
     batch_size_cache: RwLock<std::collections::HashMap<String, u32>>,
 }
 
 impl BatchDispatcher {
     /// Create a new batch dispatcher.
-    pub fn new(queue: Arc<BatchQueue>, registry: Arc<RunnerRegistry>) -> Self {
+    pub fn new(
+        queue: Arc<BatchQueue>,
+        registry: Arc<RunnerRegistry>,
+        router: Arc<InferenceRouter>,
+        telemetry: Arc<RouterTelemetry>,
+    ) -> Self {
         Self {
             queue,
             registry,
-            http_client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(300))
-                .build()
-                .expect("Failed to create HTTP client"),
+            router,
+            telemetry,
             batch_size_cache: RwLock::new(std::collections::HashMap::new()),
         }
     }
@@ -139,8 +141,17 @@ impl BatchDispatcher {
         let mut first_error = None;
 
         for queued in batch.requests {
-            let runner = match self.select_runner(&model).await {
-                Ok(runner) => runner,
+            let plan = match self
+                .router
+                .plan_queued_request(
+                    &queued.requested_selector,
+                    &model,
+                    queued.class_hint,
+                    queued.affinity.clone(),
+                )
+                .await
+            {
+                Ok(plan) => plan,
                 Err(err) => {
                     if first_error.is_none() {
                         first_error = Some(err.to_string());
@@ -150,40 +161,79 @@ impl BatchDispatcher {
                 }
             };
 
-            let runner_id = runner.id.clone();
-            let local_model = runner.resolve_model_alias(&model);
-            let resolved_model = model.clone();
+            let reserved = match self.router.reserve_plan(plan).await {
+                Ok(reserved) => reserved,
+                Err(RouterError::StalePlan) => {
+                    let retry = self
+                        .router
+                        .plan_queued_request(
+                            &queued.requested_selector,
+                            &model,
+                            queued.class_hint,
+                            queued.affinity.clone(),
+                        )
+                        .await;
+                    match retry {
+                        Ok(plan) => match self.router.reserve_plan(plan).await {
+                            Ok(reserved) => reserved,
+                            Err(error) => {
+                                let _ = queued.response_tx.send(Err(error));
+                                continue;
+                            }
+                        },
+                        Err(error) => {
+                            let _ = queued.response_tx.send(Err(error));
+                            continue;
+                        }
+                    }
+                }
+                Err(error) => {
+                    let _ = queued.response_tx.send(Err(error));
+                    continue;
+                }
+            };
+            let runner_id = reserved.plan.runner.id.clone();
+            let resolved_model = reserved.plan.resolved_model.clone();
 
-            // Reserve capacity before selecting the next queued request so a
-            // drained batch is distributed across runners instead of seeing the
-            // same active-request counts for every request in the batch.
-            self.registry.increment_requests(&runner_id).await;
+            if !matches!(
+                reserved.plan.affinity_decision,
+                AffinityDecision::Unkeyed | AffinityDecision::Disabled
+            ) {
+                self.telemetry
+                    .emit(
+                        reserved.plan.affinity_decision.as_str(),
+                        format!(
+                            "Cache affinity decision: {}",
+                            reserved.plan.affinity_decision.as_str()
+                        ),
+                        Some(queued.request_id.clone()),
+                        Some(runner_id.clone()),
+                        Some(resolved_model.clone()),
+                    )
+                    .await;
+            }
 
             tracing::info!(
                 "Dispatching queued request for model {} to runner {} (loaded={})",
                 resolved_model,
                 runner_id,
-                runner.has_model_or_alias(&resolved_model)
+                reserved.plan.runner.has_model_or_alias(&resolved_model)
             );
 
-            let registry = self.registry.clone();
-            let http_client = self.http_client.clone();
+            let router = self.router.clone();
             tokio::spawn(async move {
-                let result = Self::send_request_with_client(
-                    http_client,
-                    &runner,
-                    &local_model,
-                    &queued.request,
-                )
-                .await;
-
-                registry.decrement_requests(&runner_id).await;
+                let result = router
+                    .execute_chat_plan::<_, simple_ai_common::ChatCompletionResponse>(
+                        reserved,
+                        &queued.request,
+                    )
+                    .await;
 
                 let response = match result {
-                    Ok(resp) => Ok(BatchedResponse {
-                        response: resp,
-                        runner_id,
-                        resolved_model,
+                    Ok(routed) => Ok(BatchedResponse {
+                        response: routed.response,
+                        runner_id: routed.runner_id,
+                        resolved_model: routed.resolved_model,
                     }),
                     Err(e) => Err(e),
                 };
@@ -199,76 +249,6 @@ impl BatchDispatcher {
 
         Ok(())
     }
-
-    /// Select a runner for the given model.
-    async fn select_runner(&self, model: &str) -> Result<ConnectedRunner, RouterError> {
-        let mut runners = self.registry.with_model(model).await;
-        let compatible = self.registry.with_available_model(model).await;
-
-        for runner in compatible {
-            if !runners.iter().any(|loaded| loaded.id == runner.id) {
-                runners.push(runner);
-            }
-        }
-
-        if runners.is_empty() {
-            return Err(RouterError::NoRunners);
-        }
-
-        // Select runner with fewest active requests, preferring already-loaded
-        // runners only when queue depth is otherwise tied.
-        runners
-            .into_iter()
-            .min_by_key(|r| {
-                (
-                    r.active_requests.load(std::sync::atomic::Ordering::SeqCst),
-                    !r.has_model_or_alias(model),
-                )
-            })
-            .ok_or(RouterError::NoRunners)
-    }
-
-    async fn send_request_with_client(
-        http_client: reqwest::Client,
-        runner: &ConnectedRunner,
-        local_model: &str,
-        request: &simple_ai_common::ChatCompletionRequest,
-    ) -> Result<ChatCompletionResponse, RouterError> {
-        let base_url = runner
-            .http_base_url
-            .as_ref()
-            .ok_or_else(|| RouterError::ConnectionFailed("Runner has no HTTP URL".to_string()))?;
-
-        let url = format!("{}/v1/chat/completions", base_url);
-
-        // Modify request with local model name
-        let mut request_value = serde_json::to_value(request)
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-        if let Some(obj) = request_value.as_object_mut() {
-            obj.insert(
-                "model".to_string(),
-                serde_json::Value::String(local_model.to_string()),
-            );
-        }
-
-        let response = http_client
-            .post(&url)
-            .json(&request_value)
-            .send()
-            .await
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
-        }
-
-        response.json().await.map_err(RouterError::RequestFailed)
-    }
 }
 
 #[cfg(test)]
@@ -276,15 +256,34 @@ mod tests {
     use super::*;
     use crate::gateway::batch_queue::BatchQueueConfig;
     use axum::{extract::State, routing::post, Json, Router};
-    use simple_ai_common::{ChatMessage, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
+    use simple_ai_common::{
+        ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus,
+    };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::mpsc;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_dispatcher_creation() {
         let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
         let registry = Arc::new(RunnerRegistry::new());
-        let _dispatcher = BatchDispatcher::new(queue, registry);
+        let router = create_test_router(registry.clone());
+        let _dispatcher =
+            BatchDispatcher::new(queue, registry, router, Arc::new(RouterTelemetry::new()));
+    }
+
+    fn create_test_router(registry: Arc<RunnerRegistry>) -> Arc<InferenceRouter> {
+        let test_db_path = format!(
+            "test_batch_dispatcher_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
+        let audit_logger = Arc::new(crate::audit::AuditLogger::new(&test_db_path).unwrap());
+        Arc::new(InferenceRouter::new(
+            registry,
+            crate::config::ModelsConfig::default(),
+            crate::config::RoutingConfig::default(),
+            audit_logger,
+        ))
     }
 
     fn create_test_request() -> simple_ai_common::ChatCompletionRequest {
@@ -302,6 +301,7 @@ mod tests {
             thinking_budget_tokens: None,
             tools: None,
             stream: None,
+            prompt_cache_key: None,
         }
     }
 
@@ -334,6 +334,7 @@ mod tests {
                 }],
                 error: None,
                 batch_size,
+                prompt_cache: None,
             }],
             metrics: None,
             model_aliases: std::collections::HashMap::new(),
@@ -406,7 +407,12 @@ mod tests {
             )
             .await;
 
-        let dispatcher = BatchDispatcher::new(queue.clone(), registry.clone());
+        let dispatcher = BatchDispatcher::new(
+            queue.clone(),
+            registry.clone(),
+            create_test_router(registry.clone()),
+            Arc::new(RouterTelemetry::new()),
+        );
         let receivers: Vec<_> = futures_util::future::join_all(
             (0..4).map(|_| queue.enqueue("model-a".to_string(), create_test_request())),
         )
@@ -455,14 +461,19 @@ mod tests {
                 "runner-2".to_string(),
                 "Runner 2".to_string(),
                 None,
-                create_test_status_with_loaded("model-a", 1, false),
+                create_test_status_with_loaded("model-a", 1, true),
                 Some(runner_2_url),
                 tx2,
                 None,
             )
             .await;
 
-        let dispatcher = BatchDispatcher::new(queue.clone(), registry.clone());
+        let dispatcher = BatchDispatcher::new(
+            queue.clone(),
+            registry.clone(),
+            create_test_router(registry.clone()),
+            Arc::new(RouterTelemetry::new()),
+        );
         let rx1 = queue
             .enqueue("model-a".to_string(), create_test_request())
             .await;
@@ -478,8 +489,9 @@ mod tests {
         let runner_1 = rx1.await.unwrap().unwrap().runner_id;
         let runner_2 = rx2.await.unwrap().unwrap().runner_id;
 
-        assert_eq!(runner_1, "runner-1");
-        assert_eq!(runner_2, "runner-2");
+        assert_ne!(runner_1, runner_2);
+        assert!(["runner-1", "runner-2"].contains(&runner_1.as_str()));
+        assert!(["runner-1", "runner-2"].contains(&runner_2.as_str()));
         assert_eq!(runner_1_count.load(Ordering::SeqCst), 1);
         assert_eq!(runner_2_count.load(Ordering::SeqCst), 1);
         assert_eq!(registry.get_active_requests("runner-1").await, 0);

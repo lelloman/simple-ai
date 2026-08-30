@@ -18,7 +18,7 @@ pub use audit::{DashboardStats, RequestSummary, RequestWithResponse, UserWithSta
 pub use auth::AuthUser;
 pub use auth::JwksClient;
 pub use cancellation::RequestCancellationRegistry;
-pub use circuit_breaker::CircuitBreaker;
+pub use circuit_breaker::{CircuitBreaker, CircuitEvent};
 pub use config::{Config, GatewayConfig, ModelsConfig, WolConfig};
 pub use gateway::{
     BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RequestScheduler,

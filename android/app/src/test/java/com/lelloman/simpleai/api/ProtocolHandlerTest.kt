@@ -13,12 +13,12 @@ class ProtocolHandlerTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     // Note: These tests use the actual BuildConfig values set during compilation.
-    // Current config: SERVICE_VERSION=1, MIN_PROTOCOL_VERSION=1, MAX_PROTOCOL_VERSION=1
+    // Current config: SERVICE_VERSION=2, MIN_PROTOCOL_VERSION=2, MAX_PROTOCOL_VERSION=2
 
     @Test
     fun `validateProtocol returns null for supported protocol`() {
-        // Protocol 1 should be supported (min=1, max=1)
-        val result = ProtocolHandler.validateProtocol(1)
+        // Protocol 2 is the only supported version.
+        val result = ProtocolHandler.validateProtocol(2)
         assertNull(result)
     }
 
@@ -84,21 +84,19 @@ class ProtocolHandlerTest {
 
     @Test
     fun `clampProtocol returns protocol within range`() {
-        // With min=1, max=1, all values should clamp to 1
-        assertEquals(1, ProtocolHandler.clampProtocol(0))
-        assertEquals(1, ProtocolHandler.clampProtocol(1))
-        assertEquals(1, ProtocolHandler.clampProtocol(999))
+        assertEquals(2, ProtocolHandler.clampProtocol(0))
+        assertEquals(2, ProtocolHandler.clampProtocol(2))
+        assertEquals(2, ProtocolHandler.clampProtocol(999))
     }
 
     @Test
     fun `serviceVersion is accessible`() {
-        // Should be 1 based on build config
-        assertTrue(ProtocolHandler.serviceVersion >= 1)
+        assertEquals(2, ProtocolHandler.serviceVersion)
     }
 
     @Test
     fun `minProtocolVersion is accessible`() {
-        assertTrue(ProtocolHandler.minProtocolVersion >= 1)
+        assertEquals(2, ProtocolHandler.minProtocolVersion)
     }
 
     @Test

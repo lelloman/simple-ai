@@ -289,6 +289,7 @@ class SimpleAIService : Service() {
             messagesJson: String,
             toolsJson: String?,
             systemPrompt: String?,
+            promptCacheKey: String?,
             authToken: String
         ): String {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
@@ -317,7 +318,7 @@ class SimpleAIService : Service() {
             } else null
 
             return runBlocking(Dispatchers.IO) {
-                cloudClient.chat(messages, tools, systemPrompt, authToken).fold(
+                cloudClient.chat(messages, tools, systemPrompt, promptCacheKey, authToken).fold(
                     onSuccess = { response ->
                         ProtocolHandler.success(proto, buildJsonObject {
                             put("role", response.role)

@@ -180,6 +180,24 @@ pub struct EngineStatus {
     /// Maximum batch size for concurrent inference (default: 1 = no batching).
     #[serde(default = "default_batch_size")]
     pub batch_size: u32,
+    /// Prompt-cache behavior explicitly supported by this engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache: Option<PromptCacheCapabilities>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptCacheScope {
+    Engine,
+    ModelProcess,
+    Slot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptCacheCapabilities {
+    pub scope: PromptCacheScope,
+    pub accepts_cache_key: bool,
+    pub reports_cached_tokens: bool,
 }
 
 fn default_batch_size() -> u32 {
@@ -225,7 +243,7 @@ pub struct CommandResponse {
 }
 
 /// Protocol version constant.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 impl RunnerRegistration {
     pub fn new(
@@ -325,6 +343,7 @@ mod tests {
             available_models: vec![],
             error: None,
             batch_size: 1,
+            prompt_cache: None,
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains(r#""engine_type":"ollama""#));
@@ -426,6 +445,7 @@ mod tests {
                 available_models: vec![],
                 error: None,
                 batch_size: 1,
+                prompt_cache: None,
             }],
             metrics: Some(RunnerMetrics {
                 requests_processed: 100,

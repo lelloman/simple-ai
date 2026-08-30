@@ -58,9 +58,9 @@ android {
         }
 
         // SimpleAI protocol versioning
-        buildConfigField("int", "SERVICE_VERSION", "1")
-        buildConfigField("int", "MIN_PROTOCOL_VERSION", "1")
-        buildConfigField("int", "MAX_PROTOCOL_VERSION", "1")
+        buildConfigField("int", "SERVICE_VERSION", "2")
+        buildConfigField("int", "MIN_PROTOCOL_VERSION", "2")
+        buildConfigField("int", "MAX_PROTOCOL_VERSION", "2")
     }
 
     buildFeatures {

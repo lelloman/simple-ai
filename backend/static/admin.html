@@ -191,6 +191,12 @@
                             <div class="space-y-6">
                                 <div class="bg-white shadow rounded-lg overflow-hidden">
                                     <div class="px-4 py-3 border-b border-gray-200">
+                                        <h3 class="text-sm font-medium text-gray-900">Cache Affinity</h3>
+                                    </div>
+                                    <div id="router-affinity" class="p-4"></div>
+                                </div>
+                                <div class="bg-white shadow rounded-lg overflow-hidden">
+                                    <div class="px-4 py-3 border-b border-gray-200">
                                         <h3 class="text-sm font-medium text-gray-900">Queue Pressure</h3>
                                     </div>
                                     <div id="router-queues" class="p-4"></div>
@@ -437,7 +443,7 @@
         let modelsState = [];
         let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0, tokens_prompt: 0, tokens_completion: 0 };
         let batchQueueState = { enabled: false, timeout_ms: 0, min_batch_size: 0, queues: {} };
-        let routerState = { runners: [], queues: {}, recent_events: [] };
+        let routerState = { runners: [], queues: {}, recent_events: [], affinity: null };
         let modelSpeedsState = [];
         let modelSpeedsLoading = false;
         let modelSpeedsLoaded = false;
@@ -2294,8 +2300,9 @@
             const runnersEl = document.getElementById('router-runners');
             const queuesEl = document.getElementById('router-queues');
             const eventsEl = document.getElementById('router-events');
+            const affinityEl = document.getElementById('router-affinity');
             const summaryEl = document.getElementById('router-summary');
-            if (!runnersEl || !queuesEl || !eventsEl || !summaryEl) return;
+            if (!runnersEl || !queuesEl || !eventsEl || !summaryEl || !affinityEl) return;
 
             const runners = routerState.runners || [];
             const recentEvents = routerState.recent_events || [];
@@ -2304,6 +2311,29 @@
             const waking = runners.filter(r => r.scheduler_state === 'waking').length;
             const loading = runners.filter(r => r.scheduler_state === 'loading').length;
             summaryEl.textContent = `${active} online • ${waking} waking • ${loading} loading`;
+
+            const affinity = routerState.affinity;
+            if (!affinity) {
+                affinityEl.innerHTML = '<p class="text-sm text-gray-500">No affinity data available.</p>';
+            } else {
+                const decisions = affinity.decisions || {};
+                const evictions = affinity.evictions || {};
+                const considered = (decisions.new || 0) + (decisions.reuse || 0)
+                    + (decisions.spillover_overloaded || 0) + (decisions.rebind_invalid || 0);
+                const reuseRate = considered > 0
+                    ? `${Math.round((decisions.reuse || 0) * 100 / considered)}%`
+                    : '-';
+                const evicted = Object.values(evictions).reduce((sum, value) => sum + Number(value || 0), 0);
+                affinityEl.innerHTML = `
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div><span class="text-gray-500">Status</span><div class="font-medium ${affinity.enabled ? 'text-green-700' : 'text-gray-700'}">${affinity.enabled ? 'Enabled' : 'Disabled'}</div></div>
+                        <div><span class="text-gray-500">Bindings</span><div class="font-medium text-gray-900">${formatInteger(affinity.bindings)} / ${formatInteger(affinity.max_entries)}</div></div>
+                        <div><span class="text-gray-500">Reuse rate</span><div class="font-medium text-gray-900">${reuseRate}</div></div>
+                        <div><span class="text-gray-500">Spillovers</span><div class="font-medium text-gray-900">${formatInteger(decisions.spillover_overloaded || 0)}</div></div>
+                        <div><span class="text-gray-500">Invalid rebinds</span><div class="font-medium text-gray-900">${formatInteger(decisions.rebind_invalid || 0)}</div></div>
+                        <div><span class="text-gray-500">Removed</span><div class="font-medium text-gray-900">${formatInteger(evicted)}</div></div>
+                    </div>`;
+            }
 
             if (runners.length === 0) {
                 runnersEl.innerHTML = '<div class="text-sm text-gray-500">No router state available yet.</div>';

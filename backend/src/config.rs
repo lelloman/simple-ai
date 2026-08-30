@@ -291,6 +291,14 @@ pub struct RoutingConfig {
     /// Timeout when explicitly preparing a model on a connected runner.
     #[serde(default = "default_model_prepare_timeout_secs")]
     pub model_prepare_timeout_secs: u64,
+    #[serde(default = "default_prompt_cache_affinity_enabled")]
+    pub prompt_cache_affinity_enabled: bool,
+    #[serde(default = "default_prompt_cache_affinity_ttl_secs")]
+    pub prompt_cache_affinity_ttl_secs: u64,
+    #[serde(default = "default_prompt_cache_affinity_max_entries")]
+    pub prompt_cache_affinity_max_entries: usize,
+    #[serde(default = "default_prompt_cache_affinity_max_extra_wait_ms")]
+    pub prompt_cache_affinity_max_extra_wait_ms: u64,
 }
 
 fn default_queue_weight() -> f64 {
@@ -307,6 +315,18 @@ fn default_starvation_pending_requests() -> usize {
 }
 fn default_model_prepare_timeout_secs() -> u64 {
     60
+}
+fn default_prompt_cache_affinity_enabled() -> bool {
+    true
+}
+fn default_prompt_cache_affinity_ttl_secs() -> u64 {
+    600
+}
+fn default_prompt_cache_affinity_max_entries() -> usize {
+    10_000
+}
+fn default_prompt_cache_affinity_max_extra_wait_ms() -> u64 {
+    2_000
 }
 fn default_circuit_breaker_recovery_secs() -> u64 {
     30
@@ -330,6 +350,11 @@ impl Default for RoutingConfig {
             starvation_queue_age_secs: default_starvation_queue_age_secs(),
             starvation_pending_requests: default_starvation_pending_requests(),
             model_prepare_timeout_secs: default_model_prepare_timeout_secs(),
+            prompt_cache_affinity_enabled: default_prompt_cache_affinity_enabled(),
+            prompt_cache_affinity_ttl_secs: default_prompt_cache_affinity_ttl_secs(),
+            prompt_cache_affinity_max_entries: default_prompt_cache_affinity_max_entries(),
+            prompt_cache_affinity_max_extra_wait_ms:
+                default_prompt_cache_affinity_max_extra_wait_ms(),
         }
     }
 }
@@ -509,6 +534,22 @@ impl Config {
                 "routing.model_prepare_timeout_secs",
                 default_model_prepare_timeout_secs() as i64,
             )?
+            .set_default(
+                "routing.prompt_cache_affinity_enabled",
+                default_prompt_cache_affinity_enabled(),
+            )?
+            .set_default(
+                "routing.prompt_cache_affinity_ttl_secs",
+                default_prompt_cache_affinity_ttl_secs() as i64,
+            )?
+            .set_default(
+                "routing.prompt_cache_affinity_max_entries",
+                default_prompt_cache_affinity_max_entries() as i64,
+            )?
+            .set_default(
+                "routing.prompt_cache_affinity_max_extra_wait_ms",
+                default_prompt_cache_affinity_max_extra_wait_ms() as i64,
+            )?
             // Load from config.toml if it exists
             .add_source(File::with_name("config").required(false))
             // Override with environment variables (SIMPLEAI__KEY format)
@@ -519,7 +560,18 @@ impl Config {
             )
             .build()?;
 
-        config.try_deserialize().map_err(ConfigError::from)
+        let config: Self = config.try_deserialize().map_err(ConfigError::from)?;
+        if config.routing.prompt_cache_affinity_ttl_secs == 0 {
+            return Err(ConfigError::LoadError(
+                "routing.prompt_cache_affinity_ttl_secs must be greater than zero".to_string(),
+            ));
+        }
+        if config.routing.prompt_cache_affinity_max_entries == 0 {
+            return Err(ConfigError::LoadError(
+                "routing.prompt_cache_affinity_max_entries must be greater than zero".to_string(),
+            ));
+        }
+        Ok(config)
     }
 }
 

@@ -214,6 +214,7 @@ async fn test_responses_non_streaming_success_maps_text_output() {
         reasoning: None,
         thinking_budget_tokens: None,
         stream: Some(false),
+        prompt_cache_key: None,
     };
 
     let response = send_request(
@@ -277,6 +278,7 @@ async fn test_responses_non_streaming_success_maps_tool_calls() {
         reasoning: None,
         thinking_budget_tokens: None,
         stream: Some(false),
+        prompt_cache_key: None,
     };
 
     let response = send_request(
@@ -342,6 +344,7 @@ async fn test_responses_accepts_function_call_output_input() {
         reasoning: None,
         thinking_budget_tokens: None,
         stream: Some(false),
+        prompt_cache_key: None,
     };
 
     let response = send_request(
@@ -392,6 +395,7 @@ async fn test_responses_streaming_emits_responses_events_and_filters_internal_me
         reasoning: None,
         thinking_budget_tokens: None,
         stream: Some(true),
+        prompt_cache_key: None,
     };
 
     let response = send_request(
@@ -439,6 +443,7 @@ async fn test_responses_rejects_specific_model_for_api_key_user_without_roles() 
         reasoning: None,
         thinking_budget_tokens: None,
         stream: Some(false),
+        prompt_cache_key: None,
     };
 
     let response = send_request(
@@ -478,6 +483,7 @@ async fn test_responses_surfaces_upstream_error() {
         reasoning: None,
         thinking_budget_tokens: None,
         stream: Some(false),
+        prompt_cache_key: None,
     };
 
     let response = send_request(

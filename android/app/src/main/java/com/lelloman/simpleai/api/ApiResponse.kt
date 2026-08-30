@@ -9,8 +9,8 @@ import kotlinx.serialization.json.JsonElement
  * Standard response format for all SimpleAI AIDL methods.
  *
  * All responses are JSON strings with either:
- * - Success: {"status": "success", "protocolVersion": 1, "data": {...}}
- * - Error: {"status": "error", "protocolVersion": 1, "error": {"code": "...", "message": "...", "details": {...}}}
+ * - Success: {"status": "success", "protocolVersion": 2, "data": {...}}
+ * - Error: {"status": "error", "protocolVersion": 2, "error": {"code": "...", "message": "...", "details": {...}}}
  */
 @Serializable
 data class ApiResponse(

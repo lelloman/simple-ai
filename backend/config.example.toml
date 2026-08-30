@@ -94,6 +94,11 @@ queue_weight = 0.5
 # latency_weight: Weight for historical latency metrics (0 to 1).
 # Higher values prefer runners with lower average latency.
 latency_weight = 0.3
+# Cache-aware runner affinity for requests carrying prompt_cache_key.
+prompt_cache_affinity_enabled = true
+prompt_cache_affinity_ttl_secs = 600
+prompt_cache_affinity_max_entries = 10000
+prompt_cache_affinity_max_extra_wait_ms = 2000
 #
 # speculative_wake_enabled: Wake multiple machines in parallel for faster response.
 # When enabled, the system wakes all configured targets and uses the first to connect.

@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use reqwest::Client;
 use serde::de::DeserializeOwned;
@@ -9,13 +10,16 @@ use serde::Serialize;
 use thiserror::Error;
 
 use simple_ai_common::{
-    AudioEmbeddingOptions, AudioEmbeddingResponse, Capability, ChatCompletionRequest, OcrOptions,
-    OcrResponse, SpeechRequest,
+    AudioEmbeddingOptions, AudioEmbeddingResponse, Capability, OcrOptions, OcrResponse,
+    SpeechRequest,
 };
 
-use super::batch_queue::BatchQueue;
+use super::affinity::{
+    random_affinity_secret, AffinityBinding, AffinityContext, AffinityRemovalReason, AffinityStore,
+    PromptCacheKeyError, ValidatedPromptCacheKey,
+};
 use super::model_class::{classify_model, ModelClass, ModelRequest};
-use super::{ConnectedRunner, RunnerRegistry};
+use super::{CapacityReservation, ConnectedRunner, RunnerRegistry};
 use crate::audit::{AuditLogger, RunnerMetricRow};
 use crate::circuit_breaker::CircuitBreaker;
 use crate::config::{ModelsConfig, RoutingConfig};
@@ -39,6 +43,8 @@ pub enum RouterError {
     RunnerError(String),
     #[error("Request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
+    #[error("Route plan became stale before dispatch")]
+    StalePlan,
 }
 
 /// Strategy for selecting a runner.
@@ -71,6 +77,47 @@ pub struct RoutePlan {
     pub runner: ConnectedRunner,
     pub resolved_model: String,
     pub is_loaded: bool,
+    pub requested_selector: String,
+    pub class_hint: Option<ModelClass>,
+    pub affinity: Option<AffinityContext>,
+    pub affinity_decision: AffinityDecision,
+    observed_binding: Option<AffinityBinding>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AffinityDecision {
+    Unkeyed,
+    Disabled,
+    New,
+    Reuse,
+    SpilloverOverloaded,
+    RebindInvalid,
+}
+
+impl AffinityDecision {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unkeyed => "unkeyed",
+            Self::Disabled => "disabled",
+            Self::New => "new",
+            Self::Reuse => "reuse",
+            Self::SpilloverOverloaded => "spillover_overloaded",
+            Self::RebindInvalid => "rebind_invalid",
+        }
+    }
+}
+
+pub struct ReservedRoute {
+    pub plan: RoutePlan,
+    _reservation: CapacityReservation,
+}
+
+pub struct RoutedStream {
+    pub response: reqwest::Response,
+    pub runner_id: String,
+    pub resolved_model: String,
+    pub reservation: CapacityReservation,
 }
 
 /// Result of a routed request, includes metadata about routing.
@@ -98,6 +145,8 @@ pub struct InferenceRouter {
     routing_config: RoutingConfig,
     audit_logger: Arc<AuditLogger>,
     circuit_breaker: Option<Arc<CircuitBreaker>>,
+    affinity_secret: [u8; 32],
+    affinity_store: Arc<AffinityStore>,
 }
 
 impl InferenceRouter {
@@ -108,6 +157,10 @@ impl InferenceRouter {
         routing_config: RoutingConfig,
         audit_logger: Arc<AuditLogger>,
     ) -> Self {
+        let affinity_store = Arc::new(AffinityStore::new(
+            Duration::from_secs(routing_config.prompt_cache_affinity_ttl_secs),
+            routing_config.prompt_cache_affinity_max_entries,
+        ));
         Self {
             registry,
             http_client: Client::builder()
@@ -124,6 +177,8 @@ impl InferenceRouter {
             routing_config,
             audit_logger,
             circuit_breaker: None,
+            affinity_secret: random_affinity_secret(),
+            affinity_store,
         }
     }
 
@@ -135,6 +190,10 @@ impl InferenceRouter {
         routing_config: RoutingConfig,
         audit_logger: Arc<AuditLogger>,
     ) -> Self {
+        let affinity_store = Arc::new(AffinityStore::new(
+            Duration::from_secs(routing_config.prompt_cache_affinity_ttl_secs),
+            routing_config.prompt_cache_affinity_max_entries,
+        ));
         Self {
             registry,
             http_client: Client::builder()
@@ -151,6 +210,8 @@ impl InferenceRouter {
             routing_config,
             audit_logger,
             circuit_breaker: None,
+            affinity_secret: random_affinity_secret(),
+            affinity_store,
         }
     }
 
@@ -165,61 +226,23 @@ impl InferenceRouter {
         &self.registry
     }
 
-    /// Route a chat completion request to an appropriate runner.
-    ///
-    /// The model parameter can be:
-    /// - A specific model ID (e.g., "llama3:8b")
-    /// - A class request (e.g., "class:fast" or "class:big")
-    ///
-    /// Returns a RoutedResponse containing the response and routing metadata.
-    /// Automatically tracks active requests for smart routing.
-    pub async fn chat_completion<Req, Resp>(
+    pub fn affinity_store(&self) -> &Arc<AffinityStore> {
+        &self.affinity_store
+    }
+
+    pub fn derive_affinity_context(
         &self,
-        model: &str,
-        request: &Req,
-    ) -> Result<RoutedResponse<Resp>, RouterError>
-    where
-        Req: Serialize + Clone,
-        Resp: DeserializeOwned,
-    {
-        let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
-        let resolved_model = selection.resolved_model.clone();
-
-        // Resolve canonical → local for this runner (handles both class requests and aliases)
-        let local_model = selection.runner.resolve_model_alias(&resolved_model);
-
-        // Always modify request with runner's local model name
-        let mut request_value = serde_json::to_value(request)
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-        if let Some(obj) = request_value.as_object_mut() {
-            obj.insert("model".to_string(), serde_json::Value::String(local_model));
-        }
-
-        // Track active request for smart routing
-        self.registry.increment_requests(&runner_id).await;
-
-        let response = self
-            .proxy_request_value(&selection.runner, "/v1/chat/completions", request_value)
-            .await;
-
-        // Always decrement, even on error
-        self.registry.decrement_requests(&runner_id).await;
-
-        // Record circuit breaker outcome
-        if let Some(cb) = &self.circuit_breaker {
-            if response.is_ok() {
-                cb.record_success(&runner_id);
-            } else {
-                cb.record_failure(&runner_id);
-            }
-        }
-
-        Ok(RoutedResponse {
-            response: response?,
-            runner_id,
-            resolved_model,
-        })
+        user_id: &str,
+        requested_selector: &str,
+        raw_key: String,
+    ) -> Result<AffinityContext, PromptCacheKeyError> {
+        let key = ValidatedPromptCacheKey::parse(raw_key)?;
+        Ok(AffinityContext::derive(
+            &self.affinity_secret,
+            user_id,
+            requested_selector,
+            &key,
+        ))
     }
 
     /// Route an embedding request to an appropriate runner.
@@ -349,104 +372,6 @@ impl InferenceRouter {
         })
     }
 
-    /// Route a chat completion request through the batch queue.
-    ///
-    /// This method enqueues the request and waits for it to be processed
-    /// as part of a batch. The batch dispatcher will handle the actual
-    /// routing and response delivery.
-    pub async fn chat_completion_batched(
-        &self,
-        model: &str,
-        request: &ChatCompletionRequest,
-        batch_queue: &BatchQueue,
-    ) -> Result<RoutedResponse<simple_ai_common::ChatCompletionResponse>, RouterError> {
-        // Resolve model class if needed
-        let resolved_model = if model.starts_with("class:") {
-            let class = match model {
-                "class:fast" => ModelClass::Fast,
-                "class:big" => ModelClass::Big,
-                _ => return Err(RouterError::UnknownModel(model.to_string())),
-            };
-
-            // Find a model for this class
-            self.resolve_class_to_model(class).await?
-        } else {
-            model.to_string()
-        };
-
-        // Enqueue the request and wait for the response
-        let rx = batch_queue
-            .enqueue(resolved_model.clone(), request.clone())
-            .await;
-
-        // Wait for the batched response
-        let batched = rx.await.map_err(|_| {
-            RouterError::ConnectionFailed("Batch queue response channel closed".to_string())
-        })??;
-
-        Ok(RoutedResponse {
-            response: batched.response,
-            runner_id: batched.runner_id,
-            resolved_model: batched.resolved_model,
-        })
-    }
-
-    /// Route a chat completion request and return the raw response for streaming.
-    ///
-    /// The model parameter can be:
-    /// - A specific model ID (e.g., "llama3:8b")
-    /// - A class request (e.g., "class:fast" or "class:big")
-    ///
-    /// Note: Streaming requests don't automatically decrement the active request count
-    /// since we can't track when the stream completes. This means queue depth may be
-    /// slightly underestimated for runners serving streaming requests.
-    pub async fn chat_completion_raw<Req>(
-        &self,
-        model: &str,
-        request: &Req,
-    ) -> Result<RoutedResponse<reqwest::Response>, RouterError>
-    where
-        Req: Serialize + Clone,
-    {
-        let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
-
-        // Resolve canonical → local for this runner (handles both class requests and aliases)
-        let local_model = selection
-            .runner
-            .resolve_model_alias(&selection.resolved_model);
-
-        // Always modify request with runner's local model name
-        let mut request_value = serde_json::to_value(request)
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-        if let Some(obj) = request_value.as_object_mut() {
-            obj.insert("model".to_string(), serde_json::Value::String(local_model));
-        }
-
-        // Track active request (Note: we can't easily decrement for streaming)
-        self.registry.increment_requests(&runner_id).await;
-
-        let response = self
-            .proxy_request_raw_value(&selection.runner, "/v1/chat/completions", request_value)
-            .await;
-
-        // Decrement on connection error (if response succeeded, stream is ongoing)
-        if response.is_err() {
-            self.registry.decrement_requests(&runner_id).await;
-            if let Some(cb) = &self.circuit_breaker {
-                cb.record_failure(&runner_id);
-            }
-        } else if let Some(cb) = &self.circuit_breaker {
-            cb.record_success(&runner_id);
-        }
-
-        response.map(|response| RoutedResponse {
-            response,
-            runner_id,
-            resolved_model: selection.resolved_model,
-        })
-    }
-
     /// Route a speech request and return the raw audio/SSE response.
     pub async fn speech_raw(
         &self,
@@ -514,7 +439,446 @@ impl InferenceRouter {
             runner: selection.runner,
             resolved_model: selection.resolved_model,
             is_loaded: selection.is_loaded,
+            requested_selector: model.to_string(),
+            class_hint: ModelRequest::parse(model).effective_class(&self.models_config),
+            affinity: None,
+            affinity_decision: AffinityDecision::Unkeyed,
+            observed_binding: None,
         })
+    }
+
+    /// Build an affinity-aware authoritative plan for a chat request.
+    pub async fn plan_chat_request(
+        &self,
+        model: &str,
+        affinity: Option<AffinityContext>,
+    ) -> Result<RoutePlan, RouterError> {
+        let model_request = ModelRequest::parse(model);
+        let class_hint = model_request.effective_class(&self.models_config);
+        let normal = self.select_runner_for_model(model).await?;
+        let Some(affinity_context) = affinity else {
+            return Ok(self.route_plan_from_selection(
+                model,
+                class_hint,
+                normal,
+                None,
+                AffinityDecision::Unkeyed,
+                None,
+            ));
+        };
+        if !self.routing_config.prompt_cache_affinity_enabled {
+            return Ok(self.route_plan_from_selection(
+                model,
+                class_hint,
+                normal,
+                Some(affinity_context),
+                AffinityDecision::Disabled,
+                None,
+            ));
+        }
+
+        let key = affinity_context.key();
+        let now = Instant::now();
+        let Some(binding) = self.affinity_store.lookup(key, now) else {
+            return Ok(self.route_plan_from_selection(
+                model,
+                class_hint,
+                normal,
+                Some(affinity_context),
+                AffinityDecision::New,
+                None,
+            ));
+        };
+
+        let bound_runner = self.valid_bound_runner(&binding, class_hint).await;
+        let Some(bound_runner) = bound_runner else {
+            if self.affinity_store.invalidate_if(key, binding.revision) {
+                self.affinity_store
+                    .metrics()
+                    .record_removals(AffinityRemovalReason::BindingInvalid, 1);
+            }
+            return Ok(self.route_plan_from_selection(
+                model,
+                class_hint,
+                normal,
+                Some(affinity_context),
+                AffinityDecision::RebindInvalid,
+                None,
+            ));
+        };
+
+        let normal_wait =
+            self.estimated_wait_ms(&normal.runner, &normal.resolved_model, class_hint);
+        let affinity_wait =
+            self.estimated_wait_ms(&bound_runner, &binding.resolved_model, class_hint);
+        let extra_wait = affinity_wait.saturating_sub(normal_wait);
+        if extra_wait <= self.routing_config.prompt_cache_affinity_max_extra_wait_ms {
+            Ok(RoutePlan {
+                runner: bound_runner,
+                resolved_model: binding.resolved_model.clone(),
+                is_loaded: true,
+                requested_selector: model.to_string(),
+                class_hint,
+                affinity: Some(affinity_context),
+                affinity_decision: AffinityDecision::Reuse,
+                observed_binding: Some(binding),
+            })
+        } else {
+            Ok(self.route_plan_from_selection(
+                model,
+                class_hint,
+                normal,
+                Some(affinity_context),
+                AffinityDecision::SpilloverOverloaded,
+                Some(binding),
+            ))
+        }
+    }
+
+    pub async fn plan_queued_request(
+        &self,
+        requested_selector: &str,
+        resolved_model: &str,
+        class_hint: Option<ModelClass>,
+        affinity: Option<AffinityContext>,
+    ) -> Result<RoutePlan, RouterError> {
+        let runner = self.select_runner_for_specific(resolved_model).await?;
+        let normal = SelectedRunner {
+            is_loaded: runner.has_model_or_alias(resolved_model),
+            runner,
+            resolved_model: resolved_model.to_string(),
+        };
+        let Some(context) = affinity else {
+            return Ok(self.route_plan_from_selection(
+                requested_selector,
+                class_hint,
+                normal,
+                None,
+                AffinityDecision::Unkeyed,
+                None,
+            ));
+        };
+        if !self.routing_config.prompt_cache_affinity_enabled {
+            return Ok(self.route_plan_from_selection(
+                requested_selector,
+                class_hint,
+                normal,
+                Some(context),
+                AffinityDecision::Disabled,
+                None,
+            ));
+        }
+        let key = context.key();
+        let Some(binding) = self.affinity_store.lookup(key, Instant::now()) else {
+            return Ok(self.route_plan_from_selection(
+                requested_selector,
+                class_hint,
+                normal,
+                Some(context),
+                AffinityDecision::New,
+                None,
+            ));
+        };
+        if binding.resolved_model != resolved_model {
+            return Ok(self.route_plan_from_selection(
+                requested_selector,
+                class_hint,
+                normal,
+                Some(context),
+                AffinityDecision::SpilloverOverloaded,
+                Some(binding),
+            ));
+        }
+        let Some(bound_runner) = self.valid_bound_runner(&binding, class_hint).await else {
+            if self.affinity_store.invalidate_if(key, binding.revision) {
+                self.affinity_store
+                    .metrics()
+                    .record_removals(AffinityRemovalReason::BindingInvalid, 1);
+            }
+            return Ok(self.route_plan_from_selection(
+                requested_selector,
+                class_hint,
+                normal,
+                Some(context),
+                AffinityDecision::RebindInvalid,
+                None,
+            ));
+        };
+        let normal_wait = self.estimated_wait_ms(&normal.runner, resolved_model, class_hint);
+        let affinity_wait = self.estimated_wait_ms(&bound_runner, resolved_model, class_hint);
+        if affinity_wait.saturating_sub(normal_wait)
+            <= self.routing_config.prompt_cache_affinity_max_extra_wait_ms
+        {
+            Ok(RoutePlan {
+                runner: bound_runner,
+                resolved_model: resolved_model.to_string(),
+                is_loaded: true,
+                requested_selector: requested_selector.to_string(),
+                class_hint,
+                affinity: Some(context),
+                affinity_decision: AffinityDecision::Reuse,
+                observed_binding: Some(binding),
+            })
+        } else {
+            Ok(self.route_plan_from_selection(
+                requested_selector,
+                class_hint,
+                normal,
+                Some(context),
+                AffinityDecision::SpilloverOverloaded,
+                Some(binding),
+            ))
+        }
+    }
+
+    fn route_plan_from_selection(
+        &self,
+        requested_selector: &str,
+        class_hint: Option<ModelClass>,
+        selection: SelectedRunner,
+        affinity: Option<AffinityContext>,
+        affinity_decision: AffinityDecision,
+        observed_binding: Option<AffinityBinding>,
+    ) -> RoutePlan {
+        RoutePlan {
+            runner: selection.runner,
+            resolved_model: selection.resolved_model,
+            is_loaded: selection.is_loaded,
+            requested_selector: requested_selector.to_string(),
+            class_hint,
+            affinity,
+            affinity_decision,
+            observed_binding,
+        }
+    }
+
+    async fn valid_bound_runner(
+        &self,
+        binding: &AffinityBinding,
+        class_hint: Option<ModelClass>,
+    ) -> Option<ConnectedRunner> {
+        let runner = self.registry.get(&binding.runner_id).await?;
+        if runner.generation != binding.runner_generation
+            || !runner.is_operational()
+            || !runner.has_model_or_alias(&binding.resolved_model)
+            || self
+                .circuit_breaker
+                .as_ref()
+                .is_some_and(|breaker| !breaker.is_available(&runner.id))
+        {
+            return None;
+        }
+        if let Some(class) = class_hint {
+            if classify_model(&binding.resolved_model, &self.models_config) != Some(class) {
+                return None;
+            }
+        }
+        Some(runner)
+    }
+
+    fn estimated_wait_ms(
+        &self,
+        runner: &ConnectedRunner,
+        resolved_model: &str,
+        class_hint: Option<ModelClass>,
+    ) -> u64 {
+        let batch_size = u64::from(runner.batch_size_for_model(resolved_model).max(1));
+        let active = runner.active_requests.load(Ordering::SeqCst) as u64;
+        let class_name = class_hint.or_else(|| classify_model(resolved_model, &self.models_config));
+        let latency_ms = class_name
+            .and_then(|class| {
+                self.audit_logger
+                    .get_all_metrics()
+                    .ok()?
+                    .into_iter()
+                    .find(|metric| {
+                        metric.runner_id == runner.id && metric.model_class == class.as_str()
+                    })
+                    .and_then(|metric| metric.avg_ms())
+            })
+            .unwrap_or(1000.0)
+            .max(0.0) as u64;
+        (active / batch_size).saturating_mul(latency_ms)
+    }
+
+    pub async fn reserve_plan(&self, mut plan: RoutePlan) -> Result<ReservedRoute, RouterError> {
+        let current = self
+            .registry
+            .get(&plan.runner.id)
+            .await
+            .ok_or(RouterError::StalePlan)?;
+        if current.generation != plan.runner.generation
+            || !current.is_operational()
+            || !current.has_model_or_alias(&plan.resolved_model)
+            || self
+                .circuit_breaker
+                .as_ref()
+                .is_some_and(|breaker| !breaker.is_available(&current.id))
+        {
+            return Err(RouterError::StalePlan);
+        }
+
+        if let Some(context) = &plan.affinity {
+            let key = context.key();
+            match plan.affinity_decision {
+                AffinityDecision::New | AffinityDecision::RebindInvalid => {
+                    let (binding, inserted) = self.affinity_store.bind_if_absent(
+                        key,
+                        current.id.clone(),
+                        current.generation,
+                        plan.resolved_model.clone(),
+                        Instant::now(),
+                    );
+                    if !inserted
+                        && (binding.runner_id != current.id
+                            || binding.runner_generation != current.generation
+                            || binding.resolved_model != plan.resolved_model)
+                    {
+                        return Err(RouterError::StalePlan);
+                    }
+                    plan.observed_binding = Some(binding);
+                }
+                AffinityDecision::Reuse => {
+                    let binding = plan
+                        .observed_binding
+                        .as_ref()
+                        .ok_or(RouterError::StalePlan)?;
+                    if !self
+                        .affinity_store
+                        .touch_if(key, binding.revision, Instant::now())
+                    {
+                        return Err(RouterError::StalePlan);
+                    }
+                }
+                AffinityDecision::SpilloverOverloaded => {
+                    let binding = plan
+                        .observed_binding
+                        .as_ref()
+                        .ok_or(RouterError::StalePlan)?;
+                    if self
+                        .affinity_store
+                        .lookup(key, Instant::now())
+                        .map(|current| current.revision)
+                        != Some(binding.revision)
+                    {
+                        return Err(RouterError::StalePlan);
+                    }
+                }
+                AffinityDecision::Disabled | AffinityDecision::Unkeyed => {}
+            }
+        }
+        let reservation = self.registry.reserve(&current);
+        if plan.affinity.is_some() && plan.affinity_decision != AffinityDecision::Unkeyed {
+            self.affinity_store
+                .metrics()
+                .record_decision(plan.affinity_decision.as_str());
+        }
+        plan.runner = current;
+        Ok(ReservedRoute {
+            plan,
+            _reservation: reservation,
+        })
+    }
+
+    pub async fn execute_chat_plan<Req, Resp>(
+        &self,
+        reserved: ReservedRoute,
+        request: &Req,
+    ) -> Result<RoutedResponse<Resp>, RouterError>
+    where
+        Req: Serialize + Clone,
+        Resp: DeserializeOwned,
+    {
+        let ReservedRoute { plan, _reservation } = reserved;
+        let runner_id = plan.runner.id.clone();
+        let resolved_model = plan.resolved_model.clone();
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
+        if let Some(object) = request_value.as_object_mut() {
+            object.insert(
+                "model".to_string(),
+                serde_json::Value::String(plan.runner.resolve_model_alias(&resolved_model)),
+            );
+            object.remove("prompt_cache_key");
+            if plan.runner.prompt_cache_accepts_key(&resolved_model) {
+                if let Some(affinity) = &plan.affinity {
+                    object.insert(
+                        "prompt_cache_key".to_string(),
+                        serde_json::Value::String(affinity.runner_cache_key()),
+                    );
+                }
+            }
+        }
+        let response = self
+            .proxy_request_value(&plan.runner, "/v1/chat/completions", request_value)
+            .await;
+        self.record_chat_result(&plan, response.is_ok());
+        drop(_reservation);
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model,
+        })
+    }
+
+    pub async fn execute_chat_stream_plan<Req>(
+        &self,
+        reserved: ReservedRoute,
+        request: &Req,
+    ) -> Result<RoutedStream, RouterError>
+    where
+        Req: Serialize + Clone,
+    {
+        let ReservedRoute { plan, _reservation } = reserved;
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
+        if let Some(object) = request_value.as_object_mut() {
+            object.insert(
+                "model".to_string(),
+                serde_json::Value::String(plan.runner.resolve_model_alias(&plan.resolved_model)),
+            );
+            object.remove("prompt_cache_key");
+            if plan.runner.prompt_cache_accepts_key(&plan.resolved_model) {
+                if let Some(affinity) = &plan.affinity {
+                    object.insert(
+                        "prompt_cache_key".to_string(),
+                        serde_json::Value::String(affinity.runner_cache_key()),
+                    );
+                }
+            }
+        }
+        let response = self
+            .proxy_request_raw_value(&plan.runner, "/v1/chat/completions", request_value)
+            .await;
+        self.record_chat_result(&plan, response.is_ok());
+        Ok(RoutedStream {
+            response: response?,
+            runner_id: plan.runner.id,
+            resolved_model: plan.resolved_model,
+            reservation: _reservation,
+        })
+    }
+
+    fn record_chat_result(&self, plan: &RoutePlan, success: bool) {
+        if let Some(breaker) = &self.circuit_breaker {
+            if success {
+                breaker.record_success(&plan.runner.id);
+            } else {
+                breaker.record_failure(&plan.runner.id);
+            }
+        }
+        if !success {
+            if let (Some(context), Some(binding)) = (&plan.affinity, &plan.observed_binding) {
+                if self
+                    .affinity_store
+                    .invalidate_if(context.key(), binding.revision)
+                {
+                    self.affinity_store
+                        .metrics()
+                        .record_removals(AffinityRemovalReason::DispatchFailed, 1);
+                }
+            }
+        }
     }
 
     /// Select a runner for the given model string.
@@ -585,32 +949,6 @@ impl InferenceRouter {
             return Ok(self.select_from_candidates(&compatible));
         }
         Ok(self.select_from_candidates(&with_model))
-    }
-
-    /// Resolve a model class to a specific model ID.
-    ///
-    /// Finds any available model of the requested class.
-    async fn resolve_class_to_model(&self, class: ModelClass) -> Result<String, RouterError> {
-        let operational = self.filter_available(self.registry.operational().await);
-        if operational.is_empty() {
-            return Err(RouterError::NoRunners);
-        }
-
-        // Find any model of the requested class
-        for runner in &operational {
-            for model in runner
-                .status
-                .engines
-                .iter()
-                .flat_map(|e| e.available_models.iter())
-            {
-                if classify_model(&model.id, &self.models_config) == Some(class) {
-                    return Ok(model.id.clone());
-                }
-            }
-        }
-
-        Err(RouterError::NoModelsOfClass(class.to_string()))
     }
 
     /// Select a runner for a model class.
@@ -1063,7 +1401,12 @@ pub struct ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_ai_common::{EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
+    use axum::{extract::State, routing::post, Json, Router};
+    use simple_ai_common::{
+        ChatCompletionRequest, ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo,
+        PromptCacheCapabilities, PromptCacheScope, RunnerHealth, RunnerStatus,
+    };
+    use std::sync::Mutex;
     use tokio::sync::mpsc;
     use uuid::Uuid;
 
@@ -1091,6 +1434,7 @@ mod tests {
                     .collect(),
                 error: None,
                 batch_size: 1,
+                prompt_cache: None,
             }],
             metrics: None,
             model_aliases: std::collections::HashMap::new(),
@@ -1110,6 +1454,23 @@ mod tests {
             crate::config::RoutingConfig::default(),
             audit_logger,
         )
+    }
+
+    async fn capture_chat_body(
+        State(captured): State<Arc<Mutex<Option<serde_json::Value>>>>,
+        Json(body): Json<serde_json::Value>,
+    ) -> Json<ChatCompletionResponse> {
+        *captured.lock().unwrap() = Some(body);
+        Json(ChatCompletionResponse::new(
+            "model-a".to_string(),
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: Some("ok".into()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            Some("stop".to_string()),
+        ))
     }
 
     #[tokio::test]
@@ -1458,5 +1819,145 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.runner.id, "runner-b");
+    }
+
+    #[tokio::test]
+    async fn cache_affinity_reuses_spills_without_rebinding_and_recovers_invalid_binding() {
+        let registry = Arc::new(RunnerRegistry::new());
+        for id in ["runner-a", "runner-b"] {
+            let (tx, _) = mpsc::channel(32);
+            registry
+                .register(
+                    id.to_string(),
+                    id.to_string(),
+                    None,
+                    create_test_status(vec!["model-a".to_string()]),
+                    Some(format!("http://{id}:8080")),
+                    tx,
+                    None,
+                )
+                .await;
+        }
+
+        let test_db_path = format!(
+            "test_affinity_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
+        let router = InferenceRouter::with_strategy(
+            registry.clone(),
+            LoadBalanceStrategy::SmartRouting,
+            crate::config::ModelsConfig::default(),
+            crate::config::RoutingConfig::default(),
+            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+        );
+        let affinity = router
+            .derive_affinity_context("user-1", "model-a", " conversation ".to_string())
+            .unwrap();
+
+        let first = router
+            .plan_chat_request("model-a", Some(affinity.clone()))
+            .await
+            .unwrap();
+        assert_eq!(first.affinity_decision, AffinityDecision::New);
+        let affine_runner = first.runner.id.clone();
+        drop(router.reserve_plan(first).await.unwrap());
+        assert_eq!(registry.get_active_requests(&affine_runner).await, 0);
+
+        let reused = router
+            .plan_chat_request("model-a", Some(affinity.clone()))
+            .await
+            .unwrap();
+        assert_eq!(reused.affinity_decision, AffinityDecision::Reuse);
+        assert_eq!(reused.runner.id, affine_runner);
+
+        registry.increment_requests(&affine_runner).await;
+        registry.increment_requests(&affine_runner).await;
+        registry.increment_requests(&affine_runner).await;
+        let spill = router
+            .plan_chat_request("model-a", Some(affinity.clone()))
+            .await
+            .unwrap();
+        assert_eq!(
+            spill.affinity_decision,
+            AffinityDecision::SpilloverOverloaded
+        );
+        assert_ne!(spill.runner.id, affine_runner);
+        drop(router.reserve_plan(spill).await.unwrap());
+
+        registry.unregister(&affine_runner).await;
+        let rebound = router
+            .plan_chat_request("model-a", Some(affinity))
+            .await
+            .unwrap();
+        assert_eq!(rebound.affinity_decision, AffinityDecision::RebindInvalid);
+        assert_ne!(rebound.runner.id, affine_runner);
+        drop(router.reserve_plan(rebound).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn capable_runner_receives_only_scoped_cache_key() {
+        let captured = Arc::new(Mutex::new(None));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/v1/chat/completions", post(capture_chat_body))
+            .with_state(captured.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let mut status = create_test_status(vec!["model-a".to_string()]);
+        status.engines[0].prompt_cache = Some(PromptCacheCapabilities {
+            scope: PromptCacheScope::Engine,
+            accepts_cache_key: true,
+            reports_cached_tokens: false,
+        });
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-a".to_string(),
+                "Runner A".to_string(),
+                None,
+                status,
+                Some(format!("http://{address}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = create_test_router(registry);
+        let raw_key = "DISTINCTIVE-RAW-PRIVATE-CACHE-KEY";
+        let affinity = router
+            .derive_affinity_context("user-1", "model-a", raw_key.to_string())
+            .unwrap();
+        let expected_scoped = affinity.runner_cache_key();
+        let plan = router
+            .plan_chat_request("model-a", Some(affinity))
+            .await
+            .unwrap();
+        let reserved = router.reserve_plan(plan).await.unwrap();
+        let request = ChatCompletionRequest {
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: Some("hello".into()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            model: Some("model-a".to_string()),
+            temperature: None,
+            max_tokens: None,
+            reasoning_effort: None,
+            thinking_budget_tokens: None,
+            tools: None,
+            stream: None,
+            prompt_cache_key: Some(raw_key.to_string()),
+        };
+        router
+            .execute_chat_plan::<_, ChatCompletionResponse>(reserved, &request)
+            .await
+            .unwrap();
+
+        let body = captured.lock().unwrap().clone().unwrap();
+        assert_eq!(body["prompt_cache_key"], expected_scoped);
+        assert!(!body.to_string().contains(raw_key));
+        assert_eq!(expected_scoped.len(), 64);
     }
 }

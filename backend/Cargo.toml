@@ -43,6 +43,8 @@ thiserror = { workspace = true }
 sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
+hmac = "0.12"
+prometheus-client = "0.22"
 
 # Rate limiting
 governor = "0.8"

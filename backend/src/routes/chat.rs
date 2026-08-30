@@ -15,7 +15,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::auth_helpers::{authenticate_request, extract_client_ip};
-use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
+use crate::gateway::{
+    can_request_model, CapacityReservation, ModelRequest, RoutedStream, SchedulerError,
+};
 use crate::models::chat::ChatCompletionRequest;
 use crate::models::request::{Request, Response as AuditResponse};
 use crate::{AppState, RequestEvent};
@@ -33,6 +35,7 @@ struct StreamLogContext {
 
 struct GatewayStreamState {
     response: reqwest::Response,
+    _reservation: CapacityReservation,
     buffer: Vec<u8>,
     pending: VecDeque<Bytes>,
     metrics: Option<InferenceMetrics>,
@@ -61,9 +64,10 @@ enum StreamOutcome {
     Interrupted,
 }
 
-fn filter_gateway_stream(response: reqwest::Response, log_context: StreamLogContext) -> Body {
+fn filter_gateway_stream(routed: RoutedStream, log_context: StreamLogContext) -> Body {
     let state = GatewayStreamState {
-        response,
+        response: routed.response,
+        _reservation: routed.reservation,
         buffer: Vec::new(),
         pending: VecDeque::new(),
         metrics: None,
@@ -154,14 +158,6 @@ async fn finalize_stream_response(
     metrics: Option<InferenceMetrics>,
     outcome: StreamOutcome,
 ) {
-    if let Some(runner_id) = &log_context.runner_id {
-        log_context
-            .state
-            .runner_registry
-            .decrement_requests(runner_id)
-            .await;
-    }
-
     let (status, response_body, event_name, event_description) = match outcome {
         StreamOutcome::Completed => (200, "[stream]", "request_completed", "completed"),
         StreamOutcome::Interrupted => (
@@ -226,7 +222,7 @@ async fn chat_completions(
     State(state): State<Arc<AppState>>,
     connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
-    Json(request): Json<ChatCompletionRequest>,
+    Json(mut request): Json<ChatCompletionRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
 
@@ -264,6 +260,17 @@ async fn chat_completions(
             format!("class:{}", class)
         }
     };
+
+    let affinity = request
+        .prompt_cache_key
+        .take()
+        .map(|raw| {
+            state
+                .inference_router
+                .derive_affinity_context(&user.id, &model, raw)
+                .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))
+        })
+        .transpose()?;
 
     // Log request BEFORE calling Ollama
     let mut req_log = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
@@ -309,7 +316,13 @@ async fn chat_completions(
         let stream_body = if state.config.gateway.enabled {
             let scheduled = match state
                 .request_scheduler
-                .chat_completion_stream(&req_log.id, &model, &model_request, &request)
+                .chat_completion_stream(
+                    &req_log.id,
+                    &model,
+                    &model_request,
+                    affinity.clone(),
+                    &request,
+                )
                 .await
             {
                 Ok(scheduled) => scheduled,
@@ -427,7 +440,14 @@ async fn chat_completions(
             if state.config.gateway.enabled {
                 match state
                     .request_scheduler
-                    .chat_completion(&req_log.id, &model, &model_request, &request, use_batching)
+                    .chat_completion(
+                        &req_log.id,
+                        &model,
+                        &model_request,
+                        affinity.clone(),
+                        &request,
+                        use_batching,
+                    )
                     .await
                 {
                     Ok(scheduled) => {
@@ -634,6 +654,7 @@ mod tests {
             thinking_budget_tokens: None,
             tools: None,
             stream: None,
+            prompt_cache_key: None,
         }
     }
 
@@ -656,6 +677,7 @@ mod tests {
             thinking_budget_tokens: None,
             tools: None,
             stream: None,
+            prompt_cache_key: None,
         };
         assert!(req.messages.is_empty());
         assert!(req.model.is_none());
@@ -689,6 +711,7 @@ mod tests {
             thinking_budget_tokens: None,
             tools: None,
             stream: None,
+            prompt_cache_key: None,
         };
         assert_eq!(req.model, Some("custom-model".to_string()));
         assert_eq!(req.temperature, Some(0.5));

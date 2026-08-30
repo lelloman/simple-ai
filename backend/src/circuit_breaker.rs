@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
@@ -22,15 +23,27 @@ pub struct CircuitBreaker {
     threshold: u32,
     recovery_timeout: Duration,
     states: Mutex<HashMap<String, BreakerState>>,
+    event_tx: broadcast::Sender<CircuitEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CircuitEvent {
+    Opened { key: String },
 }
 
 impl CircuitBreaker {
     pub fn new(threshold: u32, recovery_timeout_secs: u64) -> Self {
+        let (event_tx, _) = broadcast::channel(64);
         Self {
             threshold,
             recovery_timeout: Duration::from_secs(recovery_timeout_secs),
             states: Mutex::new(HashMap::new()),
+            event_tx,
         }
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<CircuitEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Returns true if disabled (threshold == 0).
@@ -92,7 +105,9 @@ impl CircuitBreaker {
 
         entry.consecutive_failures += 1;
 
-        if entry.consecutive_failures >= self.threshold {
+        if entry.consecutive_failures >= self.threshold
+            && !matches!(entry.state, State::Open { .. })
+        {
             entry.state = State::Open {
                 since: Instant::now(),
             };
@@ -101,6 +116,9 @@ impl CircuitBreaker {
                 key,
                 entry.consecutive_failures
             );
+            let _ = self.event_tx.send(CircuitEvent::Opened {
+                key: key.to_string(),
+            });
         }
     }
 }

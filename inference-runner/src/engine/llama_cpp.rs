@@ -1484,6 +1484,7 @@ impl InferenceEngine for LlamaCppEngine {
             let prompt_eval_ms = f64_ms_to_u64(usage.prompt_ms);
             let completion_eval_ms = f64_ms_to_u64(usage.predicted_ms);
             let mut metrics = InferenceMetrics {
+                cached_prompt_tokens: None,
                 resolved_model: Some(model_id.to_string()),
                 engine_type: Some(self.engine_type().to_string()),
                 context_window,
@@ -1848,6 +1849,7 @@ mod tests {
             reasoning_effort: None,
             thinking_budget_tokens: None,
             stream: Some(true),
+            prompt_cache_key: None,
         };
 
         assert_eq!(
@@ -1943,6 +1945,7 @@ mod tests {
             reasoning_effort: Some(ReasoningEffort::Medium),
             thinking_budget_tokens: Some(1024),
             stream: None,
+            prompt_cache_key: None,
         };
 
         assert!(engine

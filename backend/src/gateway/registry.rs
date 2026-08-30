@@ -1,7 +1,7 @@
 //! Runner registry for tracking connected inference runners.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -69,12 +69,88 @@ pub struct ConnectedRunner {
     pub model_aliases: HashMap<String, String>,
     /// Number of active requests currently being processed by this runner.
     pub active_requests: Arc<AtomicUsize>,
+    /// Unique incarnation of this runner connection.
+    pub generation: u64,
+}
+
+/// Non-cloneable ownership token for one active runner request.
+#[derive(Debug)]
+pub struct CapacityReservation {
+    runner_id: String,
+    active_requests: Arc<AtomicUsize>,
+}
+
+impl Drop for CapacityReservation {
+    fn drop(&mut self) {
+        if self
+            .active_requests
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+                count.checked_sub(1)
+            })
+            .is_err()
+        {
+            tracing::error!(
+                "Capacity reservation underflow for runner {}",
+                self.runner_id
+            );
+            debug_assert!(false, "capacity reservation underflow");
+        }
+    }
 }
 
 impl ConnectedRunner {
     /// Check if the runner is healthy and operational.
     pub fn is_operational(&self) -> bool {
         self.status.health.is_operational()
+    }
+
+    pub fn prompt_cache_accepts_key(&self, resolved_model: &str) -> bool {
+        let local_model = self.resolve_model_alias(resolved_model);
+        self.status.engines.iter().any(|engine| {
+            let matches_model = engine.loaded_models.iter().any(|model| {
+                model.eq_ignore_ascii_case(resolved_model)
+                    || model.eq_ignore_ascii_case(&local_model)
+            }) || engine.available_models.iter().any(|model| {
+                model.id.eq_ignore_ascii_case(resolved_model)
+                    || model.id.eq_ignore_ascii_case(&local_model)
+            });
+            matches_model
+                && engine
+                    .prompt_cache
+                    .as_ref()
+                    .is_some_and(|capabilities| capabilities.accepts_cache_key)
+        })
+    }
+
+    pub fn batch_size_for_model(&self, resolved_model: &str) -> u32 {
+        let local_model = self.resolve_model_alias(resolved_model);
+        let mut matching: Vec<u32> = self
+            .status
+            .engines
+            .iter()
+            .filter(|engine| {
+                engine.loaded_models.iter().any(|model| {
+                    model.eq_ignore_ascii_case(resolved_model)
+                        || model.eq_ignore_ascii_case(&local_model)
+                })
+            })
+            .map(|engine| engine.batch_size.max(1))
+            .collect();
+        if matching.is_empty() {
+            matching = self
+                .status
+                .engines
+                .iter()
+                .filter(|engine| {
+                    engine.available_models.iter().any(|model| {
+                        model.id.eq_ignore_ascii_case(resolved_model)
+                            || model.id.eq_ignore_ascii_case(&local_model)
+                    })
+                })
+                .map(|engine| engine.batch_size.max(1))
+                .collect();
+        }
+        matching.into_iter().min().unwrap_or(1)
     }
 
     /// Get list of loaded models across all engines.
@@ -161,6 +237,7 @@ pub struct RunnerRegistry {
     runners: RwLock<HashMap<String, ConnectedRunner>>,
     /// Broadcast channel for runner events (connect, disconnect, status changes).
     event_tx: broadcast::Sender<RunnerEvent>,
+    next_generation: AtomicU64,
 }
 
 impl Default for RunnerRegistry {
@@ -185,6 +262,7 @@ impl RunnerRegistry {
         Self {
             runners: RwLock::new(HashMap::new()),
             event_tx: tx,
+            next_generation: AtomicU64::new(1),
         }
     }
 
@@ -219,6 +297,7 @@ impl RunnerRegistry {
             .collect();
         let model_aliases = status.model_aliases.clone();
 
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
         let runner = ConnectedRunner {
             id: id.clone(),
             name: name.clone(),
@@ -231,6 +310,7 @@ impl RunnerRegistry {
             mac_address,
             model_aliases,
             active_requests: Arc::new(AtomicUsize::new(0)),
+            generation,
         };
         self.runners.write().await.insert(id.clone(), runner);
 
@@ -312,6 +392,21 @@ impl RunnerRegistry {
     /// Get a runner by ID.
     pub async fn get(&self, id: &str) -> Option<ConnectedRunner> {
         self.runners.read().await.get(id).cloned()
+    }
+
+    /// Reserve one active-request slot on an already validated runner instance.
+    pub fn reserve(&self, runner: &ConnectedRunner) -> CapacityReservation {
+        let previous = runner.active_requests.fetch_add(1, Ordering::SeqCst);
+        tracing::debug!(
+            "Runner {} active requests: {} -> {}",
+            runner.id,
+            previous,
+            previous + 1
+        );
+        CapacityReservation {
+            runner_id: runner.id.clone(),
+            active_requests: runner.active_requests.clone(),
+        }
     }
 
     /// Increment the active request count for a runner.
@@ -607,6 +702,7 @@ mod tests {
                     .collect(),
                 error: None,
                 batch_size: 1,
+                prompt_cache: None,
             }],
             metrics: None,
             model_aliases: std::collections::HashMap::new(),
@@ -815,6 +911,7 @@ mod tests {
         aliases.insert("canonical-model".to_string(), "local-model".to_string());
 
         let runner = ConnectedRunner {
+            generation: 1,
             id: "test".to_string(),
             name: "Test".to_string(),
             machine_type: None,
@@ -834,6 +931,7 @@ mod tests {
     #[test]
     fn test_resolve_model_alias_without_alias() {
         let runner = ConnectedRunner {
+            generation: 1,
             id: "test".to_string(),
             name: "Test".to_string(),
             machine_type: None,
@@ -854,6 +952,7 @@ mod tests {
     #[test]
     fn test_has_model_or_alias_direct_match() {
         let runner = ConnectedRunner {
+            generation: 1,
             id: "test".to_string(),
             name: "Test".to_string(),
             machine_type: None,
@@ -877,6 +976,7 @@ mod tests {
         aliases.insert("canonical-name".to_string(), "local-name".to_string());
 
         let runner = ConnectedRunner {
+            generation: 1,
             id: "test".to_string(),
             name: "Test".to_string(),
             machine_type: None,

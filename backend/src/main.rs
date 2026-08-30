@@ -6,7 +6,7 @@ use simple_ai_backend::circuit_breaker::CircuitBreaker;
 use simple_ai_backend::config::Config;
 use simple_ai_backend::gateway::{
     ws_handler, BatchDispatcher, BatchQueue, BatchQueueConfig, InferenceRouter, RequestScheduler,
-    RouterTelemetry, RunnerRegistry, WsState,
+    RouterTelemetry, RunnerEvent, RunnerRegistry, WsState,
 };
 use simple_ai_backend::llm::OllamaClient;
 use simple_ai_backend::wol::WakeService;
@@ -68,6 +68,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_circuit_breaker(circuit_breaker.clone()),
     );
 
+    {
+        let affinity_store = inference_router.affinity_store().clone();
+        let registry = runner_registry.clone();
+        let mut runner_events = runner_registry.subscribe_events();
+        let mut circuit_events = circuit_breaker.subscribe();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    event = runner_events.recv() => match event {
+                        Ok(RunnerEvent::Disconnected { runner_id }) => {
+                            let removed = affinity_store.invalidate_runner_id(&runner_id);
+                            affinity_store.metrics().record_removals(
+                                simple_ai_backend::gateway::AffinityRemovalReason::RunnerDisconnected,
+                                removed,
+                            );
+                        }
+                        Ok(RunnerEvent::StatusChanged { runner_id, loaded_models, .. }) => {
+                            if let Some(runner) = registry.get(&runner_id).await {
+                                if runner.is_operational() {
+                                    let removed = affinity_store.invalidate_unloaded_models(
+                                        &runner_id,
+                                        runner.generation,
+                                        &loaded_models,
+                                    );
+                                    affinity_store.metrics().record_removals(
+                                        simple_ai_backend::gateway::AffinityRemovalReason::ModelUnloaded,
+                                        removed,
+                                    );
+                                } else {
+                                    let removed = affinity_store.invalidate_runner(&runner_id, runner.generation);
+                                    affinity_store.metrics().record_removals(
+                                        simple_ai_backend::gateway::AffinityRemovalReason::RunnerUnhealthy,
+                                        removed,
+                                    );
+                                }
+                            }
+                        }
+                        Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    },
+                    event = circuit_events.recv() => match event {
+                        Ok(simple_ai_backend::CircuitEvent::Opened { key }) => {
+                            let removed = affinity_store.invalidate_runner_id(&key);
+                            affinity_store.metrics().record_removals(
+                                simple_ai_backend::gateway::AffinityRemovalReason::CircuitOpen,
+                                removed,
+                            );
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            }
+        });
+    }
+
     // Initialize wake service for on-demand runner waking
     let wake_service = Arc::new(WakeService::new(
         runner_registry.clone(),
@@ -115,7 +171,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let queue = Arc::new(BatchQueue::new(queue_config));
 
             // Create and spawn batch dispatcher (keep Arc for cache invalidation)
-            let dispatcher = Arc::new(BatchDispatcher::new(queue.clone(), runner_registry.clone()));
+            let dispatcher = Arc::new(BatchDispatcher::new(
+                queue.clone(),
+                runner_registry.clone(),
+                inference_router.clone(),
+                router_telemetry.clone(),
+            ));
             let dispatcher_clone = dispatcher.clone();
             tokio::spawn(async move {
                 dispatcher_clone.run().await;
