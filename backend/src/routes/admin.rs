@@ -226,6 +226,7 @@ pub struct DashboardStatsInfo {
 pub struct BatchQueueInfo {
     pub enabled: bool,
     pub timeout_ms: u64,
+    pub saturation_timeout_ms: u64,
     pub min_batch_size: u32,
     pub queues: HashMap<String, ModelQueueStats>,
 }
@@ -1265,6 +1266,7 @@ async fn get_batch_queue_snapshot(state: &AppState) -> BatchQueueInfo {
         BatchQueueInfo {
             enabled: true,
             timeout_ms: config.batch_timeout.as_millis() as u64,
+            saturation_timeout_ms: config.saturation_timeout.as_millis() as u64,
             min_batch_size: config.min_batch_size,
             queues: batch_queue.get_stats().await,
         }
@@ -1272,6 +1274,7 @@ async fn get_batch_queue_snapshot(state: &AppState) -> BatchQueueInfo {
         BatchQueueInfo {
             enabled: false,
             timeout_ms: 0,
+            saturation_timeout_ms: 0,
             min_batch_size: 0,
             queues: HashMap::new(),
         }

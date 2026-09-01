@@ -162,36 +162,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router_telemetry = Arc::new(RouterTelemetry::new());
 
     // Initialize batch queue if batching is enabled
-    let (batch_queue, batch_dispatcher) =
-        if config.gateway.enabled && config.gateway.batching_enabled {
-            let queue_config = BatchQueueConfig::new(
-                config.gateway.batch_timeout_ms,
-                config.gateway.min_batch_size,
-            );
-            let queue = Arc::new(BatchQueue::new(queue_config));
+    let (batch_queue, batch_dispatcher) = if config.gateway.enabled
+        && config.gateway.batching_enabled
+    {
+        let queue_config = BatchQueueConfig::new(
+            config.gateway.batch_timeout_ms,
+            config.gateway.batch_saturation_timeout_ms,
+            config.gateway.min_batch_size,
+        );
+        let queue = Arc::new(BatchQueue::new(queue_config));
 
-            // Create and spawn batch dispatcher (keep Arc for cache invalidation)
-            let dispatcher = Arc::new(BatchDispatcher::new(
-                queue.clone(),
-                runner_registry.clone(),
-                inference_router.clone(),
-                router_telemetry.clone(),
-            ));
-            let dispatcher_clone = dispatcher.clone();
-            tokio::spawn(async move {
-                dispatcher_clone.run().await;
-            });
+        // Create and spawn batch dispatcher (keep Arc for cache invalidation)
+        let dispatcher = Arc::new(BatchDispatcher::new(
+            queue.clone(),
+            runner_registry.clone(),
+            inference_router.clone(),
+            router_telemetry.clone(),
+        ));
+        let dispatcher_clone = dispatcher.clone();
+        tokio::spawn(async move {
+            dispatcher_clone.run().await;
+        });
 
-            tracing::info!(
-                "Request batching enabled (timeout={}ms, min_batch_size={})",
-                config.gateway.batch_timeout_ms,
-                config.gateway.min_batch_size
-            );
+        tracing::info!(
+            "Request batching enabled (timeout={}ms, saturation_timeout={}ms, min_batch_size={})",
+            config.gateway.batch_timeout_ms,
+            config.gateway.batch_saturation_timeout_ms,
+            config.gateway.min_batch_size
+        );
 
-            (Some(queue), Some(dispatcher))
-        } else {
-            (None, None)
-        };
+        (Some(queue), Some(dispatcher))
+    } else {
+        (None, None)
+    };
 
     let request_scheduler = Arc::new(RequestScheduler::new(
         inference_router.clone(),

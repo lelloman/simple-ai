@@ -123,6 +123,10 @@ pub struct GatewayConfig {
     /// Maximum time to wait for batch to fill (milliseconds). Default: 50
     #[serde(default = "default_batch_timeout_ms")]
     pub batch_timeout_ms: u64,
+    /// Maximum coalescing window while every compatible runner is saturated
+    /// (milliseconds). Default: 500
+    #[serde(default = "default_batch_saturation_timeout_ms")]
+    pub batch_saturation_timeout_ms: u64,
     /// Minimum batch size before sending (if timeout not reached). Default: 1
     #[serde(default = "default_min_batch_size")]
     pub min_batch_size: u32,
@@ -334,6 +338,9 @@ fn default_circuit_breaker_recovery_secs() -> u64 {
 fn default_batch_timeout_ms() -> u64 {
     50
 }
+fn default_batch_saturation_timeout_ms() -> u64 {
+    500
+}
 fn default_min_batch_size() -> u32 {
     1
 }
@@ -452,6 +459,7 @@ impl Default for GatewayConfig {
             auto_wake_enabled: false,
             batching_enabled: false,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_saturation_timeout_ms: default_batch_saturation_timeout_ms(),
             min_batch_size: default_min_batch_size(),
             rate_limit_rpm: 0,
             circuit_breaker_threshold: 0,
@@ -509,6 +517,10 @@ impl Config {
             .set_default(
                 "gateway.batch_timeout_ms",
                 default_batch_timeout_ms() as i64,
+            )?
+            .set_default(
+                "gateway.batch_saturation_timeout_ms",
+                default_batch_saturation_timeout_ms() as i64,
             )?
             .set_default("gateway.min_batch_size", default_min_batch_size() as i64)?
             .set_default("gateway.rate_limit_rpm", 0 as i64)?
@@ -719,6 +731,7 @@ mod tests {
         assert!(config.idle_manager_url.is_none());
         assert!(!config.batching_enabled);
         assert_eq!(config.batch_timeout_ms, 50);
+        assert_eq!(config.batch_saturation_timeout_ms, 500);
         assert_eq!(config.min_batch_size, 1);
     }
 

@@ -3,6 +3,7 @@
 //! The dispatcher runs an async loop that monitors the batch queue and
 //! dispatches requests to runners when batches are ready.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -78,9 +79,13 @@ impl BatchDispatcher {
 
     /// Try to dispatch a batch for a specific model.
     async fn try_dispatch(&self, model: &str) -> Result<(), RouterError> {
-        let batch_size = self.get_runner_batch_size(model).await;
+        let (batch_size, runners_saturated) = self.get_runner_batch_state(model).await;
 
-        if !self.queue.should_dispatch(model, batch_size).await {
+        if !self
+            .queue
+            .should_dispatch(model, batch_size, runners_saturated)
+            .await
+        {
             return Ok(());
         }
 
@@ -91,42 +96,45 @@ impl BatchDispatcher {
         };
 
         tracing::info!(
-            "Dispatching batch of {} requests for model {} (max_batch_size={})",
+            "Dispatching batch of {} requests for model {} (max_batch_size={}, runners_saturated={})",
             batch.requests.len(),
             model,
-            batch_size
+            batch_size,
+            runners_saturated
         );
 
         // Dispatch the batch
         self.dispatch_batch(batch).await
     }
 
-    /// Get the maximum batch size for runners that have the given model.
-    async fn get_runner_batch_size(&self, model: &str) -> u32 {
-        // Check cache first
-        {
-            let cache = self.batch_size_cache.read().await;
-            if let Some(&size) = cache.get(model) {
-                return size;
-            }
-        }
-
-        // Query registry for runners with this model
+    /// Get the model-specific dispatch cap and whether all compatible runner
+    /// capacity is currently occupied.
+    async fn get_runner_batch_state(&self, model: &str) -> (u32, bool) {
         let runners = self.registry.with_model(model).await;
-        let max_batch_size = runners
-            .iter()
-            .flat_map(|r| r.status.engines.iter())
-            .map(|e| e.batch_size)
-            .max()
-            .unwrap_or(1);
+        let runners_saturated = !runners.is_empty()
+            && runners.iter().all(|runner| {
+                let capacity = runner.batch_size_for_model(model).max(1) as usize;
+                runner.active_requests.load(Ordering::SeqCst) >= capacity
+            });
 
-        // Update cache
-        {
-            let mut cache = self.batch_size_cache.write().await;
-            cache.insert(model.to_string(), max_batch_size);
-        }
+        let cached_batch_size = self.batch_size_cache.read().await.get(model).copied();
+        let max_batch_size = match cached_batch_size {
+            Some(size) => size,
+            None => {
+                let size = runners
+                    .iter()
+                    .map(|runner| runner.batch_size_for_model(model))
+                    .max()
+                    .unwrap_or(1);
+                self.batch_size_cache
+                    .write()
+                    .await
+                    .insert(model.to_string(), size);
+                size
+            }
+        };
 
-        max_batch_size
+        (max_batch_size, runners_saturated)
     }
 
     /// Invalidate the batch size cache (call when runners connect/disconnect).
@@ -340,6 +348,85 @@ mod tests {
             metrics: None,
             model_aliases: std::collections::HashMap::new(),
         }
+    }
+
+    fn create_multi_engine_status() -> RunnerStatus {
+        let engine = |engine_type: &str, model: &str, batch_size: u32| EngineStatus {
+            engine_type: engine_type.to_string(),
+            resource_group: None,
+            is_healthy: true,
+            version: None,
+            loaded_models: vec![model.to_string()],
+            available_models: vec![ModelInfo {
+                id: model.to_string(),
+                name: model.to_string(),
+                size_bytes: None,
+                parameter_count: None,
+                context_length: None,
+                quantization: None,
+                modified_at: None,
+                reasoning: None,
+            }],
+            error: None,
+            batch_size,
+            prompt_cache: None,
+        };
+
+        RunnerStatus {
+            health: RunnerHealth::Healthy,
+            capabilities: vec![],
+            engines: vec![
+                engine("llama_cpp", "model-a", 4),
+                engine("vllm", "model-b", 32),
+            ],
+            metrics: None,
+            model_aliases: std::collections::HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_batch_state_uses_serving_engine_and_live_saturation() {
+        let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_multi_engine_status(),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let dispatcher = BatchDispatcher::new(
+            queue,
+            registry.clone(),
+            create_test_router(registry.clone()),
+            Arc::new(RouterTelemetry::new()),
+        );
+
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-a").await,
+            (4, false)
+        );
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-b").await,
+            (32, false)
+        );
+
+        for _ in 0..4 {
+            registry.increment_requests("runner-1").await;
+        }
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-a").await,
+            (4, true)
+        );
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-b").await,
+            (32, false)
+        );
     }
 
     async fn chat_handler(

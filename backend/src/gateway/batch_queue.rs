@@ -19,14 +19,23 @@ use crate::gateway::{AffinityContext, ModelClass, RouterError};
 pub struct BatchQueueConfig {
     /// Maximum time to wait for batch to fill.
     pub batch_timeout: Duration,
+    /// Maximum time to wait while all compatible runner capacity is occupied.
+    pub saturation_timeout: Duration,
     /// Minimum batch size before sending (if timeout not reached).
     pub min_batch_size: u32,
 }
 
 impl BatchQueueConfig {
-    pub fn new(batch_timeout_ms: u64, min_batch_size: u32) -> Self {
+    pub fn new(
+        batch_timeout_ms: u64,
+        batch_saturation_timeout_ms: u64,
+        min_batch_size: u32,
+    ) -> Self {
         Self {
             batch_timeout: Duration::from_millis(batch_timeout_ms),
+            saturation_timeout: Duration::from_millis(
+                batch_saturation_timeout_ms.max(batch_timeout_ms),
+            ),
             min_batch_size,
         }
     }
@@ -36,6 +45,7 @@ impl Default for BatchQueueConfig {
     fn default() -> Self {
         Self {
             batch_timeout: Duration::from_millis(50),
+            saturation_timeout: Duration::from_millis(500),
             min_batch_size: 1,
         }
     }
@@ -213,7 +223,12 @@ impl BatchQueue {
     /// Returns true if:
     /// - The queue size >= runner_batch_size, OR
     /// - The queue has been waiting >= batch_timeout
-    pub async fn should_dispatch(&self, model: &str, runner_batch_size: u32) -> bool {
+    pub async fn should_dispatch(
+        &self,
+        model: &str,
+        runner_batch_size: u32,
+        runners_saturated: bool,
+    ) -> bool {
         let queues = self.queues.read().await;
 
         if let Some(queue) = queues.get(model) {
@@ -229,7 +244,12 @@ impl BatchQueue {
             // Dispatch if we've waited long enough (and have at least min_batch_size)
             if queue.len() >= self.config.min_batch_size as usize {
                 if let Some(age) = queue.age() {
-                    if age >= self.config.batch_timeout {
+                    let timeout = if runners_saturated {
+                        self.config.saturation_timeout
+                    } else {
+                        self.config.batch_timeout
+                    };
+                    if age >= timeout {
                         return true;
                     }
                 }
@@ -360,16 +380,17 @@ mod tests {
         }
 
         // Should dispatch when runner_batch_size is 4
-        assert!(queue.should_dispatch("model-a", 4).await);
+        assert!(queue.should_dispatch("model-a", 4, false).await);
 
         // Should not dispatch when runner_batch_size is 8
-        assert!(!queue.should_dispatch("model-a", 8).await);
+        assert!(!queue.should_dispatch("model-a", 8, false).await);
     }
 
     #[tokio::test]
     async fn test_should_dispatch_by_timeout() {
         let config = BatchQueueConfig {
             batch_timeout: Duration::from_millis(10),
+            saturation_timeout: Duration::from_millis(50),
             min_batch_size: 1,
         };
         let queue = BatchQueue::new(config);
@@ -379,13 +400,34 @@ mod tests {
             .await;
 
         // Should not dispatch immediately (not enough for batch)
-        assert!(!queue.should_dispatch("model-a", 4).await);
+        assert!(!queue.should_dispatch("model-a", 4, false).await);
 
         // Wait for timeout
         tokio::time::sleep(Duration::from_millis(15)).await;
 
         // Should dispatch after timeout
-        assert!(queue.should_dispatch("model-a", 4).await);
+        assert!(queue.should_dispatch("model-a", 4, false).await);
+    }
+
+    #[tokio::test]
+    async fn test_saturation_extends_coalescing_window() {
+        let config = BatchQueueConfig {
+            batch_timeout: Duration::from_millis(10),
+            saturation_timeout: Duration::from_millis(50),
+            min_batch_size: 1,
+        };
+        let queue = BatchQueue::new(config);
+
+        let _rx = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+
+        tokio::time::sleep(Duration::from_millis(15)).await;
+        assert!(queue.should_dispatch("model-a", 4, false).await);
+        assert!(!queue.should_dispatch("model-a", 4, true).await);
+
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert!(queue.should_dispatch("model-a", 4, true).await);
     }
 
     #[tokio::test]
@@ -441,6 +483,7 @@ mod tests {
     async fn test_min_batch_size() {
         let config = BatchQueueConfig {
             batch_timeout: Duration::from_millis(10),
+            saturation_timeout: Duration::from_millis(50),
             min_batch_size: 3,
         };
         let queue = BatchQueue::new(config);
@@ -456,7 +499,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(15)).await;
 
         // Should NOT dispatch because we're below min_batch_size
-        assert!(!queue.should_dispatch("model-a", 8).await);
+        assert!(!queue.should_dispatch("model-a", 8, false).await);
 
         // Add one more to reach min_batch_size
         let _rx = queue
@@ -467,7 +510,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(15)).await;
 
         // Now should dispatch
-        assert!(queue.should_dispatch("model-a", 8).await);
+        assert!(queue.should_dispatch("model-a", 8, false).await);
     }
 
     #[tokio::test]
@@ -505,11 +548,16 @@ mod tests {
     async fn test_config_accessor() {
         let config = BatchQueueConfig {
             batch_timeout: Duration::from_millis(100),
+            saturation_timeout: Duration::from_millis(500),
             min_batch_size: 5,
         };
         let queue = BatchQueue::new(config);
 
         assert_eq!(queue.config().batch_timeout, Duration::from_millis(100));
+        assert_eq!(
+            queue.config().saturation_timeout,
+            Duration::from_millis(500)
+        );
         assert_eq!(queue.config().min_batch_size, 5);
     }
 }
