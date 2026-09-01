@@ -184,26 +184,48 @@ pub struct LlamaCppEngine {
     servers: RwLock<HashMap<String, Arc<ServerInstance>>>,
     /// Semaphore to limit concurrent server starts
     startup_semaphore: Semaphore,
-    /// Limit concurrent requests to the number of inference slots advertised
-    /// to the gateway. llama-server may accept more HTTP requests than it has
-    /// slots, but queueing them internally can corrupt prompt checkpoints in
-    /// some builds.
-    inference_semaphore: Arc<Semaphore>,
+    /// Per-model inference limits. llama-server may accept more HTTP requests
+    /// than it has slots, but queueing them internally can corrupt prompt
+    /// checkpoints in some builds.
+    inference_semaphores: RwLock<HashMap<String, Arc<Semaphore>>>,
     /// Cache of discovered model_id -> full file path
     model_paths: RwLock<HashMap<String, PathBuf>>,
 }
 
 impl LlamaCppEngine {
     pub fn new(config: LlamaCppEngineConfig) -> Self {
-        let inference_slots = config.batch_size.max(1) as usize;
         Self {
             startup_semaphore: Semaphore::new(1), // Only one server startup at a time
-            inference_semaphore: Arc::new(Semaphore::new(inference_slots)),
+            inference_semaphores: RwLock::new(HashMap::new()),
             config,
             http_client: Client::new(),
             servers: RwLock::new(HashMap::new()),
             model_paths: RwLock::new(HashMap::new()),
         }
+    }
+
+    async fn inference_semaphore(&self, model_id: &str) -> Arc<Semaphore> {
+        let key = model_id.to_ascii_lowercase();
+        if let Some(semaphore) = self.inference_semaphores.read().await.get(&key).cloned() {
+            return semaphore;
+        }
+
+        // A model without an explicit parallel setting is treated as a
+        // single-slot server even when another model on this engine supports
+        // a larger batch size.
+        let model_slots = self
+            .model_config(model_id)
+            .and_then(|model| model.parallel)
+            .unwrap_or(1)
+            .max(1);
+        let slots = model_slots.min(self.config.batch_size.max(1)) as usize;
+        let semaphore = Arc::new(Semaphore::new(slots));
+        self.inference_semaphores
+            .write()
+            .await
+            .entry(key)
+            .or_insert_with(|| semaphore.clone())
+            .clone()
     }
 
     /// Recursively discover all GGUF model files in the model directory.
@@ -1364,8 +1386,9 @@ impl InferenceEngine for LlamaCppEngine {
         self.validate_reasoning_request(model_id, request)?;
 
         let _inference_permit = self
-            .inference_semaphore
-            .acquire()
+            .inference_semaphore(model_id)
+            .await
+            .acquire_owned()
             .await
             .map_err(|e| Error::Internal(format!("Inference semaphore error: {}", e)))?;
 
@@ -1558,8 +1581,8 @@ impl InferenceEngine for LlamaCppEngine {
         self.validate_reasoning_request(model_id, request)?;
 
         let inference_permit = self
-            .inference_semaphore
-            .clone()
+            .inference_semaphore(model_id)
+            .await
             .acquire_owned()
             .await
             .map_err(|e| Error::Internal(format!("Inference semaphore error: {}", e)))?;
@@ -1750,8 +1773,9 @@ impl InferenceEngine for LlamaCppEngine {
         }
 
         let _inference_permit = self
-            .inference_semaphore
-            .acquire()
+            .inference_semaphore(model_id)
+            .await
+            .acquire_owned()
             .await
             .map_err(|e| Error::Internal(format!("Inference semaphore error: {}", e)))?;
 
@@ -1857,24 +1881,50 @@ mod tests {
         assert_eq!(engine.engine_type(), "llama_cpp");
     }
 
-    #[test]
-    fn test_inference_slots_match_advertised_batch_size() {
+    #[tokio::test]
+    async fn test_inference_slots_match_model_parallelism() {
         let mut config = test_config();
-        config.batch_size = 3;
+        config.batch_size = 4;
+        config.models.insert(
+            "gemma".to_string(),
+            LlamaCppModelConfig {
+                parallel: Some(3),
+                ..Default::default()
+            },
+        );
         let engine = LlamaCppEngine::new(config);
+        let semaphore = engine.inference_semaphore("GEMMA").await;
 
-        assert_eq!(engine.batch_size(), 3);
-        assert_eq!(engine.inference_semaphore.available_permits(), 3);
+        assert_eq!(engine.batch_size(), 4);
+        assert_eq!(semaphore.available_permits(), 3);
     }
 
-    #[test]
-    fn test_zero_batch_size_is_clamped_to_one_slot() {
+    #[tokio::test]
+    async fn test_inference_slots_are_capped_by_batch_size() {
         let mut config = test_config();
-        config.batch_size = 0;
+        config.batch_size = 2;
+        config.models.insert(
+            "gemma".to_string(),
+            LlamaCppModelConfig {
+                parallel: Some(4),
+                ..Default::default()
+            },
+        );
         let engine = LlamaCppEngine::new(config);
+        let semaphore = engine.inference_semaphore("gemma").await;
 
-        assert_eq!(engine.batch_size(), 1);
-        assert_eq!(engine.inference_semaphore.available_permits(), 1);
+        assert_eq!(engine.batch_size(), 2);
+        assert_eq!(semaphore.available_permits(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_model_without_parallelism_uses_one_slot() {
+        let mut config = test_config();
+        config.batch_size = 4;
+        let engine = LlamaCppEngine::new(config);
+        let semaphore = engine.inference_semaphore("unconfigured-model").await;
+
+        assert_eq!(semaphore.available_permits(), 1);
     }
 
     #[tokio::test]

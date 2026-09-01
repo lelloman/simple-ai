@@ -817,8 +817,12 @@ mod tests {
         let vllm = config.engines.vllm.expect("vLLM must be configured");
 
         let qwen38 = &vllm.models["qwen38-base"];
-        assert_eq!(qwen38.profile, "base");
-        assert_eq!(qwen38.context_length, 49_152);
+        assert_eq!(vllm.batch_size, 32);
+        assert_eq!(qwen38.profile, "agent-long");
+        assert_eq!(qwen38.env_file, "profiles/agent-long.env");
+        assert_eq!(qwen38.compose_profile, "batch");
+        assert_eq!(qwen38.compose_service, "batch");
+        assert_eq!(qwen38.context_length, 150_000);
         assert_eq!(
             config.engine_resources.get("vllm").map(String::as_str),
             Some("cuda:0")
