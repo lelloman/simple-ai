@@ -39,12 +39,26 @@ pub enum RouterError {
     NoRunnersWithCapability(String),
     #[error("Failed to connect to runner: {0}")]
     ConnectionFailed(String),
-    #[error("Runner returned error: {0}")]
-    RunnerError(String),
+    #[error("Runner returned HTTP {status}: {body}")]
+    RunnerError { status: u16, body: String },
     #[error("Request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
     #[error("Route plan became stale before dispatch")]
     StalePlan,
+}
+
+impl RouterError {
+    /// HTTP status suitable for returning to an API client.
+    /// Preserve runner-side client errors; keep infrastructure failures server-side.
+    pub fn client_status(&self) -> axum::http::StatusCode {
+        match self {
+            Self::RunnerError { status, .. } if (400..500).contains(status) => {
+                axum::http::StatusCode::from_u16(*status)
+                    .unwrap_or(axum::http::StatusCode::BAD_REQUEST)
+            }
+            _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 /// Strategy for selecting a runner.
@@ -1303,10 +1317,10 @@ impl InferenceRouter {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            return Err(RouterError::RunnerError {
+                status: status.as_u16(),
+                body,
+            });
         }
 
         response.json().await.map_err(RouterError::RequestFailed)
@@ -1342,10 +1356,10 @@ impl InferenceRouter {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            return Err(RouterError::RunnerError {
+                status: status.as_u16(),
+                body,
+            });
         }
 
         Ok(response)
@@ -1383,10 +1397,10 @@ impl InferenceRouter {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(RouterError::RunnerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
+            return Err(RouterError::RunnerError {
+                status: status.as_u16(),
+                body,
+            });
         }
 
         response.json().await.map_err(RouterError::RequestFailed)
@@ -1486,6 +1500,27 @@ mod tests {
 
         let result = router.select_runner(Some("model")).await;
         assert!(matches!(result, Err(RouterError::NoRunners)));
+    }
+
+    #[test]
+    fn runner_client_error_preserves_http_status() {
+        let error = RouterError::RunnerError {
+            status: 400,
+            body: "context length exceeded".to_string(),
+        };
+        assert_eq!(error.client_status(), axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn runner_server_error_remains_internal_server_error() {
+        let error = RouterError::RunnerError {
+            status: 503,
+            body: "unavailable".to_string(),
+        };
+        assert_eq!(
+            error.client_status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 
     #[tokio::test]

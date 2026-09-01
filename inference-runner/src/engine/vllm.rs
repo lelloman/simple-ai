@@ -479,6 +479,13 @@ fn is_public_ip(ip: std::net::IpAddr) -> bool {
     }
 }
 
+fn vllm_upstream_error(status: reqwest::StatusCode, body: &[u8]) -> Error {
+    Error::UpstreamResponse {
+        status: status.as_u16(),
+        body: String::from_utf8_lossy(body).into_owned(),
+    }
+}
+
 #[async_trait]
 impl InferenceEngine for VllmEngine {
     fn engine_type(&self) -> &'static str {
@@ -607,10 +614,7 @@ impl InferenceEngine for VllmEngine {
             .await
             .map_err(|e| Error::Communication(e.to_string()))?;
         if !status.is_success() {
-            return Err(Error::InferenceFailed(format!(
-                "vLLM returned {status}: {}",
-                String::from_utf8_lossy(&bytes)
-            )));
+            return Err(vllm_upstream_error(status, &bytes));
         }
         let mut result: ChatCompletionResponse = serde_json::from_slice(&bytes)
             .map_err(|e| Error::Communication(format!("invalid vLLM response: {e}")))?;
@@ -655,10 +659,12 @@ impl InferenceEngine for VllmEngine {
             .await
             .map_err(|e| Error::Communication(e.to_string()))?;
         if !response.status().is_success() {
-            return Err(Error::InferenceFailed(format!(
-                "vLLM streaming request returned {}",
-                response.status()
-            )));
+            let status = response.status();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| Error::Communication(e.to_string()))?;
+            return Err(vllm_upstream_error(status, &bytes));
         }
         struct StreamState {
             response: reqwest::Response,
@@ -937,5 +943,20 @@ mod tests {
             observe_vllm_event(b"event: ping\ndata: not-json"),
             VllmEventObservation::default()
         );
+    }
+
+    #[test]
+    fn upstream_bad_request_keeps_status_and_body() {
+        let error = vllm_upstream_error(
+            reqwest::StatusCode::BAD_REQUEST,
+            br#"{"error":{"message":"context length exceeded"}}"#,
+        );
+        match error {
+            Error::UpstreamResponse { status, body } => {
+                assert_eq!(status, 400);
+                assert!(body.contains("context length exceeded"));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
     }
 }

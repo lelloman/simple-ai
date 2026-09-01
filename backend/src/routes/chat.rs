@@ -339,13 +339,14 @@ async fn chat_completions(
                     return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
                 }
                 Err(SchedulerError::Router(e)) => {
-                    let e = crate::llm::OllamaError::ConnectionFailed(e.to_string());
-                    let mut resp_log = AuditResponse::new(request_id, 500);
-                    resp_log.response_body = e.to_string();
+                    let status = e.client_status();
+                    let message = e.to_string();
+                    let mut resp_log = AuditResponse::new(request_id, status.as_u16());
+                    resp_log.response_body = message.clone();
                     resp_log.latency_ms = start.elapsed().as_millis() as u64;
                     resp_log.model_class = model_class_str.clone();
                     let _ = state.audit_logger.log_response(&resp_log);
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+                    return Err((status, message));
                 }
             };
 
@@ -474,9 +475,10 @@ async fn chat_completions(
                     Err(SchedulerError::Wake(e)) => Err(crate::llm::OllamaError::ConnectionFailed(
                         format!("Failed to wake inference runners: {}", e),
                     )),
-                    Err(SchedulerError::Router(e)) => {
-                        Err(crate::llm::OllamaError::ConnectionFailed(e.to_string()))
-                    }
+                    Err(SchedulerError::Router(e)) => Err(crate::llm::OllamaError::Upstream {
+                        status: e.client_status().as_u16(),
+                        message: e.to_string(),
+                    }),
                 }
             } else if !state.circuit_breaker.is_available("ollama") {
                 Err(crate::llm::OllamaError::ConnectionFailed(
@@ -570,7 +572,8 @@ async fn chat_completions(
             (client_resp, resp_log)
         }
         Err(e) => {
-            let mut resp_log = AuditResponse::new(request_id, 500);
+            let status = e.client_status();
+            let mut resp_log = AuditResponse::new(request_id, status.as_u16());
             resp_log.response_body = e.to_string();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id.clone();
@@ -595,14 +598,14 @@ async fn chat_completions(
                 request_path: req_log.request_path.clone(),
                 model: req_log.model.clone(),
                 client_ip: req_log.client_ip.clone(),
-                status: Some(500),
+                status: Some(status.as_u16() as i32),
                 latency_ms: Some(resp_log.latency_ms as i64),
                 tokens_prompt: None,
                 tokens_completion: None,
                 runner_id,
                 wol_sent,
             });
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            return Err((status, e.to_string()));
         }
     };
 

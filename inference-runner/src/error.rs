@@ -23,6 +23,9 @@ pub enum Error {
     #[error("Inference failed: {0}")]
     InferenceFailed(String),
 
+    #[error("Upstream returned HTTP {status}: {body}")]
+    UpstreamResponse { status: u16, body: String },
+
     #[error("Load failed: {0}")]
     LoadFailed(String),
 
@@ -46,6 +49,10 @@ impl IntoResponse for Error {
             Error::ModelNotFound(_) => (StatusCode::NOT_FOUND, "model_not_found"),
             Error::ModelNotLoaded(_) => (StatusCode::BAD_REQUEST, "model_not_loaded"),
             Error::InferenceFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, "inference_failed"),
+            Error::UpstreamResponse { status, .. } => (
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY),
+                "upstream_error",
+            ),
             Error::LoadFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, "load_failed"),
             Error::InvalidRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request"),
             Error::Communication(_) => (StatusCode::BAD_GATEWAY, "communication_error"),
@@ -65,3 +72,22 @@ impl IntoResponse for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+
+    #[tokio::test]
+    async fn upstream_bad_request_preserves_status_and_message() {
+        let response = Error::UpstreamResponse {
+            status: 400,
+            body: "context length exceeded".to_string(),
+        }
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("context length exceeded"));
+    }
+}

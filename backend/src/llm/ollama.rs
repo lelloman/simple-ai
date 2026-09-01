@@ -100,6 +100,20 @@ pub enum OllamaError {
     OllamaError(String),
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
+    #[error("Upstream returned HTTP {status}: {message}")]
+    Upstream { status: u16, message: String },
+}
+
+impl OllamaError {
+    pub fn client_status(&self) -> axum::http::StatusCode {
+        match self {
+            Self::Upstream { status, .. } if (400..500).contains(status) => {
+                axum::http::StatusCode::from_u16(*status)
+                    .unwrap_or(axum::http::StatusCode::BAD_REQUEST)
+            }
+            _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
 }
 
 impl OllamaClient {
@@ -611,6 +625,15 @@ mod tests {
     fn test_ollama_error_ollama_error() {
         let error = OllamaError::OllamaError("model not found".to_string());
         assert!(error.to_string().contains("Ollama error"));
+    }
+
+    #[test]
+    fn upstream_client_error_preserves_status() {
+        let error = OllamaError::Upstream {
+            status: 400,
+            message: "context length exceeded".to_string(),
+        };
+        assert_eq!(error.client_status(), axum::http::StatusCode::BAD_REQUEST);
     }
 
     #[test]
