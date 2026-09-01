@@ -26,7 +26,7 @@ use simple_ai_common::{
 };
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
-use tokio::sync::{RwLock, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
 use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
 use crate::config::{LlamaCppEngineConfig, LlamaCppModelConfig};
@@ -184,14 +184,21 @@ pub struct LlamaCppEngine {
     servers: RwLock<HashMap<String, Arc<ServerInstance>>>,
     /// Semaphore to limit concurrent server starts
     startup_semaphore: Semaphore,
+    /// Limit concurrent requests to the number of inference slots advertised
+    /// to the gateway. llama-server may accept more HTTP requests than it has
+    /// slots, but queueing them internally can corrupt prompt checkpoints in
+    /// some builds.
+    inference_semaphore: Arc<Semaphore>,
     /// Cache of discovered model_id -> full file path
     model_paths: RwLock<HashMap<String, PathBuf>>,
 }
 
 impl LlamaCppEngine {
     pub fn new(config: LlamaCppEngineConfig) -> Self {
+        let inference_slots = config.batch_size.max(1) as usize;
         Self {
             startup_semaphore: Semaphore::new(1), // Only one server startup at a time
+            inference_semaphore: Arc::new(Semaphore::new(inference_slots)),
             config,
             http_client: Client::new(),
             servers: RwLock::new(HashMap::new()),
@@ -889,21 +896,34 @@ impl LlamaCppEngine {
             }
         }
 
+        // A failed process still occupies a slot in `servers`. Remove it before
+        // capacity planning; otherwise max_servers=1 sees the same model at
+        // capacity, excludes it from LRU eviction, and can never recover.
+        let stale_instance = {
+            let mut servers = self.servers.write().await;
+            let stale = match servers.get(model_id) {
+                Some(instance) => instance.state().await != ServerState::Ready,
+                None => false,
+            };
+            if stale {
+                servers.remove(model_id)
+            } else {
+                None
+            }
+        };
+        if let Some(instance) = stale_instance {
+            tracing::warn!(
+                "Removing stale llama-server entry for {} before capacity check",
+                model_id
+            );
+            instance.terminate(self.config.shutdown_timeout_secs).await;
+        }
+
         // Get model memory requirement for capacity planning
         let memory_gb = self.get_model_memory_gb(model_id).await;
 
         // Ensure we have capacity for a new server (evict LRU if needed)
         self.ensure_capacity(model_id, memory_gb).await?;
-
-        // Remove any stale entry
-        {
-            let mut servers = self.servers.write().await;
-            if let Some(old_instance) = servers.remove(model_id) {
-                old_instance
-                    .terminate(self.config.shutdown_timeout_secs)
-                    .await;
-            }
-        }
 
         // Start new server
         let instance = self.start_server(model_id, memory_gb).await?;
@@ -1226,7 +1246,7 @@ impl InferenceEngine for LlamaCppEngine {
     }
 
     fn batch_size(&self) -> u32 {
-        self.config.batch_size
+        self.config.batch_size.max(1)
     }
 
     async fn health_check(&self) -> Result<EngineHealth> {
@@ -1342,6 +1362,12 @@ impl InferenceEngine for LlamaCppEngine {
             ));
         }
         self.validate_reasoning_request(model_id, request)?;
+
+        let _inference_permit = self
+            .inference_semaphore
+            .acquire()
+            .await
+            .map_err(|e| Error::Internal(format!("Inference semaphore error: {}", e)))?;
 
         // Ensure server is running
         let instance = self.ensure_server(model_id).await?;
@@ -1531,6 +1557,13 @@ impl InferenceEngine for LlamaCppEngine {
         }
         self.validate_reasoning_request(model_id, request)?;
 
+        let inference_permit = self
+            .inference_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| Error::Internal(format!("Inference semaphore error: {}", e)))?;
+
         let instance = self.ensure_server(model_id).await?;
 
         if instance.state().await != ServerState::Ready {
@@ -1619,6 +1652,7 @@ impl InferenceEngine for LlamaCppEngine {
         }
 
         struct StreamState {
+            _inference_permit: OwnedSemaphorePermit,
             response: reqwest::Response,
             buffer: String,
             emitted_metrics: bool,
@@ -1634,6 +1668,7 @@ impl InferenceEngine for LlamaCppEngine {
         }
 
         let state = StreamState {
+            _inference_permit: inference_permit,
             response,
             buffer: String::new(),
             emitted_metrics: false,
@@ -1713,6 +1748,12 @@ impl InferenceEngine for LlamaCppEngine {
                 model_id
             )));
         }
+
+        let _inference_permit = self
+            .inference_semaphore
+            .acquire()
+            .await
+            .map_err(|e| Error::Internal(format!("Inference semaphore error: {}", e)))?;
 
         let instance = self.ensure_server(model_id).await?;
 
@@ -1814,6 +1855,56 @@ mod tests {
     fn test_engine_type() {
         let engine = LlamaCppEngine::new(test_config());
         assert_eq!(engine.engine_type(), "llama_cpp");
+    }
+
+    #[test]
+    fn test_inference_slots_match_advertised_batch_size() {
+        let mut config = test_config();
+        config.batch_size = 3;
+        let engine = LlamaCppEngine::new(config);
+
+        assert_eq!(engine.batch_size(), 3);
+        assert_eq!(engine.inference_semaphore.available_permits(), 3);
+    }
+
+    #[test]
+    fn test_zero_batch_size_is_clamped_to_one_slot() {
+        let mut config = test_config();
+        config.batch_size = 0;
+        let engine = LlamaCppEngine::new(config);
+
+        assert_eq!(engine.batch_size(), 1);
+        assert_eq!(engine.inference_semaphore.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_stale_same_model_is_removed_before_capacity_check() {
+        let mut config = test_config();
+        config.max_servers = 1;
+        config.shutdown_timeout_secs = 0;
+        let engine = LlamaCppEngine::new(config);
+
+        let child = Command::new("true").spawn().unwrap();
+        let stale = Arc::new(ServerInstance::new(
+            "stale-model".to_string(),
+            12345,
+            4.0,
+            child,
+        ));
+        stale.set_state(ServerState::Unhealthy).await;
+        engine
+            .servers
+            .write()
+            .await
+            .insert("stale-model".to_string(), stale);
+
+        let error = match engine.ensure_server("stale-model").await {
+            Ok(_) => panic!("stale model unexpectedly started"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, Error::ModelNotFound(_)));
+        assert!(!engine.servers.read().await.contains_key("stale-model"));
     }
 
     #[test]
