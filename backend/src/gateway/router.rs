@@ -989,7 +989,8 @@ impl InferenceRouter {
 
         // Prefer runners that already have a matching model loaded before considering cold loads.
         let mut loaded_candidates: Vec<(ConnectedRunner, String)> = Vec::new();
-        let mut available_candidates: Vec<(ConnectedRunner, String)> = Vec::new();
+        let mut free_candidates: Vec<(ConnectedRunner, String)> = Vec::new();
+        let mut eviction_candidates: Vec<(ConnectedRunner, String)> = Vec::new();
 
         for runner in &operational {
             let models: Vec<_> = runner
@@ -1002,8 +1003,10 @@ impl InferenceRouter {
                 if classify_model(&model.id, &self.models_config) == Some(class) {
                     let target = if runner.has_model_or_alias(&model.id) {
                         &mut loaded_candidates
+                    } else if runner.has_resource_conflict_for_model(&model.id) {
+                        &mut eviction_candidates
                     } else {
-                        &mut available_candidates
+                        &mut free_candidates
                     };
                     target.push((runner.clone(), model.id.clone()));
                     break; // One model per runner is enough
@@ -1014,8 +1017,10 @@ impl InferenceRouter {
         let is_loaded = !loaded_candidates.is_empty();
         let candidates_with_models = if is_loaded {
             loaded_candidates
+        } else if !free_candidates.is_empty() {
+            free_candidates
         } else {
-            available_candidates
+            eviction_candidates
         };
 
         if candidates_with_models.is_empty() {
@@ -1416,6 +1421,7 @@ mod tests {
             capabilities: vec![],
             engines: vec![EngineStatus {
                 engine_type: "test".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: None,
                 loaded_models: models.clone(),
@@ -1653,6 +1659,110 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.runner.machine_type, Some("gpu-server".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_smart_routing_prefers_free_accelerator_over_machine_type() {
+        fn model(id: &str) -> ModelInfo {
+            ModelInfo {
+                id: id.to_string(),
+                name: id.to_string(),
+                size_bytes: None,
+                parameter_count: None,
+                context_length: None,
+                quantization: None,
+                modified_at: None,
+                reasoning: None,
+            }
+        }
+
+        let status = |occupied: bool| RunnerStatus {
+            health: RunnerHealth::Healthy,
+            capabilities: vec![],
+            engines: vec![
+                EngineStatus {
+                    engine_type: "vllm".to_string(),
+                    resource_group: Some("cuda:0".to_string()),
+                    is_healthy: true,
+                    version: None,
+                    loaded_models: occupied
+                        .then(|| "other-model".to_string())
+                        .into_iter()
+                        .collect(),
+                    available_models: vec![model("other-model")],
+                    error: None,
+                    batch_size: 1,
+                    prompt_cache: None,
+                },
+                EngineStatus {
+                    engine_type: "llama_cpp".to_string(),
+                    resource_group: Some("cuda:0".to_string()),
+                    is_healthy: true,
+                    version: None,
+                    loaded_models: vec![],
+                    available_models: vec![model("fast-model")],
+                    error: None,
+                    batch_size: 1,
+                    prompt_cache: None,
+                },
+            ],
+            metrics: None,
+            model_aliases: std::collections::HashMap::new(),
+        };
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (rtx_tx, _) = mpsc::channel(32);
+        let (halo_tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "rtx".to_string(),
+                "RTX".to_string(),
+                Some("gpu-server".to_string()),
+                status(true),
+                Some("http://rtx:8080".to_string()),
+                rtx_tx,
+                None,
+            )
+            .await;
+        registry
+            .register(
+                "halo".to_string(),
+                "Halo".to_string(),
+                Some("halo".to_string()),
+                status(false),
+                Some("http://halo:8080".to_string()),
+                halo_tx,
+                None,
+            )
+            .await;
+
+        let routing_config = crate::config::RoutingConfig {
+            class_preferences: std::collections::HashMap::from([(
+                "fast".to_string(),
+                vec!["gpu-server".to_string(), "halo".to_string()],
+            )]),
+            ..Default::default()
+        };
+        let models_config = crate::config::ModelsConfig {
+            fast: vec!["fast-model".to_string()],
+            ..Default::default()
+        };
+        let test_db_path = format!(
+            "test_resource_routing_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
+        let router = InferenceRouter::new(
+            registry,
+            models_config,
+            routing_config,
+            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+        );
+
+        let result = router
+            .select_runner_for_class(ModelClass::Fast)
+            .await
+            .unwrap();
+        assert_eq!(result.runner.id, "halo");
     }
 
     #[tokio::test]

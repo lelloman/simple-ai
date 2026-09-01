@@ -163,6 +163,10 @@ pub struct ModelInfo {
 pub struct EngineStatus {
     /// Engine type (e.g., "ollama", "llama_cpp").
     pub engine_type: String,
+    /// Exclusive hardware resource used by this engine (for example `cuda:0`).
+    /// Loading through a different engine in the same group requires eviction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_group: Option<String>,
     /// Whether this engine is healthy.
     pub is_healthy: bool,
     /// Engine version if available.
@@ -337,6 +341,7 @@ mod tests {
     fn test_engine_status_serialization() {
         let status = EngineStatus {
             engine_type: "ollama".to_string(),
+            resource_group: Some("cuda:0".to_string()),
             is_healthy: true,
             version: Some("0.5.0".to_string()),
             loaded_models: vec!["llama3.2:3b".to_string()],
@@ -347,7 +352,17 @@ mod tests {
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains(r#""engine_type":"ollama""#));
+        assert!(json.contains(r#""resource_group":"cuda:0""#));
         assert!(json.contains(r#""is_healthy":true"#));
+    }
+
+    #[test]
+    fn test_engine_status_without_resource_group_is_backward_compatible() {
+        let status: EngineStatus = serde_json::from_str(
+            r#"{"engine_type":"ollama","is_healthy":true,"loaded_models":[],"available_models":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(status.resource_group, None);
     }
 
     #[test]
@@ -439,6 +454,7 @@ mod tests {
             }],
             engines: vec![EngineStatus {
                 engine_type: "ollama".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: Some("0.5.0".to_string()),
                 loaded_models: vec!["llama3.2:3b".to_string()],

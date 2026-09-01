@@ -315,6 +315,7 @@ mod tests {
             capabilities: vec![],
             engines: vec![EngineStatus {
                 engine_type: "test".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: None,
                 loaded_models: if loaded {

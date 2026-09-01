@@ -9,8 +9,8 @@ use serde::Serialize;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
 use simple_ai_common::{
-    Capability, CommandResponse, GatewayMessage, OcrMode, OcrProviderInfo, ReasoningCapabilities,
-    RunnerStatus,
+    Capability, CommandResponse, EngineStatus, GatewayMessage, OcrMode, OcrProviderInfo,
+    ReasoningCapabilities, RunnerStatus,
 };
 
 /// Event emitted when runner state changes.
@@ -206,6 +206,34 @@ impl ConnectedRunner {
                 .get(model_id)
                 .map(|local| self.available_models().iter().any(|m| m == local))
                 .unwrap_or(false)
+    }
+
+    /// Whether loading `model_id` requires evicting a model from another engine
+    /// that owns the same exclusive hardware resource.
+    pub fn has_resource_conflict_for_model(&self, model_id: &str) -> bool {
+        let local_model = self.resolve_model_alias(model_id);
+        let target_engines: Vec<&EngineStatus> = self
+            .status
+            .engines
+            .iter()
+            .filter(|engine| {
+                engine.available_models.iter().any(|model| {
+                    model.id.eq_ignore_ascii_case(model_id)
+                        || model.id.eq_ignore_ascii_case(&local_model)
+                })
+            })
+            .collect();
+
+        !target_engines.is_empty()
+            && target_engines.iter().all(|target| {
+                target.resource_group.as_ref().is_some_and(|resource| {
+                    self.status.engines.iter().any(|engine| {
+                        engine.engine_type != target.engine_type
+                            && engine.resource_group.as_ref() == Some(resource)
+                            && !engine.loaded_models.is_empty()
+                    })
+                })
+            })
     }
 
     /// Check if a logical runner capability is currently ready.
@@ -684,6 +712,7 @@ mod tests {
             capabilities: vec![],
             engines: vec![EngineStatus {
                 engine_type: "test".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: None,
                 loaded_models: models.clone(),

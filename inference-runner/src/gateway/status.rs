@@ -112,6 +112,11 @@ impl StatusCollector {
 
                     EngineStatus {
                         engine_type: engine.engine_type().to_string(),
+                        resource_group: self
+                            .config
+                            .engine_resources
+                            .get(engine.engine_type())
+                            .cloned(),
                         is_healthy: health.is_healthy,
                         version: health.version,
                         loaded_models,
@@ -123,6 +128,11 @@ impl StatusCollector {
                 }
                 Err(e) => EngineStatus {
                     engine_type: engine.engine_type().to_string(),
+                    resource_group: self
+                        .config
+                        .engine_resources
+                        .get(engine.engine_type())
+                        .cloned(),
                     is_healthy: false,
                     version: None,
                     loaded_models: vec![],
@@ -329,6 +339,7 @@ mod tests {
 
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
+            resource_group: None,
             is_healthy: true,
             version: None,
             loaded_models: vec!["llama3.2:3b".to_string()],
@@ -364,6 +375,7 @@ mod tests {
 
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
+            resource_group: None,
             is_healthy: true,
             version: None,
             loaded_models: vec!["some-model".to_string()],
@@ -389,6 +401,7 @@ mod tests {
 
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
+            resource_group: None,
             is_healthy: true,
             version: None,
             loaded_models: vec![],
@@ -463,6 +476,7 @@ mod tests {
         let engines = vec![
             EngineStatus {
                 engine_type: "ollama".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: None,
                 loaded_models: vec![],
@@ -473,6 +487,7 @@ mod tests {
             },
             EngineStatus {
                 engine_type: "llama_cpp".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: None,
                 loaded_models: vec![],
@@ -493,6 +508,7 @@ mod tests {
         let engines = vec![
             EngineStatus {
                 engine_type: "ollama".to_string(),
+                resource_group: None,
                 is_healthy: true,
                 version: None,
                 loaded_models: vec![],
@@ -503,6 +519,7 @@ mod tests {
             },
             EngineStatus {
                 engine_type: "llama_cpp".to_string(),
+                resource_group: None,
                 is_healthy: false,
                 version: None,
                 loaded_models: vec![],
@@ -522,6 +539,7 @@ mod tests {
     fn test_compute_health_all_unhealthy() {
         let engines = vec![EngineStatus {
             engine_type: "ollama".to_string(),
+            resource_group: None,
             is_healthy: false,
             version: None,
             loaded_models: vec![],
