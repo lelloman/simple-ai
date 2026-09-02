@@ -815,6 +815,10 @@ mod tests {
             .unwrap();
         let config: Config = loaded.try_deserialize().unwrap();
         let vllm = config.engines.vllm.expect("vLLM must be configured");
+        let llama_cpp = config
+            .engines
+            .llama_cpp
+            .expect("llama.cpp must be configured");
 
         let qwen38 = &vllm.models["qwen38-base"];
         assert_eq!(vllm.batch_size, 32);
@@ -823,6 +827,8 @@ mod tests {
         assert_eq!(qwen38.compose_profile, "batch");
         assert_eq!(qwen38.compose_service, "batch");
         assert_eq!(qwen38.context_length, 150_000);
+        assert_eq!(llama_cpp.batch_size, 32);
+        assert_eq!(llama_cpp.models["gemma3-4b"].parallel, Some(32));
         assert_eq!(
             config.engine_resources.get("vllm").map(String::as_str),
             Some("cuda:0")

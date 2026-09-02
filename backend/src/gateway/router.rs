@@ -1106,9 +1106,10 @@ impl InferenceRouter {
         let mut scored: Vec<(usize, f64)> = candidates
             .iter()
             .enumerate()
-            .map(|(idx, (runner, _model))| {
+            .map(|(idx, (runner, resolved_model))| {
                 let score = self.score_runner(
                     runner,
+                    resolved_model,
                     class_name,
                     preferences,
                     &all_metrics,
@@ -1141,6 +1142,7 @@ impl InferenceRouter {
     fn score_runner(
         &self,
         runner: &ConnectedRunner,
+        resolved_model: &str,
         class_name: &str,
         preferences: Option<&Vec<String>>,
         all_metrics: &[RunnerMetricRow],
@@ -1162,8 +1164,12 @@ impl InferenceRouter {
             0.0 // No preferences configured = neutral
         };
 
-        // 2. Queue depth score (number of active requests)
-        let queue_score = runner.active_requests.load(Ordering::SeqCst) as f64;
+        // 2. Capacity-normalized queue pressure. Comparing raw active-request
+        // counts underfills high-parallelism runners and overloads single-slot
+        // runners when a model is available on both.
+        let active_requests = runner.active_requests.load(Ordering::SeqCst) as f64;
+        let model_capacity = runner.batch_size_for_model(resolved_model).max(1) as f64;
+        let queue_score = active_requests / model_capacity;
 
         // 3. Latency score (average latency in seconds, or 1.0 if no data)
         let latency_score = all_metrics
@@ -1183,13 +1189,15 @@ impl InferenceRouter {
             + scarcity_penalty;
 
         tracing::debug!(
-            "Runner {} score: {:.2} (pref={:.2}*{:.2}, queue={:.2}*{:.2}, latency={:.2}*{:.2}, scarcity={:.2})",
+            "Runner {} score: {:.2} (pref={:.2}*{:.2}, queue_pressure={:.2}*{:.2}, active={}, capacity={}, latency={:.2}*{:.2}, scarcity={:.2})",
             runner.id,
             score,
             pref_weight,
             pref_score,
             self.routing_config.queue_weight,
             queue_score,
+            active_requests,
+            model_capacity,
             self.routing_config.latency_weight,
             latency_score,
             scarcity_penalty
@@ -1430,6 +1438,10 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_status(models: Vec<String>) -> RunnerStatus {
+        create_test_status_with_batch(models, 1)
+    }
+
+    fn create_test_status_with_batch(models: Vec<String>, batch_size: u32) -> RunnerStatus {
         RunnerStatus {
             health: RunnerHealth::Healthy,
             capabilities: vec![],
@@ -1453,7 +1465,7 @@ mod tests {
                     })
                     .collect(),
                 error: None,
-                batch_size: 1,
+                batch_size,
                 prompt_cache: None,
             }],
             metrics: None,
@@ -1864,6 +1876,73 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.runner.id, "runner-2");
+    }
+
+    #[tokio::test]
+    async fn test_smart_routing_normalizes_queue_depth_by_model_capacity() {
+        let registry = Arc::new(RunnerRegistry::new());
+        let model = "llama3:8b".to_string();
+        let (small_tx, _) = mpsc::channel(32);
+        let (large_tx, _) = mpsc::channel(32);
+
+        registry
+            .register(
+                "small".to_string(),
+                "Small runner".to_string(),
+                Some("gpu-server".to_string()),
+                create_test_status_with_batch(vec![model.clone()], 2),
+                Some("http://small:8080".to_string()),
+                small_tx,
+                None,
+            )
+            .await;
+        registry
+            .register(
+                "large".to_string(),
+                "Large runner".to_string(),
+                Some("gpu-server".to_string()),
+                create_test_status_with_batch(vec![model.clone()], 32),
+                Some("http://large:8080".to_string()),
+                large_tx,
+                None,
+            )
+            .await;
+
+        // Raw depth is higher on the large runner, but it is using only 25%
+        // of its model capacity versus 50% on the small runner.
+        registry.increment_requests("small").await;
+        for _ in 0..8 {
+            registry.increment_requests("large").await;
+        }
+
+        let routing_config = crate::config::RoutingConfig {
+            class_preferences: std::collections::HashMap::new(),
+            queue_weight: 1.0,
+            latency_weight: 0.0,
+            speculative_wake_enabled: false,
+            speculative_wake_targets: std::collections::HashMap::new(),
+            ..Default::default()
+        };
+        let models_config = crate::config::ModelsConfig {
+            fast: vec![model],
+            ..Default::default()
+        };
+        let test_db_path = format!(
+            "test_smart_capacity_{}.db",
+            Uuid::new_v4().to_string().replace('-', "")
+        );
+        let router = InferenceRouter::new(
+            registry,
+            models_config,
+            routing_config,
+            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+        );
+
+        let result = router
+            .select_runner_for_class(ModelClass::Fast)
+            .await
+            .unwrap();
+        assert_eq!(result.runner.id, "large");
     }
 
     #[tokio::test]
