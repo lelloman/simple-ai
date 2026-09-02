@@ -23,11 +23,13 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 MAX_BODY_BYTES = 64 * 1024 * 1024
 
 
-def _label_id(config: Any, wanted: str) -> int:
+def _label_id(config: Any, wanted: str, *, required: bool = True) -> int | None:
     label2id = {
         str(label).strip().lower(): int(index)
         for label, index in dict(getattr(config, "label2id", {}) or {}).items()
     }
+    if wanted in label2id:
+        return label2id[wanted]
     for label, index in label2id.items():
         if wanted in label:
             return index
@@ -36,8 +38,13 @@ def _label_id(config: Any, wanted: str) -> int:
         for index, label in dict(getattr(config, "id2label", {}) or {}).items()
     }
     for index, label in id2label.items():
+        if label == wanted:
+            return index
+    for index, label in id2label.items():
         if wanted in label:
             return index
+    if not required:
+        return None
     raise ValueError(f"model does not declare an NLI {wanted!r} label")
 
 
@@ -56,7 +63,7 @@ class Provider:
         dtype = torch.float16 if self.device.type == "cuda" else torch.float32
         self.model = AutoModelForSequenceClassification.from_pretrained(
             self.model_id,
-            torch_dtype=dtype,
+            dtype=dtype,
         ).to(self.device)
         self.model.eval()
         declared_limit = int(
@@ -66,9 +73,11 @@ class Provider:
         )
         if 0 < declared_limit < 1_000_000:
             self.max_length = min(self.max_length, declared_limit)
-        self.entailment_id = _label_id(self.model.config, "entail")
-        self.neutral_id = _label_id(self.model.config, "neutral")
-        self.contradiction_id = _label_id(self.model.config, "contrad")
+        self.entailment_id = _label_id(self.model.config, "entailment")
+        self.neutral_id = _label_id(self.model.config, "neutral", required=False)
+        self.contradiction_id = _label_id(self.model.config, "contradiction", required=False)
+        if self.contradiction_id is None:
+            self.contradiction_id = _label_id(self.model.config, "not_entailment")
 
     def health(self) -> dict[str, Any]:
         return {
@@ -124,7 +133,7 @@ class Provider:
                 probability = rows[input_index * width + label_index]
                 values = (
                     probability[self.entailment_id],
-                    probability[self.neutral_id],
+                    probability[self.neutral_id] if self.neutral_id is not None else 0.0,
                     probability[self.contradiction_id],
                 )
                 if not all(math.isfinite(value) for value in values):
