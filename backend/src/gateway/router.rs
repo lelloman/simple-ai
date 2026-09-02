@@ -306,6 +306,44 @@ impl InferenceRouter {
         })
     }
 
+    /// Route a zero-shot text classification request to a model-capable runner.
+    pub async fn classification<Req, Resp>(
+        &self,
+        model: &str,
+        request: &Req,
+    ) -> Result<RoutedResponse<Resp>, RouterError>
+    where
+        Req: Serialize + Clone,
+        Resp: DeserializeOwned,
+    {
+        let selection = self.select_runner_for_model(model).await?;
+        let runner_id = selection.runner.id.clone();
+        let resolved_model = selection.resolved_model.clone();
+        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
+        if let Some(object) = request_value.as_object_mut() {
+            object.insert("model".to_string(), serde_json::Value::String(local_model));
+        }
+        self.registry.increment_requests(&runner_id).await;
+        let response = self
+            .proxy_request_value(&selection.runner, "/v1/classifications", request_value)
+            .await;
+        self.registry.decrement_requests(&runner_id).await;
+        if let Some(breaker) = &self.circuit_breaker {
+            if response.is_ok() {
+                breaker.record_success(&runner_id);
+            } else {
+                breaker.record_failure(&runner_id);
+            }
+        }
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model,
+        })
+    }
+
     /// Route an OCR multipart request to a runner with ready OCR capability.
     pub async fn ocr_multipart(
         &self,
@@ -985,6 +1023,7 @@ impl InferenceRouter {
                 ModelClass::EmbedLarge => self.models_config.embed_large.first(),
                 ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
                 ModelClass::Tts => self.models_config.tts.first(),
+                ModelClass::TextClassification => self.models_config.text_classification.first(),
             };
             if let Some(model_id) = preferred {
                 let runner = self.select_runner_for_specific(model_id).await?;

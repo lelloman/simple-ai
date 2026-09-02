@@ -5,6 +5,7 @@
 pub mod audio_embeddings;
 pub mod capability;
 pub mod chat;
+pub mod classification;
 pub mod ocr;
 pub mod protocol;
 pub mod responses;
@@ -20,6 +21,10 @@ pub use chat::{
     ChatCompletionDelta, ChatCompletionRequest, ChatCompletionResponse, ChatContent,
     ChatContentPart, ChatMessage, Choice, ChunkChoice, ImageUrl, InferenceMetrics,
     ReasoningCapabilities, ReasoningEffort, ToolCall, ToolFunction, Usage,
+};
+pub use classification::{
+    ClassificationInput, ClassificationLabel, ClassificationRequest, ClassificationResponse,
+    ClassificationResult, ClassificationScore, ClassificationUsage,
 };
 pub use ocr::{
     OcrBlock, OcrFeature, OcrMetadata, OcrMode, OcrOptions, OcrPage, OcrProviderInfo, OcrResponse,

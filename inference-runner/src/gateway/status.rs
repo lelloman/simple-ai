@@ -179,11 +179,40 @@ impl StatusCollector {
         // Add default capabilities if no mappings configured
         if capabilities.is_empty() {
             // Report all loaded models as capable of large_chat by default
-            for model in loaded_models {
+            for engine in engines.iter().filter(|engine| {
+                matches!(engine.engine_type.as_str(), "ollama" | "llama_cpp" | "vllm")
+            }) {
+                for model in &engine.loaded_models {
+                    capabilities.push(CapabilityInfo {
+                        capability: Capability::LargeChat,
+                        status: CapabilityStatus::Loaded,
+                        model_id: model.clone(),
+                        active_requests: 0,
+                        avg_latency_ms: None,
+                        metadata: None,
+                    });
+                }
+            }
+        }
+
+        for engine in engines
+            .iter()
+            .filter(|engine| engine.engine_type == "classification")
+        {
+            for model in &engine.available_models {
+                if capabilities.iter().any(|info| {
+                    info.capability == Capability::TextClassification && info.model_id == model.id
+                }) {
+                    continue;
+                }
                 capabilities.push(CapabilityInfo {
-                    capability: Capability::LargeChat,
-                    status: CapabilityStatus::Loaded,
-                    model_id: model.to_string(),
+                    capability: Capability::TextClassification,
+                    status: if engine.loaded_models.contains(&model.id) {
+                        CapabilityStatus::Loaded
+                    } else {
+                        CapabilityStatus::Unloaded
+                    },
+                    model_id: model.id.clone(),
                     active_requests: 0,
                     avg_latency_ms: None,
                     metadata: None,
@@ -469,6 +498,40 @@ mod tests {
             .expect("audio embedding capability");
         assert_eq!(audio.status, CapabilityStatus::Loaded);
         assert!(audio.metadata.is_some());
+    }
+
+    #[tokio::test]
+    async fn classification_engine_advertises_models_automatically() {
+        let config = test_config();
+        let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
+        let collector = StatusCollector::new(config, registry, false);
+        let model_id = "MoritzLaurer/bge-m3-zeroshot-v2.0".to_string();
+        let engines = vec![EngineStatus {
+            engine_type: "classification".to_string(),
+            resource_group: Some("cuda:0".to_string()),
+            is_healthy: true,
+            version: None,
+            loaded_models: vec![model_id.clone()],
+            available_models: vec![simple_ai_common::ModelInfo {
+                id: model_id.clone(),
+                name: "BGE-M3 Zero-shot".to_string(),
+                size_bytes: Some(1_140_000_000),
+                parameter_count: Some(568_000_000),
+                context_length: Some(8192),
+                quantization: Some("F16".to_string()),
+                modified_at: None,
+                reasoning: None,
+            }],
+            error: None,
+            batch_size: 64,
+            prompt_cache: None,
+        }];
+
+        let capabilities = collector.collect_capabilities(&engines).await;
+        assert_eq!(capabilities.len(), 1);
+        assert_eq!(capabilities[0].capability, Capability::TextClassification);
+        assert_eq!(capabilities[0].status, CapabilityStatus::Loaded);
+        assert_eq!(capabilities[0].model_id, model_id);
     }
 
     #[test]

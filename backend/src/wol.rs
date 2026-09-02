@@ -362,6 +362,9 @@ impl WakeService {
                         ModelClass::EmbedLarge => self.models_config.embed_large.first(),
                         ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
                         ModelClass::Tts => self.models_config.tts.first(),
+                        ModelClass::TextClassification => {
+                            self.models_config.text_classification.first()
+                        }
                     };
                     return preferred.is_some_and(|model| {
                         runner

@@ -101,6 +101,68 @@ pub struct EnginesConfig {
     pub tts: Option<TtsEngineConfig>,
     /// Managed OpenAI-compatible vLLM engine.
     pub vllm: Option<VllmEngineConfig>,
+    /// Process-backed zero-shot text classification engine.
+    pub classification: Option<ClassificationEngineConfig>,
+}
+
+/// Process-backed Hugging Face NLI classification engine configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClassificationEngineConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Command to start the provider. The runner appends model and port arguments.
+    #[serde(default)]
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub models: Vec<ClassificationModelConfig>,
+    #[serde(default = "default_classification_max_loaded_models")]
+    pub max_loaded_models: usize,
+    #[serde(default = "default_opportunistic_unload_cooldown_secs")]
+    pub opportunistic_unload_cooldown_secs: u64,
+    #[serde(default = "default_classification_batch_size")]
+    pub batch_size: u32,
+    #[serde(default = "default_classification_max_length")]
+    pub max_length: u32,
+    #[serde(default = "default_classification_startup_timeout_secs")]
+    pub startup_timeout_secs: u64,
+    #[serde(default = "default_classification_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClassificationModelConfig {
+    /// Public model id and Hugging Face repository id.
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    #[serde(default)]
+    pub parameter_count: Option<u64>,
+    #[serde(default)]
+    pub context_length: Option<u32>,
+    /// Optional per-model inference batch size override.
+    #[serde(default)]
+    pub batch_size: Option<u32>,
+    /// Optional per-model tokenizer length override.
+    #[serde(default)]
+    pub max_length: Option<u32>,
+}
+
+impl Default for ClassificationEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            command: Vec::new(),
+            models: Vec::new(),
+            max_loaded_models: default_classification_max_loaded_models(),
+            opportunistic_unload_cooldown_secs: default_opportunistic_unload_cooldown_secs(),
+            batch_size: default_classification_batch_size(),
+            max_length: default_classification_max_length(),
+            startup_timeout_secs: default_classification_startup_timeout_secs(),
+            shutdown_timeout_secs: default_classification_shutdown_timeout_secs(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -630,6 +692,21 @@ fn default_tts_startup_timeout_secs() -> u64 {
 fn default_tts_shutdown_timeout_secs() -> u64 {
     10
 }
+fn default_classification_max_loaded_models() -> usize {
+    1
+}
+fn default_classification_batch_size() -> u32 {
+    32
+}
+fn default_classification_max_length() -> u32 {
+    512
+}
+fn default_classification_startup_timeout_secs() -> u64 {
+    600
+}
+fn default_classification_shutdown_timeout_secs() -> u64 {
+    10
+}
 
 impl Config {
     /// Load configuration from file and environment variables.
@@ -702,6 +779,31 @@ impl Config {
             .set_default(
                 "engines.tts.shutdown_timeout_secs",
                 default_tts_shutdown_timeout_secs() as i64,
+            )?
+            .set_default("engines.classification.enabled", false)?
+            .set_default(
+                "engines.classification.max_loaded_models",
+                default_classification_max_loaded_models() as i64,
+            )?
+            .set_default(
+                "engines.classification.opportunistic_unload_cooldown_secs",
+                default_opportunistic_unload_cooldown_secs() as i64,
+            )?
+            .set_default(
+                "engines.classification.batch_size",
+                default_classification_batch_size() as i64,
+            )?
+            .set_default(
+                "engines.classification.max_length",
+                default_classification_max_length() as i64,
+            )?
+            .set_default(
+                "engines.classification.startup_timeout_secs",
+                default_classification_startup_timeout_secs() as i64,
+            )?
+            .set_default(
+                "engines.classification.shutdown_timeout_secs",
+                default_classification_shutdown_timeout_secs() as i64,
             )?
             // Load from config.toml if exists
             .add_source(File::with_name("config").required(false))
@@ -827,8 +929,8 @@ mod tests {
         assert_eq!(qwen38.compose_profile, "batch");
         assert_eq!(qwen38.compose_service, "batch");
         assert_eq!(qwen38.context_length, 150_000);
-        assert_eq!(llama_cpp.batch_size, 32);
-        assert_eq!(llama_cpp.models["gemma3-4b"].parallel, Some(32));
+        assert_eq!(llama_cpp.batch_size, 10);
+        assert_eq!(llama_cpp.models["gemma3-4b"].parallel, Some(10));
         assert_eq!(
             config.engine_resources.get("vllm").map(String::as_str),
             Some("cuda:0")

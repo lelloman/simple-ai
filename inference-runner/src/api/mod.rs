@@ -2,6 +2,7 @@
 
 pub mod audio_embeddings;
 pub mod chat;
+pub mod classifications;
 pub mod embeddings;
 pub mod health;
 pub mod models;
@@ -19,6 +20,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .merge(audio_embeddings::router())
         .merge(chat::router())
+        .merge(classifications::router())
         .merge(embeddings::router())
         .merge(models::router())
         .merge(ocr::router())

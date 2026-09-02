@@ -36,6 +36,7 @@ base_url = "http://localhost:11434"
 # ollama = "cuda:0"
 # audio_embeddings = "cuda:0"
 # tts = "cuda:0"
+# classification = "cuda:0"
 
 # Managed vLLM service. The runner starts/stops a pinned Docker Compose stack
 # and proxies authenticated OpenAI-compatible requests to loopback.
@@ -220,6 +221,37 @@ base_url = "http://localhost:11434"
 # response_formats = ["wav", "mp3", "pcm"]
 # supports_sse = false
 
+# Zero-shot NLI text classification. The runner starts a long-lived provider
+# per loaded model and exposes it through POST /v1/classifications.
+# Create an isolated Python environment and install scripts/classification-requirements.txt.
+# [engines.classification]
+# enabled = true
+# command = ["/opt/simple-ai/classification-venv/bin/python", "/opt/simple-ai/scripts/simple_ai_classification_provider.py"]
+# max_loaded_models = 1
+# opportunistic_unload_cooldown_secs = 600
+# batch_size = 64
+# max_length = 512
+# startup_timeout_secs = 600
+# shutdown_timeout_secs = 10
+#
+# [[engines.classification.models]]
+# id = "MoritzLaurer/deberta-v3-large-zeroshot-v2.0"
+# name = "DeBERTa v3 Large Zero-shot v2"
+# size_bytes = 870000000
+# parameter_count = 435000000
+# context_length = 512
+# batch_size = 64
+# max_length = 512
+#
+# [[engines.classification.models]]
+# id = "MoritzLaurer/bge-m3-zeroshot-v2.0"
+# name = "BGE-M3 Multilingual Zero-shot v2"
+# size_bytes = 1140000000
+# parameter_count = 568000000
+# context_length = 8192
+# batch_size = 24
+# max_length = 2048
+
 [capabilities.persistence]
 always_loaded = []
 idle_timeout_secs = 300
@@ -231,6 +263,7 @@ max_loaded_models = 3
 # "qwen2.5:72b" = ["large_chat"]
 # "nomic-embed-text" = ["embeddings"]
 # "mxbai-embed-large" = ["embeddings"]
+# "MoritzLaurer/bge-m3-zeroshot-v2.0" = ["text_classification"]
 
 # Model aliases map canonical (user-facing) names to local engine names.
 # This allows clients to request "gemma-3-4b" while the runner uses

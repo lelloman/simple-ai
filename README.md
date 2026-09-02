@@ -76,6 +76,7 @@ Rust-based API gateway that provides OpenAI-compatible endpoints with authentica
 
 **Key Features:**
 - OpenAI-compatible `/v1/chat/completions` endpoint
+- Batched zero-shot NLI through `/v1/classifications`
 - OIDC JWT authentication via JWKS
 - Language detection (176 languages via FastText)
 - Full audit logging to SQLite
@@ -248,6 +249,29 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 ### Local Model Evaluation
 
 For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-eval.md](docs/qwen36-local-eval.md).
+
+### Zero-shot text classification
+
+Classification is a first-class routed capability. A request supplies stable label IDs and
+natural-language hypotheses; the response returns independent entailment, neutral, and
+contradiction probabilities for every input/label pair.
+
+```bash
+curl "$SIMPLE_AI_URL/v1/classifications" \
+  -H "Authorization: Bearer $SIMPLE_AI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "class:text_classification",
+    "input": ["Torrent: archive; files: users.sql, userpass.txt"],
+    "labels": [
+      {"label": "credentials", "hypothesis": "This torrent contains stolen credentials or user-password records."},
+      {"label": "false_positive", "hypothesis": "This torrent is ordinary media, games, or software where leak-related words are incidental."}
+    ]
+  }'
+```
+
+The runner manages Hugging Face NLI providers as loadable models. See
+`inference-runner/config.example.toml` and `scripts/classification-requirements.txt`.
 
 ---
 

@@ -83,6 +83,10 @@ audio_embeddings = [
 tts = [
     "xtts-v2",
 ]
+text_classification = [
+    "MoritzLaurer/bge-m3-zeroshot-v2.0",
+    "MoritzLaurer/deberta-v3-large-zeroshot-v2.0",
+]
 
 [routing]
 # Smart routing configuration for intelligent request distribution.
@@ -115,6 +119,7 @@ fast = ["gpu-server", "halo"]   # Prefer gpu-server for fast models
 big = ["halo", "gpu-server"]    # Prefer halo for big models
 audio_embeddings = ["gpu-server"] # Prefer RTX/CUDA for audio embedding models
 tts = ["gpu-server"]              # Prefer machines with TTS provider dependencies installed
+text_classification = ["gpu-server"] # Prefer CUDA runners for batched NLI
 ocr = ["gpu-server"]              # Prefer machines with OCR dependencies installed
 
 # Speculative wake targets by model class.
@@ -125,3 +130,4 @@ fast = ["halo", "gpu-server"]   # Wake both; use whichever boots first
 big = ["halo"]                  # Only halos can run big models
 audio_embeddings = ["gpu-server"]
 tts = ["gpu-server"]
+text_classification = ["gpu-server"]

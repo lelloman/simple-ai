@@ -4,6 +4,7 @@
 //! inference backends (Ollama, llama.cpp, etc.) behind a common interface.
 
 mod audio_embeddings;
+mod classification;
 mod llama_cpp;
 mod ollama;
 mod registry;
@@ -11,6 +12,7 @@ mod tts;
 mod vllm;
 
 pub use audio_embeddings::AudioEmbeddingEngine;
+pub use classification::ClassificationEngine;
 pub use llama_cpp::LlamaCppEngine;
 pub use ollama::OllamaEngine;
 pub use registry::{EngineRegistry, ModelLease};
@@ -23,7 +25,7 @@ use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
     AudioEmbeddingOptions, AudioEmbeddingResponse, ChatCompletionRequest, ChatCompletionResponse,
-    ReasoningCapabilities, SpeechRequest,
+    ClassificationRequest, ClassificationResponse, ReasoningCapabilities, SpeechRequest,
 };
 use std::pin::Pin;
 
@@ -125,6 +127,18 @@ pub trait InferenceEngine: Send + Sync {
     async fn embed(&self, _model_id: &str, _input: &[String]) -> Result<Vec<Vec<f32>>> {
         Err(crate::error::Error::NotSupported(format!(
             "Embeddings not supported by {} engine",
+            self.engine_type()
+        )))
+    }
+
+    /// Score text/hypothesis pairs using a zero-shot classification model.
+    async fn classify(
+        &self,
+        _model_id: &str,
+        _request: &ClassificationRequest,
+    ) -> Result<ClassificationResponse> {
+        Err(crate::error::Error::NotSupported(format!(
+            "Text classification not supported by {} engine",
             self.engine_type()
         )))
     }

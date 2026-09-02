@@ -19,7 +19,8 @@ mod state;
 
 use config::Config;
 use engine::{
-    AudioEmbeddingEngine, EngineRegistry, LlamaCppEngine, OllamaEngine, TtsEngine, VllmEngine,
+    AudioEmbeddingEngine, ClassificationEngine, EngineRegistry, LlamaCppEngine, OllamaEngine,
+    TtsEngine, VllmEngine,
 };
 use gateway::{GatewayClient, StatusCollector};
 use ocr::{CliOcrProvider, OcrProvider};
@@ -144,6 +145,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!(
                 "Registered TTS engine with {} models",
                 tts_config.models.len()
+            );
+        }
+    }
+
+    if let Some(ref classification_config) = config.engines.classification {
+        if classification_config.enabled {
+            let engine = Arc::new(ClassificationEngine::new(classification_config.clone()));
+            registry.register(engine).await;
+            tracing::info!(
+                "Registered classification engine with {} models",
+                classification_config.models.len()
             );
         }
     }

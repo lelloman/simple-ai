@@ -191,6 +191,9 @@ pub struct ModelsConfig {
     /// Exact model IDs (case-insensitive).
     #[serde(default)]
     pub tts: Vec<String>,
+    /// Models classified as zero-shot text classifiers.
+    #[serde(default)]
+    pub text_classification: Vec<String>,
 }
 
 impl Default for ModelsConfig {
@@ -202,6 +205,7 @@ impl Default for ModelsConfig {
             embed_large: vec![],
             audio_embeddings: vec![],
             tts: vec![],
+            text_classification: vec![],
         }
     }
 }
@@ -247,6 +251,12 @@ impl ModelsConfig {
         for id in &self.tts {
             if lower == id.to_lowercase() {
                 return Some("tts");
+            }
+        }
+
+        for id in &self.text_classification {
+            if lower == id.to_lowercase() {
+                return Some("text_classification");
             }
         }
 

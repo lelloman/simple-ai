@@ -23,11 +23,13 @@ pub enum Capability {
     AudioEmbeddings,
     /// Text-to-speech audio generation
     Tts,
+    /// Zero-shot text classification using NLI models
+    TextClassification,
 }
 
 impl Capability {
     /// All capability variants for iteration.
-    pub const ALL: [Capability; 7] = [
+    pub const ALL: [Capability; 8] = [
         Capability::FastChat,
         Capability::LargeChat,
         Capability::Embeddings,
@@ -35,6 +37,7 @@ impl Capability {
         Capability::Ocr,
         Capability::AudioEmbeddings,
         Capability::Tts,
+        Capability::TextClassification,
     ];
 }
 
@@ -48,6 +51,7 @@ impl std::fmt::Display for Capability {
             Capability::Ocr => write!(f, "ocr"),
             Capability::AudioEmbeddings => write!(f, "audio_embeddings"),
             Capability::Tts => write!(f, "tts"),
+            Capability::TextClassification => write!(f, "text_classification"),
         }
     }
 }
