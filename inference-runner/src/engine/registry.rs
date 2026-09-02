@@ -1,8 +1,9 @@
 //! Engine registry for managing multiple inference engines.
 
 use std::collections::HashMap;
+use std::sync::RwLock as StdRwLock;
 use std::sync::Arc;
-use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
+use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
 use super::InferenceEngine;
 use crate::config::ModelRouteConfig;
@@ -16,7 +17,57 @@ pub struct EngineRegistry {
     routes: RwLock<HashMap<String, ModelRouteConfig>>,
     route_aliases: RwLock<HashMap<String, String>>,
     engine_resources: RwLock<HashMap<String, String>>,
-    resource_locks: RwLock<HashMap<String, Arc<Mutex<()>>>>,
+    resource_gates: RwLock<HashMap<String, Arc<ResourceGate>>>,
+}
+
+struct ResourceGate {
+    lock: Arc<RwLock<()>>,
+    owner: StdRwLock<Option<String>>,
+}
+
+enum ResourceAccess {
+    Shared(OwnedRwLockReadGuard<()>),
+    Exclusive(OwnedRwLockWriteGuard<()>),
+}
+
+impl ResourceGate {
+    fn new() -> Self {
+        Self {
+            lock: Arc::new(RwLock::new(())),
+            owner: StdRwLock::new(None),
+        }
+    }
+
+    fn is_owner(&self, owner_key: &str) -> bool {
+        self.owner
+            .read()
+            .expect("resource owner lock poisoned")
+            .as_deref()
+            == Some(owner_key)
+    }
+
+    fn set_owner(&self, owner_key: String) {
+        *self.owner.write().expect("resource owner lock poisoned") = Some(owner_key);
+    }
+
+    async fn acquire(&self, owner_key: &str) -> ResourceAccess {
+        loop {
+            if self.is_owner(owner_key) {
+                let guard = self.lock.clone().read_owned().await;
+                if self.is_owner(owner_key) {
+                    return ResourceAccess::Shared(guard);
+                }
+                drop(guard);
+                continue;
+            }
+
+            let guard = self.lock.clone().write_owned().await;
+            if self.is_owner(owner_key) {
+                return ResourceAccess::Shared(OwnedRwLockWriteGuard::downgrade(guard));
+            }
+            return ResourceAccess::Exclusive(guard);
+        }
+    }
 }
 
 /// Loaded model plus an optional exclusive resource guard. Keep this value
@@ -24,7 +75,7 @@ pub struct EngineRegistry {
 pub struct ModelLease {
     pub engine: Arc<dyn InferenceEngine>,
     pub engine_model: String,
-    _resource_guard: Option<OwnedMutexGuard<()>>,
+    _resource_guard: Option<OwnedRwLockReadGuard<()>>,
 }
 
 impl EngineRegistry {
@@ -34,7 +85,7 @@ impl EngineRegistry {
             routes: RwLock::new(HashMap::new()),
             route_aliases: RwLock::new(HashMap::new()),
             engine_resources: RwLock::new(HashMap::new()),
-            resource_locks: RwLock::new(HashMap::new()),
+            resource_gates: RwLock::new(HashMap::new()),
         }
     }
 
@@ -126,12 +177,12 @@ impl EngineRegistry {
     }
 
     pub async fn set_engine_resources(&self, resources: HashMap<String, String>) {
-        let locks = resources
+        let gates = resources
             .values()
-            .map(|group| (group.clone(), Arc::new(Mutex::new(()))))
+            .map(|group| (group.clone(), Arc::new(ResourceGate::new())))
             .collect();
         *self.engine_resources.write().await = resources;
-        *self.resource_locks.write().await = locks;
+        *self.resource_gates.write().await = gates;
     }
 
     pub async fn load_model(&self, model_id: &str) -> crate::error::Result<()> {
@@ -150,32 +201,41 @@ impl EngineRegistry {
             .await
             .get(&target_type)
             .cloned();
-        let lock = if let Some(group) = &group {
-            self.resource_locks.read().await.get(group).cloned()
+        let gate = if let Some(group) = &group {
+            self.resource_gates.read().await.get(group).cloned()
         } else {
             None
         };
-        let resource_guard = match lock {
-            Some(lock) => Some(lock.lock_owned().await),
-            None => None,
-        };
-
-        if let Some(group) = group {
-            let resources = self.engine_resources.read().await.clone();
-            for engine in self.all().await {
-                if engine.engine_type() == target_type
-                    || resources.get(engine.engine_type()) != Some(&group)
-                {
-                    continue;
-                }
-                if let Ok(health) = engine.health_check().await {
-                    for loaded in health.models_loaded {
-                        engine.unload_model(&loaded).await?;
+        let owner_key = format!("{}\0{}", target_type, engine_model);
+        let resource_guard = match gate {
+            Some(gate) => match gate.acquire(&owner_key).await {
+                ResourceAccess::Shared(guard) => Some(guard),
+                ResourceAccess::Exclusive(write_guard) => {
+                    if let Some(group) = group {
+                        let resources = self.engine_resources.read().await.clone();
+                        for engine in self.all().await {
+                            if engine.engine_type() == target_type
+                                || resources.get(engine.engine_type()) != Some(&group)
+                            {
+                                continue;
+                            }
+                            if let Ok(health) = engine.health_check().await {
+                                for loaded in health.models_loaded {
+                                    engine.unload_model(&loaded).await?;
+                                }
+                            }
+                        }
                     }
+                    target.load_model(&engine_model).await?;
+                    gate.set_owner(owner_key);
+                    Some(OwnedRwLockWriteGuard::downgrade(write_guard))
                 }
+            },
+            None => {
+                target.load_model(&engine_model).await?;
+                None
             }
-        }
-        target.load_model(&engine_model).await?;
+        };
         Ok(ModelLease {
             engine: target,
             engine_model,
@@ -213,6 +273,7 @@ impl Default for EngineRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     fn route(engine_model: &str, aliases: &[&str]) -> ModelRouteConfig {
         ModelRouteConfig {
@@ -250,5 +311,47 @@ mod tests {
             .unwrap_err();
 
         assert!(error.contains("duplicate model route alias"));
+    }
+
+    #[tokio::test]
+    async fn resource_gate_shares_same_model_and_blocks_switches() {
+        let gate = Arc::new(ResourceGate::new());
+        let first = match gate.acquire("llama_cpp\0gemma").await {
+            ResourceAccess::Exclusive(guard) => {
+                gate.set_owner("llama_cpp\0gemma".to_string());
+                OwnedRwLockWriteGuard::downgrade(guard)
+            }
+            ResourceAccess::Shared(_) => panic!("first owner must acquire exclusively"),
+        };
+
+        let second = match tokio::time::timeout(
+            Duration::from_millis(50),
+            gate.acquire("llama_cpp\0gemma"),
+        )
+        .await
+        .expect("same-model lease should not block")
+        {
+            ResourceAccess::Shared(guard) => guard,
+            ResourceAccess::Exclusive(_) => panic!("same owner must share the resource"),
+        };
+
+        let switching_gate = gate.clone();
+        let mut switch = tokio::spawn(async move { switching_gate.acquire("vllm\0qwen").await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(25), &mut switch)
+                .await
+                .is_err(),
+            "different model must wait for active shared leases"
+        );
+
+        drop(first);
+        drop(second);
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_millis(100), switch)
+                .await
+                .expect("switch should proceed after leases drain")
+                .expect("switch task should succeed"),
+            ResourceAccess::Exclusive(_)
+        ));
     }
 }
