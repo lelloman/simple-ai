@@ -291,6 +291,9 @@ pub struct LlamaCppEngineConfig {
 /// is retained as an escape hatch for llama.cpp options not represented yet.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct LlamaCppModelConfig {
+    /// Model-specific context limit, overriding the engine default and GGUF metadata.
+    #[serde(default)]
+    pub context_size: Option<u32>,
     /// Model-specific reasoning capabilities and defaults.
     #[serde(default)]
     pub reasoning: Option<LlamaCppReasoningConfig>,
@@ -847,6 +850,7 @@ mod tests {
             server_binary = "llama-server"
 
             [models."Qwen3.8-27B-UD-Q4_K_XL"]
+            context_size = 8192
             reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "xhigh", supports_thinking_budget = true, default_thinking_budget_tokens = 2048 }
             fit = false
             parallel = 1
@@ -880,6 +884,7 @@ mod tests {
         assert!(reasoning.supports_thinking_budget);
         assert_eq!(reasoning.default_thinking_budget_tokens, Some(2048));
         assert_eq!(profile.fit, Some(false));
+        assert_eq!(profile.context_size, Some(8192));
         assert_eq!(profile.parallel, Some(1));
         assert_eq!(profile.default_max_tokens, Some(4096));
         assert_eq!(profile.mtp.as_ref().unwrap().draft_tokens, 3);

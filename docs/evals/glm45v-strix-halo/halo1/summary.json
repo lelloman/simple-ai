@@ -1,0 +1,118 @@
+{
+  "text_median_decode_tps": 20.089637634302047,
+  "text_median_ttft_s": 1.020090554000035,
+  "text_runs": [
+    {
+      "name": "text-1",
+      "elapsed_s": 13.154767824000032,
+      "ttft_s": 0.5411428890000707,
+      "decode_tps": 20.216234533217534,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 32,
+        "total_tokens": 288,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 32,
+        "prompt_ms": 502.948,
+        "prompt_per_token_ms": 15.717125,
+        "prompt_per_second": 63.62486777957165,
+        "predicted_n": 256,
+        "predicted_ms": 12614.419,
+        "predicted_per_token_ms": 49.27507421875,
+        "predicted_per_second": 20.294236302123785
+      },
+      "finish_reason": "length",
+      "answer": "To solve this problem, we need to merge overlapping half-open integer intervals. The intervals are represented as tuples where the first element is the start (inclusive) and the second element is the end (exclusive). The goal is to combine any overlapping or adjacent intervals into a single interval.\n\n### Approach\n1. **Sort Intervals**: First, we sort the intervals based on their start values. This ensures that we process intervals in order, making it easier to detect overlaps.\n2. **Merge Intervals**: We iterate through the sorted intervals and merge them if they overlap or are adjacent. An interval `[a, b)` overlaps or is adjacent to another interval `[c, d)` if `c <= b`. In such cases, we merge them into `[a, max(b, d)]`.\n3. **Handle Empty Intervals**: Empty intervals (where the start is greater than or equal to the end) are ignored during processing since they do not contribute to the merged result.\n\n### Solution Code\n```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n    \n    # Sort intervals by their start value\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = []\n    \n    for interval in sorted_intervals:\n       ",
+      "reasoning": ""
+    },
+    {
+      "name": "text-2",
+      "elapsed_s": 13.820740178999927,
+      "ttft_s": 1.1137961590000032,
+      "decode_tps": 20.067767639382545,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 36,
+        "total_tokens": 292,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 36,
+        "prompt_ms": 881.183,
+        "prompt_per_token_ms": 24.477305555555557,
+        "prompt_per_second": 40.85416990568361,
+        "predicted_n": 256,
+        "predicted_ms": 12707.721,
+        "predicted_per_token_ms": 49.63953515625,
+        "predicted_per_second": 20.14523296506116
+      },
+      "finish_reason": "length",
+      "answer": "A **hash table** is a data structure that stores key-value pairs, enabling efficient insertion, deletion, and lookup operations. It uses a **hash function** to map keys to indices in an underlying array. Below is a detailed explanation of its components and complexities, followed by an example.\n\n---\n\n### **Core Components**\n1. **Hash Function**:  \n   Converts a key (e.g., string, number) into an integer index. A good hash function minimizes collisions (different keys mapping to the same index) and distributes keys uniformly across the array.  \n   *Example*: For a string key, a simple hash function might sum the ASCII values of characters and take modulo with the array size.\n\n2. **Array (Buckets)**:  \n   The underlying array where values are stored. Each index (bucket) holds one or more key-value pairs.\n\n---\n\n### **Collisions**\nA **collision** occurs when two distinct keys hash to the same index. Hash tables handle collisions using two primary methods:\n- **Chaining**: Each bucket contains a linked list (or other structure) of key-value pairs.  \n  *Example*: If keys \"John\" and \"Jane\" hash to index 3, both are stored in a linked list at index 3.\n",
+      "reasoning": ""
+    },
+    {
+      "name": "text-3",
+      "elapsed_s": 13.713201531999971,
+      "ttft_s": 1.020090554000035,
+      "decode_tps": 20.089637634302047,
+      "usage": {
+        "completion_tokens": 256,
+        "prompt_tokens": 34,
+        "total_tokens": 290,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 34,
+        "prompt_ms": 801.525,
+        "prompt_per_token_ms": 23.574264705882353,
+        "prompt_per_second": 42.41913851720158,
+        "predicted_n": 256,
+        "predicted_ms": 12694.151,
+        "predicted_per_token_ms": 49.58652734375,
+        "predicted_per_second": 20.166768143848298
+      },
+      "finish_reason": "length",
+      "answer": "### Step-by-Step Guide: Find Process Listening on a TCP Port and Check Its Logs on Linux\n\n---\n\n#### **Step 1: Identify the TCP Port in Question**\n- **Goal**: Determine which port you want to investigate (e.g., `8080`, `3306`).\n- **How**:  \n  - If unsure, list all open ports:  \n    ```bash\n    sudo netstat -tuln | grep LISTEN\n    ```\n  - Or use `ss`:  \n    ```bash\n    sudo ss -tuln | grep LISTEN\n    ```\n\n---\n\n#### **Step 2: Find the Process Listening on the Port**\nUse one of these methods to identify the process:\n\n##### **Method A: `lsof` (Recommended)**\n```bash\nsudo lsof -i :<PORT>\n```\n- **Example**: For port `8080`:  \n  ```bash\n  sudo lsof -i :8080\n  ```\n- **Output**:  \n  ```\n  COMMAND   PID   USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\n  java    12345 user    42u  IPv6 0x1234      0t0  TCP *:",
+      "reasoning": ""
+    }
+  ],
+  "vision": {
+    "name": "vision",
+    "elapsed_s": 3.571204706000003,
+    "ttft_s": 3.119421615999954,
+    "decode_tps": 22.134515924442667,
+    "usage": {
+      "completion_tokens": 11,
+      "prompt_tokens": 357,
+      "total_tokens": 368,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 357,
+      "prompt_ms": 2828.957,
+      "prompt_per_token_ms": 7.924249299719888,
+      "prompt_per_second": 126.19491918753097,
+      "predicted_n": 11,
+      "predicted_ms": 507.265,
+      "predicted_per_token_ms": 46.115,
+      "predicted_per_second": 21.684918139434025
+    },
+    "finish_reason": "stop",
+    "answer": "red square, blue circle, green triangle",
+    "reasoning": ""
+  }
+}

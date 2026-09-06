@@ -21,7 +21,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_ai_common::{
-    format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, ChatMessage,
+    format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, ChatContent, ChatMessage,
     InferenceMetrics, ReasoningCapabilities, ReasoningEffort, ToolCall, ToolFunction,
 };
 use tokio::net::TcpListener;
@@ -315,11 +315,11 @@ impl LlamaCppEngine {
 
     /// Determine the context size to use for a model server.
     ///
-    /// A configured value is treated as an explicit operator override. When it
-    /// is absent, use the maximum context length declared in GGUF metadata.
-    fn effective_context_size(&self, model_path: &Path) -> Option<u32> {
-        self.config
-            .context_size
+    /// Prefer the model profile, then the engine-wide override, then GGUF metadata.
+    fn effective_context_size(&self, model_id: &str, model_path: &Path) -> Option<u32> {
+        self.model_config(model_id)
+            .and_then(|profile| profile.context_size)
+            .or(self.config.context_size)
             .or_else(|| Self::read_gguf_context_length(model_path))
     }
 
@@ -345,6 +345,27 @@ impl LlamaCppEngine {
                 .find(|(configured_id, _)| configured_id.eq_ignore_ascii_case(model_id))
                 .map(|(_, args)| args)
         })
+    }
+
+    fn supports_images(&self, model_id: &str) -> bool {
+        let args: Vec<&str> = self
+            .config
+            .extra_args
+            .iter()
+            .chain(
+                self.model_config(model_id)
+                    .into_iter()
+                    .flat_map(|config| &config.extra_args),
+            )
+            .chain(self.legacy_model_args(model_id).into_iter().flatten())
+            .map(String::as_str)
+            .collect();
+        args.windows(2)
+            .any(|pair| pair[0] == "--mmproj" && !pair[1].is_empty() && !pair[1].starts_with('-'))
+            || args.iter().any(|arg| {
+                arg.strip_prefix("--mmproj=")
+                    .is_some_and(|path| !path.is_empty())
+            })
     }
 
     fn request_max_tokens(&self, model_id: &str, request: &ChatCompletionRequest) -> Option<u32> {
@@ -804,7 +825,7 @@ impl LlamaCppEngine {
             cmd.arg("-ngl").arg(gpu_layers.to_string());
         }
 
-        if let Some(ctx_size) = self.effective_context_size(&model_path) {
+        if let Some(ctx_size) = self.effective_context_size(model_id, &model_path) {
             cmd.arg("-c").arg(ctx_size.to_string());
         }
 
@@ -1172,7 +1193,7 @@ struct LlamaStreamOptions {
 struct LlamaMessage {
     role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
+    content: Option<ChatContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<LlamaToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1327,7 +1348,7 @@ impl InferenceEngine for LlamaCppEngine {
 
             let size_bytes = std::fs::metadata(path).map(|m| m.len()).ok();
             let quantization = Self::extract_quantization(filename);
-            let context_length = self.effective_context_size(path);
+            let context_length = self.effective_context_size(model_id, path);
 
             models.push(ModelInfo {
                 id: model_id.clone(),
@@ -1378,7 +1399,7 @@ impl InferenceEngine for LlamaCppEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionResponse> {
-        if request.has_images() {
+        if request.has_images() && !self.supports_images(model_id) {
             return Err(Error::NotSupported(
                 "image content is not supported by the configured llama.cpp engine".to_string(),
             ));
@@ -1409,10 +1430,7 @@ impl InferenceEngine for LlamaCppEngine {
             .iter()
             .map(|m| LlamaMessage {
                 role: m.role.clone(),
-                content: m
-                    .content
-                    .as_ref()
-                    .and_then(|content| content.text_only().ok()),
+                content: m.content.clone(),
                 tool_calls: m.tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
@@ -1449,7 +1467,7 @@ impl InferenceEngine for LlamaCppEngine {
             .model_path(model_id)
             .await
             .as_deref()
-            .and_then(|path| self.effective_context_size(path));
+            .and_then(|path| self.effective_context_size(model_id, path));
 
         tracing::debug!("Sending chat request to llama-server: {}", url);
 
@@ -1573,7 +1591,7 @@ impl InferenceEngine for LlamaCppEngine {
         model_id: &str,
         request: &ChatCompletionRequest,
     ) -> Result<ChatCompletionStream> {
-        if request.has_images() {
+        if request.has_images() && !self.supports_images(model_id) {
             return Err(Error::NotSupported(
                 "image content is not supported by the configured llama.cpp engine".to_string(),
             ));
@@ -1601,10 +1619,7 @@ impl InferenceEngine for LlamaCppEngine {
             .iter()
             .map(|m| LlamaMessage {
                 role: m.role.clone(),
-                content: m
-                    .content
-                    .as_ref()
-                    .and_then(|content| content.text_only().ok()),
+                content: m.content.clone(),
                 tool_calls: m.tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
@@ -1643,7 +1658,7 @@ impl InferenceEngine for LlamaCppEngine {
             .model_path(model_id)
             .await
             .as_deref()
-            .and_then(|path| self.effective_context_size(path));
+            .and_then(|path| self.effective_context_size(model_id, path));
 
         tracing::debug!("Sending streaming chat request to llama-server: {}", url);
 
@@ -1873,6 +1888,52 @@ mod tests {
             model_extra_args: HashMap::new(),
             batch_size: 1,
         }
+    }
+
+    #[test]
+    fn test_model_context_overrides_engine_context() {
+        let mut config = test_config();
+        config.models.insert(
+            "glm-4.5v".into(),
+            LlamaCppModelConfig {
+                context_size: Some(8192),
+                ..Default::default()
+            },
+        );
+        let engine = LlamaCppEngine::new(config);
+        let path = Path::new("/unused.gguf");
+        assert_eq!(engine.effective_context_size("GLM-4.5V", path), Some(8192));
+        assert_eq!(engine.effective_context_size("other", path), Some(4096));
+    }
+
+    #[test]
+    fn test_vision_requires_projector_for_selected_model() {
+        let mut config = test_config();
+        config.models.insert(
+            "vision".to_string(),
+            LlamaCppModelConfig {
+                extra_args: vec!["--mmproj".into(), "/tmp/projector.gguf".into()],
+                ..Default::default()
+            },
+        );
+        let engine = LlamaCppEngine::new(config);
+        assert!(engine.supports_images("VISION"));
+        assert!(!engine.supports_images("text-only"));
+    }
+
+    #[test]
+    fn test_llama_message_preserves_image_content() {
+        let content = serde_json::json!([
+            {"type": "text", "text": "Describe this image"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
+        ]);
+        let message = LlamaMessage {
+            role: "user".into(),
+            content: Some(serde_json::from_value(content.clone()).unwrap()),
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        assert_eq!(serde_json::to_value(message).unwrap()["content"], content);
     }
 
     #[test]
@@ -2113,6 +2174,7 @@ mod tests {
     #[test]
     fn test_model_profile_builds_llama_server_arguments() {
         let profile = LlamaCppModelConfig {
+            context_size: None,
             reasoning: Some(LlamaCppReasoningConfig::Controls(
                 LlamaCppReasoningControls {
                     enabled: true,

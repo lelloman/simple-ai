@@ -110,6 +110,7 @@ base_url = "http://localhost:11434"
 # Typed settings for one local model. Table keys match discovered GGUF model IDs
 # case-insensitively. Request max_tokens always overrides default_max_tokens.
 #[engines.llama_cpp.models."Qwen3.8-27B-UD-Q4_K_XL"]
+#context_size = 8192                      # Overrides engine default and GGUF metadata for this model
 #reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "xhigh", supports_thinking_budget = true }
 #fit = false
 #parallel = 1

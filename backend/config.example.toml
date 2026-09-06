@@ -62,6 +62,7 @@ big = [
     # runner aliases in inference-runner/config.toml if GGUF names differ.
     # "qwen3.8-27b",
     # "qwen3.6-27b",
+    # "glm-4.5v", # Vision-capable GLM-4.5V Q4_K_M on the Halo runners
 ]
 fast = [
     "llama3:8b",
