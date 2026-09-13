@@ -1,0 +1,9 @@
+{
+  "draft": 7,
+  "draft_quant": "q4_0",
+  "pmin": 0.75,
+  "kv": "q4_0",
+  "threads": 16,
+  "batch": 2048,
+  "context": 262144
+}

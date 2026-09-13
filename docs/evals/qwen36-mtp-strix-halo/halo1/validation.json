@@ -1,0 +1,78 @@
+[
+  {
+    "name": "cached-0",
+    "passed": true,
+    "answer": "{\"sum\": 42, \"product\": 56, \"sorted\": [1, 1, 4, 9]}"
+  },
+  {
+    "name": "cached-1",
+    "passed": true,
+    "answer": "BLUE HERON 913."
+  },
+  {
+    "name": "cached-2",
+    "passed": true,
+    "answer": "{\"sum\": 42, \"product\": 56, \"sorted\": [1, 1, 4, 9]}"
+  },
+  {
+    "name": "cached-3",
+    "passed": true,
+    "answer": "{\"sum\": 42, \"product\": 56, \"sorted\": [1, 1, 4, 9]}"
+  },
+  {
+    "name": "long-retrieval",
+    "passed": true,
+    "answer": "HALO-MTP-7319",
+    "usage": {
+      "completion_tokens": 10,
+      "prompt_tokens": 17149,
+      "total_tokens": 17159,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 17149,
+      "prompt_ms": 13053.073,
+      "prompt_per_token_ms": 0.7611565105837075,
+      "prompt_per_second": 1313.7902469403182,
+      "predicted_n": 10,
+      "predicted_ms": 176.685,
+      "predicted_per_token_ms": 19.631666666666668,
+      "predicted_per_second": 50.93811019611172,
+      "draft_n": 12,
+      "draft_n_accepted": 11
+    }
+  },
+  {
+    "name": "after-long",
+    "passed": true,
+    "answer": "{\"sum\": 42, \"product\": 56, \"sorted\": [1, 1, 4, 9]}"
+  },
+  {
+    "name": "tool-call",
+    "passed": true,
+    "calls": {
+      "0": {
+        "name": "lookup_weather",
+        "arguments": "{\"city\":\"Rome\"}"
+      }
+    }
+  },
+  {
+    "name": "sampled-0",
+    "passed": true,
+    "answer": "{\"code\": \"MTP-7319\", \"total\": 42}"
+  },
+  {
+    "name": "sampled-1",
+    "passed": true,
+    "answer": "{\"code\": \"MTP-7320\", \"total\": 43}"
+  },
+  {
+    "name": "sampled-2",
+    "passed": true,
+    "answer": "{\"code\": \"MTP-7321\", \"total\": 44}"
+  }
+]

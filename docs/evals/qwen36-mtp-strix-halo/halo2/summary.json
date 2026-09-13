@@ -1,0 +1,45 @@
+{
+  "label": "runner-after",
+  "runs": [
+    {
+      "name": "code",
+      "decode_tps": 85.64353057286857,
+      "ttft_s": 0.19648271100049897,
+      "usage": {
+        "completion_tokens": 512,
+        "prompt_tokens": 43,
+        "total_tokens": 555,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "name": "prose",
+      "decode_tps": 65.55498491601793,
+      "ttft_s": 0.2105147210004361,
+      "usage": {
+        "completion_tokens": 512,
+        "prompt_tokens": 45,
+        "total_tokens": 557,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    },
+    {
+      "name": "json",
+      "decode_tps": 116.82110154910937,
+      "ttft_s": 0.22023099200123397,
+      "usage": {
+        "completion_tokens": 512,
+        "prompt_tokens": 49,
+        "total_tokens": 561,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  ],
+  "median_tps": 85.64353057286857
+}
