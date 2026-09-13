@@ -297,6 +297,7 @@ mod tests {
     fn create_test_request() -> simple_ai_common::ChatCompletionRequest {
         simple_ai_common::ChatCompletionRequest {
             messages: vec![ChatMessage {
+                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some("Hello".into()),
                 tool_calls: None,
@@ -438,6 +439,7 @@ mod tests {
         Json(ChatCompletionResponse::new(
             "model-a".to_string(),
             ChatMessage {
+                reasoning_content: None,
                 role: "assistant".to_string(),
                 content: Some("ok".into()),
                 tool_calls: None,

@@ -1529,14 +1529,12 @@ impl InferenceEngine for LlamaCppEngine {
                 .collect()
         });
 
-        // For thinking models, use reasoning_content as fallback if content is empty
-        let response_content = match (choice.message.content, choice.message.reasoning_content) {
-            (Some(content), _) if !content.is_empty() => Some(content),
-            (_, Some(reasoning)) if !reasoning.is_empty() => Some(reasoning),
-            _ => None,
-        };
+        // An exhausted thinking budget can leave no final answer. Do not
+        // misrepresent reasoning as completed output for structured consumers.
+        let response_content = choice.message.content;
 
         let message = ChatMessage {
+            reasoning_content: choice.message.reasoning_content,
             role: choice.message.role,
             content: response_content.map(Into::into),
             tool_calls,

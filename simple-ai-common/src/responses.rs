@@ -173,6 +173,7 @@ impl ResponseInput {
     pub fn into_chat_messages(self) -> Vec<ChatMessage> {
         match self {
             Self::Text(text) => vec![ChatMessage {
+                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some(text.into()),
                 tool_calls: None,
@@ -194,6 +195,7 @@ impl ResponseInputItem {
                 content,
                 tool_call_id,
             }) => ChatMessage {
+                reasoning_content: None,
                 role,
                 content: Some(content.into_chat_content()),
                 tool_calls: None,
@@ -201,6 +203,7 @@ impl ResponseInputItem {
             },
             Self::Typed(ResponseTypedInputItem::FunctionCallOutput { call_id, output }) => {
                 ChatMessage {
+                    reasoning_content: None,
                     role: "tool".to_string(),
                     content: Some(output.into()),
                     tool_calls: None,
@@ -208,6 +211,7 @@ impl ResponseInputItem {
                 }
             }
             Self::Message(message) => ChatMessage {
+                reasoning_content: None,
                 role: message.role,
                 content: Some(message.content.into_chat_content()),
                 tool_calls: None,
@@ -325,6 +329,7 @@ mod tests {
             choices: vec![crate::Choice {
                 index: 0,
                 message: ChatMessage {
+                    reasoning_content: None,
                     role: "assistant".to_string(),
                     content: Some("Hi".into()),
                     tool_calls: Some(vec![ToolCall {

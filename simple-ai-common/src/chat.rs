@@ -209,6 +209,9 @@ impl ChatContent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
+    /// Reasoning is never a substitute for the final answer in content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
     pub role: String,
     #[serde(default)]
     pub content: Option<ChatContent>,
@@ -308,7 +311,7 @@ impl From<ChatMessage> for ChatCompletionDelta {
             content: message
                 .content
                 .and_then(|content| content.as_text().map(str::to_owned)),
-            reasoning_content: None,
+            reasoning_content: message.reasoning_content,
             tool_calls: message.tool_calls,
             tool_call_id: message.tool_call_id,
         }
@@ -441,6 +444,7 @@ mod tests {
     fn test_chat_completion_request_with_all_fields() {
         let req = ChatCompletionRequest {
             messages: vec![ChatMessage {
+                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some("Hello".into()),
                 tool_calls: None,
@@ -466,6 +470,7 @@ mod tests {
     #[test]
     fn test_chat_message_default_content() {
         let msg = ChatMessage {
+            reasoning_content: None,
             role: "assistant".to_string(),
             content: None,
             tool_calls: None,
@@ -475,8 +480,27 @@ mod tests {
     }
 
     #[test]
+    fn reasoning_only_response_does_not_become_final_content() {
+        let message: ChatMessage = serde_json::from_value(serde_json::json!({
+            "role": "assistant", "content": null, "reasoning_content": "intermediate reasoning"
+        }))
+        .unwrap();
+        assert!(message.content.is_none());
+        let encoded = serde_json::to_value(&message).unwrap();
+        assert_eq!(encoded["reasoning_content"], "intermediate reasoning");
+        assert!(encoded["content"].is_null());
+        let delta = ChatCompletionDelta::from(message);
+        assert!(delta.content.is_none());
+        assert_eq!(
+            delta.reasoning_content.as_deref(),
+            Some("intermediate reasoning")
+        );
+    }
+
+    #[test]
     fn test_chat_completion_response_new() {
         let message = ChatMessage {
+            reasoning_content: None,
             role: "assistant".to_string(),
             content: Some("Hello!".into()),
             tool_calls: None,
@@ -499,6 +523,7 @@ mod tests {
     #[test]
     fn test_chat_completion_response_with_usage() {
         let message = ChatMessage {
+            reasoning_content: None,
             role: "assistant".to_string(),
             content: Some("Hello!".into()),
             tool_calls: None,
@@ -531,6 +556,7 @@ mod tests {
     #[test]
     fn test_internal_metrics_can_be_stripped() {
         let message = ChatMessage {
+            reasoning_content: None,
             role: "assistant".to_string(),
             content: Some("Hello!".into()),
             tool_calls: None,
@@ -569,6 +595,7 @@ mod tests {
     #[test]
     fn test_finish_reason_none_when_not_done() {
         let message = ChatMessage {
+            reasoning_content: None,
             role: "assistant".to_string(),
             content: Some("Streaming...".into()),
             tool_calls: None,
@@ -635,6 +662,7 @@ mod tests {
     fn test_request_serde_roundtrip() {
         let original = ChatCompletionRequest {
             messages: vec![ChatMessage {
+                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some("What is 2+2?".into()),
                 tool_calls: None,
@@ -665,6 +693,7 @@ mod tests {
     #[test]
     fn test_chat_message_with_tool_call_id() {
         let msg = ChatMessage {
+            reasoning_content: None,
             role: "tool".to_string(),
             content: Some("Result: 42".into()),
             tool_calls: None,
@@ -677,6 +706,7 @@ mod tests {
     #[test]
     fn test_chat_message_with_tool_calls() {
         let msg = ChatMessage {
+            reasoning_content: None,
             role: "assistant".to_string(),
             content: None,
             tool_calls: Some(vec![ToolCall {
