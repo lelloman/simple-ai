@@ -1535,7 +1535,6 @@ mod tests {
         Json(ChatCompletionResponse::new(
             "model-a".to_string(),
             ChatMessage {
-                reasoning_content: None,
                 role: "assistant".to_string(),
                 content: Some("ok".into()),
                 tool_calls: None,
@@ -2200,7 +2199,6 @@ mod tests {
         let reserved = router.reserve_plan(plan).await.unwrap();
         let request = ChatCompletionRequest {
             messages: vec![ChatMessage {
-                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some("hello".into()),
                 tool_calls: None,

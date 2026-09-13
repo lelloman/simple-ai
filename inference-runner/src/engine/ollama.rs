@@ -488,7 +488,6 @@ impl InferenceEngine for OllamaEngine {
         });
 
         let message = ChatMessage {
-            reasoning_content: None,
             role: ollama_response.message.role,
             content: ollama_response.message.content.map(Into::into),
             tool_calls,
@@ -651,7 +650,6 @@ impl InferenceEngine for OllamaEngine {
 
                     if has_payload || !state.sent_role {
                         let delta = ChatMessage {
-                            reasoning_content: None,
                             role: if state.sent_role {
                                 String::new()
                             } else {
@@ -697,7 +695,6 @@ impl InferenceEngine for OllamaEngine {
                             state.created,
                             state.model.clone(),
                             ChatMessage {
-                                reasoning_content: None,
                                 role: String::new(),
                                 content: None,
                                 tool_calls: None,

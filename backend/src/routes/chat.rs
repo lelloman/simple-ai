@@ -645,7 +645,6 @@ mod tests {
     fn create_test_request() -> ChatCompletionRequest {
         ChatCompletionRequest {
             messages: vec![ChatMessage {
-                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some("Hello".into()),
                 tool_calls: None,
@@ -690,7 +689,6 @@ mod tests {
     #[tokio::test]
     async fn test_chat_message_default_content() {
         let msg = ChatMessage {
-            reasoning_content: None,
             role: "assistant".to_string(),
             content: None,
             tool_calls: None,
@@ -704,7 +702,6 @@ mod tests {
     async fn test_chat_request_with_model_override() {
         let req = ChatCompletionRequest {
             messages: vec![ChatMessage {
-                reasoning_content: None,
                 role: "user".to_string(),
                 content: Some("Hi".into()),
                 tool_calls: None,

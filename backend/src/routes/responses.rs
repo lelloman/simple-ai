@@ -139,12 +139,15 @@ fn map_chat_chunk_event(
         return Ok(());
     };
 
-    // Only final-answer content belongs in output_text, never reasoning tokens.
+    // llama.cpp reasoning models may emit their entire visible completion as
+    // reasoning_content. Preserve the same fallback used by non-streaming chat
+    // so Responses API clients do not receive an apparently empty stream.
     if let Some(text) = choice
         .delta
         .content
         .as_ref()
         .filter(|text| !text.is_empty())
+        .or(choice.delta.reasoning_content.as_ref())
     {
         if !text.is_empty() {
             if !state.emitted_message {
@@ -966,7 +969,7 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
     }
 
     #[test]
-    fn test_reasoning_chunk_is_not_final_output_text() {
+    fn test_map_reasoning_chunk_to_visible_responses_delta() {
         let mut state = ResponsesStreamState {
             response: None,
             _reservation: None,
@@ -987,8 +990,8 @@ data: {"resolved_model":"model-a","engine_type":"llama_cpp","context_window":819
         let event = r#"data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":123,"model":"qwen3.8-27b","choices":[{"index":0,"delta":{"reasoning_content":"Thinking"},"finish_reason":null}]}"#;
         map_chat_chunk_event(&mut state, event).unwrap();
 
-        assert!(state.collected_text.is_empty());
-        assert!(!state.pending.iter().any(|event| {
+        assert_eq!(state.collected_text, "Thinking");
+        assert!(state.pending.iter().any(|event| {
             std::str::from_utf8(event).is_ok_and(|text| text.contains("\"delta\":\"Thinking\""))
         }));
     }
