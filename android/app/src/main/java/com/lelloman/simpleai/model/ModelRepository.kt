@@ -1,6 +1,8 @@
 package com.lelloman.simpleai.model
 
 import android.content.Context
+import androidx.work.WorkManager
+import com.lelloman.simpleai.download.ModelDownloadWorker
 import com.lelloman.simpleai.capability.CapabilityManager
 import com.lelloman.simpleai.download.ModelConfig
 import com.lelloman.simpleai.download.ModelDownloadManager
@@ -53,8 +55,9 @@ class ModelRepository private constructor(private val context: Context) {
         publish = capabilities::updateLocalAiStatus
     )
 
-    fun downloadVoice() { scope.launch { voice.downloadAndActivate() } }
-    fun downloadLocal() { scope.launch { local.downloadAndActivate() } }
+    fun downloadVoice() = ModelDownloadWorker.enqueue(context, ModelDownloadWorker.VOICE)
+    fun downloadLocal() = ModelDownloadWorker.enqueue(context, ModelDownloadWorker.LOCAL)
+    fun pauseDownload(model: String) { WorkManager.getInstance(context).cancelUniqueWork(ModelDownloadWorker.name(model)) }
     fun deleteVoice() { scope.launch { voice.delete(downloads::deleteVoiceCommands) } }
     fun deleteLocal() { scope.launch { local.delete(downloads::deleteLocalAi) } }
     fun initialize() {

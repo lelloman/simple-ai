@@ -119,9 +119,11 @@ fun CapabilitiesScreen(
                 icon = "\uD83C\uDFA4",  // microphone
                 description = "Intent classification and entity extraction",
                 status = state.voiceCommandsStatus,
+                downloadJob = state.downloadJobs["voice"],
+                onPause = { viewModel.pauseDownload("voice") },
                 onDownload = { viewModel.downloadVoiceCommands() },
                 onRetry = { viewModel.downloadVoiceCommands() },
-                onDelete = if (state.voiceCommandsStatus is CapabilityStatus.Ready) {
+                onDelete = if (state.voiceCommandsStatus is CapabilityStatus.Ready || state.downloadJobs["voice"] in listOf("CANCELLED", "FAILED")) {
                     { deleteConfirmation = DeleteConfirmation.VOICE_COMMANDS }
                 } else null
             )
@@ -174,9 +176,11 @@ fun CapabilitiesScreen(
                 icon = "\uD83E\uDD16",  // robot
                 description = "On-device LLM for offline use",
                 status = state.localAiStatus,
+                downloadJob = state.downloadJobs["local"],
+                onPause = { viewModel.pauseDownload("local") },
                 onDownload = { viewModel.downloadLocalAi() },
                 onRetry = { viewModel.downloadLocalAi() },
-                onDelete = if (state.localAiStatus is CapabilityStatus.Ready) {
+                onDelete = if (state.localAiStatus is CapabilityStatus.Ready || state.downloadJobs["local"] in listOf("CANCELLED", "FAILED")) {
                     { deleteConfirmation = DeleteConfirmation.LOCAL_AI }
                 } else null
             )

@@ -10,6 +10,8 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
+import com.lelloman.simpleai.download.ModelDownloadWorker
 import com.lelloman.simpleai.ISimpleAI
 import com.lelloman.simpleai.api.ServiceInfoClient
 import com.lelloman.simpleai.capability.CapabilityStatus
@@ -39,7 +41,8 @@ data class CapabilitiesState(
     val downloadingLanguage: String? = null,
     val languageDownloadError: String? = null,
     val isServiceConnected: Boolean = false,
-    val serviceError: String? = null
+    val serviceError: String? = null,
+    val downloadJobs: Map<String, String> = emptyMap()
 )
 
 /**
@@ -92,6 +95,14 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     }
 
     init {
+        for (model in listOf(ModelDownloadWorker.VOICE, ModelDownloadWorker.LOCAL)) {
+            viewModelScope.launch {
+                WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(ModelDownloadWorker.name(model)).collect { jobs ->
+                    val job = jobs.firstOrNull { !it.state.isFinished } ?: jobs.firstOrNull()
+                    _state.update { it.copy(downloadJobs = it.downloadJobs + (model to (job?.state?.name ?: ""))) }
+                }
+            }
+        }
         startAndBindService()
         initializeTranslationManager()
         viewModelScope.launch {
@@ -164,6 +175,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     // =========================================================================
 
     fun downloadLocalAi() = models.downloadLocal()
+    fun pauseDownload(model: String) = models.pauseDownload(model)
 
     fun deleteLocalAi() = models.deleteLocal()
 

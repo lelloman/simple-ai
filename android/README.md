@@ -16,6 +16,13 @@ credentials, query parameters, or fragments; the client app supplies authorizati
 for each request. SimpleAI appends `/v1/chat/completions`. An absent or invalid
 endpoint is unavailable. A configured endpoint's Ready status does not certify
 network connectivity or the caller's credentials; those are checked per request.
+
+Large model downloads use unique WorkManager 2.10.1 jobs with a network
+constraint and a data-sync foreground notification. Reopening the app observes
+the persisted job; Android schedules interrupted work again. Pause cancels the
+HTTP call while retaining partial bytes. Retry/Download resumes, and Remove
+partial download deletes saved bytes through the model owner. Network and OS
+job scheduling may delay queued work. Translation packs remain managed by ML Kit.
 | **Local AI** | On-device LLM inference | ~1.3 GB (Qwen 3 1.7B) |
 
 ## Requirements

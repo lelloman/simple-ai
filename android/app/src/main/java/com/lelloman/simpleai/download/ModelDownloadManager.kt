@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.StatFs
 import com.lelloman.simpleai.model.LocalAIModel
 import com.lelloman.simpleai.model.NluModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -86,16 +89,16 @@ class ModelDownloadManager(
                 requestBuilder.addHeader("Range", "bytes=$existingBytes-")
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
+            client.newCall(requestBuilder.build()).withResponse { response ->
 
             if (!response.isSuccessful && response.code != 206) {
                 emit(DownloadState.Error("Download failed: HTTP ${response.code}"))
-                return@flow
+                return@withResponse
             }
 
             val body = response.body ?: run {
                 emit(DownloadState.Error("Empty response body"))
-                return@flow
+                return@withResponse
             }
 
             val contentLength = body.contentLength()
@@ -113,6 +116,7 @@ class ModelDownloadManager(
             body.byteStream().use { inputStream ->
                 outputStream.use { output ->
                     while (true) {
+                        currentCoroutineContext().ensureActive()
                         val bytesRead = inputStream.read(buffer)
                         if (bytesRead == -1) break
 
@@ -141,7 +145,11 @@ class ModelDownloadManager(
                 emit(DownloadState.Error("Failed to finalize download"))
             }
 
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
             emit(DownloadState.Error("Download error: ${e.message}"))
         }
     }.flowOn(Dispatchers.IO)
@@ -205,16 +213,16 @@ class ModelDownloadManager(
                 requestBuilder.addHeader("Range", "bytes=$existingBytes-")
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
+            client.newCall(requestBuilder.build()).withResponse { response ->
 
             if (!response.isSuccessful && response.code != 206) {
                 emit(DownloadState.Error("Download failed: HTTP ${response.code}"))
-                return@flow
+                return@withResponse
             }
 
             val body = response.body ?: run {
                 emit(DownloadState.Error("Empty response body"))
-                return@flow
+                return@withResponse
             }
 
             val contentLength = body.contentLength()
@@ -232,6 +240,7 @@ class ModelDownloadManager(
             body.byteStream().use { inputStream ->
                 outputStream.use { output ->
                     while (true) {
+                        currentCoroutineContext().ensureActive()
                         val bytesRead = inputStream.read(buffer)
                         if (bytesRead == -1) break
 
@@ -258,7 +267,11 @@ class ModelDownloadManager(
                 emit(DownloadState.Error("Failed to finalize download"))
             }
 
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
             emit(DownloadState.Error("Download error: ${e.message}"))
         }
     }.flowOn(Dispatchers.IO)

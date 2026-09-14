@@ -25,10 +25,9 @@ class ManagedModel<E>(
         if (!initialized) activate()
     }
 
-    suspend fun downloadAndActivate() {
-        if (!mutex.tryLock()) return
+    suspend fun downloadAndActivate() = mutex.withLock {
         try {
-            if (engine != null) return
+            if (engine != null) return@withLock
             download().collect { state ->
                 when (state) {
                     DownloadState.Idle -> publish(CapabilityStatus.Downloading(0, size))
@@ -38,10 +37,11 @@ class ManagedModel<E>(
                 }
             }
         } catch (e: CancellationException) {
+            publish(CapabilityStatus.Error("Download paused. Retry to resume from saved progress."))
             throw e
         } catch (e: Exception) {
             publish(CapabilityStatus.Error(e.message ?: "Model download failed"))
-        } finally { mutex.unlock() }
+        }
     }
 
     private suspend fun activate() {

@@ -42,6 +42,8 @@ fun CapabilityCard(
     description: String,
     status: CapabilityStatus,
     onDownload: (() -> Unit)? = null,
+    downloadJob: String? = null,
+    onPause: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onConfigure: (() -> Unit)? = null,
@@ -90,6 +92,17 @@ fun CapabilityCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            if (downloadJob in listOf("ENQUEUED", "BLOCKED", "RUNNING")) {
+                Text(if (downloadJob == "RUNNING") "Download in progress" else "Download queued — waiting for network or scheduler")
+                onPause?.let { TextButton(onClick = it) { Text("Pause download") } }
+            } else if (downloadJob == "CANCELLED") {
+                Text("Download paused. Retry or Download resumes saved progress.")
+            } else if (downloadJob == "FAILED") {
+                Text("Download interrupted. Retry to resume.")
+            }
+            if (downloadJob in listOf("CANCELLED", "FAILED") && status !is CapabilityStatus.Ready) {
+                onDelete?.let { TextButton(onClick = it) { Text("Remove partial download") } }
+            }
             // Status-specific content
             when (status) {
                 CapabilityStatus.Checking, CapabilityStatus.Loading -> {

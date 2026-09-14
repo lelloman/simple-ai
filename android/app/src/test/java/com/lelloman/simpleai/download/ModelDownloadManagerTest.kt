@@ -140,7 +140,7 @@ class ModelDownloadManagerTest {
         val config = ModelConfig("Test", "http://test.com/model.gguf", "test.gguf", 1)
         val content = "test model content"
 
-        val mockCall = mockk<Call>()
+        val mockCall = mockk<Call>(relaxed = true)
         val response = Response.Builder()
             .request(Request.Builder().url("http://test.com/model.gguf").build())
             .protocol(Protocol.HTTP_1_1)
@@ -175,7 +175,7 @@ class ModelDownloadManagerTest {
         val manager = createManager()
         val config = ModelConfig("Test", "http://test.com/model.gguf", "test.gguf", 1)
 
-        val mockCall = mockk<Call>()
+        val mockCall = mockk<Call>(relaxed = true)
         val response = Response.Builder()
             .request(Request.Builder().url("http://test.com/model.gguf").build())
             .protocol(Protocol.HTTP_1_1)
@@ -203,7 +203,7 @@ class ModelDownloadManagerTest {
         val manager = createManager()
         val config = ModelConfig("Test", "http://test.com/model.gguf", "test.gguf", 1)
 
-        val mockCall = mockk<Call>()
+        val mockCall = mockk<Call>(relaxed = true)
         every { mockClient.newCall(any()) } returns mockCall
         every { mockCall.execute() } throws java.io.IOException("Network error")
 
@@ -227,7 +227,7 @@ class ModelDownloadManagerTest {
         val tempFile = File(tempDir, "resume.gguf.tmp")
         tempFile.writeBytes(ByteArray(1000))
 
-        val mockCall = mockk<Call>()
+        val mockCall = mockk<Call>(relaxed = true)
         val response = Response.Builder()
             .request(Request.Builder().url("http://test.com/model.gguf").build())
             .protocol(Protocol.HTTP_1_1)
