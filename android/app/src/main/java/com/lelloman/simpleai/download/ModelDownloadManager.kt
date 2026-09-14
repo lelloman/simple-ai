@@ -34,7 +34,9 @@ data class ModelConfig(
     val name: String,
     val url: String,
     val fileName: String,
-    val expectedSizeMb: Int
+    val expectedSizeMb: Int,
+    val expectedBytes: Long? = null,
+    val sha256: String? = null
 )
 
 class ModelDownloadManager(
@@ -74,85 +76,8 @@ class ModelDownloadManager(
         return File(modelsDir, LocalAIModel.FILE_NAME)
     }
 
-    fun downloadModel(config: ModelConfig): Flow<DownloadState> = flow {
-        emit(DownloadState.Idle)
-
-        val targetFile = getModelFile(config)
-        val tempFile = File(modelsDir, "${config.fileName}.tmp")
-
-        try {
-            // Check if we can resume
-            val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
-
-            val requestBuilder = Request.Builder().url(config.url)
-            if (existingBytes > 0) {
-                requestBuilder.addHeader("Range", "bytes=$existingBytes-")
-            }
-
-            client.newCall(requestBuilder.build()).withResponse { response ->
-
-            if (!response.isSuccessful && response.code != 206) {
-                emit(DownloadState.Error("Download failed: HTTP ${response.code}"))
-                return@withResponse
-            }
-
-            val body = response.body ?: run {
-                emit(DownloadState.Error("Empty response body"))
-                return@withResponse
-            }
-
-            val contentLength = body.contentLength()
-            val totalBytes = if (response.code == 206) {
-                existingBytes + contentLength
-            } else {
-                contentLength
-            }
-
-            val outputStream = FileOutputStream(tempFile, response.code == 206)
-            val buffer = ByteArray(8192)
-            var downloadedBytes = existingBytes
-            var lastEmitTime = System.currentTimeMillis()
-
-            body.byteStream().use { inputStream ->
-                outputStream.use { output ->
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val bytesRead = inputStream.read(buffer)
-                        if (bytesRead == -1) break
-
-                        output.write(buffer, 0, bytesRead)
-                        downloadedBytes += bytesRead
-
-                        // Emit progress at most every 100ms to avoid flooding
-                        val now = System.currentTimeMillis()
-                        if (now - lastEmitTime >= 100) {
-                            val progress = if (totalBytes > 0) {
-                                downloadedBytes.toFloat() / totalBytes
-                            } else {
-                                0f
-                            }
-                            emit(DownloadState.Downloading(progress, downloadedBytes, totalBytes))
-                            lastEmitTime = now
-                        }
-                    }
-                }
-            }
-
-            // Rename temp file to final file
-            if (tempFile.renameTo(targetFile)) {
-                emit(DownloadState.Completed)
-            } else {
-                emit(DownloadState.Error("Failed to finalize download"))
-            }
-
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            emit(DownloadState.Error("Download error: ${e.message}"))
-        }
-    }.flowOn(Dispatchers.IO)
+    fun downloadModel(config: ModelConfig): Flow<DownloadState> =
+        ResumableDownload(client).download(config, getModelFile(config))
 
     fun deleteModel(config: ModelConfig): Boolean {
         val file = getModelFile(config)
@@ -168,8 +93,10 @@ class ModelDownloadManager(
         val file = File(modelsDir, LocalAIModel.FILE_NAME)
         val tempFile = File(modelsDir, "${LocalAIModel.FILE_NAME}.tmp")
         val tempDeleted = !tempFile.exists() || tempFile.delete()
+        val identity = File(tempFile.path + ".identity")
+        val identityDeleted = !identity.exists() || identity.delete()
         val modelDeleted = !file.exists() || file.delete()
-        return tempDeleted && modelDeleted
+        return tempDeleted && modelDeleted && identityDeleted
     }
 
     /**
@@ -196,85 +123,10 @@ class ModelDownloadManager(
     /**
      * Download the voice commands (NLU) model.
      */
-    fun downloadVoiceCommands(): Flow<DownloadState> = flow {
-        emit(DownloadState.Idle)
-
-        val nluDir = File(context.filesDir, "nlu_models")
-        nluDir.mkdirs()
-        val targetFile = File(nluDir, "xlm_roberta_base_int8.onnx")
-        val tempFile = File(nluDir, "xlm_roberta_base_int8.onnx.tmp")
-        val url = NluModel.URL
-
-        try {
-            val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
-
-            val requestBuilder = Request.Builder().url(url)
-            if (existingBytes > 0) {
-                requestBuilder.addHeader("Range", "bytes=$existingBytes-")
-            }
-
-            client.newCall(requestBuilder.build()).withResponse { response ->
-
-            if (!response.isSuccessful && response.code != 206) {
-                emit(DownloadState.Error("Download failed: HTTP ${response.code}"))
-                return@withResponse
-            }
-
-            val body = response.body ?: run {
-                emit(DownloadState.Error("Empty response body"))
-                return@withResponse
-            }
-
-            val contentLength = body.contentLength()
-            val totalBytes = if (response.code == 206) {
-                existingBytes + contentLength
-            } else {
-                contentLength
-            }
-
-            val outputStream = FileOutputStream(tempFile, response.code == 206)
-            val buffer = ByteArray(8192)
-            var downloadedBytes = existingBytes
-            var lastEmitTime = System.currentTimeMillis()
-
-            body.byteStream().use { inputStream ->
-                outputStream.use { output ->
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val bytesRead = inputStream.read(buffer)
-                        if (bytesRead == -1) break
-
-                        output.write(buffer, 0, bytesRead)
-                        downloadedBytes += bytesRead
-
-                        val now = System.currentTimeMillis()
-                        if (now - lastEmitTime >= 100) {
-                            val progress = if (totalBytes > 0) {
-                                downloadedBytes.toFloat() / totalBytes
-                            } else {
-                                0f
-                            }
-                            emit(DownloadState.Downloading(progress, downloadedBytes, totalBytes))
-                            lastEmitTime = now
-                        }
-                    }
-                }
-            }
-
-            if (tempFile.renameTo(targetFile)) {
-                emit(DownloadState.Completed)
-            } else {
-                emit(DownloadState.Error("Failed to finalize download"))
-            }
-
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            currentCoroutineContext().ensureActive()
-            emit(DownloadState.Error("Download error: ${e.message}"))
-        }
-    }.flowOn(Dispatchers.IO)
+    fun downloadVoiceCommands(): Flow<DownloadState> = ResumableDownload(client).download(
+        ModelConfig("Voice Commands", NluModel.URL, NluModel.FILE_NAME, 509, NluModel.SIZE_BYTES, NluModel.SHA256),
+        File(context.filesDir, "nlu_models/${NluModel.FILE_NAME}")
+    )
 
     fun getStorageInfo(): StorageInfo {
         val modelsUsed = modelsDir.listFiles()

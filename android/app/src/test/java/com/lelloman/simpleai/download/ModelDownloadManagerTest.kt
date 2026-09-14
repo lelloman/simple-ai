@@ -226,6 +226,7 @@ class ModelDownloadManagerTest {
         // Create a partial temp file
         val tempFile = File(tempDir, "resume.gguf.tmp")
         tempFile.writeBytes(ByteArray(1000))
+        File(tempFile.path + ".identity").writeText(config.url + "\n\"v1\"")
 
         val mockCall = mockk<Call>(relaxed = true)
         val response = Response.Builder()
@@ -233,6 +234,8 @@ class ModelDownloadManagerTest {
             .protocol(Protocol.HTTP_1_1)
             .code(206)
             .message("Partial Content")
+            .header("Content-Range", "bytes 1000-1016/1017")
+            .header("ETag", "\"v1\"")
             .body("remaining content".toResponseBody())
             .build()
 
@@ -240,7 +243,8 @@ class ModelDownloadManagerTest {
         every { mockCall.execute() } returns response
 
         manager.downloadModel(config).test {
-            cancelAndConsumeRemainingEvents()
+            while (awaitItem() != DownloadState.Completed) { }
+            awaitComplete()
         }
 
         // Verify Range header was set

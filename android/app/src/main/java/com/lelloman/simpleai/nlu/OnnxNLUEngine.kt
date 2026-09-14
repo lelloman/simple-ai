@@ -144,10 +144,7 @@ class OnnxNLUEngine(
     }
 
     private suspend fun loadBaseModel() {
-        // Download if needed
-        if (!baseModelFile.exists()) {
-            downloadBaseModel()
-        }
+        check(baseModelFile.exists()) { "Download Voice Commands before loading the model" }
 
         // Memory-map the file instead of reading into heap
         Log.i(TAG, "Memory-mapping base model...")
@@ -157,41 +154,6 @@ class OnnxNLUEngine(
         modelFileChannel = channel
         modelBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, baseModelFile.length())
         Log.i(TAG, "Base model mapped: ${modelBuffer?.capacity()?.div(1024 * 1024)} MB")
-    }
-
-    private suspend fun downloadBaseModel() {
-        Log.i(TAG, "Downloading base model...")
-        _status.value = Status.Downloading(0f, "Downloading base model...")
-
-        val request = Request.Builder().url(BASE_MODEL_URL).build()
-        val response = httpClient.newCall(request).execute()
-
-        if (!response.isSuccessful) {
-            throw RuntimeException("Download failed: ${response.code} ${response.message}")
-        }
-
-        val body = response.body ?: throw RuntimeException("Empty response body")
-        val contentLength = body.contentLength()
-
-        body.byteStream().use { input ->
-            FileOutputStream(baseModelFile).use { output ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var totalBytesRead = 0L
-
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    output.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
-
-                    if (contentLength > 0) {
-                        val progress = totalBytesRead.toFloat() / contentLength
-                        _status.value = Status.Downloading(progress, "Downloading... ${(progress * 100).toInt()}%")
-                    }
-                }
-            }
-        }
-
-        Log.i(TAG, "Base model downloaded: ${baseModelFile.length() / 1024 / 1024} MB")
     }
 
     /**

@@ -43,7 +43,7 @@ class ModelRepository private constructor(private val context: Context) {
     val local = ManagedModel(
         LocalAIModel.SIZE_BYTES,
         downloads::isLocalAiDownloaded,
-        download = { downloads.downloadModel(ModelConfig(LocalAIModel.NAME, LocalAIModel.URL, LocalAIModel.FILE_NAME, LocalAIModel.SIZE_MB)) },
+        download = { downloads.downloadModel(ModelConfig(LocalAIModel.NAME, LocalAIModel.URL, LocalAIModel.FILE_NAME, LocalAIModel.SIZE_MB, LocalAIModel.SIZE_BYTES, LocalAIModel.SHA256)) },
         load = {
             val engine = LlamaEngine(context)
             engine.loadModel(downloads.getLocalAiModelFile()).fold(
