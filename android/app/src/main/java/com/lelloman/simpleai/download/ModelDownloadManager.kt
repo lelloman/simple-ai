@@ -129,9 +129,8 @@ class ModelDownloadManager(
     )
 
     fun getStorageInfo(): StorageInfo {
-        val modelsUsed = modelsDir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".gguf") }
-            ?.sumOf { it.length() } ?: 0L
+        // App data includes NLU working copies, ML Kit private models, and partial files.
+        val modelsUsed = DownloadPolicy.usedBytes(context.dataDir)
 
         val statFs = StatFs(context.filesDir.absolutePath)
         val availableBytes = statFs.availableBytes

@@ -10,6 +10,9 @@ import androidx.work.*
 import com.lelloman.simpleai.R
 import com.lelloman.simpleai.capability.CapabilityStatus
 import com.lelloman.simpleai.model.ModelRepository
+import com.lelloman.simpleai.model.NluModel
+import com.lelloman.simpleai.model.LocalAIModel
+import java.io.File
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -22,7 +25,9 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             require(model == VOICE || model == LOCAL)
             val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
                 .setInputData(workDataOf("model" to model))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(
+                    if (DownloadPolicy.allowsMetered(context)) NetworkType.CONNECTED else NetworkType.UNMETERED
+                ).build())
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(name(model), ExistingWorkPolicy.KEEP, request)
         }
@@ -32,6 +37,16 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         val model = inputData.getString("model") ?: return@coroutineScope Result.failure()
         if (model != VOICE && model != LOCAL) return@coroutineScope Result.failure()
         val repository = ModelRepository.get(applicationContext)
+        if (model == VOICE) repository.voice.initialize() else repository.local.initialize()
+        if ((if (model == VOICE) repository.voice.engine else repository.local.engine) != null) return@coroutineScope Result.success()
+        val size = if (model == VOICE) NluModel.SIZE_BYTES else LocalAIModel.SIZE_BYTES
+        val partial = File(applicationContext.filesDir, if (model == VOICE) "nlu_models/${NluModel.FILE_NAME}.tmp" else "models/${LocalAIModel.FILE_NAME}.tmp")
+        val required = DownloadPolicy.requiredBytes(size, partial.length(), if (model == VOICE) size else 0)
+        if (applicationContext.filesDir.usableSpace < required) {
+            val error = CapabilityStatus.Error("Not enough storage. Free at least ${required / (1024 * 1024)} MiB for this download and model loading.")
+            if (model == VOICE) repository.capabilities.updateVoiceCommandsStatus(error) else repository.capabilities.updateLocalAiStatus(error)
+            return@coroutineScope Result.failure()
+        }
         val status = if (model == VOICE) repository.capabilities.voiceCommandsStatus else repository.capabilities.localAiStatus
         setForeground(notification(model, "Starting download", null))
         val progress = launch {

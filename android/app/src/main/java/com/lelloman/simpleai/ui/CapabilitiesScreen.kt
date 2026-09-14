@@ -17,6 +17,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ fun CapabilitiesScreen(
     onNavigateToAbout: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
+    var showDownloadSettings by remember { mutableStateOf(false) }
     var deleteConfirmation by remember { mutableStateOf<DeleteConfirmation?>(null) }
 
     // Delete confirmation dialog
@@ -112,6 +114,17 @@ fun CapabilitiesScreen(
             state.serviceError?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = viewModel::refreshCapabilities) { Text("Retry connection") }
+            }
+            TextButton(onClick = { showDownloadSettings = !showDownloadSettings }) { Text("Download and storage settings") }
+            if (showDownloadSettings) {
+            Text("Downloads use unmetered networks by default; language packs require Wi-Fi. Model transfers use about 0.5 GB for Voice Commands and 1.3 GB for Local AI.")
+            Text("Allow mobile data for new downloads (charges may apply)")
+            Switch(checked = state.allowMeteredDownloads, onCheckedChange = viewModel::setAllowMeteredDownloads)
+            Text("Voice Commands also needs a working copy of about 0.5 GB. Downloads reserve 64 MiB of free space.")
+            }
+            state.storage?.let { storage ->
+                Text("App data: ${storage.usedBytes / (1024 * 1024)} MiB • Available: ${storage.availableBytes / (1024 * 1024)} MiB")
+                Text("Includes models, language packs, partial downloads and supporting app data.", style = MaterialTheme.typography.bodySmall)
             }
             // Voice Commands capability
             CapabilityCard(

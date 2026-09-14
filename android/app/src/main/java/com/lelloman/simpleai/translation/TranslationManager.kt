@@ -173,6 +173,7 @@ class TranslationManager(
 
             val model = TranslateRemoteModel.Builder(mlKitCode).build()
             val conditions = DownloadConditions.Builder()
+                .apply { if (!com.lelloman.simpleai.download.DownloadPolicy.allowsMetered(context)) requireWifi() }
                 .build()
 
             suspendCancellableCoroutine<Unit> { cont ->

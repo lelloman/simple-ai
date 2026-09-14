@@ -11,6 +11,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
+import com.lelloman.simpleai.download.DownloadPolicy
+import com.lelloman.simpleai.download.StorageInfo
 import com.lelloman.simpleai.download.ModelDownloadWorker
 import com.lelloman.simpleai.ISimpleAI
 import com.lelloman.simpleai.api.ServiceInfoClient
@@ -42,7 +44,9 @@ data class CapabilitiesState(
     val languageDownloadError: String? = null,
     val isServiceConnected: Boolean = false,
     val serviceError: String? = null,
-    val downloadJobs: Map<String, String> = emptyMap()
+    val downloadJobs: Map<String, String> = emptyMap(),
+    val storage: StorageInfo? = null,
+    val allowMeteredDownloads: Boolean = false
 )
 
 /**
@@ -95,6 +99,14 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     }
 
     init {
+        _state.update { it.copy(allowMeteredDownloads = DownloadPolicy.allowsMetered(application)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                runCatching { downloadManager.getStorageInfo() }.onSuccess { info -> _state.update { it.copy(storage = info) } }
+                kotlinx.coroutines.delay(5000)
+            }
+        }
+
         for (model in listOf(ModelDownloadWorker.VOICE, ModelDownloadWorker.LOCAL)) {
             viewModelScope.launch {
                 WorkManager.getInstance(application).getWorkInfosForUniqueWorkFlow(ModelDownloadWorker.name(model)).collect { jobs ->
@@ -175,6 +187,10 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     // =========================================================================
 
     fun downloadLocalAi() = models.downloadLocal()
+    fun setAllowMeteredDownloads(allowed: Boolean) {
+        DownloadPolicy.setAllowsMetered(getApplication(), allowed)
+        _state.update { it.copy(allowMeteredDownloads = allowed) }
+    }
     fun pauseDownload(model: String) = models.pauseDownload(model)
 
     fun deleteLocalAi() = models.deleteLocal()
