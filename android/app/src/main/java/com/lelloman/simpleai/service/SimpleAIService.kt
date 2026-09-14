@@ -23,10 +23,10 @@ import com.lelloman.simpleai.capability.CapabilityManager
 import com.lelloman.simpleai.capability.CapabilityStatus
 import com.lelloman.simpleai.llm.GenerationParams
 import com.lelloman.simpleai.llm.LlamaEngine
+import com.lelloman.simpleai.model.ModelRepository
 import com.lelloman.simpleai.model.LocalAIModel
 import com.lelloman.simpleai.nlu.OnnxNLUEngine
 import com.lelloman.simpleai.translation.TranslationManager
-import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,11 +60,11 @@ class SimpleAIService : Service() {
     private lateinit var capabilityManager: CapabilityManager
 
     // Engines
-    private var nluEngine: OnnxNLUEngine? = null
-    private val nluEngineReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val models by lazy { ModelRepository.get(this) }
+    private val nluEngine: OnnxNLUEngine? get() = models.voice.engine
     private var translationManager: TranslationManager? = null
     private val cloudClient = CloudLLMClient()
-    private var llamaEngine: LlamaEngine? = null
+    private val llamaEngine: LlamaEngine? get() = models.local.engine
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -98,7 +98,7 @@ class SimpleAIService : Service() {
             // Wait for engine to be ready (blocks until model is loaded into memory)
             // Must wait BEFORE checking status, since status is NotDownloaded during init
             runBlocking {
-                nluEngineReady.await()
+                models.voice.initialize()
             }
 
             // Check capability status AFTER waiting for initialization
@@ -188,7 +188,7 @@ class SimpleAIService : Service() {
 
             // Wait for engine to be ready
             runBlocking {
-                nluEngineReady.await()
+                models.voice.initialize()
             }
 
             val engine = nluEngine ?: return ProtocolHandler.error(
@@ -547,7 +547,7 @@ class SimpleAIService : Service() {
         super.onCreate()
         Log.i(TAG, "SimpleAIService onCreate")
 
-        capabilityManager = CapabilityManager(this)
+        capabilityManager = models.capabilities
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
@@ -556,48 +556,7 @@ class SimpleAIService : Service() {
     }
 
     private fun initializeEngines() {
-        // Initialize NLU engine (Voice Commands) - only if model is already downloaded
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                Log.i(TAG, "Checking NLU engine model...")
-                val engine = OnnxNLUEngine(this@SimpleAIService)
-
-                // Don't auto-download - let user explicitly download via UI
-                if (!engine.isModelDownloaded()) {
-                    Log.i(TAG, "NLU model not downloaded, skipping initialization")
-                    capabilityManager.updateVoiceCommandsStatus(
-                        CapabilityStatus.NotDownloaded(CapabilityManager.VOICE_COMMANDS_MODEL_SIZE)
-                    )
-                    nluEngineReady.complete(Unit)
-                    return@launch
-                }
-
-                Log.i(TAG, "Initializing NLU engine...")
-                engine.initialize().fold(
-                    onSuccess = {
-                        nluEngine = engine
-                        capabilityManager.updateVoiceCommandsStatus(CapabilityStatus.Ready)
-                        nluEngineReady.complete(Unit)
-                        Log.i(TAG, "NLU engine ready")
-                        updateNotification("Ready")
-                    },
-                    onFailure = { e ->
-                        Log.e(TAG, "Failed to initialize NLU engine", e)
-                        capabilityManager.updateVoiceCommandsStatus(
-                            CapabilityStatus.Error(e.message ?: "Failed to initialize")
-                        )
-                        nluEngineReady.complete(Unit)  // Complete anyway so waiting calls can check error status
-                        updateNotification("Error: ${e.message}")
-                    }
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing NLU", e)
-                capabilityManager.updateVoiceCommandsStatus(
-                    CapabilityStatus.Error(e.message ?: "Initialization error")
-                )
-                nluEngineReady.complete(Unit)  // Complete anyway so waiting calls can check error status
-            }
-        }
+        models.initialize()
 
         // Initialize Translation manager
         serviceScope.launch(Dispatchers.IO) {
@@ -635,49 +594,6 @@ class SimpleAIService : Service() {
             }
         }
 
-        // Initialize Local AI (check if model is downloaded)
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                Log.i(TAG, "Checking Local AI model...")
-                val modelFile = File(filesDir, "models/${LocalAIModel.FILE_NAME}")
-
-                if (modelFile.exists()) {
-                    Log.i(TAG, "Local AI model found, loading...")
-                    // Show loading status while model loads into memory
-                    capabilityManager.updateLocalAiStatus(
-                        CapabilityStatus.Downloading(
-                            downloadedBytes = modelFile.length() / 2,
-                            totalBytes = modelFile.length()
-                        )
-                    )
-
-                    val engine = LlamaEngine(this@SimpleAIService)
-                    engine.loadModel(modelFile).fold(
-                        onSuccess = {
-                            llamaEngine = engine
-                            capabilityManager.updateLocalAiStatus(CapabilityStatus.Ready)
-                            Log.i(TAG, "Local AI ready")
-                        },
-                        onFailure = { e ->
-                            Log.e(TAG, "Failed to load Local AI model", e)
-                            capabilityManager.updateLocalAiStatus(
-                                CapabilityStatus.Error(e.message ?: "Failed to load model")
-                            )
-                        }
-                    )
-                } else {
-                    Log.i(TAG, "Local AI model not downloaded")
-                    capabilityManager.updateLocalAiStatus(
-                        CapabilityStatus.NotDownloaded(LocalAIModel.SIZE_BYTES)
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking Local AI", e)
-                capabilityManager.updateLocalAiStatus(
-                    CapabilityStatus.Error(e.message ?: "Initialization error")
-                )
-            }
-        }
     }
 
     /**
@@ -701,12 +617,8 @@ class SimpleAIService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "SimpleAIService onDestroy")
-        nluEngine?.release()
-        nluEngine = null
         translationManager?.release()
         translationManager = null
-        llamaEngine?.release()
-        llamaEngine = null
         serviceScope.cancel()
     }
 

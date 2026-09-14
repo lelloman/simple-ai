@@ -13,10 +13,8 @@ import androidx.lifecycle.viewModelScope
 import com.lelloman.simpleai.ISimpleAI
 import com.lelloman.simpleai.api.ServiceInfoClient
 import com.lelloman.simpleai.capability.CapabilityStatus
-import com.lelloman.simpleai.download.DownloadState
-import com.lelloman.simpleai.download.ModelConfig
 import com.lelloman.simpleai.download.ModelDownloadManager
-import kotlinx.coroutines.flow.catch
+import com.lelloman.simpleai.model.ModelRepository
 import com.lelloman.simpleai.model.LocalAIModel
 import com.lelloman.simpleai.service.SimpleAIService
 import com.lelloman.simpleai.translation.TranslationManager
@@ -27,7 +25,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -74,7 +71,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     private var simpleAiService: ISimpleAI? = null
     private var isBound = false
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val models = ModelRepository.get(application)
 
     private val translationManager = TranslationManager(application)
     private val downloadManager = ModelDownloadManager(application)
@@ -103,6 +100,16 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     init {
         startAndBindService()
         initializeTranslationManager()
+        viewModelScope.launch {
+            models.capabilities.voiceCommandsStatus.collect { status ->
+                _state.update { it.copy(voiceCommandsStatus = status) }
+            }
+        }
+        viewModelScope.launch {
+            models.capabilities.localAiStatus.collect { status ->
+                _state.update { it.copy(localAiStatus = status) }
+            }
+        }
     }
 
     private fun startAndBindService() {
@@ -220,55 +227,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     // Local AI Download
     // =========================================================================
 
-    fun downloadLocalAi() {
-        viewModelScope.launch {
-            val config = ModelConfig(
-                name = LocalAIModel.NAME,
-                url = LocalAIModel.URL,
-                fileName = LocalAIModel.FILE_NAME,
-                expectedSizeMb = LocalAIModel.SIZE_MB
-            )
-
-            downloadManager.downloadModel(config)
-                .catch { e ->
-                    _state.update {
-                        it.copy(localAiStatus = CapabilityStatus.Error(
-                            e.message ?: "Download failed",
-                            canRetry = true
-                        ))
-                    }
-                }
-                .collect { downloadState ->
-                    when (downloadState) {
-                        is DownloadState.Idle -> {
-                            _state.update {
-                                it.copy(localAiStatus = CapabilityStatus.Downloading(0, LocalAIModel.SIZE_BYTES))
-                            }
-                        }
-                        is DownloadState.Downloading -> {
-                            _state.update {
-                                it.copy(localAiStatus = CapabilityStatus.Downloading(
-                                    downloadState.downloadedBytes,
-                                    downloadState.totalBytes
-                                ))
-                            }
-                        }
-                        is DownloadState.Completed -> {
-                            _state.update { it.copy(localAiStatus = CapabilityStatus.Ready) }
-                            // Service will load the model on next initialization
-                        }
-                        is DownloadState.Error -> {
-                            _state.update {
-                                it.copy(localAiStatus = CapabilityStatus.Error(
-                                    downloadState.message,
-                                    canRetry = true
-                                ))
-                            }
-                        }
-                    }
-                }
-        }
-    }
+    fun downloadLocalAi() = models.downloadLocal()
 
     fun deleteLocalAi() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -292,47 +251,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun downloadVoiceCommands() {
-        viewModelScope.launch {
-            downloadManager.downloadVoiceCommands()
-                .catch { e ->
-                    _state.update {
-                        it.copy(voiceCommandsStatus = CapabilityStatus.Error(
-                            e.message ?: "Download failed",
-                            canRetry = true
-                        ))
-                    }
-                }
-                .collect { downloadState ->
-                    when (downloadState) {
-                        is DownloadState.Idle -> {
-                            _state.update {
-                                it.copy(voiceCommandsStatus = CapabilityStatus.Downloading(0, 534_000_000))
-                            }
-                        }
-                        is DownloadState.Downloading -> {
-                            _state.update {
-                                it.copy(voiceCommandsStatus = CapabilityStatus.Downloading(
-                                    downloadState.downloadedBytes,
-                                    downloadState.totalBytes
-                                ))
-                            }
-                        }
-                        is DownloadState.Completed -> {
-                            _state.update { it.copy(voiceCommandsStatus = CapabilityStatus.Ready) }
-                        }
-                        is DownloadState.Error -> {
-                            _state.update {
-                                it.copy(voiceCommandsStatus = CapabilityStatus.Error(
-                                    downloadState.message,
-                                    canRetry = true
-                                ))
-                            }
-                        }
-                    }
-                }
-        }
-    }
+    fun downloadVoiceCommands() = models.downloadVoice()
 
     // =========================================================================
     // Translation Languages
