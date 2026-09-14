@@ -54,9 +54,10 @@ fun TranslationTestScreen(
     val state by viewModel.state.collectAsState()
     val translationState by viewModel.translationState.collectAsState()
     val downloadedLanguages = com.lelloman.simpleai.translation.TranslationAvailability.available(state.downloadedLanguages)
-    var inputText by remember { mutableStateOf("") }
-    var sourceLang by remember { mutableStateOf("auto") }
-    var targetLang by remember { mutableStateOf(downloadedLanguages.firstOrNull { it != "en" } ?: "en") }
+    val draft = translationState.draft
+    val inputText = draft.text
+    val sourceLang = draft.source
+    val targetLang = draft.target
 
     val languageOptions = listOf("auto" to "Auto-detect") +
         downloadedLanguages.sorted().map { it to getLanguageDisplayName(it) }
@@ -97,7 +98,7 @@ fun TranslationTestScreen(
                     label = "From",
                     selectedCode = sourceLang,
                     options = languageOptions,
-                    onSelect = { sourceLang = it },
+                    onSelect = { viewModel.editTranslation(draft.copy(source = it)) },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -105,9 +106,7 @@ fun TranslationTestScreen(
                 IconButton(
                     onClick = {
                         if (sourceLang != "auto") {
-                            val temp = sourceLang
-                            sourceLang = targetLang
-                            targetLang = temp
+                            viewModel.editTranslation(draft.copy(source = targetLang, target = sourceLang))
                         }
                     },
                     enabled = sourceLang != "auto"
@@ -123,7 +122,7 @@ fun TranslationTestScreen(
                     label = "To",
                     selectedCode = targetLang,
                     options = targetOptions,
-                    onSelect = { targetLang = it },
+                    onSelect = { viewModel.editTranslation(draft.copy(target = it)) },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -131,7 +130,7 @@ fun TranslationTestScreen(
             // Input text field
             OutlinedTextField(
                 value = inputText,
-                onValueChange = { inputText = it },
+                onValueChange = { viewModel.editTranslation(draft.copy(text = it)) },
                 label = { Text("Enter text to translate") },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -141,7 +140,7 @@ fun TranslationTestScreen(
 
             // Translate button
             Button(
-                onClick = { viewModel.translate(inputText, sourceLang, targetLang) },
+                onClick = { viewModel.translate() },
                 enabled = inputText.isNotBlank() && !translationState.isTranslating,
                 modifier = Modifier.fillMaxWidth()
             ) {

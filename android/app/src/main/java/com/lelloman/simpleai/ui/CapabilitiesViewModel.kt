@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
@@ -53,6 +54,7 @@ data class CapabilitiesState(
  * State for translation test screen.
  */
 data class TranslationState(
+    val draft: TranslationDraft = TranslationDraft(),
     val isTranslating: Boolean = false,
     val translatedText: String? = null,
     val detectedLanguage: String? = null,
@@ -62,7 +64,7 @@ data class TranslationState(
 /**
  * ViewModel for the capabilities screen.
  */
-class CapabilitiesViewModel(application: Application) : AndroidViewModel(application) {
+class CapabilitiesViewModel(application: Application, savedStateHandle: SavedStateHandle) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "CapabilitiesViewModel"
@@ -71,15 +73,16 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     private val _state = MutableStateFlow(CapabilitiesState())
     val state: StateFlow<CapabilitiesState> = _state.asStateFlow()
 
-    private val _translationState = MutableStateFlow(TranslationState())
-    val translationState: StateFlow<TranslationState> = _translationState.asStateFlow()
-
     private var simpleAiService: ISimpleAI? = null
     private var isBound = false
 
     private val models = ModelRepository.get(application)
 
     private val translationManager = models.translation
+    private val translationSession = TranslationSession(viewModelScope, savedStateHandle) {
+        translationManager.translate(it.text, it.source, it.target)
+    }
+    val translationState = translationSession.state
     private val downloadManager = ModelDownloadManager(application)
 
     private val serviceConnection = object : ServiceConnection {
@@ -227,28 +230,8 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     // Translation Test
     // =========================================================================
 
-    fun translate(text: String, sourceLang: String, targetLang: String) {
-        viewModelScope.launch {
-            _translationState.value = TranslationState(isTranslating = true)
-
-            translationManager.translate(text, sourceLang, targetLang).fold(
-                onSuccess = { result ->
-                    _translationState.value = TranslationState(
-                        isTranslating = false,
-                        translatedText = result.translatedText,
-                        detectedLanguage = result.detectedSourceLang
-                    )
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "Translation failed", e)
-                    _translationState.value = TranslationState(
-                        isTranslating = false,
-                        error = e.message ?: "Translation failed"
-                    )
-                }
-            )
-        }
-    }
+    fun editTranslation(draft: TranslationDraft) = translationSession.edit(draft)
+    fun translate() = translationSession.submit()
 
     override fun onCleared() {
         super.onCleared()
