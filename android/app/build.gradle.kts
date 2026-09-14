@@ -155,7 +155,7 @@ dependencies {
     implementation(libs.llamacpp.kotlin)
 
     // ONNX Runtime for transformer models (NLU classification)
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
 
     // JSON serialization
     implementation(libs.kotlinx.serialization.json)
