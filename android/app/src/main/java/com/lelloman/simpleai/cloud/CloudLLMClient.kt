@@ -4,6 +4,11 @@ import com.lelloman.simpleai.download.withResponse
 import kotlinx.coroutines.CancellationException
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -28,7 +33,12 @@ import java.util.concurrent.TimeUnit
  * - Authorization: Bearer <token>
  * - Body: {"model": "...", "messages": [...], "tools": [...]}
  */
-class CloudLLMClient(private val endpointProvider: () -> String) {
+class CloudLLMClient internal constructor(
+    private val endpointProvider: () -> String,
+    private val streamUrlProvider: (String) -> okhttp3.HttpUrl?
+) {
+    constructor(endpointProvider: () -> String) : this(endpointProvider, CloudEndpoint::chatUrl)
+
 
     companion object {
         private const val TAG = "CloudLLMClient"
@@ -52,6 +62,59 @@ class CloudLLMClient(private val endpointProvider: () -> String) {
 
     private val endpoint: String
         get() = endpointProvider()
+
+    suspend fun streamChat(
+        messages: JsonArray,
+        tools: JsonArray?,
+        systemPrompt: String?,
+        promptCacheKey: String?,
+        authToken: String,
+        server: String = endpoint,
+        sourceApp: String = "com.lelloman.simpleai",
+        onData: (String) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        val url = streamUrlProvider(server)
+            ?: throw CloudUnavailableException("Set a server URL in Settings → Cloud AI")
+        val fields = buildRequestBody(buildMessages(messages, systemPrompt), tools, promptCacheKey).toMutableMap()
+        fields["stream"] = kotlinx.serialization.json.JsonPrimitive(true)
+        val request = Request.Builder().url(url)
+            .header("Authorization", "Bearer $authToken")
+            .header("Accept", "text/event-stream")
+            .header("X-SimpleAI-Source-App", sourceApp)
+            .post(json.encodeToString(JsonObject(fields)).toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        val call = httpClient.newCall(request)
+        call.timeout().timeout(180, TimeUnit.SECONDS)
+        coroutineScope {
+            // Cancellation closes a blocked HTTP read as well as an in-flight request.
+            val cancellation = launch(start = CoroutineStart.UNDISPATCHED) {
+                try { awaitCancellation() } finally { call.cancel() }
+            }
+            try {
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw when (response.code) {
+                            401, 403 -> CloudAuthException("Authentication failed: ${response.code}")
+                            429 -> CloudRateLimitException("Rate limited")
+                            else -> CloudUnavailableException("Cloud request failed: ${response.code}")
+                        }
+                    }
+                    require(response.header("Content-Type")?.startsWith("text/event-stream") == true) {
+                        "Cloud endpoint did not return a stream"
+                    }
+                    val body = response.body ?: throw CloudException("Empty response body")
+                    SseReader.read(body.source(), onData)
+                }
+            } catch (e: Exception) {
+                // Closing the socket during cancellation surfaces as IOException.
+                // Preserve cancellation instead of reporting a network failure.
+                ensureActive()
+                throw e
+            } finally {
+                cancellation.cancel()
+            }
+        }
+    }
 
     /**
      * Send a chat completion request to the cloud endpoint.

@@ -1,5 +1,7 @@
 package com.lelloman.simpleai;
 
+import com.lelloman.simpleai.ICloudChatCallback;
+
 interface ISimpleAI {
 
     // =========================================================================
@@ -187,4 +189,20 @@ interface ISimpleAI {
     // Optional extension: check supportsCancellation in service info first.
     // Cancels only the calling UID’s current request; invoke from another thread.
     String cancelCurrentRequest(int protocolVersion);
+
+    // Append-only: preserve transaction IDs for existing clients.
+    // authToken is ignored; SimpleAI owns sign-in.
+    // Use only when cloudAi.streaming is advertised. Request IDs are caller-scoped.
+    void startCloudChat(
+        int protocolVersion,
+        String requestId,
+        String messagesJson,
+        String toolsJson,
+        String systemPrompt,
+        String promptCacheKey,
+        String authToken,
+        ICloudChatCallback callback
+    );
+
+    void cancelCloudChat(String requestId);
 }

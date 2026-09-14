@@ -26,6 +26,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.lelloman.simpleai.BuildConfig
 import com.lelloman.simpleai.ISimpleAI
+import com.lelloman.simpleai.ICloudChatCallback
 import com.lelloman.simpleai.R
 import com.lelloman.simpleai.api.ErrorCode
 import com.lelloman.simpleai.api.ProtocolHandler
@@ -43,6 +44,9 @@ import com.lelloman.simpleai.model.LocalAIModel
 import com.lelloman.simpleai.nlu.OnnxNLUEngine
 import com.lelloman.simpleai.translation.TranslationManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -71,6 +75,7 @@ class SimpleAIService : Service() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val cloudStreams = mutableMapOf<Pair<Int, String>, Job>()
 
     private lateinit var capabilityManager: CapabilityManager
 
@@ -92,6 +97,81 @@ class SimpleAIService : Service() {
     private val callerBudget = CallerBudget(SystemClock::elapsedRealtime)
 
     private val binder = object : ISimpleAI.Stub() {
+
+        override fun startCloudChat(
+            protocolVersion: Int,
+            requestId: String,
+            messagesJson: String,
+            toolsJson: String?,
+            systemPrompt: String?,
+            promptCacheKey: String?,
+            authToken: String,
+            callback: ICloudChatCallback
+        ) {
+            val key = Binder.getCallingUid() to requestId
+            check(ClientAccess.get(this@SimpleAIService).allowed(key.first)) {
+                "Open SimpleAI > Apps to allow access"
+            }
+            require(requestId.length in 1..128) { "Invalid stream request ID" }
+            synchronized(cloudStreams) {
+                require(!cloudStreams.containsKey(key)) { "Duplicate stream request ID" }
+                require(cloudStreams.size < 64 && cloudStreams.keys.count { it.first == key.first } < 4) {
+                    "Too many active cloud requests"
+                }
+                val lease = callerBudget.acquire(key.first)
+                    ?: throw IllegalStateException("Caller busy or request budget exceeded; retry later")
+                val job = serviceScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                    try {
+                        require(ProtocolHandler.validateProtocol(protocolVersion) == null) { "Unsupported protocol" }
+                        withTimeout(180_000) {
+                            val messages = RequestValidation.messages(messagesJson)
+                            require((systemPrompt?.length ?: 0) <= 32768 &&
+                                (toolsJson?.length ?: 0) <= 32768 && (promptCacheKey?.length ?: 0) <= 256)
+                            val session = models.gatewayAuth.session()
+                            val sourceApp = packageManager.getPackagesForUid(key.first)
+                                ?.sorted()?.joinToString(",")?.take(255) ?: "unknown"
+                            cloudClient.streamChat(
+                                messages,
+                                toolsJson?.let { json.parseToJsonElement(it).jsonArray },
+                                systemPrompt, promptCacheKey, session.token, session.server, sourceApp
+                            ) { data ->
+                                ensureActive()
+                                callback.onEvent(data)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        if (e is CancellationException && e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+                        val message = if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                            "Cloud stream timed out"
+                        } else "Cloud stream failed"
+                        val error = buildJsonObject {
+                            put("error", buildJsonObject { put("message", message) })
+                        }
+                        runCatching { callback.onEvent(error.toString()) }
+                    }
+                }
+                val death = IBinder.DeathRecipient { job.cancel() }
+                cloudStreams[key] = job
+                job.invokeOnCompletion {
+                    lease.close()
+                    synchronized(cloudStreams) { cloudStreams.remove(key, job) }
+                    runCatching { callback.asBinder().unlinkToDeath(death, 0) }
+                }
+                try {
+                    callback.asBinder().linkToDeath(death, 0)
+                    job.start()
+                } catch (e: Exception) {
+                    job.cancel()
+                    throw e
+                }
+            }
+        }
+
+        override fun cancelCloudChat(requestId: String) {
+            synchronized(cloudStreams) {
+                cloudStreams[Binder.getCallingUid() to requestId]?.cancel()
+            }
+        }
 
         override fun getServiceInfo(protocolVersion: Int): String {
             // Validate protocol
@@ -591,7 +671,9 @@ class SimpleAIService : Service() {
         put("capabilities", buildJsonObject {
             put("voiceCommands", buildCapabilityStatus(CapabilityId.VOICE_COMMANDS))
             put("translation", buildTranslationCapabilityStatus())
-            put("cloudAi", buildCapabilityStatus(CapabilityId.CLOUD_AI))
+            put("cloudAi", kotlinx.serialization.json.JsonObject(
+                buildCapabilityStatus(CapabilityId.CLOUD_AI) + ("streaming" to JsonPrimitive(true))
+            ))
             put("localAi", buildCapabilityStatus(CapabilityId.LOCAL_AI))
         })
     }
