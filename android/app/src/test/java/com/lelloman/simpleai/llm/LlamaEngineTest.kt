@@ -31,19 +31,22 @@ private class FakeLlamaHelperWrapper : LlamaHelperWrapper {
 
     // If set, load() will invoke callback immediately
     var autoCompleteLoad = true
+    var loadResult: Result<Unit> = Result.success(Unit)
+    var onPredict: (() -> Unit)? = null
 
-    override fun load(path: String, contextLength: Int, onLoaded: (Long) -> Unit) {
+    override fun load(path: String, contextLength: Int, onLoaded: (Result<Unit>) -> Unit) {
         loadCalled = true
         loadPath = path
         loadContextLength = contextLength
         if (autoCompleteLoad) {
-            onLoaded(0L)
+            onLoaded(loadResult)
         }
     }
 
     override fun predict(prompt: String, params: GenerationParams) {
         predictCalled = true
         predictPrompt = prompt
+        onPredict?.invoke()
     }
 
     override fun stopPrediction() {
@@ -75,6 +78,37 @@ private class FakeLlamaHelperWrapper : LlamaHelperWrapper {
 }
 
 class LlamaEngineTest {
+    @Test fun `synchronous prediction events cannot arrive before collection`() {
+        val engine = createEngine()
+        engine.loadModel(File(tempDir, "early.gguf").apply { writeText("model") })
+        fakeWrapper.onPredict = {
+            assertTrue(engine.llmFlow.subscriptionCount.value > 0)
+            engine.llmFlow.tryEmit(LlamaHelper.LLMEvent.Ongoing("early", 1))
+            engine.llmFlow.tryEmit(LlamaHelper.LLMEvent.Done("early", 1, 1))
+        }
+        assertEquals("early", engine.generate("prompt").getOrThrow())
+    }
+
+    @Test fun `failed model load releases helper and preserves reason`() {
+        val engine = createEngine()
+        fakeWrapper.loadResult = Result.failure(IllegalStateException("unsupported model architecture"))
+        val result = engine.loadModel(File(tempDir, "invalid.gguf").apply { writeText("bad") })
+        assertEquals("unsupported model architecture", result.exceptionOrNull()?.message)
+        assertTrue(fakeWrapper.abortCalled)
+        assertTrue(fakeWrapper.releaseCalled)
+        assertFalse(engine.isLoaded)
+    }
+
+    @Test fun `model load timeout releases unpublished helper`() {
+        val engine = createEngine(loadTimeoutMs = 20)
+        fakeWrapper.autoCompleteLoad = false
+        val result = engine.loadModel(File(tempDir, "slow.gguf").apply { writeText("model") })
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("timed out"))
+        assertTrue(fakeWrapper.abortCalled)
+        assertTrue(fakeWrapper.releaseCalled)
+        assertFalse(engine.isLoaded)
+    }
+
     @Test fun `concurrent callers receive only their own generation`() = runBlocking {
         val engine = createEngine(2000)
         engine.loadModel(File(tempDir, "concurrent.gguf").apply { writeText("model") })
@@ -160,12 +194,13 @@ class LlamaEngineTest {
         tempDir.deleteRecursively()
     }
 
-    private fun createEngine(timeoutMs: Long = 100L): LlamaEngine {
+    private fun createEngine(timeoutMs: Long = 100L, loadTimeoutMs: Long = 100L): LlamaEngine {
         engine = LlamaEngine(
             context = mockContext,
             helperFactory = { _, _, _ -> fakeWrapper },
             logger = NoOpLogger,
             generationTimeoutMs = timeoutMs,
+            loadTimeoutMs = loadTimeoutMs,
             uriResolver = { file -> "content://test/${file.name}" }
         )
         return engine

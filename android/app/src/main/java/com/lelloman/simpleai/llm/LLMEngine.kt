@@ -6,6 +6,10 @@ import androidx.core.content.FileProvider
 import com.lelloman.simpleai.util.AndroidLogger
 import com.lelloman.simpleai.util.Logger
 import org.nehuatl.llamacpp.LlamaHelper
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +60,7 @@ class LlamaEngine(
     private val helperFactory: LlamaHelperFactory = ::RealLlamaHelperWrapper,
     private val logger: Logger = AndroidLogger,
     private val generationTimeoutMs: Long = DEFAULT_GENERATION_TIMEOUT_MS,
+    private val loadTimeoutMs: Long = 30_000L,
     private val uriResolver: (File) -> String = { file ->
         FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file).toString()
     }
@@ -93,6 +98,7 @@ class LlamaEngine(
         get() = _modelInfo
 
     @Synchronized override fun loadModel(modelPath: File): Result<Unit> {
+        var pendingHelper: LlamaHelperWrapper? = null
         return try {
             if (!modelPath.exists()) {
                 return Result.failure(IllegalArgumentException("Model file does not exist: ${modelPath.absolutePath}"))
@@ -108,34 +114,18 @@ class LlamaEngine(
             logger.i(TAG, "Content URI: $contentUriString")
 
             llmFlow = newEventFlow()
-            val helper = helperFactory(contentResolver, scope, llmFlow)
+            val helper = helperFactory(contentResolver, scope, llmFlow).also { pendingHelper = it }
 
-            // Load model using content URI
-            var loadSuccess = false
-            var loadError: String? = null
-
-            helper.load(
-                path = contentUriString,
-                contextLength = DEFAULT_CONTEXT_LENGTH
-            ) { _ ->
-                loadSuccess = true
-            }
-
-            // Wait for load to complete - the library loads asynchronously
-            // Model loading can take several seconds for warmup
-            val maxWaitMs = 30_000L
             val loadStartTime = System.currentTimeMillis()
-            while (!loadSuccess && (System.currentTimeMillis() - loadStartTime) < maxWaitMs) {
-                Thread.sleep(100)
-            }
+            val loaded = CompletableDeferred<Result<Unit>>()
+            helper.load(contentUriString, DEFAULT_CONTEXT_LENGTH) { loaded.complete(it) }
+            val outcome = runBlocking { withTimeoutOrNull(loadTimeoutMs) { loaded.await() } }
+                ?: throw IllegalStateException("Model loading timed out after ${loadTimeoutMs}ms")
+            outcome.getOrThrow()
             val loadElapsed = System.currentTimeMillis() - loadStartTime
 
-            if (!loadSuccess) {
-                logger.w(TAG, "Model load failed after ${loadElapsed}ms")
-                return Result.failure(RuntimeException("Failed to load model: ${loadError ?: "timeout"}"))
-            }
-
             llamaHelper = helper
+            pendingHelper = null
             currentModelPath = modelPath.absolutePath
             _modelInfo = ModelInfo(
                 name = modelPath.name,
@@ -150,6 +140,12 @@ class LlamaEngine(
         } catch (e: Exception) {
             logger.e(TAG, "Error loading model", e)
             Result.failure(e)
+        } catch (e: LinkageError) {
+            Result.failure(IllegalStateException("Native inference is unavailable on this device", e))
+        } finally {
+            pendingHelper?.let { helper ->
+                try { helper.abort() } finally { helper.release() }
+            }
         }
     }
 
@@ -206,17 +202,14 @@ class LlamaEngine(
         helper: LlamaHelperWrapper,
         prompt: String,
         params: GenerationParams
-    ): String? {
+    ): String? = coroutineScope {
         val responseBuilder = StringBuilder()
         var hasError = false
         val startTime = System.currentTimeMillis()
         var firstTokenTime: Long? = null
 
-        // Start prediction
-        helper.predict(prompt, params)
-
-        // Collect events with timeout - use first{} to exit on terminal events
-        val terminal = try { withTimeoutOrNull(generationTimeoutMs) {
+        // UNDISTPATCHED enters first() and registers before predict can emit.
+        val collector = async(start = CoroutineStart.UNDISPATCHED) { withTimeoutOrNull(generationTimeoutMs) {
             llmFlow.first { event ->
                 when (event) {
                     is LlamaHelper.LLMEvent.Started -> {
@@ -237,6 +230,7 @@ class LlamaEngine(
                         false // Native n_predict enforces the token limit.
                     }
                     is LlamaHelper.LLMEvent.Done -> {
+                        responseBuilder.clear().append(event.fullText)
                         val total = System.currentTimeMillis() - startTime
                         val genTime = if (firstTokenTime != null) System.currentTimeMillis() - firstTokenTime!! else 0
                         logger.i(TAG, "Generation done: total=${total}ms, generation=${genTime}ms, ${responseBuilder.length} chars")
@@ -250,14 +244,19 @@ class LlamaEngine(
                     }
                 }
             }
-        } } finally {
+        } }
+        val terminal = try {
+            helper.predict(prompt, params)
+            collector.await()
+        } finally {
+            collector.cancel()
             // Stop native work on timeout, errors and coroutine cancellation too.
             helper.stopPrediction()
         }
 
         if (terminal == null) throw GenerationTimeoutException(responseBuilder.toString())
 
-        return if (hasError) null else responseBuilder.toString()
+        if (hasError) null else responseBuilder.toString()
     }
 
     @Synchronized fun release() {

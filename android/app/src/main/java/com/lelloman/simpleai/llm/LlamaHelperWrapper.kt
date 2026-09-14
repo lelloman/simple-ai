@@ -9,7 +9,7 @@ import org.nehuatl.llamacpp.LlamaContext
 import org.nehuatl.llamacpp.LlamaAndroid
 
 interface LlamaHelperWrapper {
-    fun load(path: String, contextLength: Int, onLoaded: (Long) -> Unit)
+    fun load(path: String, contextLength: Int, onLoaded: (Result<Unit>) -> Unit)
     fun predict(prompt: String, params: GenerationParams)
     fun stopPrediction()
     fun abort()
@@ -38,7 +38,7 @@ class RealLlamaHelperWrapper(
     private var text = StringBuilder()
     private var tokens = 0
 
-    override fun load(path: String, contextLength: Int, onLoaded: (Long) -> Unit) {
+    override fun load(path: String, contextLength: Int, onLoaded: (Result<Unit>) -> Unit) {
         loadJob = scope.launch {
             try {
                 val descriptor = contentResolver.openFileDescriptor(Uri.parse(path), "r")
@@ -59,11 +59,13 @@ class RealLlamaHelperWrapper(
                             text.append(word)
                             sharedFlow.tryEmit(LlamaHelper.LLMEvent.Ongoing(word, ++tokens))
                         }
-                        onLoaded(context.context)
+                        onLoaded(Result.success(Unit))
                     }
                 }
             } catch (e: Exception) {
-                sharedFlow.tryEmit(LlamaHelper.LLMEvent.Error(e.message ?: "Model loading failed"))
+                onLoaded(Result.failure(e))
+            } catch (e: LinkageError) {
+                onLoaded(Result.failure(e))
             }
         }
     }
