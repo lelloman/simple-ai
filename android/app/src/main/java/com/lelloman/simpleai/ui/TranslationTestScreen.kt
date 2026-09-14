@@ -14,6 +14,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,9 +57,12 @@ fun TranslationTestScreen(
     viewModel: CapabilitiesViewModel = viewModel(),
     onBack: () -> Unit
 ) {
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
     val state by viewModel.state.collectAsState()
     val translationState by viewModel.translationState.collectAsState()
     val downloadedLanguages = com.lelloman.simpleai.translation.TranslationAvailability.available(state.downloadedLanguages)
+    androidx.compose.runtime.LaunchedEffect(translationState.translatedText) { copied = false }
     val draft = translationState.draft
     val inputText = draft.text
     val sourceLang = draft.source
@@ -208,10 +215,14 @@ fun TranslationTestScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = translationState.translatedText ?: "",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                            SelectionContainer {
+                                Text(translationState.translatedText ?: "", style = MaterialTheme.typography.bodyLarge)
+                            }
+                            TextButton(onClick = {
+                                clipboard.setText(AnnotatedString(translationState.translatedText.orEmpty()))
+                                copied = true
+                            }) { Text("Copy translation") }
+                            if (copied) Text("Copied", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         }
                     }
                 }

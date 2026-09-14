@@ -17,6 +17,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +38,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.Modifier
@@ -68,9 +73,12 @@ fun TranslationLanguagesScreen(
     val downloadedLanguages = state.downloadedLanguages
     val downloadingLanguages = state.downloadingLanguages
     val languageDownloadError = state.languageDownloadErrors.entries.firstOrNull()
+    var query by rememberSaveable { mutableStateOf("") }
+    var deleteLanguage by remember { mutableStateOf<LanguageInfo?>(null) }
     val allLanguages = getLanguageInfoList(downloadedLanguages, downloadingLanguages)
-    val downloaded = allLanguages.filter { it.isDownloaded && !it.isBuiltIn }
-    val available = allLanguages.filter { !it.isDownloaded && !it.isBuiltIn }
+    val matching = allLanguages.filter { languageMatches(it.code, it.name, query) }
+    val downloaded = matching.filter { it.isDownloaded && !it.isBuiltIn }
+    val available = matching.filter { !it.isDownloaded && !it.isBuiltIn }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -87,10 +95,26 @@ fun TranslationLanguagesScreen(
         }
     }
 
+    deleteLanguage?.let { language ->
+        AlertDialog(
+            onDismissRequest = { deleteLanguage = null },
+            title = { Text("Delete ${language.name}?") },
+            text = { Text("Apps will need this language pack downloaded again before translating it. You can download it again from this list.") },
+            confirmButton = { TextButton(onClick = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null }) { Text("Delete language pack") } },
+            dismissButton = { TextButton(onClick = { deleteLanguage = null }) { Text("Cancel") } }
+        )
+    }
+    LaunchedEffect(state.languageOperationMessage) {
+        state.languageOperationMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearLanguageOperationMessage()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Translation Languages") },
+                title = { Text("Manage languages") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -105,8 +129,6 @@ fun TranslationLanguagesScreen(
             SnackbarHost(snackbarHostState) { data ->
                 Snackbar(
                     snackbarData = data,
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
         }
@@ -119,6 +141,12 @@ fun TranslationLanguagesScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
+                OutlinedTextField(query, { query = it }, label = { Text("Search languages") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = {
+                    if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Clear") }
+                })
+                if (matching.isEmpty()) Text("No languages match your search.")
+            }
+            if (matching.any { it.isBuiltIn }) item {
                 Text("Built in", style = MaterialTheme.typography.titleSmall)
                 LanguageCard(language = allLanguages.first { it.isBuiltIn }, onAction = {})
                 Text("English is included by ML Kit and needs no download. Other languages use downloaded packs.", style = MaterialTheme.typography.bodySmall)
@@ -134,12 +162,12 @@ fun TranslationLanguagesScreen(
                     )
                 }
 
-                items(downloaded) { language ->
+                items(downloaded, key = { it.code }) { language ->
                     LanguageCard(
                         language = language,
                         onAction = {
                             if (!language.isBuiltIn) {
-                                viewModel.deleteTranslationLanguage(language.code)
+                                deleteLanguage = language
                             }
                         }
                     )
@@ -158,7 +186,7 @@ fun TranslationLanguagesScreen(
                     )
                 }
 
-                items(available) { language ->
+                items(available, key = { it.code }) { language ->
                     LanguageCard(
                         language = language,
                         onAction = { viewModel.downloadTranslationLanguage(language.code) }
@@ -195,18 +223,14 @@ private fun LanguageCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = language.flag,
-                modifier = Modifier.clearAndSetSemantics {},
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = language.name,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
+                val nativeName = nativeLanguageName(language.code)
+                if (!nativeName.equals(language.name, ignoreCase = true)) Text(nativeName, style = MaterialTheme.typography.bodySmall)
                 if (language.isBuiltIn) {
                     Text(
                         text = "Built in — no download needed",

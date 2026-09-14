@@ -43,6 +43,7 @@ data class CapabilitiesState(
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguages: Set<String> = emptySet(),
     val languageDownloadErrors: Map<String, String> = emptyMap(),
+    val languageOperationMessage: String? = null,
     val languageOperationError: String? = null,
     val isServiceConnected: Boolean = false,
     val serviceError: String? = null,
@@ -202,6 +203,8 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     fun downloadTranslationLanguage(languageCode: String) = models.languageDownloads.start(languageCode)
 
+    fun clearLanguageOperationMessage() { _state.update { it.copy(languageOperationMessage = null) } }
+
     fun clearLanguageOperationError() { _state.update { it.copy(languageOperationError = null) } }
 
     fun clearLanguageDownloadError(languageCode: String) = models.languageDownloads.clearError(languageCode)
@@ -210,6 +213,7 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
         viewModelScope.launch {
             translationManager.deleteLanguage(languageCode).fold(
                 onSuccess = {
+                    _state.update { it.copy(languageOperationMessage = "Language pack deleted. You can download it again from Available.") }
                     refreshCapabilities()
                 },
                 onFailure = { e ->
