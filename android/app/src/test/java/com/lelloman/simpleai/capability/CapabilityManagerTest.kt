@@ -18,7 +18,7 @@ class CapabilityManagerTest {
     fun `shared translation inventory updates readiness for service clients`() {
         val manager = CapabilityManager(mockContext, "https://cloud.example")
         manager.syncTranslationLanguages(setOf("en", "it"))
-        assertEquals(setOf("en", "it"), manager.downloadedLanguages.value)
+        assertEquals(setOf("it"), manager.downloadedLanguages.value)
         assertEquals(CapabilityStatus.Ready, manager.translationStatus.value)
         manager.syncTranslationLanguages(emptySet())
         assertTrue(manager.downloadedLanguages.value.isEmpty())
@@ -128,9 +128,9 @@ class CapabilityManagerTest {
     }
 
     @Test
-    fun `addTranslationLanguage automatically adds English`() {
+    fun `addTranslationLanguage does not invent an English download`() {
         manager.addTranslationLanguage("it")
-        assertTrue(manager.downloadedLanguages.value.contains("en"))
+        assertFalse(manager.downloadedLanguages.value.contains("en"))
         assertTrue(manager.downloadedLanguages.value.contains("it"))
     }
 
@@ -155,16 +155,16 @@ class CapabilityManagerTest {
 
         assertFalse(manager.downloadedLanguages.value.contains("it"))
         assertTrue(manager.downloadedLanguages.value.contains("fr"))
-        assertTrue(manager.downloadedLanguages.value.contains("en"))
+        assertFalse(manager.downloadedLanguages.value.contains("en"))
     }
 
     @Test
-    fun `removeTranslationLanguage cannot remove English directly`() {
+    fun `removeTranslationLanguage does not include built-in English in downloads`() {
         manager.addTranslationLanguage("it")
         manager.removeTranslationLanguage("en")
 
-        // English should still be there
-        assertTrue(manager.downloadedLanguages.value.contains("en"))
+        // English is built in and is never a downloaded pack.
+        assertFalse(manager.downloadedLanguages.value.contains("en"))
     }
 
     @Test
@@ -191,7 +191,7 @@ class CapabilityManagerTest {
 
         manager.syncTranslationLanguages(setOf("en", "de", "es"))
 
-        assertEquals(setOf("en", "de", "es"), manager.downloadedLanguages.value)
+        assertEquals(setOf("de", "es"), manager.downloadedLanguages.value)
     }
 
     // =========================================================================
@@ -261,7 +261,7 @@ class CapabilityManagerTest {
         manager.addTranslationLanguage("fr")
 
         val capability = manager.getTranslationCapability()
-        assertTrue(capability.downloadedLanguages.contains("en"))
+        assertFalse(capability.downloadedLanguages.contains("en"))
         assertTrue(capability.downloadedLanguages.contains("it"))
         assertTrue(capability.downloadedLanguages.contains("fr"))
     }
@@ -284,7 +284,7 @@ class CapabilityManagerTest {
         // Create new manager to trigger load
         val newManager = CapabilityManager(mockContext, "https://cloud.example")
 
-        assertTrue(newManager.downloadedLanguages.value.contains("en"))
+        assertFalse(newManager.downloadedLanguages.value.contains("en"))
         assertTrue(newManager.downloadedLanguages.value.contains("it"))
         assertTrue(newManager.downloadedLanguages.value.contains("fr"))
     }

@@ -118,8 +118,9 @@ class TranslationManager(
     val downloadedLanguages: StateFlow<Set<String>> = _downloadedLanguages.asStateFlow()
 
     private fun updateLanguages(languages: Set<String>) {
-        onLanguagesChanged(languages)
-        _downloadedLanguages.value = languages
+        val downloads = TranslationAvailability.downloaded(languages)
+        onLanguagesChanged(downloads)
+        _downloadedLanguages.value = downloads
     }
 
     /**
@@ -164,6 +165,7 @@ class TranslationManager(
         languageCode: String,
         onProgress: (Float) -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        if (languageCode == TranslationAvailability.BUILT_IN) return@withContext Result.success(Unit)
         val mlKitCode = LANGUAGE_MAP[languageCode]
             ?: return@withContext Result.failure(IllegalArgumentException("Unknown language: $languageCode"))
 
@@ -202,7 +204,8 @@ class TranslationManager(
      */
     suspend fun deleteLanguage(languageCode: String): Result<Unit> = withContext(Dispatchers.IO) {
         operationMutex.withLock {
-            val mlKitCode = LANGUAGE_MAP[languageCode]
+            if (languageCode == TranslationAvailability.BUILT_IN) return@withContext Result.success(Unit)
+        val mlKitCode = LANGUAGE_MAP[languageCode]
                 ?: return@withContext Result.failure(IllegalArgumentException("Unknown language: $languageCode"))
 
             try {
@@ -271,7 +274,7 @@ class TranslationManager(
                 }
 
                 // Check if languages are downloaded
-                val downloaded = _downloadedLanguages.value
+                val downloaded = TranslationAvailability.available(_downloadedLanguages.value)
                 if (actualSourceLang !in downloaded) {
                     return@withContext Result.failure(
                         IllegalStateException("Source language '$actualSourceLang' not downloaded")

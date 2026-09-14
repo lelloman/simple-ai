@@ -51,7 +51,7 @@ data class LanguageInfo(
     val flag: String,
     val isDownloaded: Boolean,
     val isDownloading: Boolean = false,
-    val isRequired: Boolean = false  // English is required
+    val isBuiltIn: Boolean = false  // English is required
 )
 
 /**
@@ -68,8 +68,8 @@ fun TranslationLanguagesScreen(
     val downloadingLanguages = state.downloadingLanguages
     val languageDownloadError = state.languageDownloadErrors.entries.firstOrNull()
     val allLanguages = getLanguageInfoList(downloadedLanguages, downloadingLanguages)
-    val downloaded = allLanguages.filter { it.isDownloaded || it.isRequired }
-    val available = allLanguages.filter { !it.isDownloaded && !it.isRequired }
+    val downloaded = allLanguages.filter { it.isDownloaded && !it.isBuiltIn }
+    val available = allLanguages.filter { !it.isDownloaded && !it.isBuiltIn }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -111,6 +111,11 @@ fun TranslationLanguagesScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                Text("Built in", style = MaterialTheme.typography.titleSmall)
+                LanguageCard(language = allLanguages.first { it.isBuiltIn }, onAction = {})
+                Text("English is included by ML Kit and needs no download. Other languages use downloaded packs.", style = MaterialTheme.typography.bodySmall)
+            }
             // Downloaded section
             if (downloaded.isNotEmpty()) {
                 item {
@@ -126,7 +131,7 @@ fun TranslationLanguagesScreen(
                     LanguageCard(
                         language = language,
                         onAction = {
-                            if (!language.isRequired) {
+                            if (!language.isBuiltIn) {
                                 viewModel.deleteTranslationLanguage(language.code)
                             }
                         }
@@ -170,7 +175,7 @@ private fun LanguageCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (language.isDownloaded || language.isRequired) {
+            containerColor = if (language.isDownloaded || language.isBuiltIn) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
@@ -194,9 +199,9 @@ private fun LanguageCard(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
-                if (language.isRequired) {
+                if (language.isBuiltIn) {
                     Text(
-                        text = "Required (pivot language)",
+                        text = "Built in — no download needed",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -216,10 +221,10 @@ private fun LanguageCard(
                         strokeWidth = 2.dp
                     )
                 }
-                language.isRequired -> {
+                language.isBuiltIn -> {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = "Required",
+                        contentDescription = "Built in",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
@@ -261,9 +266,9 @@ private fun getLanguageInfoList(
             flag = flag,
             isDownloaded = code in downloadedLanguages,
             isDownloading = code in downloadingLanguages,
-            isRequired = code == "en" && downloadedLanguages.isNotEmpty()
+            isBuiltIn = code == "en"
         )
-    }.sortedWith(compareBy({ !it.isRequired }, { !it.isDownloaded }, { it.name }))
+    }.sortedWith(compareBy({ !it.isBuiltIn }, { !it.isDownloaded }, { it.name }))
 }
 
 // Language code -> (name, flag)

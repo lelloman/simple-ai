@@ -256,7 +256,7 @@ class SimpleAIService : Service() {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
-            val languages = capabilityManager.downloadedLanguages.value
+            val languages = com.lelloman.simpleai.translation.TranslationAvailability.available(capabilityManager.downloadedLanguages.value)
             return ProtocolHandler.success(proto, buildJsonObject {
                 put("languages", buildJsonArray {
                     languages.forEach { add(JsonPrimitive(it)) }
@@ -525,6 +525,7 @@ class SimpleAIService : Service() {
                 put("message", status.message)
             }
         }
+        put("builtInLanguages", buildJsonArray { add(JsonPrimitive("en")) })
         put("languages", buildJsonArray {
             capabilityManager.downloadedLanguages.value.forEach { add(JsonPrimitive(it)) }
         })

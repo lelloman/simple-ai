@@ -6,6 +6,7 @@ import android.util.Log
 import com.lelloman.simpleai.BuildConfig
 import com.lelloman.simpleai.cloud.CloudEndpoint
 import com.lelloman.simpleai.model.LocalAIModel
+import com.lelloman.simpleai.translation.TranslationAvailability
 import com.lelloman.simpleai.translation.TranslationManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,7 +77,7 @@ class CapabilityManager(
         if (languagesJson != null) {
             try {
                 val languages = json.decodeFromString<Set<String>>(languagesJson)
-                _downloadedLanguages.value = languages
+                _downloadedLanguages.value = TranslationAvailability.downloaded(languages)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load translation languages", e)
             }
@@ -97,42 +98,9 @@ class CapabilityManager(
     // Translation
     // =========================================================================
 
-    fun addTranslationLanguage(languageCode: String) {
-        val updated = _downloadedLanguages.value + languageCode
-        // Always include English as pivot
-        val withEnglish = if ("en" !in updated && updated.isNotEmpty()) {
-            updated + "en"
-        } else {
-            updated
-        }
-        _downloadedLanguages.value = withEnglish
-        persistTranslationLanguages(withEnglish)
+    fun addTranslationLanguage(languageCode: String) = syncTranslationLanguages(_downloadedLanguages.value + languageCode)
 
-        if (withEnglish.isNotEmpty()) {
-            _translationStatus.value = CapabilityStatus.Ready
-        }
-    }
-
-    fun removeTranslationLanguage(languageCode: String) {
-        if (languageCode == "en") {
-            // Can't remove English directly, it's removed when all others are removed
-            return
-        }
-
-        val updated = _downloadedLanguages.value - languageCode
-        // Remove English if no other languages remain
-        val withoutEnglish = if (updated == setOf("en")) {
-            emptySet()
-        } else {
-            updated
-        }
-        _downloadedLanguages.value = withoutEnglish
-        persistTranslationLanguages(withoutEnglish)
-
-        if (withoutEnglish.isEmpty()) {
-            _translationStatus.value = CapabilityStatus.NotDownloaded(0)
-        }
-    }
+    fun removeTranslationLanguage(languageCode: String) = syncTranslationLanguages(_downloadedLanguages.value - languageCode)
 
     fun updateTranslationStatus(status: CapabilityStatus) {
         _translationStatus.value = status
@@ -142,7 +110,8 @@ class CapabilityManager(
      * Sync downloaded languages from TranslationManager.
      * This replaces the current set entirely to ensure consistency.
      */
-    fun syncTranslationLanguages(languages: Set<String>) {
+    fun syncTranslationLanguages(models: Set<String>) {
+        val languages = TranslationAvailability.downloaded(models)
         _translationStatus.value = if (languages.isEmpty()) CapabilityStatus.NotDownloaded(0) else CapabilityStatus.Ready
         _downloadedLanguages.value = languages
         persistTranslationLanguages(languages)

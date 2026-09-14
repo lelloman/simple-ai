@@ -31,7 +31,14 @@ job scheduling may delay queued work. Translation packs remain managed by ML Kit
 - ARM processor (arm64-v8a or armeabi-v7a)
 - Storage space depends on capabilities:
   - Voice Commands: ~150 MB
-  - Translation: ~30 MB per language (English required as pivot)
+  - Translation: ~30 MB per downloadable language. English is built in, not a downloaded pack.
+
+ML Kit [documents English as built in](https://developers.google.com/android/reference/com/google/mlkit/nl/translate/TranslateRemoteModel).
+The language management screen separates it from downloaded/removable packs.
+Removing every downloaded pack leaves English built in and translation unavailable
+until another language is downloaded. `getTranslationLanguages` includes built-in
+English among usable languages; service capability metadata lists it separately
+under `builtInLanguages`.
   - Local AI: ~1.5 GB
 
 ## Installation

@@ -53,7 +53,7 @@ fun TranslationTestScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val translationState by viewModel.translationState.collectAsState()
-    val downloadedLanguages = state.downloadedLanguages
+    val downloadedLanguages = com.lelloman.simpleai.translation.TranslationAvailability.available(state.downloadedLanguages)
     var inputText by remember { mutableStateOf("") }
     var sourceLang by remember { mutableStateOf("auto") }
     var targetLang by remember { mutableStateOf(downloadedLanguages.firstOrNull { it != "en" } ?: "en") }
