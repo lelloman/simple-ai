@@ -79,7 +79,7 @@ class CloudLLMClient {
             val requestBody = buildRequestBody(fullMessages, tools, promptCacheKey)
             val requestJson = json.encodeToString(requestBody)
 
-            Log.d(TAG, "Sending request to $endpoint/v1/chat/completions")
+            Log.d(TAG, "Sending cloud request: messages=${fullMessages.size}, tools=${tools?.size ?: 0}")
 
             val request = Request.Builder()
                 .url(chatUrl)
@@ -91,37 +91,36 @@ class CloudLLMClient {
             httpClient.newCall(request).withResponse { response ->
 
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "No error body"
-                Log.e(TAG, "Cloud request failed: ${response.code} - $errorBody")
+                Log.w(TAG, "Cloud request failed: HTTP ${response.code}")
 
                 return@withResponse when (response.code) {
                     401, 403 -> Result.failure(CloudAuthException("Authentication failed: ${response.code}"))
                     429 -> Result.failure(CloudRateLimitException("Rate limited"))
                     500, 502, 503, 504 -> Result.failure(CloudUnavailableException("Server error: ${response.code}"))
-                    else -> Result.failure(CloudException("Request failed: ${response.code} - $errorBody"))
+                    else -> Result.failure(CloudException("Request failed: HTTP ${response.code}"))
                 }
             }
 
             val responseBody = response.body?.string()
                 ?: return@withResponse Result.failure(CloudException("Empty response body"))
 
-            Log.d(TAG, "Response body: $responseBody")
+            Log.d(TAG, "Cloud response: HTTP ${response.code}, characters=${responseBody.length}")
             val chatResponse = parseResponse(responseBody)
-            Log.d(TAG, "Parsed response: role=${chatResponse.role}, content=${chatResponse.content}, toolCalls=${chatResponse.toolCalls?.size ?: 0}")
+            Log.d(TAG, "Cloud response parsed: contentCharacters=${chatResponse.content?.length ?: 0}, toolCalls=${chatResponse.toolCalls?.size ?: 0}")
             Result.success(chatResponse)
             }
 
         } catch (e: CancellationException) {
             throw e
         } catch (e: java.net.UnknownHostException) {
-            Log.e(TAG, "Network error", e)
-            Result.failure(CloudUnavailableException("Network unavailable: ${e.message}"))
+            Log.w(TAG, "Cloud network unavailable")
+            Result.failure(CloudUnavailableException("Network unavailable"))
         } catch (e: java.net.SocketTimeoutException) {
-            Log.e(TAG, "Timeout", e)
+            Log.w(TAG, "Cloud request timed out")
             Result.failure(CloudUnavailableException("Request timed out"))
         } catch (e: Exception) {
-            Log.e(TAG, "Unexpected error", e)
-            Result.failure(CloudException("Unexpected error: ${e.message}"))
+            Log.w(TAG, "Cloud request or response failed: ${e.javaClass.simpleName}")
+            Result.failure(CloudException("Cloud request or response failed"))
         }
     }
 
