@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lelloman.simpleai.ISimpleAI
+import com.lelloman.simpleai.api.ServiceInfoClient
 import com.lelloman.simpleai.capability.CapabilityStatus
 import com.lelloman.simpleai.download.DownloadState
 import com.lelloman.simpleai.download.ModelConfig
@@ -41,7 +42,8 @@ data class CapabilitiesState(
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguage: String? = null,
     val languageDownloadError: String? = null,
-    val isServiceConnected: Boolean = false
+    val isServiceConnected: Boolean = false,
+    val serviceError: String? = null
 )
 
 /**
@@ -135,25 +137,19 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
 
             try {
                 val response = withContext(Dispatchers.IO) {
-                    service.getServiceInfo(1)
+                    ServiceInfoClient.request(service::getServiceInfo)
                 }
 
                 parseServiceInfo(response)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to refresh capabilities", e)
+                _state.update { it.copy(serviceError = e.message ?: "Could not connect to SimpleAI") }
             }
         }
     }
 
-    private fun parseServiceInfo(responseJson: String) {
+    private fun parseServiceInfo(capabilities: kotlinx.serialization.json.JsonObject) {
         try {
-            val response = json.parseToJsonElement(responseJson).jsonObject
-            val status = response["status"]?.jsonPrimitive?.content
-
-            if (status != "success") return
-
-            val data = response["data"]?.jsonObject ?: return
-            val capabilities = data["capabilities"]?.jsonObject ?: return
 
             // Parse voice commands
             val voiceCommands = capabilities["voiceCommands"]?.jsonObject
@@ -175,6 +171,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
 
             _state.update { currentState ->
                 currentState.copy(
+                    serviceError = null,
                     // Don't overwrite if currently downloading (ViewModel manages download progress)
                     voiceCommandsStatus = if (currentState.voiceCommandsStatus is CapabilityStatus.Downloading) {
                         currentState.voiceCommandsStatus
@@ -192,6 +189,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse service info", e)
+            _state.update { it.copy(serviceError = "Could not read service status: ${e.message}") }
         }
     }
 

@@ -109,6 +109,10 @@ fun CapabilitiesScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            state.serviceError?.let { error ->
+                Text(error, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = viewModel::refreshCapabilities) { Text("Retry connection") }
+            }
             // Voice Commands capability
             CapabilityCard(
                 title = "Voice Commands",
