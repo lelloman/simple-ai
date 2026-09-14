@@ -27,7 +27,7 @@ class CapabilityManager(
         private const val KEY_TRANSLATION_LANGUAGES = "translation_languages"
 
         // Model sizes
-        const val VOICE_COMMANDS_MODEL_SIZE = 534_000_000L  // ~508 MB XLM-RoBERTa int8
+        const val VOICE_COMMANDS_MODEL_SIZE = com.lelloman.simpleai.model.NluModel.SIZE_BYTES
         val LOCAL_AI_MODEL_SIZE = LocalAIModel.SIZE_BYTES   // Qwen 3 1.7B (~1.3 GB)
         const val TRANSLATION_LANGUAGE_SIZE = 30_000_000L   // ~30 MB per language
 

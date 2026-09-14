@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.simpleai.R
+
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
@@ -83,7 +85,7 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
     private val translationSession = TranslationSession(viewModelScope, savedStateHandle) {
         withContext(Dispatchers.IO) {
             val service = simpleAiService
-            if (service == null) Result.failure(IllegalStateException("Service disconnected. Return home and retry the connection."))
+            if (service == null) Result.failure(IllegalStateException(getApplication<Application>().getString(R.string.ui_service_disconnected_recovery)))
             else com.lelloman.simpleai.api.ServiceTranslationClient.request(it.text, it.source, it.target, service::translate)
         }
     }
@@ -145,7 +147,7 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
         try {
             serviceBinding.connect()
         } catch (e: Exception) {
-            _state.update { it.copy(isServiceConnected = false, serviceError = "Could not start SimpleAI: ${e.message}") }
+            _state.update { it.copy(isServiceConnected = false, serviceError = getApplication<Application>().getString(R.string.ui_could_not_start, e.message.orEmpty())) }
         }
     }
 
@@ -175,7 +177,7 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
                 _state.update { it.copy(serviceError = null) }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to refresh capabilities", e)
-                _state.update { it.copy(serviceError = e.message ?: "Could not connect to SimpleAI") }
+                _state.update { it.copy(serviceError = e.message ?: getApplication<Application>().getString(R.string.ui_could_not_connect)) }
             }
         }
     }
@@ -213,12 +215,12 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
         viewModelScope.launch {
             translationManager.deleteLanguage(languageCode).fold(
                 onSuccess = {
-                    _state.update { it.copy(languageOperationMessage = "Language pack deleted. You can download it again from Available.") }
+                    _state.update { it.copy(languageOperationMessage = getApplication<Application>().getString(R.string.ui_language_deleted)) }
                     refreshCapabilities()
                 },
                 onFailure = { e ->
                     Log.e(TAG, "Failed to delete language: $languageCode", e)
-                    _state.update { it.copy(languageOperationError = "$languageCode: Could not delete language. ${e.message}") }
+                    _state.update { it.copy(languageOperationError = getApplication<Application>().getString(R.string.ui_could_not_delete_language, languageCode, e.message.orEmpty())) }
                 }
             )
         }

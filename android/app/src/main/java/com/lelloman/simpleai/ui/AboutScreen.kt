@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.simpleai.R
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,15 +37,18 @@ import com.lelloman.simpleai.BuildConfig
 fun AboutScreen(
     onBack: () -> Unit
 ) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("About") },
+                title = { Text(strings.getString(R.string.ui_about)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = strings.getString(R.string.ui_back)
                         )
                     }
                 }
@@ -68,13 +74,13 @@ fun AboutScreen(
             )
 
             Text(
-                text = "SimpleAI",
+                text = strings.getString(R.string.ui_simpleai),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "Version ${BuildConfig.VERSION_NAME}",
+                text = strings.getString(R.string.ui_version, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -93,12 +99,12 @@ fun AboutScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "About",
+                        text = strings.getString(R.string.ui_about),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "SimpleAI is a shared AI service for compatible Android apps. Use it to download models, manage language packs and approve connected apps. Conversations and voice recording happen in the app that connects to SimpleAI.",
+                        text = strings.getString(R.string.ui_simpleai_is_a_shared_ai_service_for_compatible_android_apps_use_i),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -116,21 +122,37 @@ fun AboutScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Features",
+                        text = strings.getString(R.string.ui_features),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
-                    FeatureItem("\uD83C\uDFA4", "Voice Commands", "Understand commands supplied by a compatible app; processing stays on this device.")
-                    FeatureItem("\uD83C\uDF10", "Translation", "Translate on this device after downloading language packs. Try it from the Translation card.")
-                    FeatureItem("\u2601\uFE0F", "Cloud AI", "Sends requests over the internet to the configured cloud provider using your connected app’s account.")
-                    FeatureItem("\uD83E\uDD16", "Local AI", "Generate text on this device after downloading the model; no cloud request is needed.")
+                    FeatureItem("\uD83C\uDFA4", strings.getString(R.string.ui_voice_commands), strings.getString(R.string.ui_understand_commands_supplied_by_a_compatible_app_processing_stays))
+                    FeatureItem("\uD83C\uDF10", strings.getString(R.string.ui_translation), strings.getString(R.string.ui_translate_on_this_device_after_downloading_language_packs_try_it_))
+                    FeatureItem("\u2601\uFE0F", strings.getString(R.string.ui_cloud_ai), strings.getString(R.string.ui_sends_requests_over_the_internet_to_the_configured_cloud_provider))
+                    FeatureItem("\uD83E\uDD16", strings.getString(R.string.ui_local_ai), strings.getString(R.string.ui_generate_text_on_this_device_after_downloading_the_model_no_cloud))
                 }
             }
 
-            Text("Getting connected", style = MaterialTheme.typography.titleMedium)
-            Text("Choose SimpleAI in an app that supports it, download the models that app requests, then approve it under Connected apps on the home screen. If your app has no SimpleAI option, it needs an integration from its developer.")
-            Text("Check the connection", style = MaterialTheme.typography.titleMedium)
-            Text("Use Test on the Translation card to send a translation through the service API. Then send a request from your connected app to verify its own approval and setup. A successful test here does not prove another app is configured correctly.")
+            Text(strings.getString(R.string.ui_getting_connected), style = MaterialTheme.typography.titleMedium)
+            Text(strings.getString(R.string.ui_choose_simpleai_in_an_app_that_supports_it_download_the_models_th))
+            Text(strings.getString(R.string.ui_check_the_connection), style = MaterialTheme.typography.titleMedium)
+            Text(strings.getString(R.string.ui_use_test_on_the_translation_card_to_send_a_translation_through_th))
+
+            Text(strings.getString(R.string.ui_models_and_support), style = MaterialTheme.typography.titleMedium)
+            Text(strings.getString(R.string.ui_voice_commands_xlm_roberta_int8, formatSize(com.lelloman.simpleai.model.NluModel.SIZE_BYTES)))
+            Text(strings.getString(R.string.ui_local_ai_2, com.lelloman.simpleai.model.LocalAIModel.NAME, formatSize(com.lelloman.simpleai.model.LocalAIModel.SIZE_BYTES)))
+            Text(strings.getString(R.string.ui_local_ai_native_inference_requires_arm64_model_downloads_and_the_))
+            TextButton(onClick = {
+                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(strings.getString(R.string.ui_simpleai_diagnostics), supportDiagnostics()))
+                android.widget.Toast.makeText(context, strings.getString(R.string.ui_diagnostics_copied), android.widget.Toast.LENGTH_SHORT).show()
+            }) { Text(strings.getString(R.string.ui_copy_support_diagnostics)) }
+            TextButton(onClick = { uriHandler.openUri("https://github.com/lelloman/simple-ai/issues") }) { Text(strings.getString(R.string.ui_support_and_issue_tracker)) }
+            Text(strings.getString(R.string.ui_model_and_library_licenses), style = MaterialTheme.typography.titleMedium)
+            Text(strings.getString(R.string.ui_qwen3_apache_2_0_xlm_roberta_mit_onnx_runtime_and_llama_cpp_mit_h))
+            TextButton(onClick = { uriHandler.openUri("https://huggingface.co/Qwen/Qwen3-1.7B") }) { Text(strings.getString(R.string.ui_qwen_model_and_license)) }
+            TextButton(onClick = { uriHandler.openUri("https://huggingface.co/FacebookAI/xlm-roberta-base") }) { Text(strings.getString(R.string.ui_xlm_roberta_model_and_license)) }
+            TextButton(onClick = { uriHandler.openUri("https://developers.google.com/ml-kit/terms") }) { Text(strings.getString(R.string.ui_ml_kit_terms_and_privacy)) }
 
             // Build info card
             Card(
@@ -144,22 +166,22 @@ fun AboutScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "Build Info",
+                        text = strings.getString(R.string.ui_build_info),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    BuildInfoRow("Version Code", BuildConfig.VERSION_CODE.toString())
-                    BuildInfoRow("Build Type", BuildConfig.BUILD_TYPE)
-                    BuildInfoRow("Service Version", BuildConfig.SERVICE_VERSION.toString())
-                    BuildInfoRow("Protocol Version", "v${BuildConfig.MIN_PROTOCOL_VERSION}-${BuildConfig.MAX_PROTOCOL_VERSION}")
+                    BuildInfoRow(strings.getString(R.string.ui_version_code), BuildConfig.VERSION_CODE.toString())
+                    BuildInfoRow(strings.getString(R.string.ui_build_type), BuildConfig.BUILD_TYPE)
+                    BuildInfoRow(strings.getString(R.string.ui_service_version), BuildConfig.SERVICE_VERSION.toString())
+                    BuildInfoRow(strings.getString(R.string.ui_protocol_version), strings.getString(R.string.ui_value_3, BuildConfig.MIN_PROTOCOL_VERSION, BuildConfig.MAX_PROTOCOL_VERSION))
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Made with \u2764\uFE0F",
+                text = strings.getString(R.string.ui_made_with_u2764_ufe0f),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -172,6 +194,7 @@ fun AboutScreen(
 
 @Composable
 private fun FeatureItem(icon: String, title: String, description: String) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     Column {
         Text(
             text = title,
@@ -188,8 +211,9 @@ private fun FeatureItem(icon: String, title: String, description: String) {
 
 @Composable
 private fun BuildInfoRow(label: String, value: String) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     Text(
-        text = "$label: $value",
+        text = strings.getString(R.string.ui_value_4, label, value),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

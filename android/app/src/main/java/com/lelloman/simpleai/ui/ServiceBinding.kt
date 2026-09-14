@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.simpleai.R
+
 import android.content.*
 import android.os.IBinder
 import com.lelloman.simpleai.ISimpleAI
@@ -20,9 +22,9 @@ internal class ServiceBinding(
             if (!context.bindService(intent(), this, Context.BIND_AUTO_CREATE)) {
                 // Android requires unbinding even when bindService returns false.
                 close()
-                changed(null, "Could not bind to SimpleAI. Retry connection.")
+                changed(null, context.getString(R.string.ui_could_not_bind))
             }
-        } catch (e: Exception) { close(); changed(null, "Could not connect: ${e.message}") }
+        } catch (e: Exception) { close(); changed(null, context.getString(R.string.ui_connect_error, e.message.orEmpty())) }
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -31,17 +33,17 @@ internal class ServiceBinding(
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        changed(null, "SimpleAI disconnected. Waiting for reconnection; you can also retry.")
+        changed(null, context.getString(R.string.ui_waiting_reconnection))
     }
 
     override fun onBindingDied(name: ComponentName?) {
         close()
-        changed(null, "Service binding expired. Retry connection.")
+        changed(null, context.getString(R.string.ui_binding_expired))
     }
 
     override fun onNullBinding(name: ComponentName?) {
         close()
-        changed(null, "Service did not provide a connection. Retry connection.")
+        changed(null, context.getString(R.string.ui_null_binding))
     }
 
     fun close() {

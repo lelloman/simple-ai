@@ -1,3 +1,130 @@
 <resources>
     <string name="app_name">SimpleAI</string>
+    <string name="ui_1_enable_simpleai_in_your_compatible_app_n2_download_its_required" formatted="false">1. Enable SimpleAI in your compatible app.\n2. Download its required models here.\n3. Approve the app in Connected apps, then retry there.</string>
+    <string name="ui_about" formatted="false">About</string>
+    <string name="ui_allow_mobile_data_for_new_downloads_charges_may_apply" formatted="false">Allow mobile data for new downloads (charges may apply)</string>
+    <string name="ui_app_data_available">App data: %1$s • Available: %2$s</string>
+    <string name="ui_approve">Approve %1$s</string>
+    <string name="ui_approve_apps_you_trust_to_use_downloaded_models_and_cloud_request" formatted="false">Approve apps you trust to use downloaded models and cloud requests. Revoking access blocks new requests; an active request can finish.</string>
+    <string name="ui_approved" formatted="false">Approved</string>
+    <string name="ui_apps_will_need_this_language_pack_downloaded_again_before_transla" formatted="false">Apps will need this language pack downloaded again before translating it. You can download it again from this list.</string>
+    <string name="ui_auto_detect" formatted="false">Auto-detect</string>
+    <string name="ui_available" formatted="false">Available</string>
+    <string name="ui_back" formatted="false">Back</string>
+    <string name="ui_build_info" formatted="false">Build Info</string>
+    <string name="ui_build_type" formatted="false">Build Type</string>
+    <string name="ui_built_in" formatted="false">Built in</string>
+    <string name="ui_built_in_no_download_needed" formatted="false">Built in — no download needed</string>
+    <string name="ui_cancel" formatted="false">Cancel</string>
+    <string name="ui_check_the_connection" formatted="false">Check the connection</string>
+    <string name="ui_checking_availability" formatted="false">Checking availability…</string>
+    <string name="ui_choose_simpleai_in_an_app_that_supports_it_download_the_models_th" formatted="false">Choose SimpleAI in an app that supports it, download the models that app requests, then approve it under Connected apps on the home screen. If your app has no SimpleAI option, it needs an integration from its developer.</string>
+    <string name="ui_clear" formatted="false">Clear</string>
+    <string name="ui_cloud_ai" formatted="false">Cloud AI</string>
+    <string name="ui_configured_requests_require_internet_and_authorization_from_the_c" formatted="false">Configured. Requests require internet and authorization from the client app.</string>
+    <string name="ui_connected_apps_approved">Connected apps (%1$d approved)</string>
+    <string name="ui_copied" formatted="false">Copied</string>
+    <string name="ui_copy_support_diagnostics" formatted="false">Copy support diagnostics</string>
+    <string name="ui_copy_translation" formatted="false">Copy translation</string>
+    <string name="ui_delete">Delete %1$s?</string>
+    <string name="ui_delete_2" formatted="false">Delete</string>
+    <string name="ui_delete_3">Delete %1$s</string>
+    <string name="ui_delete_language_pack" formatted="false">Delete language pack</string>
+    <string name="ui_delete_language_pack_2">Delete %1$s language pack</string>
+    <string name="ui_detected">Detected: %1$s</string>
+    <string name="ui_diagnostics_copied" formatted="false">Diagnostics copied</string>
+    <string name="ui_download">Download %1$s</string>
+    <string name="ui_download_and_storage_settings" formatted="false">Download and storage settings</string>
+    <string name="ui_download_in_progress" formatted="false">Download in progress</string>
+    <string name="ui_download_interrupted_retry_to_resume" formatted="false">Download interrupted. Retry to resume.</string>
+    <string name="ui_download_language_pack">Download %1$s language pack</string>
+    <string name="ui_download_languages" formatted="false">Download languages</string>
+    <string name="ui_download_paused_retry_or_download_resumes_saved_progress" formatted="false">Download paused. Retry or Download resumes saved progress.</string>
+    <string name="ui_download_progress">%1$s download progress</string>
+    <string name="ui_download_queued_waiting_for_network_or_scheduler" formatted="false">Download queued — waiting for network or scheduler</string>
+    <string name="ui_downloaded" formatted="false">Downloaded</string>
+    <string name="ui_downloaded_loads_when_needed" formatted="false">Downloaded • loads when needed</string>
+    <string name="ui_downloading">Downloading… %1$d%%</string>
+    <string name="ui_downloading_2">Downloading %1$s</string>
+    <string name="ui_download_network_and_sizes">Downloads use unmetered networks by default; language packs require Wi-Fi. Voice Commands transfers %1$s and Local AI transfers %2$s.</string>
+    <string name="ui_english_is_included_by_ml_kit_and_needs_no_download_other_languag" formatted="false">English is included by ML Kit and needs no download. Other languages use downloaded packs.</string>
+    <string name="ui_enter_text_to_translate" formatted="false">Enter text to translate</string>
+    <string name="ui_error" formatted="false">Error</string>
+    <string name="ui_features" formatted="false">Features</string>
+    <string name="ui_from" formatted="false">From</string>
+    <string name="ui_generate_answers_on_this_device_after_downloading_the_model" formatted="false">Generate answers on this device after downloading the model</string>
+    <string name="ui_generate_text_on_this_device_after_downloading_the_model_no_cloud" formatted="false">Generate text on this device after downloading the model; no cloud request is needed.</string>
+    <string name="ui_getting_connected" formatted="false">Getting connected</string>
+    <string name="ui_includes_models_language_packs_partial_downloads_and_supporting_a" formatted="false">Includes models, language packs, partial downloads and supporting app data.</string>
+    <string name="ui_languages">Languages: %1$s</string>
+    <string name="ui_loading_model" formatted="false">Loading model…</string>
+    <string name="ui_local_ai" formatted="false">Local AI</string>
+    <string name="ui_local_ai_2">Local AI: %1$s • %2$s</string>
+    <string name="ui_local_ai_native_inference_requires_arm64_model_downloads_and_the_" formatted="false">Local AI native inference requires ARM64. Model downloads and the Voice Commands working copy need additional free space.</string>
+    <string name="ui_made_with_u2764_ufe0f" formatted="false">Made with \u2764\uFE0F</string>
+    <string name="ui_manage_languages" formatted="false">Manage languages</string>
+    <string name="ui_ml_kit_terms_and_privacy" formatted="false">ML Kit terms and privacy</string>
+    <string name="ui_model_and_library_licenses" formatted="false">Model and library licenses</string>
+    <string name="ui_models_and_support" formatted="false">Models and support</string>
+    <string name="ui_no_apps_have_requested_access_connect_from_a_compatible_app_then_" formatted="false">No apps have requested access. Connect from a compatible app, then return here to approve it.</string>
+    <string name="ui_no_languages_match_your_search" formatted="false">No languages match your search.</string>
+    <string name="ui_not_approved" formatted="false">Not approved</string>
+    <string name="ui_not_downloaded" formatted="false">Not downloaded</string>
+    <string name="ui_on_device_translation_between_languages" formatted="false">On-device translation between languages</string>
+    <string name="ui_online_answers_through_your_connected_app_s_account" formatted="false">Online answers through your connected app’s account</string>
+    <string name="ui_pause_download">Pause %1$s download</string>
+    <string name="ui_protocol_version" formatted="false">Protocol Version</string>
+    <string name="ui_qwen3_apache_2_0_xlm_roberta_mit_onnx_runtime_and_llama_cpp_mit_h" formatted="false">Qwen3: Apache 2.0. XLM-RoBERTa: MIT. ONNX Runtime and llama.cpp: MIT. Hugging Face Tokenizers, AndroidX and OkHttp: Apache 2.0. ML Kit uses Google’s terms.</string>
+    <string name="ui_qwen_model_and_license" formatted="false">Qwen model and license</string>
+    <string name="ui_ready" formatted="false">Ready</string>
+    <string name="ui_remove_partial_download">Remove partial %1$s download</string>
+    <string name="ui_retry">Retry %1$s</string>
+    <string name="ui_retry_connection" formatted="false">Retry connection</string>
+    <string name="ui_revoke">Revoke %1$s</string>
+    <string name="ui_search_languages" formatted="false">Search languages</string>
+    <string name="ui_sends_requests_over_the_internet_to_the_configured_cloud_provider" formatted="false">Sends requests over the internet to the configured cloud provider using your connected app’s account.</string>
+    <string name="ui_service_connected" formatted="false">Service connected</string>
+    <string name="ui_service_disconnected" formatted="false">Service disconnected</string>
+    <string name="ui_service_version" formatted="false">Service Version</string>
+    <string name="ui_simpleai" formatted="false">SimpleAI</string>
+    <string name="ui_simpleai_diagnostics" formatted="false">SimpleAI diagnostics</string>
+    <string name="ui_simpleai_is_a_shared_ai_service_for_compatible_android_apps_use_i" formatted="false">SimpleAI is a shared AI service for compatible Android apps. Use it to download models, manage language packs and approve connected apps. Conversations and voice recording happen in the app that connects to SimpleAI.</string>
+    <string name="ui_simpleai_manages_shared_ai_models_for_compatible_apps_download_on" formatted="false">SimpleAI manages shared AI models for compatible apps. Download only the features your app needs.</string>
+    <string name="ui_support_and_issue_tracker" formatted="false">Support and issue tracker</string>
+    <string name="ui_swap_source_and_target_languages" formatted="false">Swap source and target languages</string>
+    <string name="ui_test">Test %1$s</string>
+    <string name="ui_test_translation" formatted="false">Test Translation</string>
+    <string name="ui_this_test_sends_a_request_through_the_simpleai_service_to_check_a" formatted="false">This test sends a request through the SimpleAI service. To check another app’s setup, also try a request from that app.</string>
+    <string name="ui_this_will_delete_the_downloaded_model_you_can_re_download_it_late">This will delete the downloaded model (%1$s). You can re-download it later.</string>
+    <string name="ui_to" formatted="false">To</string>
+    <string name="ui_translate" formatted="false">Translate</string>
+    <string name="ui_translate_on_this_device_after_downloading_language_packs_try_it_" formatted="false">Translate on this device after downloading language packs. Try it from the Translation card.</string>
+    <string name="ui_translating" formatted="false">Translating...</string>
+    <string name="ui_translation" formatted="false">Translation</string>
+    <string name="ui_understand_commands_sent_by_your_app_on_this_device" formatted="false">Understand commands sent by your app, on this device</string>
+    <string name="ui_understand_commands_supplied_by_a_compatible_app_processing_stays" formatted="false">Understand commands supplied by a compatible app; processing stays on this device.</string>
+    <string name="ui_use_test_on_the_translation_card_to_send_a_translation_through_th" formatted="false">Use Test on the Translation card to send a translation through the service API. Then send a request from your connected app to verify its own approval and setup. A successful test here does not prove another app is configured correctly.</string>
+    <string name="ui_value">" • %1$s"</string>
+    <string name="ui_value_2">%1$s / %2$s</string>
+    <string name="ui_value_3">v%1$d-%2$d</string>
+    <string name="ui_value_4">%1$s: %2$s</string>
+    <string name="ui_version">Version %1$s</string>
+    <string name="ui_version_code" formatted="false">Version Code</string>
+    <string name="ui_voice_commands" formatted="false">Voice Commands</string>
+    <string name="ui_working_copy_and_reserve">Voice Commands also needs a working copy of %1$s. Downloads reserve %2$s of free space.</string>
+    <string name="ui_voice_commands_xlm_roberta_int8">Voice Commands: XLM-RoBERTa int8 • %1$s</string>
+    <string name="ui_xlm_roberta_model_and_license" formatted="false">XLM-RoBERTa model and license</string>
+    <string name="ui_you_can_try_translation_here_after_downloading_a_language_pack_vo" formatted="false">You can try translation here after downloading a language pack. Voice Commands and AI chat are used from compatible apps; this screen does not record speech or provide a chat conversation.</string>
+    <string name="ui_ai_for_your_apps">AI for your apps</string>
+    <string name="ui_language_pack_estimate">About %1$s; varies by language</string>
+    <string name="ui_service_disconnected_recovery">Service disconnected. Return home and retry the connection.</string>
+    <string name="ui_could_not_start">Could not start SimpleAI: %1$s</string>
+    <string name="ui_could_not_connect">Could not connect to SimpleAI</string>
+    <string name="ui_language_deleted">Language pack deleted. You can download it again from Available.</string>
+    <string name="ui_could_not_delete_language">%1$s: Could not delete language. %2$s</string>
+    <string name="ui_could_not_bind">Could not bind to SimpleAI. Retry connection.</string>
+    <string name="ui_connect_error">Could not connect: %1$s</string>
+    <string name="ui_waiting_reconnection">SimpleAI disconnected. Waiting for reconnection; you can also retry.</string>
+    <string name="ui_binding_expired">Service binding expired. Retry connection.</string>
+    <string name="ui_null_binding">Service did not provide a connection. Retry connection.</string>
 </resources>

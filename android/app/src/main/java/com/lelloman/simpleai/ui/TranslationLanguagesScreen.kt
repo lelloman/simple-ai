@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.simpleai.R
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,7 +56,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 data class LanguageInfo(
     val code: String,
     val name: String,
-    val flag: String,
     val isDownloaded: Boolean,
     val isDownloading: Boolean = false,
     val isBuiltIn: Boolean = false  // English is required
@@ -69,6 +70,7 @@ fun TranslationLanguagesScreen(
     viewModel: CapabilitiesViewModel = viewModel(),
     onBack: () -> Unit
 ) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsState()
     val downloadedLanguages = state.downloadedLanguages
     val downloadingLanguages = state.downloadingLanguages
@@ -90,7 +92,7 @@ fun TranslationLanguagesScreen(
     }
     LaunchedEffect(languageDownloadError) {
         languageDownloadError?.let { error ->
-            snackbarHostState.showSnackbar("${error.key}: ${error.value}")
+            snackbarHostState.showSnackbar(strings.getString(R.string.ui_value_4, error.key, error.value))
             viewModel.clearLanguageDownloadError(error.key)
         }
     }
@@ -98,10 +100,10 @@ fun TranslationLanguagesScreen(
     deleteLanguage?.let { language ->
         AlertDialog(
             onDismissRequest = { deleteLanguage = null },
-            title = { Text("Delete ${language.name}?") },
-            text = { Text("Apps will need this language pack downloaded again before translating it. You can download it again from this list.") },
-            confirmButton = { TextButton(onClick = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null }) { Text("Delete language pack") } },
-            dismissButton = { TextButton(onClick = { deleteLanguage = null }) { Text("Cancel") } }
+            title = { Text(strings.getString(R.string.ui_delete, language.name)) },
+            text = { Text(strings.getString(R.string.ui_apps_will_need_this_language_pack_downloaded_again_before_transla)) },
+            confirmButton = { TextButton(onClick = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null }) { Text(strings.getString(R.string.ui_delete_language_pack)) } },
+            dismissButton = { TextButton(onClick = { deleteLanguage = null }) { Text(strings.getString(R.string.ui_cancel)) } }
         )
     }
     LaunchedEffect(state.languageOperationMessage) {
@@ -114,12 +116,12 @@ fun TranslationLanguagesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Manage languages") },
+                title = { Text(strings.getString(R.string.ui_manage_languages)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = strings.getString(R.string.ui_back)
                         )
                     }
                 }
@@ -141,21 +143,21 @@ fun TranslationLanguagesScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                OutlinedTextField(query, { query = it }, label = { Text("Search languages") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = {
-                    if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Clear") }
+                OutlinedTextField(query, { query = it }, label = { Text(strings.getString(R.string.ui_search_languages)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = {
+                    if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text(strings.getString(R.string.ui_clear)) }
                 })
-                if (matching.isEmpty()) Text("No languages match your search.")
+                if (matching.isEmpty()) Text(strings.getString(R.string.ui_no_languages_match_your_search))
             }
             if (matching.any { it.isBuiltIn }) item {
-                Text("Built in", style = MaterialTheme.typography.titleSmall)
+                Text(strings.getString(R.string.ui_built_in), style = MaterialTheme.typography.titleSmall)
                 LanguageCard(language = allLanguages.first { it.isBuiltIn }, onAction = {})
-                Text("English is included by ML Kit and needs no download. Other languages use downloaded packs.", style = MaterialTheme.typography.bodySmall)
+                Text(strings.getString(R.string.ui_english_is_included_by_ml_kit_and_needs_no_download_other_languag), style = MaterialTheme.typography.bodySmall)
             }
             // Downloaded section
             if (downloaded.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Downloaded",
+                        text = strings.getString(R.string.ui_downloaded),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -179,7 +181,7 @@ fun TranslationLanguagesScreen(
                 item {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Available",
+                        text = strings.getString(R.string.ui_available),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -207,6 +209,7 @@ private fun LanguageCard(
     language: LanguageInfo,
     onAction: () -> Unit
 ) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -233,13 +236,13 @@ private fun LanguageCard(
                 if (!nativeName.equals(language.name, ignoreCase = true)) Text(nativeName, style = MaterialTheme.typography.bodySmall)
                 if (language.isBuiltIn) {
                     Text(
-                        text = "Built in — no download needed",
+                        text = strings.getString(R.string.ui_built_in_no_download_needed),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else if (!language.isDownloaded) {
                     Text(
-                        text = "~30 MB",
+                        text = strings.getString(R.string.ui_language_pack_estimate, formatSize(com.lelloman.simpleai.capability.CapabilityManager.TRANSLATION_LANGUAGE_SIZE)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -249,7 +252,7 @@ private fun LanguageCard(
             when {
                 language.isDownloading -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp).semantics { contentDescription = "Downloading ${language.name}" },
+                        modifier = Modifier.size(24.dp).semantics { contentDescription = strings.getString(R.string.ui_downloading_2, language.name) },
                         strokeWidth = 2.dp
                     )
                 }
@@ -265,7 +268,7 @@ private fun LanguageCard(
                     IconButton(onClick = onAction) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "Delete ${language.name} language pack",
+                            contentDescription = strings.getString(R.string.ui_delete_language_pack_2, language.name),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
@@ -274,7 +277,7 @@ private fun LanguageCard(
                     IconButton(onClick = onAction) {
                         Icon(
                             Icons.Default.Add,
-                            contentDescription = "Download ${language.name} language pack",
+                            contentDescription = strings.getString(R.string.ui_download_language_pack, language.name),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -291,77 +294,14 @@ private fun getLanguageInfoList(
     downloadedLanguages: Set<String>,
     downloadingLanguages: Set<String>
 ): List<LanguageInfo> {
-    return LANGUAGE_DATA.map { (code, name, flag) ->
+    return com.lelloman.simpleai.translation.Language.entries.map { language ->
+        val code = language.code
         LanguageInfo(
             code = code,
-            name = name,
-            flag = flag,
+            name = language.displayName,
             isDownloaded = code in downloadedLanguages,
             isDownloading = code in downloadingLanguages,
             isBuiltIn = code == "en"
         )
     }.sortedWith(compareBy({ !it.isBuiltIn }, { !it.isDownloaded }, { it.name }))
 }
-
-// Language code -> (name, flag)
-private val LANGUAGE_DATA = listOf(
-    Triple("af", "Afrikaans", "\uD83C\uDDFF\uD83C\uDDE6"),
-    Triple("ar", "Arabic", "\uD83C\uDDF8\uD83C\uDDE6"),
-    Triple("be", "Belarusian", "\uD83C\uDDE7\uD83C\uDDFE"),
-    Triple("bg", "Bulgarian", "\uD83C\uDDE7\uD83C\uDDEC"),
-    Triple("bn", "Bengali", "\uD83C\uDDE7\uD83C\uDDE9"),
-    Triple("ca", "Catalan", "\uD83C\uDDEA\uD83C\uDDF8"),
-    Triple("cs", "Czech", "\uD83C\uDDE8\uD83C\uDDFF"),
-    Triple("cy", "Welsh", "\uD83C\uDFF4\uDB40\uDC67\uDB40\uDC62\uDB40\uDC77\uDB40\uDC6C\uDB40\uDC73\uDB40\uDC7F"),
-    Triple("da", "Danish", "\uD83C\uDDE9\uD83C\uDDF0"),
-    Triple("de", "German", "\uD83C\uDDE9\uD83C\uDDEA"),
-    Triple("el", "Greek", "\uD83C\uDDEC\uD83C\uDDF7"),
-    Triple("en", "English", "\uD83C\uDDEC\uD83C\uDDE7"),
-    Triple("eo", "Esperanto", "\uD83C\uDDEA\uD83C\uDDFA"),
-    Triple("es", "Spanish", "\uD83C\uDDEA\uD83C\uDDF8"),
-    Triple("et", "Estonian", "\uD83C\uDDEA\uD83C\uDDEA"),
-    Triple("fa", "Persian", "\uD83C\uDDEE\uD83C\uDDF7"),
-    Triple("fi", "Finnish", "\uD83C\uDDEB\uD83C\uDDEE"),
-    Triple("fr", "French", "\uD83C\uDDEB\uD83C\uDDF7"),
-    Triple("ga", "Irish", "\uD83C\uDDEE\uD83C\uDDEA"),
-    Triple("gl", "Galician", "\uD83C\uDDEA\uD83C\uDDF8"),
-    Triple("gu", "Gujarati", "\uD83C\uDDEE\uD83C\uDDF3"),
-    Triple("he", "Hebrew", "\uD83C\uDDEE\uD83C\uDDF1"),
-    Triple("hi", "Hindi", "\uD83C\uDDEE\uD83C\uDDF3"),
-    Triple("hr", "Croatian", "\uD83C\uDDED\uD83C\uDDF7"),
-    Triple("ht", "Haitian Creole", "\uD83C\uDDED\uD83C\uDDF9"),
-    Triple("hu", "Hungarian", "\uD83C\uDDED\uD83C\uDDFA"),
-    Triple("id", "Indonesian", "\uD83C\uDDEE\uD83C\uDDE9"),
-    Triple("is", "Icelandic", "\uD83C\uDDEE\uD83C\uDDF8"),
-    Triple("it", "Italian", "\uD83C\uDDEE\uD83C\uDDF9"),
-    Triple("ja", "Japanese", "\uD83C\uDDEF\uD83C\uDDF5"),
-    Triple("ka", "Georgian", "\uD83C\uDDEC\uD83C\uDDEA"),
-    Triple("kn", "Kannada", "\uD83C\uDDEE\uD83C\uDDF3"),
-    Triple("ko", "Korean", "\uD83C\uDDF0\uD83C\uDDF7"),
-    Triple("lt", "Lithuanian", "\uD83C\uDDF1\uD83C\uDDF9"),
-    Triple("lv", "Latvian", "\uD83C\uDDF1\uD83C\uDDFB"),
-    Triple("mk", "Macedonian", "\uD83C\uDDF2\uD83C\uDDF0"),
-    Triple("mr", "Marathi", "\uD83C\uDDEE\uD83C\uDDF3"),
-    Triple("ms", "Malay", "\uD83C\uDDF2\uD83C\uDDFE"),
-    Triple("mt", "Maltese", "\uD83C\uDDF2\uD83C\uDDF9"),
-    Triple("nl", "Dutch", "\uD83C\uDDF3\uD83C\uDDF1"),
-    Triple("no", "Norwegian", "\uD83C\uDDF3\uD83C\uDDF4"),
-    Triple("pl", "Polish", "\uD83C\uDDF5\uD83C\uDDF1"),
-    Triple("pt", "Portuguese", "\uD83C\uDDF5\uD83C\uDDF9"),
-    Triple("ro", "Romanian", "\uD83C\uDDF7\uD83C\uDDF4"),
-    Triple("ru", "Russian", "\uD83C\uDDF7\uD83C\uDDFA"),
-    Triple("sk", "Slovak", "\uD83C\uDDF8\uD83C\uDDF0"),
-    Triple("sl", "Slovenian", "\uD83C\uDDF8\uD83C\uDDEE"),
-    Triple("sq", "Albanian", "\uD83C\uDDE6\uD83C\uDDF1"),
-    Triple("sv", "Swedish", "\uD83C\uDDF8\uD83C\uDDEA"),
-    Triple("sw", "Swahili", "\uD83C\uDDF0\uD83C\uDDEA"),
-    Triple("ta", "Tamil", "\uD83C\uDDEE\uD83C\uDDF3"),
-    Triple("te", "Telugu", "\uD83C\uDDEE\uD83C\uDDF3"),
-    Triple("th", "Thai", "\uD83C\uDDF9\uD83C\uDDED"),
-    Triple("tl", "Tagalog", "\uD83C\uDDF5\uD83C\uDDED"),
-    Triple("tr", "Turkish", "\uD83C\uDDF9\uD83C\uDDF7"),
-    Triple("uk", "Ukrainian", "\uD83C\uDDFA\uD83C\uDDE6"),
-    Triple("ur", "Urdu", "\uD83C\uDDF5\uD83C\uDDF0"),
-    Triple("vi", "Vietnamese", "\uD83C\uDDFB\uD83C\uDDF3"),
-    Triple("zh", "Chinese", "\uD83C\uDDE8\uD83C\uDDF3")
-)

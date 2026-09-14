@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.simpleai.R
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +49,7 @@ fun CapabilitiesScreen(
     onNavigateToTranslationTest: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {}
 ) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsState()
     var showDownloadSettings by remember { mutableStateOf(false) }
     var deleteConfirmation by remember { mutableStateOf<DeleteConfirmation?>(null) }
@@ -55,21 +58,21 @@ fun CapabilitiesScreen(
     deleteConfirmation?.let { confirmation ->
         val (title, size, onConfirm) = when (confirmation) {
             DeleteConfirmation.VOICE_COMMANDS -> Triple(
-                "Voice Commands",
-                "~534 MB",
+                strings.getString(R.string.ui_voice_commands),
+                formatSize(com.lelloman.simpleai.model.NluModel.SIZE_BYTES),
                 { viewModel.deleteVoiceCommands() }
             )
             DeleteConfirmation.LOCAL_AI -> Triple(
-                "Local AI",
-                "~1.3 GB",
+                strings.getString(R.string.ui_local_ai),
+                formatSize(com.lelloman.simpleai.model.LocalAIModel.SIZE_BYTES),
                 { viewModel.deleteLocalAi() }
             )
         }
 
         AlertDialog(
             onDismissRequest = { deleteConfirmation = null },
-            title = { Text("Delete $title?") },
-            text = { Text("This will delete the downloaded model ($size). You can re-download it later.") },
+            title = { Text(strings.getString(R.string.ui_delete, title)) },
+            text = { Text(strings.getString(R.string.ui_this_will_delete_the_downloaded_model_you_can_re_download_it_late, size)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -77,12 +80,12 @@ fun CapabilitiesScreen(
                         deleteConfirmation = null
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(strings.getString(R.string.ui_delete_2), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteConfirmation = null }) {
-                    Text("Cancel")
+                    Text(strings.getString(R.string.ui_cancel))
                 }
             }
         )
@@ -91,12 +94,12 @@ fun CapabilitiesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SimpleAI") },
+                title = { Text(strings.getString(R.string.ui_simpleai)) },
                 actions = {
                     IconButton(onClick = onNavigateToAbout) {
                         Icon(
                             Icons.Default.Info,
-                            contentDescription = "About"
+                            contentDescription = strings.getString(R.string.ui_about)
                         )
                     }
                 }
@@ -111,32 +114,32 @@ fun CapabilitiesScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("AI for your apps", style = MaterialTheme.typography.titleLarge)
-            Text("SimpleAI manages shared AI models for compatible apps. Download only the features your app needs.")
-            Text("1. Enable SimpleAI in your compatible app.\n2. Download its required models here.\n3. Approve the app in Connected apps, then retry there.")
-            Text("You can try translation here after downloading a language pack. Voice Commands and AI chat are used from compatible apps; this screen does not record speech or provide a chat conversation.")
-            Text(if (state.isServiceConnected) "Service connected" else "Service disconnected", style = MaterialTheme.typography.bodySmall)
+            Text(strings.getString(R.string.ui_ai_for_your_apps), style = MaterialTheme.typography.titleLarge)
+            Text(strings.getString(R.string.ui_simpleai_manages_shared_ai_models_for_compatible_apps_download_on))
+            Text(strings.getString(R.string.ui_1_enable_simpleai_in_your_compatible_app_n2_download_its_required))
+            Text(strings.getString(R.string.ui_you_can_try_translation_here_after_downloading_a_language_pack_vo))
+            Text(if (state.isServiceConnected) strings.getString(R.string.ui_service_connected) else strings.getString(R.string.ui_service_disconnected), style = MaterialTheme.typography.bodySmall)
             state.serviceError?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = viewModel::refreshCapabilities) { Text("Retry connection") }
+                TextButton(onClick = viewModel::refreshCapabilities) { Text(strings.getString(R.string.ui_retry_connection)) }
             }
-            TextButton(onClick = { showDownloadSettings = !showDownloadSettings }) { Text("Download and storage settings") }
+            TextButton(onClick = { showDownloadSettings = !showDownloadSettings }) { Text(strings.getString(R.string.ui_download_and_storage_settings)) }
             if (showDownloadSettings) {
-            Text("Downloads use unmetered networks by default; language packs require Wi-Fi. Model transfers use about 0.5 GB for Voice Commands and 1.3 GB for Local AI.")
-            Text("Allow mobile data for new downloads (charges may apply)")
+            Text(strings.getString(R.string.ui_download_network_and_sizes, formatSize(com.lelloman.simpleai.model.NluModel.SIZE_BYTES), formatSize(com.lelloman.simpleai.model.LocalAIModel.SIZE_BYTES)))
+            Text(strings.getString(R.string.ui_allow_mobile_data_for_new_downloads_charges_may_apply))
             Switch(checked = state.allowMeteredDownloads, onCheckedChange = viewModel::setAllowMeteredDownloads)
-            Text("Voice Commands also needs a working copy of about 0.5 GB. Downloads reserve 64 MiB of free space.")
+            Text(strings.getString(R.string.ui_working_copy_and_reserve, formatSize(com.lelloman.simpleai.model.NluModel.SIZE_BYTES), formatSize(com.lelloman.simpleai.download.DownloadPolicy.RESERVE_BYTES)))
             }
             state.storage?.let { storage ->
-                Text("App data: ${storage.usedBytes / (1024 * 1024)} MiB • Available: ${storage.availableBytes / (1024 * 1024)} MiB")
-                Text("Includes models, language packs, partial downloads and supporting app data.", style = MaterialTheme.typography.bodySmall)
+                Text(strings.getString(R.string.ui_app_data_available, formatSize(storage.usedBytes), formatSize(storage.availableBytes)))
+                Text(strings.getString(R.string.ui_includes_models_language_packs_partial_downloads_and_supporting_a), style = MaterialTheme.typography.bodySmall)
             }
             ConnectedApps()
             // Voice Commands capability
             CapabilityCard(
-                title = "Voice Commands",
+                title = strings.getString(R.string.ui_voice_commands),
                 icon = "\uD83C\uDFA4",  // microphone
-                description = "Understand commands sent by your app, on this device",
+                description = strings.getString(R.string.ui_understand_commands_sent_by_your_app_on_this_device),
                 status = state.voiceCommandsStatus,
                 downloadJob = state.downloadJobs["voice"],
                 onPause = { viewModel.pauseDownload("voice") },
@@ -149,9 +152,9 @@ fun CapabilitiesScreen(
 
             // Translation capability
             CapabilityCard(
-                title = "Translation",
+                title = strings.getString(R.string.ui_translation),
                 icon = "\uD83C\uDF10",  // globe
-                description = "On-device translation between languages",
+                description = strings.getString(R.string.ui_on_device_translation_between_languages),
                 status = state.translationStatus,
                 onConfigure = onNavigateToTranslationLanguages,
                 onTest = if (state.downloadedLanguages.isNotEmpty()) {
@@ -164,7 +167,7 @@ fun CapabilitiesScreen(
                             .sorted()
                             .joinToString(", ")
                         Text(
-                            text = "Languages: $languageNames",
+                            text = strings.getString(R.string.ui_languages, languageNames),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -174,14 +177,14 @@ fun CapabilitiesScreen(
 
             // Cloud AI capability
             CapabilityCard(
-                title = "Cloud AI",
+                title = strings.getString(R.string.ui_cloud_ai),
                 icon = "\u2601\uFE0F",  // cloud
-                description = "Online answers through your connected app’s account",
+                description = strings.getString(R.string.ui_online_answers_through_your_connected_app_s_account),
                 status = state.cloudAiStatus,
                 extraContent = {
                     if (state.cloudAiStatus is CapabilityStatus.Ready) {
                         Text(
-                            text = "Configured. Requests require internet and authorization from the client app.",
+                            text = strings.getString(R.string.ui_configured_requests_require_internet_and_authorization_from_the_c),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -191,9 +194,9 @@ fun CapabilitiesScreen(
 
             // Local AI capability
             CapabilityCard(
-                title = "Local AI",
+                title = strings.getString(R.string.ui_local_ai),
                 icon = "\uD83E\uDD16",  // robot
-                description = "Generate answers on this device after downloading the model",
+                description = strings.getString(R.string.ui_generate_answers_on_this_device_after_downloading_the_model),
                 status = state.localAiStatus,
                 downloadJob = state.downloadJobs["local"],
                 onPause = { viewModel.pauseDownload("local") },
@@ -209,67 +212,4 @@ fun CapabilitiesScreen(
     }
 }
 
-private fun getLanguageName(code: String): String {
-    return when (code) {
-        "af" -> "Afrikaans"
-        "ar" -> "Arabic"
-        "be" -> "Belarusian"
-        "bg" -> "Bulgarian"
-        "bn" -> "Bengali"
-        "ca" -> "Catalan"
-        "cs" -> "Czech"
-        "cy" -> "Welsh"
-        "da" -> "Danish"
-        "de" -> "German"
-        "el" -> "Greek"
-        "en" -> "English"
-        "eo" -> "Esperanto"
-        "es" -> "Spanish"
-        "et" -> "Estonian"
-        "fa" -> "Persian"
-        "fi" -> "Finnish"
-        "fr" -> "French"
-        "ga" -> "Irish"
-        "gl" -> "Galician"
-        "gu" -> "Gujarati"
-        "he" -> "Hebrew"
-        "hi" -> "Hindi"
-        "hr" -> "Croatian"
-        "ht" -> "Haitian Creole"
-        "hu" -> "Hungarian"
-        "id" -> "Indonesian"
-        "is" -> "Icelandic"
-        "it" -> "Italian"
-        "ja" -> "Japanese"
-        "ka" -> "Georgian"
-        "kn" -> "Kannada"
-        "ko" -> "Korean"
-        "lt" -> "Lithuanian"
-        "lv" -> "Latvian"
-        "mk" -> "Macedonian"
-        "mr" -> "Marathi"
-        "ms" -> "Malay"
-        "mt" -> "Maltese"
-        "nl" -> "Dutch"
-        "no" -> "Norwegian"
-        "pl" -> "Polish"
-        "pt" -> "Portuguese"
-        "ro" -> "Romanian"
-        "ru" -> "Russian"
-        "sk" -> "Slovak"
-        "sl" -> "Slovenian"
-        "sq" -> "Albanian"
-        "sv" -> "Swedish"
-        "sw" -> "Swahili"
-        "ta" -> "Tamil"
-        "te" -> "Telugu"
-        "th" -> "Thai"
-        "tl" -> "Tagalog"
-        "tr" -> "Turkish"
-        "uk" -> "Ukrainian"
-        "ur" -> "Urdu"
-        "vi" -> "Vietnamese"
-        "zh" -> "Chinese"
-        else -> code.uppercase()
-    }
-}
+private fun getLanguageName(code: String): String = com.lelloman.simpleai.translation.Language.fromCode(code)?.displayName ?: code.uppercase(java.util.Locale.ROOT)

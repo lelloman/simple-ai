@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.simpleai.R
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +59,7 @@ fun TranslationTestScreen(
     viewModel: CapabilitiesViewModel = viewModel(),
     onBack: () -> Unit
 ) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     val state by viewModel.state.collectAsState()
@@ -68,7 +71,7 @@ fun TranslationTestScreen(
     val sourceLang = draft.source
     val targetLang = draft.target
 
-    val languageOptions = listOf("auto" to "Auto-detect") +
+    val languageOptions = listOf("auto" to strings.getString(R.string.ui_auto_detect)) +
         downloadedLanguages.sorted().map { it to getLanguageDisplayName(it) }
 
     val targetOptions = downloadedLanguages.sorted().map { it to getLanguageDisplayName(it) }
@@ -76,12 +79,12 @@ fun TranslationTestScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Test Translation") },
+                title = { Text(strings.getString(R.string.ui_test_translation)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = strings.getString(R.string.ui_back)
                         )
                     }
                 }
@@ -96,7 +99,7 @@ fun TranslationTestScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("This test sends a request through the SimpleAI service. To check another app’s setup, also try a request from that app.", style = MaterialTheme.typography.bodySmall)
+            Text(strings.getString(R.string.ui_this_test_sends_a_request_through_the_simpleai_service_to_check_a), style = MaterialTheme.typography.bodySmall)
             // Language selection row
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -104,7 +107,7 @@ fun TranslationTestScreen(
             ) {
                 // Source language dropdown
                 LanguageDropdown(
-                    label = "From",
+                    label = strings.getString(R.string.ui_from),
                     selectedCode = sourceLang,
                     options = languageOptions,
                     onSelect = { viewModel.editTranslation(draft.copy(source = it)) },
@@ -118,7 +121,7 @@ fun TranslationTestScreen(
                             viewModel.editTranslation(draft.copy(source = targetLang, target = sourceLang))
                         }
                     },
-                    modifier = Modifier.semantics { contentDescription = "Swap source and target languages" },
+                    modifier = Modifier.semantics { contentDescription = strings.getString(R.string.ui_swap_source_and_target_languages) },
                     enabled = sourceLang != "auto"
                 ) {
                     Text(
@@ -130,7 +133,7 @@ fun TranslationTestScreen(
 
                 // Target language dropdown
                 LanguageDropdown(
-                    label = "To",
+                    label = strings.getString(R.string.ui_to),
                     selectedCode = targetLang,
                     options = targetOptions,
                     onSelect = { viewModel.editTranslation(draft.copy(target = it)) },
@@ -142,7 +145,7 @@ fun TranslationTestScreen(
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { viewModel.editTranslation(draft.copy(text = it)) },
-                label = { Text("Enter text to translate") },
+                label = { Text(strings.getString(R.string.ui_enter_text_to_translate)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 150.dp),
@@ -164,7 +167,7 @@ fun TranslationTestScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                 }
-                Text(if (translationState.isTranslating) "Translating..." else "Translate")
+                Text(if (translationState.isTranslating) strings.getString(R.string.ui_translating) else strings.getString(R.string.ui_translate))
             }
 
             // Result card
@@ -188,7 +191,7 @@ fun TranslationTestScreen(
                         val detectedLang = translationState.detectedLanguage
                         if (errorMessage != null) {
                             Text(
-                                text = "Error",
+                                text = strings.getString(R.string.ui_error),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.error,
                                 fontWeight = FontWeight.SemiBold
@@ -202,14 +205,14 @@ fun TranslationTestScreen(
                         } else {
                             if (detectedLang != null && sourceLang == "auto") {
                                 Text(
-                                    text = "Detected: ${getLanguageDisplayName(detectedLang)}",
+                                    text = strings.getString(R.string.ui_detected, getLanguageDisplayName(detectedLang)),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                             }
                             Text(
-                                text = "Translation",
+                                text = strings.getString(R.string.ui_translation),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
@@ -221,8 +224,8 @@ fun TranslationTestScreen(
                             TextButton(onClick = {
                                 clipboard.setText(AnnotatedString(translationState.translatedText.orEmpty()))
                                 copied = true
-                            }) { Text("Copy translation") }
-                            if (copied) Text("Copied", modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                            }) { Text(strings.getString(R.string.ui_copy_translation)) }
+                            if (copied) Text(strings.getString(R.string.ui_copied), modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         }
                     }
                 }
@@ -240,6 +243,7 @@ private fun LanguageDropdown(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val strings = androidx.compose.ui.platform.LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     val selectedName = options.find { it.first == selectedCode }?.second ?: selectedCode
 
@@ -277,68 +281,4 @@ private fun LanguageDropdown(
     }
 }
 
-private fun getLanguageDisplayName(code: String): String {
-    return when (code) {
-        "auto" -> "Auto-detect"
-        "af" -> "Afrikaans"
-        "ar" -> "Arabic"
-        "be" -> "Belarusian"
-        "bg" -> "Bulgarian"
-        "bn" -> "Bengali"
-        "ca" -> "Catalan"
-        "cs" -> "Czech"
-        "cy" -> "Welsh"
-        "da" -> "Danish"
-        "de" -> "German"
-        "el" -> "Greek"
-        "en" -> "English"
-        "eo" -> "Esperanto"
-        "es" -> "Spanish"
-        "et" -> "Estonian"
-        "fa" -> "Persian"
-        "fi" -> "Finnish"
-        "fr" -> "French"
-        "ga" -> "Irish"
-        "gl" -> "Galician"
-        "gu" -> "Gujarati"
-        "he" -> "Hebrew"
-        "hi" -> "Hindi"
-        "hr" -> "Croatian"
-        "ht" -> "Haitian Creole"
-        "hu" -> "Hungarian"
-        "id" -> "Indonesian"
-        "is" -> "Icelandic"
-        "it" -> "Italian"
-        "ja" -> "Japanese"
-        "ka" -> "Georgian"
-        "kn" -> "Kannada"
-        "ko" -> "Korean"
-        "lt" -> "Lithuanian"
-        "lv" -> "Latvian"
-        "mk" -> "Macedonian"
-        "mr" -> "Marathi"
-        "ms" -> "Malay"
-        "mt" -> "Maltese"
-        "nl" -> "Dutch"
-        "no" -> "Norwegian"
-        "pl" -> "Polish"
-        "pt" -> "Portuguese"
-        "ro" -> "Romanian"
-        "ru" -> "Russian"
-        "sk" -> "Slovak"
-        "sl" -> "Slovenian"
-        "sq" -> "Albanian"
-        "sv" -> "Swedish"
-        "sw" -> "Swahili"
-        "ta" -> "Tamil"
-        "te" -> "Telugu"
-        "th" -> "Thai"
-        "tl" -> "Tagalog"
-        "tr" -> "Turkish"
-        "uk" -> "Ukrainian"
-        "ur" -> "Urdu"
-        "vi" -> "Vietnamese"
-        "zh" -> "Chinese"
-        else -> code.uppercase()
-    }
-}
+private fun getLanguageDisplayName(code: String): String = com.lelloman.simpleai.translation.Language.fromCode(code)?.displayName ?: code.uppercase(java.util.Locale.ROOT)
