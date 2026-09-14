@@ -37,6 +37,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.*
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -89,10 +91,9 @@ fun TranslationTestScreen(
         ) {
             Text("This test sends a request through the SimpleAI service. To check another app’s setup, also try a request from that app.", style = MaterialTheme.typography.bodySmall)
             // Language selection row
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Source language dropdown
                 LanguageDropdown(
@@ -100,7 +101,7 @@ fun TranslationTestScreen(
                     selectedCode = sourceLang,
                     options = languageOptions,
                     onSelect = { viewModel.editTranslation(draft.copy(source = it)) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // Swap button
@@ -110,9 +111,11 @@ fun TranslationTestScreen(
                             viewModel.editTranslation(draft.copy(source = targetLang, target = sourceLang))
                         }
                     },
+                    modifier = Modifier.semantics { contentDescription = "Swap source and target languages" },
                     enabled = sourceLang != "auto"
                 ) {
                     Text(
+                        modifier = Modifier.clearAndSetSemantics {},
                         text = "\u21C4",  // Unicode arrows for swap
                         style = MaterialTheme.typography.titleLarge
                     )
@@ -124,7 +127,7 @@ fun TranslationTestScreen(
                     selectedCode = targetLang,
                     options = targetOptions,
                     onSelect = { viewModel.editTranslation(draft.copy(target = it)) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -135,8 +138,9 @@ fun TranslationTestScreen(
                 label = { Text("Enter text to translate") },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(150.dp),
-                maxLines = 6
+                    .heightIn(min = 150.dp),
+                minLines = 4,
+                maxLines = 12
             )
 
             // Translate button

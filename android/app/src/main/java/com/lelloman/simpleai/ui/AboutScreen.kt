@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,6 +63,7 @@ fun AboutScreen(
             // App icon/logo placeholder
             Text(
                 text = "\uD83E\uDD16",
+                modifier = Modifier.clearAndSetSemantics {},
                 style = MaterialTheme.typography.displayLarge
             )
 
@@ -172,7 +174,7 @@ fun AboutScreen(
 private fun FeatureItem(icon: String, title: String, description: String) {
     Column {
         Text(
-            text = "$icon $title",
+            text = title,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium
         )

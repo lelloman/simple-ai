@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,7 @@ import com.lelloman.simpleai.capability.CapabilityStatus
 /**
  * Card displaying a capability and its status.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun CapabilityCard(
     title: String,
@@ -51,212 +53,55 @@ fun CapabilityCard(
     extraContent: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = when (status) {
-                is CapabilityStatus.Ready -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                is CapabilityStatus.Error -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                else -> MaterialTheme.colorScheme.surfaceVariant
-            }
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            // Header row
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = icon,
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(icon, modifier = Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.headlineSmall)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(description, style = MaterialTheme.typography.bodySmall)
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             if (downloadJob in listOf("ENQUEUED", "BLOCKED", "RUNNING")) {
                 Text(if (downloadJob == "RUNNING") "Download in progress" else "Download queued — waiting for network or scheduler")
-                onPause?.let { TextButton(onClick = it) { Text("Pause download") } }
+                onPause?.let { TextButton(onClick = it) { Text("Pause $title download") } }
             } else if (downloadJob == "CANCELLED") {
                 Text("Download paused. Retry or Download resumes saved progress.")
             } else if (downloadJob == "FAILED") {
                 Text("Download interrupted. Retry to resume.")
             }
-            if (downloadJob in listOf("CANCELLED", "FAILED") && status !is CapabilityStatus.Ready) {
-                onDelete?.let { TextButton(onClick = it) { Text("Remove partial download") } }
+            if (downloadJob in listOf("CANCELLED", "FAILED") && status !is CapabilityStatus.Ready && status != CapabilityStatus.Downloaded) {
+                onDelete?.let { TextButton(onClick = it) { Text("Remove partial $title download") } }
             }
-            // Status-specific content
             when (status) {
                 CapabilityStatus.Checking, CapabilityStatus.Loading -> {
-                    Column {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Text(if (status == CapabilityStatus.Checking) "Checking availability…" else "Loading model…")
-                    }
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text(if (status == CapabilityStatus.Checking) "Checking availability…" else "Loading model…")
                 }
                 is CapabilityStatus.NotDownloaded -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Not downloaded",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (status.totalBytes > 0) {
-                            Text(
-                                text = " (${formatSize(status.totalBytes)})",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(modifier = Modifier.weight(1f))
-                        if (onDownload != null) {
-                            Button(onClick = onDownload) {
-                                Text("Download")
-                            }
-                        }
-                    }
+                    Text("Not downloaded" + if (status.totalBytes > 0) " • ${formatSize(status.totalBytes)}" else "")
+                    onDownload?.let { Button(onClick = it) { Text("Download $title") } }
                 }
-
                 is CapabilityStatus.Downloading -> {
-                    Column {
-                        LinearProgressIndicator(
-                            progress = { status.progress },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Downloading... ${(status.progress * 100).toInt()}%",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            if (status.totalBytes > 0) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "${formatSize(status.downloadedBytes)} / ${formatSize(status.totalBytes)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                    LinearProgressIndicator(progress = { status.progress }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$title download progress" })
+                    Text("Downloading… ${(status.progress * 100).toInt()}%")
+                    if (status.totalBytes > 0) Text("${formatSize(status.downloadedBytes)} / ${formatSize(status.totalBytes)}")
+                }
+                CapabilityStatus.Downloaded, CapabilityStatus.Ready -> {
+                    Text(if (status == CapabilityStatus.Downloaded) "Downloaded • loads when needed" else "Ready")
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        onDelete?.let { TextButton(onClick = it) { Text("Delete $title") } }
+                        onTest?.let { OutlinedButton(onClick = it) { Text("Test $title") } }
                     }
                 }
-
-                CapabilityStatus.Downloaded, is CapabilityStatus.Ready -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Ready",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (status == CapabilityStatus.Downloaded) "Downloaded • loads when needed" else "Ready",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.weight(1f))
-                        if (onDelete != null) {
-                            IconButton(onClick = onDelete) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Delete",
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                        if (onTest != null) {
-                            OutlinedButton(onClick = onTest) {
-                                Text("Test")
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                    }
-                }
-
                 is CapabilityStatus.Error -> {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Error",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = status.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                        if (status.canRetry && onRetry != null) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(
-                                onClick = onRetry,
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = "Retry",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Retry")
-                            }
-                        }
-                    }
+                    Text(status.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                    if (status.canRetry) onRetry?.let { TextButton(onClick = it) { Text("Retry $title") } }
                 }
             }
-
-            // Setup must remain reachable before any models exist and after errors.
-            if (onConfigure != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(onClick = onConfigure) {
-                    Text(if (status is CapabilityStatus.NotDownloaded) "Download languages" else "Manage languages")
-                }
-            }
-
-            // Extra content (e.g., downloaded languages for Translation)
-            if (extraContent != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                extraContent()
-            }
+            onConfigure?.let { OutlinedButton(onClick = it) { Text(if (status is CapabilityStatus.NotDownloaded) "Download languages" else "Manage languages") } }
+            extraContent?.invoke()
         }
     }
 }

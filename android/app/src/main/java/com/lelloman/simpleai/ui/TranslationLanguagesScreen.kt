@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -196,6 +197,7 @@ private fun LanguageCard(
         ) {
             Text(
                 text = language.flag,
+                modifier = Modifier.clearAndSetSemantics {},
                 style = MaterialTheme.typography.headlineSmall
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -223,14 +225,14 @@ private fun LanguageCard(
             when {
                 language.isDownloading -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(24.dp).semantics { contentDescription = "Downloading ${language.name}" },
                         strokeWidth = 2.dp
                     )
                 }
                 language.isBuiltIn -> {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = "Built in",
+                        contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
                     )
@@ -239,7 +241,7 @@ private fun LanguageCard(
                     IconButton(onClick = onAction) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "Delete",
+                            contentDescription = "Delete ${language.name} language pack",
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
@@ -248,7 +250,7 @@ private fun LanguageCard(
                     IconButton(onClick = onAction) {
                         Icon(
                             Icons.Default.Add,
-                            contentDescription = "Download",
+                            contentDescription = "Download ${language.name} language pack",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
