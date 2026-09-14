@@ -32,4 +32,15 @@ class CapabilityAccessibilityTest {
         compose.onNodeWithText("Ready").assertExists()
         compose.onNodeWithText("🌐").assertDoesNotExist()
     }
+    @Test fun firstRunTranslationOffersLanguageSetupWithoutDownloads() {
+        var opened = false
+        compose.setContent {
+            SimpleAITheme {
+                CapabilityCard("Translation", "🌐", "Translate text", CapabilityStatus.NotDownloaded(0),
+                    onConfigure = { opened = true })
+            }
+        }
+        compose.onNodeWithText("Download languages").assertIsDisplayed().performClick()
+        compose.runOnIdle { org.junit.Assert.assertTrue(opened) }
+    }
 }

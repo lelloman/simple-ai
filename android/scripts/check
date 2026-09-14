@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest "$@"
+cargo test --manifest-path tokenizer-native/Cargo.toml --locked
+python3 scripts/check-native-alignment.py app/build/outputs/apk/debug/app-debug.apk
