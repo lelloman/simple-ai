@@ -12,6 +12,35 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ManagedModelTest {
+    @Test fun `deletion unloads before removing files and prevents reinitialization`() = runTest {
+        var exists = true
+        var disposed = false
+        var status: CapabilityStatus = CapabilityStatus.Ready
+        val model = ManagedModel(1, { exists }, { flow { } },
+            load = { Result.success("engine") }, dispose = { disposed = true }, publish = { status = it })
+        model.initialize()
+        model.delete {
+            assertNull(model.engine)
+            assertTrue(disposed)
+            exists = false
+            true
+        }
+        model.initialize()
+        assertNull(model.engine)
+        assertTrue(status is CapabilityStatus.NotDownloaded)
+    }
+
+    @Test fun `failed deletion is visible and cannot expose an unloaded engine`() = runTest {
+        var status: CapabilityStatus = CapabilityStatus.Ready
+        val model = ManagedModel(1, { true }, { flow { } },
+            load = { Result.success("engine") }, dispose = {}, publish = { status = it })
+        model.initialize()
+        model.delete { false }
+        model.initialize()
+        assertNull(model.engine)
+        assertTrue(status is CapabilityStatus.Error)
+    }
+
     @Test fun `download activates an initially missing model for clients without restarting`() = runTest {
         for (size in listOf(534_000_000L, LocalAIModel.SIZE_BYTES)) {
             var exists = false

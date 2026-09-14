@@ -228,27 +228,9 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
 
     fun downloadLocalAi() = models.downloadLocal()
 
-    fun deleteLocalAi() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val success = downloadManager.deleteLocalAi()
-            if (success) {
-                _state.update { it.copy(localAiStatus = CapabilityStatus.NotDownloaded(LocalAIModel.SIZE_BYTES)) }
-            } else {
-                Log.e(TAG, "Failed to delete Local AI model")
-            }
-        }
-    }
+    fun deleteLocalAi() = models.deleteLocal()
 
-    fun deleteVoiceCommands() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val success = downloadManager.deleteVoiceCommands()
-            if (success) {
-                _state.update { it.copy(voiceCommandsStatus = CapabilityStatus.NotDownloaded(534_000_000)) }
-            } else {
-                Log.e(TAG, "Failed to delete Voice Commands model")
-            }
-        }
-    }
+    fun deleteVoiceCommands() = models.deleteVoice()
 
     fun downloadVoiceCommands() = models.downloadVoice()
 

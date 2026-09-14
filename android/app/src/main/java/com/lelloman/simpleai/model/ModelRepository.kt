@@ -55,6 +55,8 @@ class ModelRepository private constructor(private val context: Context) {
 
     fun downloadVoice() { scope.launch { voice.downloadAndActivate() } }
     fun downloadLocal() { scope.launch { local.downloadAndActivate() } }
+    fun deleteVoice() { scope.launch { voice.delete(downloads::deleteVoiceCommands) } }
+    fun deleteLocal() { scope.launch { local.delete(downloads::deleteLocalAi) } }
     fun initialize() {
         scope.launch { translation.initialize() }
         scope.launch { voice.initialize() }

@@ -66,4 +66,17 @@ class ManagedModel<E>(
         initialized = false
         publish(CapabilityStatus.NotDownloaded(size))
     }
+
+    suspend fun delete(deleteFiles: () -> Boolean) = mutex.withLock {
+        val oldEngine = engine
+        engine = null // Prevent new clients obtaining a native session during deletion.
+        initialized = true
+        try {
+            oldEngine?.let(dispose) // Engine locks wait for any current inference to finish.
+            check(deleteFiles()) { "Could not delete model files. Try again." }
+            publish(CapabilityStatus.NotDownloaded(size))
+        } catch (e: Exception) {
+            publish(CapabilityStatus.Error(e.message ?: "Model deletion failed"))
+        }
+    }
 }

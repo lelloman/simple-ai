@@ -159,8 +159,9 @@ class ModelDownloadManager(
     fun deleteLocalAi(): Boolean {
         val file = File(modelsDir, LocalAIModel.FILE_NAME)
         val tempFile = File(modelsDir, "${LocalAIModel.FILE_NAME}.tmp")
-        tempFile.delete()
-        return file.delete()
+        val tempDeleted = !tempFile.exists() || tempFile.delete()
+        val modelDeleted = !file.exists() || file.delete()
+        return tempDeleted && modelDeleted
     }
 
     /**
