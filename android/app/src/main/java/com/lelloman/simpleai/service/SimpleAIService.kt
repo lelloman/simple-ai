@@ -5,6 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import com.lelloman.simpleai.api.ActiveRequests
+import com.lelloman.simpleai.api.RequestValidation
+import com.lelloman.simpleai.cloud.CloudRateLimitException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.Job
 import android.os.Binder
 import android.os.SystemClock
 import com.lelloman.simpleai.access.CallerBudget
@@ -76,6 +84,7 @@ class SimpleAIService : Service() {
         encodeDefaults = true
     }
 
+    private val activeRequests = ActiveRequests()
     private val callerBudget = CallerBudget(SystemClock::elapsedRealtime)
 
     private val binder = object : ISimpleAI.Stub() {
@@ -105,43 +114,47 @@ class SimpleAIService : Service() {
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
+            return runRequest(callerUid, responseProtocol) {
+            RequestValidation.text(text, "text")
+            RequestValidation.text(adapterId, "adapterId", 256)
+            RequestValidation.text(adapterVersion, "adapterVersion", 256)
             // Validate protocol
-            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Wait for engine to be ready (blocks until model is loaded into memory)
             // Must wait BEFORE checking status, since status is NotDownloaded during init
-            runBlocking {
+            withContext(Dispatchers.IO) {
                 models.voice.initialize()
             }
 
             // Check capability status AFTER waiting for initialization
             val status = capabilityManager.voiceCommandsStatus.value
             if (status is CapabilityStatus.NotDownloaded) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.CAPABILITY_NOT_READY,
                     "Voice Commands capability not downloaded"
                 )
             }
             if (status is CapabilityStatus.Downloading) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.CAPABILITY_DOWNLOADING,
                     "Voice Commands downloading: ${(status.progress * 100).toInt()}%",
                     buildJsonObject { put("progress", status.progress) }
                 )
             }
             if (status is CapabilityStatus.Error) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.CAPABILITY_ERROR, status.message
                 )
             }
 
-            val engine = nluEngine ?: return ProtocolHandler.error(
+            val engine = nluEngine ?: return@runRequest ProtocolHandler.error(
                 proto, ErrorCode.CAPABILITY_ERROR, "NLU engine failed to initialize"
             )
 
             // Check if we need to switch adapters
-            return runBlocking(Dispatchers.IO) {
+            return@runRequest withContext(Dispatchers.IO) {
                 try {
                     engine.classifyWithAdapter(
                         text, "$callerUid:$adapterId", adapterVersion, patchFd, headsFd, tokenizerFd, configFd
@@ -175,6 +188,8 @@ class SimpleAIService : Service() {
                     ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Error: ${e.message}")
                 }
             }
+
+            }
             } finally { lease.close() }
         }
 
@@ -186,19 +201,21 @@ class SimpleAIService : Service() {
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
-            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            return runRequest(callerUid, responseProtocol) {
+            
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Wait for engine to be ready
-            runBlocking {
+            withContext(Dispatchers.IO) {
                 models.voice.initialize()
             }
 
-            val engine = nluEngine ?: return ProtocolHandler.error(
+            val engine = nluEngine ?: return@runRequest ProtocolHandler.error(
                 proto, ErrorCode.CAPABILITY_ERROR, "NLU engine failed to initialize"
             )
 
-            return runBlocking(Dispatchers.IO) {
+            return@runRequest withContext(Dispatchers.IO) {
                 engine.removeAdapter("$callerUid:").fold(
                     onSuccess = {
                         ProtocolHandler.success(proto, buildJsonObject {
@@ -209,6 +226,8 @@ class SimpleAIService : Service() {
                         ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Failed to remove adapter: ${e.message}")
                     }
                 )
+            }
+
             }
             } finally { lease.close() }
         }
@@ -226,13 +245,15 @@ class SimpleAIService : Service() {
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
-            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            return runRequest(callerUid, responseProtocol) {
+            RequestValidation.text(text, "text")
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Check capability
             val status = capabilityManager.translationStatus.value
             if (status !is CapabilityStatus.Ready) {
-                return when (status) {
+                return@runRequest when (status) {
                     is CapabilityStatus.NotDownloaded -> ProtocolHandler.error(
                         proto, ErrorCode.CAPABILITY_NOT_READY,
                         "No translation languages downloaded"
@@ -252,17 +273,17 @@ class SimpleAIService : Service() {
 
             // Validate languages
             if (!manager.isLanguageSupported(targetLang)) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.INVALID_REQUEST, "Unsupported target language: $targetLang"
                 )
             }
             if (sourceLang != "auto" && !manager.isLanguageSupported(sourceLang)) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.INVALID_REQUEST, "Unsupported source language: $sourceLang"
                 )
             }
 
-            return runBlocking(Dispatchers.IO) {
+            return@runRequest withContext(Dispatchers.IO) {
                 manager.translate(text, sourceLang, targetLang).fold(
                     onSuccess = { result ->
                         ProtocolHandler.success(proto, buildJsonObject {
@@ -278,6 +299,8 @@ class SimpleAIService : Service() {
                         ProtocolHandler.error(proto, errorCode, "Translation failed: ${e.message}")
                     }
                 )
+            }
+
             }
             } finally { lease.close() }
         }
@@ -309,14 +332,18 @@ class SimpleAIService : Service() {
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
-            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            return runRequest(callerUid, responseProtocol) {
+            RequestValidation.messages(messagesJson)
+            require((systemPrompt?.length ?: 0) <= 32768 && (toolsJson?.length ?: 0) <= 32768 && (promptCacheKey?.length ?: 0) <= 256)
+            RequestValidation.text(authToken, "authToken", 8192)
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Parse messages
             val messages = try {
-                json.parseToJsonElement(messagesJson).jsonArray
+                RequestValidation.messages(messagesJson)
             } catch (e: Exception) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.INVALID_REQUEST,
                     "Invalid messages JSON: ${e.message}"
                 )
@@ -327,14 +354,14 @@ class SimpleAIService : Service() {
                 try {
                     json.parseToJsonElement(toolsJson).jsonArray
                 } catch (e: Exception) {
-                    return ProtocolHandler.error(
+                    return@runRequest ProtocolHandler.error(
                         proto, ErrorCode.INVALID_REQUEST,
                         "Invalid tools JSON: ${e.message}"
                     )
                 }
             } else null
 
-            return runBlocking(Dispatchers.IO) {
+            return@runRequest withContext(Dispatchers.IO) {
                 cloudClient.chat(messages, tools, systemPrompt, promptCacheKey, authToken).fold(
                     onSuccess = { response ->
                         ProtocolHandler.success(proto, buildJsonObject {
@@ -366,6 +393,7 @@ class SimpleAIService : Service() {
                     },
                     onFailure = { e ->
                         val errorCode = when (e) {
+                            is CloudRateLimitException -> ErrorCode.RATE_LIMITED
                             is CloudAuthException -> ErrorCode.CLOUD_AUTH_FAILED
                             is CloudUnavailableException -> ErrorCode.CLOUD_UNAVAILABLE
                             else -> ErrorCode.INTERNAL_ERROR
@@ -373,6 +401,8 @@ class SimpleAIService : Service() {
                         ProtocolHandler.error(proto, errorCode, e.message ?: "Cloud request failed")
                     }
                 )
+            }
+
             }
             } finally { lease.close() }
         }
@@ -390,13 +420,15 @@ class SimpleAIService : Service() {
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
-            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            return runRequest(callerUid, responseProtocol) {
+            RequestValidation.generation(prompt, maxTokens, temperature)
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Check capability
             val status = capabilityManager.localAiStatus.value
             if (status !is CapabilityStatus.Ready) {
-                return when (status) {
+                return@runRequest when (status) {
                     is CapabilityStatus.NotDownloaded -> ProtocolHandler.error(
                         proto, ErrorCode.CAPABILITY_NOT_READY,
                         "Local AI model not downloaded. Size: ${LocalAIModel.SIZE_MB} MB"
@@ -413,7 +445,7 @@ class SimpleAIService : Service() {
                 }
             }
 
-            val engine = llamaEngine ?: return ProtocolHandler.error(
+            val engine = llamaEngine ?: return@runRequest ProtocolHandler.error(
                 proto, ErrorCode.CAPABILITY_ERROR, "LLM engine not initialized"
             )
 
@@ -422,7 +454,7 @@ class SimpleAIService : Service() {
                 temperature = temperature
             )
 
-            return engine.generate(prompt, params).fold(
+            return@runRequest engine.generateForRequest(prompt, params, currentCoroutineContext()[Job]).fold(
                 onSuccess = { text ->
                     ProtocolHandler.success(proto, buildJsonObject {
                         put("text", text)
@@ -432,6 +464,8 @@ class SimpleAIService : Service() {
                     generationError(proto, e)
                 }
             )
+
+            }
             } finally { lease.close() }
         }
 
@@ -448,13 +482,16 @@ class SimpleAIService : Service() {
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
-            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            return runRequest(callerUid, responseProtocol) {
+            RequestValidation.messages(messagesJson)
+            require((systemPrompt?.length ?: 0) <= 8192 && (toolsJson?.length ?: 0) <= 32768)
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Check capability
             val status = capabilityManager.localAiStatus.value
             if (status !is CapabilityStatus.Ready) {
-                return when (status) {
+                return@runRequest when (status) {
                     is CapabilityStatus.NotDownloaded -> ProtocolHandler.error(
                         proto, ErrorCode.CAPABILITY_NOT_READY,
                         "Local AI model not downloaded. Size: ${LocalAIModel.SIZE_MB} MB"
@@ -471,14 +508,14 @@ class SimpleAIService : Service() {
                 }
             }
 
-            val engine = llamaEngine ?: return ProtocolHandler.error(
+            val engine = llamaEngine ?: return@runRequest ProtocolHandler.error(
                 proto, ErrorCode.CAPABILITY_ERROR, "LLM engine not initialized"
             )
 
             val messages = try {
-                json.parseToJsonElement(messagesJson).jsonArray
+                RequestValidation.messages(messagesJson)
             } catch (e: Exception) {
-                return ProtocolHandler.error(
+                return@runRequest ProtocolHandler.error(
                     proto, ErrorCode.INVALID_REQUEST,
                     "Invalid messages JSON: ${e.message}"
                 )
@@ -487,9 +524,9 @@ class SimpleAIService : Service() {
             val prompt = try {
                 com.lelloman.simpleai.llm.QwenChat.format(messages, systemPrompt, toolsJson)
             } catch (e: Exception) {
-                return ProtocolHandler.error(proto, ErrorCode.INVALID_REQUEST, e.message ?: "Unsupported local chat request")
+                return@runRequest ProtocolHandler.error(proto, ErrorCode.INVALID_REQUEST, e.message ?: "Unsupported local chat request")
             }
-            return engine.generate(prompt).fold(
+            return@runRequest engine.generateForRequest(prompt, GenerationParams(), currentCoroutineContext()[Job]).fold(
                 onSuccess = { text ->
                     ProtocolHandler.success(proto, buildJsonObject {
                         put("role", "assistant")
@@ -500,8 +537,29 @@ class SimpleAIService : Service() {
                     generationError(proto, e)
                 }
             )
+
+            }
             } finally { lease.close() }
         }
+        override fun cancelCurrentRequest(protocolVersion: Int): String {
+            ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
+            return ProtocolHandler.success(ProtocolHandler.clampProtocol(protocolVersion), buildJsonObject {
+                put("cancelled", activeRequests.cancel(Binder.getCallingUid()))
+            })
+        }
+
+    }
+
+    private fun runRequest(uid: Int, proto: Int, block: suspend () -> String): String = try {
+        activeRequests.run(uid, block)
+    } catch (_: TimeoutCancellationException) {
+        ProtocolHandler.error(proto, ErrorCode.REQUEST_TIMEOUT, "Request deadline exceeded")
+    } catch (_: CancellationException) {
+        ProtocolHandler.error(proto, ErrorCode.REQUEST_CANCELLED, "Request cancelled")
+    } catch (_: IllegalArgumentException) {
+        ProtocolHandler.error(proto, ErrorCode.INVALID_REQUEST, "Invalid request parameters or schema")
+    } catch (_: Exception) {
+        ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Request failed")
     }
 
     private fun generationError(proto: Int, error: Throwable): String =
@@ -512,7 +570,8 @@ class SimpleAIService : Service() {
         } else ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Generation failed: ${error.message}")
 
     private fun buildServiceInfoData() = buildJsonObject {
-        put("serviceVersion", BuildConfig.SERVICE_VERSION)
+        put("supportsCancellation", true)
+            put("serviceVersion", BuildConfig.SERVICE_VERSION)
         put("minProtocol", BuildConfig.MIN_PROTOCOL_VERSION)
         put("maxProtocol", BuildConfig.MAX_PROTOCOL_VERSION)
         put("capabilities", buildJsonObject {

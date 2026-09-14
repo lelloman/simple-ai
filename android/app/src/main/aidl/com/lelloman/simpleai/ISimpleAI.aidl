@@ -184,4 +184,7 @@ interface ISimpleAI {
         String toolsJson,
         String systemPrompt
     );
+    // Optional extension: check supportsCancellation in service info first.
+    // Cancels only the calling UID’s current request; invoke from another thread.
+    String cancelCurrentRequest(int protocolVersion);
 }

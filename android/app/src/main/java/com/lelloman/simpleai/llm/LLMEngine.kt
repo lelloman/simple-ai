@@ -164,7 +164,9 @@ class LlamaEngine(
         resetBeforeGeneration = false
     }
 
-    @Synchronized override fun generate(prompt: String, params: GenerationParams): Result<String> {
+    override fun generate(prompt: String, params: GenerationParams): Result<String> = generateForRequest(prompt, params, null)
+
+    @Synchronized fun generateForRequest(prompt: String, params: GenerationParams, parentJob: kotlinx.coroutines.Job?): Result<String> {
         // A stopped request has no tagged terminal acknowledgement. Recreate the
         // helper with a separate stream before another caller can start.
         if (resetBeforeGeneration) {
@@ -178,7 +180,7 @@ class LlamaEngine(
             val startTime = System.currentTimeMillis()
             logger.i(TAG, "Generating response for prompt (${prompt.length} chars)")
 
-            val response = runBlocking {
+            val response = runBlocking(parentJob ?: kotlin.coroutines.EmptyCoroutineContext) {
                 generateAsync(helper, prompt, params)
             }
 

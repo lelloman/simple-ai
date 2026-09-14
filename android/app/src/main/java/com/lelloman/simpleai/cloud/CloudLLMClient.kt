@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.cloud
 
+import com.lelloman.simpleai.download.withResponse
+import kotlinx.coroutines.CancellationException
 import android.util.Log
 import com.lelloman.simpleai.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,7 @@ class CloudLLMClient {
     }
 
     private val httpClient = OkHttpClient.Builder()
+        .callTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -85,13 +88,13 @@ class CloudLLMClient {
                 .post(requestJson.toRequestBody(JSON_MEDIA_TYPE))
                 .build()
 
-            val response = httpClient.newCall(request).execute()
+            httpClient.newCall(request).withResponse { response ->
 
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "No error body"
                 Log.e(TAG, "Cloud request failed: ${response.code} - $errorBody")
 
-                return@withContext when (response.code) {
+                return@withResponse when (response.code) {
                     401, 403 -> Result.failure(CloudAuthException("Authentication failed: ${response.code}"))
                     429 -> Result.failure(CloudRateLimitException("Rate limited"))
                     500, 502, 503, 504 -> Result.failure(CloudUnavailableException("Server error: ${response.code}"))
@@ -100,13 +103,16 @@ class CloudLLMClient {
             }
 
             val responseBody = response.body?.string()
-                ?: return@withContext Result.failure(CloudException("Empty response body"))
+                ?: return@withResponse Result.failure(CloudException("Empty response body"))
 
             Log.d(TAG, "Response body: $responseBody")
             val chatResponse = parseResponse(responseBody)
             Log.d(TAG, "Parsed response: role=${chatResponse.role}, content=${chatResponse.content}, toolCalls=${chatResponse.toolCalls?.size ?: 0}")
             Result.success(chatResponse)
+            }
 
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: java.net.UnknownHostException) {
             Log.e(TAG, "Network error", e)
             Result.failure(CloudUnavailableException("Network unavailable: ${e.message}"))
@@ -149,7 +155,7 @@ class CloudLLMClient {
         return JsonObject(fields)
     }
 
-    private fun parseResponse(responseBody: String): ChatResponse {
+    internal fun parseResponse(responseBody: String): ChatResponse {
         val responseJson = json.parseToJsonElement(responseBody).jsonObject
 
         val choices = responseJson["choices"]?.jsonArray
@@ -199,7 +205,7 @@ class CloudLLMClient {
         }
 
         // Parse usage if present
-        val usage = responseJson["usage"]?.jsonObject?.let { usageObj ->
+        val usage = (responseJson["usage"] as? JsonObject)?.let { usageObj ->
             Usage(
                 promptTokens = usageObj["prompt_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
                 completionTokens = usageObj["completion_tokens"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0,
