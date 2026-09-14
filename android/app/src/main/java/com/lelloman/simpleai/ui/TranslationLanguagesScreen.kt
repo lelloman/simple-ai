@@ -73,6 +73,12 @@ fun TranslationLanguagesScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    LaunchedEffect(state.languageOperationError) {
+        state.languageOperationError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearLanguageOperationError()
+        }
+    }
     LaunchedEffect(languageDownloadError) {
         languageDownloadError?.let { error ->
             snackbarHostState.showSnackbar("${error.key}: ${error.value}")

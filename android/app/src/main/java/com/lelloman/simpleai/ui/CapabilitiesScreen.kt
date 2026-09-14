@@ -111,6 +111,7 @@ fun CapabilitiesScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text(if (state.isServiceConnected) "Service connected" else "Service disconnected", style = MaterialTheme.typography.bodySmall)
             state.serviceError?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = viewModel::refreshCapabilities) { Text("Retry connection") }

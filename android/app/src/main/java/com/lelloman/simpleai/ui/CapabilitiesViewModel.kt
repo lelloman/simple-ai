@@ -43,6 +43,7 @@ data class CapabilitiesState(
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguages: Set<String> = emptySet(),
     val languageDownloadErrors: Map<String, String> = emptyMap(),
+    val languageOperationError: String? = null,
     val isServiceConnected: Boolean = false,
     val serviceError: String? = null,
     val downloadJobs: Map<String, String> = emptyMap(),
@@ -74,7 +75,6 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
     val state: StateFlow<CapabilitiesState> = _state.asStateFlow()
 
     private var simpleAiService: ISimpleAI? = null
-    private var isBound = false
 
     private val models = ModelRepository.get(application)
 
@@ -85,20 +85,10 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
     val translationState = translationSession.state
     private val downloadManager = ModelDownloadManager(application)
 
-    private val serviceConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            Log.i(TAG, "Service connected")
-            simpleAiService = ISimpleAI.Stub.asInterface(service)
-            _state.update { it.copy(isServiceConnected = true) }
-            refreshCapabilities()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            Log.i(TAG, "Service disconnected")
-            simpleAiService = null
-            isBound = false
-            _state.update { it.copy(isServiceConnected = false) }
-        }
+    private val serviceBinding = ServiceBinding(application) { service, error ->
+        simpleAiService = service
+        _state.update { it.copy(isServiceConnected = service != null, serviceError = error) }
+        if (service != null) refreshCapabilities()
     }
 
     init {
@@ -147,14 +137,12 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     private fun startAndBindService() {
         val context = getApplication<Application>()
-        val serviceIntent = Intent(context, SimpleAIService::class.java)
-
-        // Start as foreground service
-        ContextCompat.startForegroundService(context, serviceIntent)
-
-        // Bind to it
-        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
-        isBound = true
+        try {
+            ContextCompat.startForegroundService(context, Intent(context, SimpleAIService::class.java))
+            serviceBinding.connect()
+        } catch (e: Exception) {
+            _state.update { it.copy(isServiceConnected = false, serviceError = "Could not start SimpleAI: ${e.message}") }
+        }
     }
 
     private fun initializeTranslationManager() {
@@ -173,7 +161,7 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
      */
     fun refreshCapabilities() {
         viewModelScope.launch {
-            val service = simpleAiService ?: return@launch
+            val service = simpleAiService ?: run { startAndBindService(); return@launch }
 
             try {
                 withContext(Dispatchers.IO) {
@@ -211,6 +199,8 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     fun downloadTranslationLanguage(languageCode: String) = models.languageDownloads.start(languageCode)
 
+    fun clearLanguageOperationError() { _state.update { it.copy(languageOperationError = null) } }
+
     fun clearLanguageDownloadError(languageCode: String) = models.languageDownloads.clearError(languageCode)
 
     fun deleteTranslationLanguage(languageCode: String) {
@@ -221,6 +211,7 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
                 },
                 onFailure = { e ->
                     Log.e(TAG, "Failed to delete language: $languageCode", e)
+                    _state.update { it.copy(languageOperationError = "$languageCode: Could not delete language. ${e.message}") }
                 }
             )
         }
@@ -235,10 +226,6 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     override fun onCleared() {
         super.onCleared()
-        val context = getApplication<Application>()
-        if (isBound) {
-            context.unbindService(serviceConnection)
-            isBound = false
-        }
+        serviceBinding.close()
     }
 }
