@@ -7,11 +7,10 @@ import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.lelloman.simpleai.model.NluModel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
@@ -69,7 +68,7 @@ class OnnxNLUEngine(
     private var currentRevertPatch: LoraPatcher.RevertPatch? = null
     private var currentAdapter: LoadedAdapter? = null
 
-    private val mutex = Mutex()
+    private val mutex = AdapterAccess()
     private val loraPatcher = LoraPatcher()
 
     private val httpClient = OkHttpClient.Builder()
@@ -205,7 +204,35 @@ class OnnxNLUEngine(
      * @param tokenizerFd ParcelFileDescriptor for the tokenizer.json file
      * @param configFd ParcelFileDescriptor for the config.json file
      */
+    class MissingAdapterFiles : IllegalArgumentException("Adapter files (heads, tokenizer, config) required for first call or version change")
+    class AdapterLoadFailed(cause: Throwable) : RuntimeException("Failed to apply adapter", cause)
+
+    suspend fun classifyWithAdapter(
+        text: String, adapterId: String, adapterVersion: String,
+        patchFd: ParcelFileDescriptor?, headsFd: ParcelFileDescriptor?,
+        tokenizerFd: ParcelFileDescriptor?, configFd: ParcelFileDescriptor?
+    ): Result<ClassificationResult> = mutex.classify(
+        requested = adapterId to adapterVersion,
+        current = { currentAdapter?.let { it.id to it.version } },
+        switch = {
+            if (headsFd == null || tokenizerFd == null || configFd == null) {
+                Result.failure(MissingAdapterFiles())
+            } else {
+                applyAdapterLocked(adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd)
+                    .fold({ Result.success(Unit) }, { Result.failure(AdapterLoadFailed(it)) })
+            }
+        },
+        infer = { classifyLocked(text, adapterId) }
+    )
+
     suspend fun applyAdapter(
+        adapterId: String, adapterVersion: String, patchFd: ParcelFileDescriptor?,
+        headsFd: ParcelFileDescriptor, tokenizerFd: ParcelFileDescriptor, configFd: ParcelFileDescriptor
+    ): Result<Unit> = mutex.withLock {
+        applyAdapterLocked(adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd)
+    }
+
+    private suspend fun applyAdapterLocked(
         adapterId: String,
         adapterVersion: String,
         patchFd: ParcelFileDescriptor?,
@@ -213,7 +240,6 @@ class OnnxNLUEngine(
         tokenizerFd: ParcelFileDescriptor,
         configFd: ParcelFileDescriptor
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        mutex.withLock {
             var pendingTokenizer: NativeTokenizer? = null
             try {
                 val buffer = modelBuffer ?: return@withContext Result.failure(
@@ -297,7 +323,6 @@ class OnnxNLUEngine(
                 _status.value = Status.Error(e.message ?: "Failed to apply adapter")
                 Result.failure(e)
             } finally { pendingTokenizer?.close() }
-        }
     }
 
     /**
@@ -306,7 +331,7 @@ class OnnxNLUEngine(
     suspend fun removeAdapter(): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
-                val buffer = modelBuffer ?: return@withContext Result.failure(
+                val buffer = modelBuffer ?: return@withLock Result.failure(
                     IllegalStateException("Model not loaded")
                 )
 
@@ -408,6 +433,9 @@ class OnnxNLUEngine(
     }
 
     override suspend fun classify(text: String, adapterId: String): Result<ClassificationResult> =
+        mutex.withLock { classifyLocked(text, adapterId) }
+
+    private suspend fun classifyLocked(text: String, adapterId: String): Result<ClassificationResult> =
         withContext(Dispatchers.IO) {
             try {
                 val adapter = currentAdapter
@@ -543,7 +571,7 @@ class OnnxNLUEngine(
         return exps.map { (it / sumExps).toFloat() }.toFloatArray()
     }
 
-    override fun release() {
+    override fun release() = runBlocking { mutex.withLock {
         currentSession?.close()
         currentSession = null
         currentRevertPatch = null
@@ -555,5 +583,5 @@ class OnnxNLUEngine(
         workingModel.discard()
         ortEnv?.close()
         ortEnv = null
-    }
+    } }
 }

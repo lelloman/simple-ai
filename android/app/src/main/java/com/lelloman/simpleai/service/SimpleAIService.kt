@@ -130,32 +130,9 @@ class SimpleAIService : Service() {
             // Check if we need to switch adapters
             return runBlocking(Dispatchers.IO) {
                 try {
-                    val currentAdapter = engine.adapters.firstOrNull()
-                    val needsSwitch = currentAdapter?.id != adapterId || currentAdapter.version != adapterVersion
-
-                    if (needsSwitch) {
-                        // Need heads, tokenizer, and config to apply new adapter (patchFd is optional for non-LoRA adapters)
-                        if (headsFd == null || tokenizerFd == null || configFd == null) {
-                            return@runBlocking ProtocolHandler.error(
-                                proto, ErrorCode.INVALID_REQUEST,
-                                "Adapter files (heads, tokenizer, config) required for first call or version change"
-                            )
-                        }
-
-                        engine.applyAdapter(
-                            adapterId, adapterVersion,
-                            patchFd,  // Can be null for non-LoRA adapters
-                            headsFd, tokenizerFd, configFd
-                        ).onFailure { e ->
-                            return@runBlocking ProtocolHandler.error(
-                                proto, ErrorCode.ADAPTER_LOAD_FAILED,
-                                "Failed to apply adapter: ${e.message}"
-                            )
-                        }
-                    }
-
-                    // Run classification
-                    engine.classify(text, adapterId).fold(
+                    engine.classifyWithAdapter(
+                        text, adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd
+                    ).fold(
                         onSuccess = { result ->
                             ProtocolHandler.success(proto, buildJsonObject {
                                 put("intent", result.intent)
@@ -171,7 +148,11 @@ class SimpleAIService : Service() {
                         },
                         onFailure = { e ->
                             ProtocolHandler.error(
-                                proto, ErrorCode.INTERNAL_ERROR,
+                                proto, when (e) {
+                                    is OnnxNLUEngine.MissingAdapterFiles -> ErrorCode.INVALID_REQUEST
+                                    is OnnxNLUEngine.AdapterLoadFailed -> ErrorCode.ADAPTER_LOAD_FAILED
+                                    else -> ErrorCode.INTERNAL_ERROR
+                                },
                                 "Classification failed: ${e.message}"
                             )
                         }
