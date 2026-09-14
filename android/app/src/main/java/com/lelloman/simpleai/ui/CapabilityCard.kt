@@ -168,7 +168,7 @@ fun CapabilityCard(
                     }
                 }
 
-                is CapabilityStatus.Ready -> {
+                CapabilityStatus.Downloaded, is CapabilityStatus.Ready -> {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -181,7 +181,7 @@ fun CapabilityCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Ready",
+                            text = if (status == CapabilityStatus.Downloaded) "Downloaded • loads when needed" else "Ready",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Medium

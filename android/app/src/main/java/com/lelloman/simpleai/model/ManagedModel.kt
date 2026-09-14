@@ -21,6 +21,10 @@ class ManagedModel<E>(
         private set
     private var initialized = false
 
+    suspend fun inspect() = mutex.withLock {
+        if (!initialized && engine == null) publish(if (exists()) CapabilityStatus.Downloaded else CapabilityStatus.NotDownloaded(size))
+    }
+
     suspend fun initialize() = mutex.withLock {
         if (!initialized) activate()
     }
@@ -61,10 +65,11 @@ class ManagedModel<E>(
     }
 
     suspend fun unload() = mutex.withLock {
-        engine?.let(dispose)
+        val old = engine
         engine = null
+        old?.let(dispose)
         initialized = false
-        publish(CapabilityStatus.NotDownloaded(size))
+        publish(if (exists()) CapabilityStatus.Downloaded else CapabilityStatus.NotDownloaded(size))
     }
 
     suspend fun delete(deleteFiles: () -> Boolean) = mutex.withLock {

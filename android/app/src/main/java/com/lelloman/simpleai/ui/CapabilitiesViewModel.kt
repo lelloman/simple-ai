@@ -138,7 +138,6 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
     private fun startAndBindService() {
         val context = getApplication<Application>()
         try {
-            ContextCompat.startForegroundService(context, Intent(context, SimpleAIService::class.java))
             serviceBinding.connect()
         } catch (e: Exception) {
             _state.update { it.copy(isServiceConnected = false, serviceError = "Could not start SimpleAI: ${e.message}") }

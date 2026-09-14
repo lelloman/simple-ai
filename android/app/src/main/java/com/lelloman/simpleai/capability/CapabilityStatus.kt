@@ -13,6 +13,10 @@ sealed class CapabilityStatus {
     @Serializable
     data object Loading : CapabilityStatus()
 
+    /** Download exists on disk; native resources are not resident. */
+    @Serializable
+    data object Downloaded : CapabilityStatus()
+
     /** Capability requires download before use */
     @Serializable
     data class NotDownloaded(

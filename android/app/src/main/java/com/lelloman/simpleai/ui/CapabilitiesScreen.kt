@@ -138,7 +138,7 @@ fun CapabilitiesScreen(
                 onPause = { viewModel.pauseDownload("voice") },
                 onDownload = { viewModel.downloadVoiceCommands() },
                 onRetry = { viewModel.downloadVoiceCommands() },
-                onDelete = if (state.voiceCommandsStatus is CapabilityStatus.Ready || state.downloadJobs["voice"] in listOf("CANCELLED", "FAILED")) {
+                onDelete = if (state.voiceCommandsStatus is CapabilityStatus.Ready || state.voiceCommandsStatus == CapabilityStatus.Downloaded || state.downloadJobs["voice"] in listOf("CANCELLED", "FAILED")) {
                     { deleteConfirmation = DeleteConfirmation.VOICE_COMMANDS }
                 } else null
             )
@@ -195,7 +195,7 @@ fun CapabilitiesScreen(
                 onPause = { viewModel.pauseDownload("local") },
                 onDownload = { viewModel.downloadLocalAi() },
                 onRetry = { viewModel.downloadLocalAi() },
-                onDelete = if (state.localAiStatus is CapabilityStatus.Ready || state.downloadJobs["local"] in listOf("CANCELLED", "FAILED")) {
+                onDelete = if (state.localAiStatus is CapabilityStatus.Ready || state.localAiStatus == CapabilityStatus.Downloaded || state.downloadJobs["local"] in listOf("CANCELLED", "FAILED")) {
                     { deleteConfirmation = DeleteConfirmation.LOCAL_AI }
                 } else null
             )

@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.service
 
+import android.app.PendingIntent
+import com.lelloman.simpleai.MainActivity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -84,6 +86,8 @@ class SimpleAIService : Service() {
         encodeDefaults = true
     }
 
+    private val activeCount = java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var explicitlyStarted = false
     private val activeRequests = ActiveRequests()
     private val callerBudget = CallerBudget(SystemClock::elapsedRealtime)
 
@@ -426,6 +430,7 @@ class SimpleAIService : Service() {
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Check capability
+            models.local.initialize()
             val status = capabilityManager.localAiStatus.value
             if (status !is CapabilityStatus.Ready) {
                 return@runRequest when (status) {
@@ -489,6 +494,7 @@ class SimpleAIService : Service() {
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
             // Check capability
+            models.local.initialize()
             val status = capabilityManager.localAiStatus.value
             if (status !is CapabilityStatus.Ready) {
                 return@runRequest when (status) {
@@ -551,7 +557,9 @@ class SimpleAIService : Service() {
     }
 
     private fun runRequest(uid: Int, proto: Int, block: suspend () -> String): String = try {
-        activeRequests.run(uid, block)
+        activeCount.incrementAndGet()
+        if (explicitlyStarted) updateNotification("${activeCount.get()} active request(s)")
+        activeRequests.run(uid) { models.withWork(block) }
     } catch (_: TimeoutCancellationException) {
         ProtocolHandler.error(proto, ErrorCode.REQUEST_TIMEOUT, "Request deadline exceeded")
     } catch (_: CancellationException) {
@@ -560,6 +568,9 @@ class SimpleAIService : Service() {
         ProtocolHandler.error(proto, ErrorCode.INVALID_REQUEST, "Invalid request parameters or schema")
     } catch (_: Exception) {
         ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Request failed")
+    } finally {
+        activeCount.decrementAndGet()
+        if (explicitlyStarted) updateNotification(if (activeCount.get() == 0) "Available to connected apps" else "${activeCount.get()} active request(s)")
     }
 
     private fun generationError(proto: Int, error: Throwable): String =
@@ -598,7 +609,12 @@ class SimpleAIService : Service() {
                 put("downloadedBytes", status.downloadedBytes)
                 put("totalBytes", status.totalBytes)
             }
+            CapabilityStatus.Downloaded -> {
+                put("status", "ready")
+                put("loaded", false)
+            }
             is CapabilityStatus.Ready -> {
+                put("loaded", true)
                 put("status", "ready")
             }
             is CapabilityStatus.Error -> {
@@ -621,7 +637,12 @@ class SimpleAIService : Service() {
                 put("status", "downloading")
                 put("progress", status.progress)
             }
+            CapabilityStatus.Downloaded -> {
+                put("status", "ready")
+                put("loaded", false)
+            }
             is CapabilityStatus.Ready -> {
+                put("loaded", true)
                 put("status", "ready")
             }
             is CapabilityStatus.Error -> {
@@ -646,7 +667,6 @@ class SimpleAIService : Service() {
         capabilityManager = models.capabilities
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
 
         initializeEngines()
     }
@@ -661,7 +681,16 @@ class SimpleAIService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
+        explicitlyStarted = true
+        // Compatibility for clients that explicitly start the service. Binding is preferred.
+        startForeground(NOTIFICATION_ID, createNotification("Available to connected apps"))
+        serviceScope.launch {
+            kotlinx.coroutines.delay(60_000)
+            explicitlyStarted = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -692,6 +721,7 @@ class SimpleAIService : Service() {
             .setContentTitle("SimpleAI")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             .setOngoing(true)
             .build()
     }

@@ -1,5 +1,8 @@
 package com.lelloman.simpleai.download
 
+import android.app.PendingIntent
+import android.content.Intent
+import com.lelloman.simpleai.MainActivity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -37,7 +40,8 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
         val model = inputData.getString("model") ?: return@coroutineScope Result.failure()
         if (model != VOICE && model != LOCAL) return@coroutineScope Result.failure()
         val repository = ModelRepository.get(applicationContext)
-        if (model == VOICE) repository.voice.initialize() else repository.local.initialize()
+        if (model == VOICE) repository.voice.inspect() else repository.local.inspect()
+        if ((if (model == VOICE) repository.capabilities.voiceCommandsStatus.value else repository.capabilities.localAiStatus.value) == CapabilityStatus.Downloaded) return@coroutineScope Result.success()
         if ((if (model == VOICE) repository.voice.engine else repository.local.engine) != null) return@coroutineScope Result.success()
         val size = if (model == VOICE) NluModel.SIZE_BYTES else LocalAIModel.SIZE_BYTES
         val partial = File(applicationContext.filesDir, if (model == VOICE) "nlu_models/${NluModel.FILE_NAME}.tmp" else "models/${LocalAIModel.FILE_NAME}.tmp")
@@ -62,7 +66,9 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             }
         }
         try {
-            if (model == VOICE) repository.voice.downloadAndActivate() else repository.local.downloadAndActivate()
+            repository.withWork {
+                if (model == VOICE) repository.voice.downloadAndActivate() else repository.local.downloadAndActivate()
+            }
             if (status.value == CapabilityStatus.Ready) Result.success() else Result.failure()
         } finally { progress.cancel() }
     }
@@ -76,6 +82,7 @@ class ModelDownloadWorker(context: Context, params: WorkerParameters) : Coroutin
             .setContentTitle(if (model == VOICE) "Voice Commands" else "Local AI")
             .setContentText(text)
             .setProgress(100, percent ?: 0, percent == null)
+            .setContentIntent(PendingIntent.getActivity(applicationContext, 0, Intent(applicationContext, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             .setOngoing(true)
             .addAction(android.R.drawable.ic_media_pause, "Pause", WorkManager.getInstance(applicationContext).createCancelPendingIntent(id))
             .build()

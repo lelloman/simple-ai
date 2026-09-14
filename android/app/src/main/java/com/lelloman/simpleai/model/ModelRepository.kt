@@ -57,6 +57,9 @@ class ModelRepository private constructor(private val context: Context) {
         publish = capabilities::updateLocalAiStatus
     )
 
+    private val idleResources = IdleResources(scope) { voice.unload(); local.unload() }
+    suspend fun <T> withWork(block: suspend () -> T): T = idleResources.withWork(block)
+
     fun downloadVoice() = ModelDownloadWorker.enqueue(context, ModelDownloadWorker.VOICE)
     fun downloadLocal() = ModelDownloadWorker.enqueue(context, ModelDownloadWorker.LOCAL)
     fun pauseDownload(model: String) { WorkManager.getInstance(context).cancelUniqueWork(ModelDownloadWorker.name(model)) }
@@ -64,7 +67,7 @@ class ModelRepository private constructor(private val context: Context) {
     fun deleteLocal() { scope.launch { local.delete(downloads::deleteLocalAi) } }
     fun initialize() {
         scope.launch { translation.initialize() }
-        scope.launch { voice.initialize() }
-        scope.launch { local.initialize() }
+        scope.launch { voice.inspect() }
+        scope.launch { local.inspect() }
     }
 }
