@@ -80,7 +80,11 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     private val translationManager = models.translation
     private val translationSession = TranslationSession(viewModelScope, savedStateHandle) {
-        translationManager.translate(it.text, it.source, it.target)
+        withContext(Dispatchers.IO) {
+            val service = simpleAiService
+            if (service == null) Result.failure(IllegalStateException("Service disconnected. Return home and retry the connection."))
+            else com.lelloman.simpleai.api.ServiceTranslationClient.request(it.text, it.source, it.target, service::translate)
+        }
     }
     val translationState = translationSession.state
     private val downloadManager = ModelDownloadManager(application)

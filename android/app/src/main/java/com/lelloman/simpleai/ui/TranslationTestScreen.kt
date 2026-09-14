@@ -87,6 +87,7 @@ fun TranslationTestScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Text("This test sends a request through the SimpleAI service. To check another app’s setup, also try a request from that app.", style = MaterialTheme.typography.bodySmall)
             // Language selection row
             Row(
                 modifier = Modifier.fillMaxWidth(),

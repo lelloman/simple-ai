@@ -111,6 +111,10 @@ fun CapabilitiesScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Text("AI for your apps", style = MaterialTheme.typography.titleLarge)
+            Text("SimpleAI manages shared AI models for compatible apps. Download only the features your app needs.")
+            Text("1. Enable SimpleAI in your compatible app.\n2. Download its required models here.\n3. Approve the app in Connected apps, then retry there.")
+            Text("You can try translation here after downloading a language pack. Voice Commands and AI chat are used from compatible apps; this screen does not record speech or provide a chat conversation.")
             Text(if (state.isServiceConnected) "Service connected" else "Service disconnected", style = MaterialTheme.typography.bodySmall)
             state.serviceError?.let { error ->
                 Text(error, color = MaterialTheme.colorScheme.error)
@@ -132,7 +136,7 @@ fun CapabilitiesScreen(
             CapabilityCard(
                 title = "Voice Commands",
                 icon = "\uD83C\uDFA4",  // microphone
-                description = "Intent classification and entity extraction",
+                description = "Understand commands sent by your app, on this device",
                 status = state.voiceCommandsStatus,
                 downloadJob = state.downloadJobs["voice"],
                 onPause = { viewModel.pauseDownload("voice") },
@@ -150,7 +154,7 @@ fun CapabilitiesScreen(
                 description = "On-device translation between languages",
                 status = state.translationStatus,
                 onConfigure = onNavigateToTranslationLanguages,
-                onTest = if (state.downloadedLanguages.size >= 2) {
+                onTest = if (state.downloadedLanguages.isNotEmpty()) {
                     onNavigateToTranslationTest
                 } else null,
                 extraContent = {
@@ -172,7 +176,7 @@ fun CapabilitiesScreen(
             CapabilityCard(
                 title = "Cloud AI",
                 icon = "\u2601\uFE0F",  // cloud
-                description = "Cloud-based LLM (requires client auth)",
+                description = "Online answers through your connected app’s account",
                 status = state.cloudAiStatus,
                 extraContent = {
                     if (state.cloudAiStatus is CapabilityStatus.Ready) {
@@ -189,7 +193,7 @@ fun CapabilitiesScreen(
             CapabilityCard(
                 title = "Local AI",
                 icon = "\uD83E\uDD16",  // robot
-                description = "On-device LLM for offline use",
+                description = "Generate answers on this device after downloading the model",
                 status = state.localAiStatus,
                 downloadJob = state.downloadJobs["local"],
                 onPause = { viewModel.pauseDownload("local") },

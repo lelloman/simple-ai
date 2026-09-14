@@ -96,7 +96,7 @@ fun AboutScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "SimpleAI is an on-device AI assistant that provides voice commands, translation, and AI chat capabilities without requiring constant internet connectivity.",
+                        text = "SimpleAI is a shared AI service for compatible Android apps. Use it to download models, manage language packs and approve connected apps. Conversations and voice recording happen in the app that connects to SimpleAI.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -118,12 +118,17 @@ fun AboutScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
-                    FeatureItem("\uD83C\uDFA4", "Voice Commands", "Intent classification and entity extraction")
-                    FeatureItem("\uD83C\uDF10", "Translation", "On-device translation between 50+ languages")
-                    FeatureItem("\u2601\uFE0F", "Cloud AI", "Cloud-based LLM for advanced queries")
-                    FeatureItem("\uD83E\uDD16", "Local AI", "On-device LLM for offline use")
+                    FeatureItem("\uD83C\uDFA4", "Voice Commands", "Understand commands supplied by a compatible app; processing stays on this device.")
+                    FeatureItem("\uD83C\uDF10", "Translation", "Translate on this device after downloading language packs. Try it from the Translation card.")
+                    FeatureItem("\u2601\uFE0F", "Cloud AI", "Sends requests over the internet to the configured cloud provider using your connected app’s account.")
+                    FeatureItem("\uD83E\uDD16", "Local AI", "Generate text on this device after downloading the model; no cloud request is needed.")
                 }
             }
+
+            Text("Getting connected", style = MaterialTheme.typography.titleMedium)
+            Text("Choose SimpleAI in an app that supports it, download the models that app requests, then approve it under Connected apps on the home screen. If your app has no SimpleAI option, it needs an integration from its developer.")
+            Text("Check the connection", style = MaterialTheme.typography.titleMedium)
+            Text("Use Test on the Translation card to send a translation through the service API. Then send a request from your connected app to verify its own approval and setup. A successful test here does not prove another app is configured correctly.")
 
             // Build info card
             Card(
