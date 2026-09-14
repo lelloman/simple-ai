@@ -21,7 +21,7 @@ class RequestContractTest {
         RequestValidation.generation("hello", 2048, 0f)
     }
     @Test fun nullUsageIsOptional() {
-        val response = CloudLLMClient().parseResponse("""{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":null}""")
+        val response = CloudLLMClient { "" }.parseResponse("""{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":null}""")
         assertNull(response.usage)
         assertEquals("ok", response.content)
     }

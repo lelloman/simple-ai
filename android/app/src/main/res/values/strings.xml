@@ -103,4 +103,12 @@
     <string name="about_licenses">Qwen3: Apache 2.0. XLM-RoBERTa, ONNX Runtime and llama.cpp: MIT. Hugging Face Tokenizers, AndroidX and OkHttp: Apache 2.0. ML Kit is governed by Google’s terms.</string>
     <string name="apps_revoke_label">Revoke access for %1$s</string>
     <string name="apps_approve_label">Allow access for %1$s</string>
+    <string name="cloud_server_title">Cloud AI server</string>
+    <string name="cloud_server_url">Server URL</string>
+    <string name="cloud_server_hint">HTTPS base URL. Leave empty to disable Cloud AI.</string>
+    <string name="cloud_server_invalid">Enter an HTTPS URL without credentials, query or fragment.</string>
+    <string name="cloud_server_auth">Connected apps supply their own sign-in token. Saving this URL does not test the connection.</string>
+    <string name="cloud_server_save_failed">Could not save. Try again.</string>
+    <string name="cloud_server_save">Save</string>
+    <string name="cloud_server_cancel">Cancel</string>
 </resources>

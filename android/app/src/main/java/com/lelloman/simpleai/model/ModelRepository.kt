@@ -23,9 +23,13 @@ class ModelRepository private constructor(private val context: Context) {
             instance ?: ModelRepository(context.applicationContext).also { instance = it }
         }
     }
-    val capabilities = CapabilityManager(context)
+    val cloudSettings = com.lelloman.simpleai.cloud.CloudSettings(context.getSharedPreferences("cloud_settings", Context.MODE_PRIVATE))
+    val capabilities = CapabilityManager(context, cloudSettings.endpoint.value)
     val translation = TranslationManager(context, capabilities::syncTranslationLanguages)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    init {
+        scope.launch { cloudSettings.endpoint.collect { capabilities.updateCloudEndpoint(it) } }
+    }
     val languageDownloads = KeyedDownloads(scope) { translation.downloadLanguage(it) }
     private val downloads = ModelDownloadManager(context)
     val voice = ManagedModel(

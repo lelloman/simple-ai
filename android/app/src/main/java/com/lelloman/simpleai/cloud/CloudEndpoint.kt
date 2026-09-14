@@ -13,5 +13,5 @@ object CloudEndpoint {
     }
 
     fun status(endpoint: String): CapabilityStatus = if (chatUrl(endpoint) != null) CapabilityStatus.Ready
-        else CapabilityStatus.Error("Cloud AI is not configured in this app build. Contact the app provider for a configured build.", canRetry = false)
+        else CapabilityStatus.Error("Set a server URL in Settings → Cloud AI.", canRetry = false)
 }

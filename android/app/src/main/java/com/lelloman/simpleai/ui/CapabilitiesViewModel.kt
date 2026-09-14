@@ -81,6 +81,11 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     private val models = ModelRepository.get(application)
 
+    val cloudEndpoint = models.cloudSettings.endpoint
+    suspend fun saveCloudEndpoint(endpoint: String): Boolean = withContext(Dispatchers.IO) {
+        models.cloudSettings.save(endpoint)
+    }
+
     private val translationManager = models.translation
     private val translationSession = TranslationSession(viewModelScope, savedStateHandle) {
         withContext(Dispatchers.IO) {

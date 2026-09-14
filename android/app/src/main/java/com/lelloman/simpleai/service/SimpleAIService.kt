@@ -78,7 +78,7 @@ class SimpleAIService : Service() {
     private val models by lazy { ModelRepository.get(this) }
     private val nluEngine: OnnxNLUEngine? get() = models.voice.engine
     private val translationManager: TranslationManager get() = models.translation
-    private val cloudClient = CloudLLMClient()
+    private val cloudClient = CloudLLMClient { models.cloudSettings.endpoint.value }
     private val llamaEngine: LlamaEngine? get() = models.local.engine
 
     private val json = Json {

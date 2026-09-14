@@ -3,7 +3,6 @@ package com.lelloman.simpleai.cloud
 import com.lelloman.simpleai.download.withResponse
 import kotlinx.coroutines.CancellationException
 import android.util.Log
-import com.lelloman.simpleai.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -29,7 +28,7 @@ import java.util.concurrent.TimeUnit
  * - Authorization: Bearer <token>
  * - Body: {"model": "...", "messages": [...], "tools": [...]}
  */
-class CloudLLMClient {
+class CloudLLMClient(private val endpointProvider: () -> String) {
 
     companion object {
         private const val TAG = "CloudLLMClient"
@@ -50,7 +49,7 @@ class CloudLLMClient {
         .build()
 
     private val endpoint: String
-        get() = BuildConfig.CLOUD_LLM_ENDPOINT
+        get() = endpointProvider()
 
     /**
      * Send a chat completion request to the cloud endpoint.
@@ -69,7 +68,7 @@ class CloudLLMClient {
         authToken: String
     ): Result<ChatResponse> = withContext(Dispatchers.IO) {
         val chatUrl = CloudEndpoint.chatUrl(endpoint) ?: return@withContext Result.failure(
-            CloudUnavailableException("Cloud AI is not configured in this app build")
+            CloudUnavailableException("Set a server URL in Settings → Cloud AI")
         )
         try {
             // Build messages array with optional system prompt

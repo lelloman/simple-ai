@@ -42,13 +42,15 @@ Set `ANDROID_HOME` to your SDK directory, or copy [local.properties.example](loc
 
 Gradle builds the Rust tokenizer JNI library for ARM64/ARMv7 and a host library for JVM tests. Cargo dependencies are locked in `tokenizer-native/Cargo.lock`. Initial setup needs network access; `./scripts/check --offline` uses the Gradle cache once dependencies exist. Small tokenizer fixtures were generated with Python `tokenizers==0.22.2`; see `tokenizer-native/generate_fixtures.py`.
 
-Cloud configuration is optional in `local.properties`:
+Configure the server on the device under **Settings → Cloud AI**. Enter an HTTPS base URL and save; subsequent requests use it immediately. Clear the field to disable Cloud AI. This device-local setting survives restarts and is excluded from backup. Connected apps still supply their own authentication token; saving does not verify connectivity.
+
+An optional initial default can be supplied in `local.properties`:
 
 ```properties
 cloud.llm.endpoint=https://your-cloud-service.example
 ```
 
-Use an HTTPS base URL without credentials, query or fragment. SimpleAI appends `/v1/chat/completions`. Missing/invalid configuration is visibly unavailable; configured availability does not certify connectivity or credentials. Tokens are supplied per request by the client, never stored in the build configuration.
+Use an HTTPS base URL without credentials, query or fragment. SimpleAI appends `/v1/chat/completions`. The device setting overrides the build default, including when explicitly cleared. Missing/invalid configuration is visibly unavailable; configured availability does not certify connectivity or credentials. Tokens are supplied per request by the client, never stored in the build configuration.
 
 ## Version and signing policy
 
