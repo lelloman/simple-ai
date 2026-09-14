@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.*
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,7 +58,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun TranslationTestScreen(
     viewModel: CapabilitiesViewModel = viewModel(),
-    onBack: () -> Unit
+    onBack: (() -> Unit)? = null,
+    onLanguages: () -> Unit = {}
 ) {
     val strings = androidx.compose.ui.platform.LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -76,12 +78,25 @@ fun TranslationTestScreen(
 
     val targetOptions = downloadedLanguages.sorted().map { it to getLanguageDisplayName(it) }
 
+    if (state.downloadedLanguages.isEmpty()) {
+        SimplePage(stringResource(R.string.nav_translate)) {
+            if (state.translationStatus == com.lelloman.simpleai.capability.CapabilityStatus.Checking) {
+                CircularProgressIndicator()
+            } else {
+                Text(stringResource(R.string.translate_empty_title), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.translate_empty_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = onLanguages) { Text(stringResource(R.string.ui_download_languages)) }
+            }
+        }
+        return
+    }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(strings.getString(R.string.ui_test_translation)) },
+                title = { Text(strings.getString(R.string.nav_translate)) },
+                actions = { TextButton(onClick = onLanguages) { Text(stringResource(R.string.model_languages)) } },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    if (onBack != null) IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = strings.getString(R.string.ui_back)
@@ -99,7 +114,6 @@ fun TranslationTestScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(strings.getString(R.string.ui_this_test_sends_a_request_through_the_simpleai_service_to_check_a), style = MaterialTheme.typography.bodySmall)
             // Language selection row
             Column(
                 modifier = Modifier.fillMaxWidth(),

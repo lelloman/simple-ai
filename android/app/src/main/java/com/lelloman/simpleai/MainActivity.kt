@@ -1,5 +1,26 @@
 package com.lelloman.simpleai
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.toRoute
+import androidx.navigation.compose.currentBackStackEntryAsState
+import com.lelloman.simpleai.ui.ConnectedApps
+import com.lelloman.simpleai.ui.SettingsScreen
+import com.lelloman.simpleai.ui.ModelDetailScreen
+import com.lelloman.simpleai.ui.navigation.Apps
+import com.lelloman.simpleai.ui.navigation.Settings
+import com.lelloman.simpleai.ui.navigation.ModelDetail
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -40,31 +61,52 @@ class MainActivity : ComponentActivity() {
                 // Share ViewModel across all screens by creating it at NavHost level
                 val sharedViewModel: CapabilitiesViewModel = viewModel()
 
-                NavHost(navController = navController, startDestination = Capabilities) {
-                    composable<Capabilities> {
-                        CapabilitiesScreen(
-                            viewModel = sharedViewModel,
-                            onNavigateToTranslationLanguages = { navController.navigate(TranslationLanguages) },
-                            onNavigateToTranslationTest = { navController.navigate(TranslationTest) },
-                            onNavigateToAbout = { navController.navigate(About) }
+                val entry by navController.currentBackStackEntryAsState()
+                val destination = entry?.destination
+                val rootScreen = destination == null || destination.hasRoute<Capabilities>() || destination.hasRoute<TranslationTest>() || destination.hasRoute<Apps>() || destination.hasRoute<Settings>()
+                Scaffold(contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
+                    if (rootScreen) NavigationBar {
+                        val tabs = listOf(
+                            Triple(Capabilities, R.string.nav_models, Icons.AutoMirrored.Filled.List),
+                            Triple(TranslationTest, R.string.nav_translate, Icons.Default.Edit),
+                            Triple(Apps, R.string.nav_apps, Icons.Default.Person),
+                            Triple(Settings, R.string.nav_settings, Icons.Default.Settings)
                         )
+                        tabs.forEach { (route, label, icon) ->
+                            val selected = when (route) {
+                                TranslationTest -> destination?.hasRoute<TranslationTest>() == true
+                                Capabilities -> destination?.hasRoute<Capabilities>() != false
+                                Apps -> destination?.hasRoute<Apps>() == true
+                                else -> destination?.hasRoute<Settings>() == true
+                            }
+                            NavigationBarItem(selected = selected, onClick = {
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }, icon = { Icon(icon, null) }, label = { Text(stringResource(label)) })
+                        }
                     }
-                    composable<TranslationLanguages> {
-                        TranslationLanguagesScreen(
-                            viewModel = sharedViewModel,
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable<TranslationTest> {
-                        TranslationTestScreen(
-                            viewModel = sharedViewModel,
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable<About> {
-                        AboutScreen(
-                            onBack = { navController.popBackStack() }
-                        )
+                }) { padding ->
+                    NavHost(navController = navController, startDestination = Capabilities, modifier = Modifier.padding(padding)) {
+                        composable<Capabilities> {
+                            CapabilitiesScreen(sharedViewModel,
+                                onNavigateToTranslationLanguages = { navController.navigate(TranslationLanguages) },
+                                onOpenModel = { navController.navigate(ModelDetail(it)) })
+                        }
+                        composable<TranslationTest> {
+                            TranslationTestScreen(sharedViewModel, onLanguages = { navController.navigate(TranslationLanguages) })
+                        }
+                        composable<Apps> { ConnectedApps() }
+                        composable<Settings> { SettingsScreen(sharedViewModel, onAbout = { navController.navigate(About) }) }
+                        composable<ModelDetail> { detail ->
+                            ModelDetailScreen(detail.toRoute<ModelDetail>().model, sharedViewModel) { navController.popBackStack() }
+                        }
+                        composable<TranslationLanguages> {
+                            TranslationLanguagesScreen(sharedViewModel, onBack = { navController.popBackStack() })
+                        }
+                        composable<About> { AboutScreen(onBack = { navController.popBackStack() }) }
                     }
                 }
             }

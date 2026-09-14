@@ -149,9 +149,7 @@ fun TranslationLanguagesScreen(
                 if (matching.isEmpty()) Text(strings.getString(R.string.ui_no_languages_match_your_search))
             }
             if (matching.any { it.isBuiltIn }) item {
-                Text(strings.getString(R.string.ui_built_in), style = MaterialTheme.typography.titleSmall)
                 LanguageCard(language = allLanguages.first { it.isBuiltIn }, onAction = {})
-                Text(strings.getString(R.string.ui_english_is_included_by_ml_kit_and_needs_no_download_other_languag), style = MaterialTheme.typography.bodySmall)
             }
             // Downloaded section
             if (downloaded.isNotEmpty()) {

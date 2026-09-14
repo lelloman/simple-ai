@@ -13,3 +13,12 @@ object TranslationTest
 
 @Serializable
 object About
+
+@Serializable
+object Apps
+
+@Serializable
+object Settings
+
+@Serializable
+data class ModelDetail(val model: String)

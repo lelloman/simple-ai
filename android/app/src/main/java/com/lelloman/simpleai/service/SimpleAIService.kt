@@ -114,7 +114,7 @@ class SimpleAIService : Service() {
             val callerUid = Binder.getCallingUid()
             val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
             if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
-                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Apps to allow access")
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
@@ -201,7 +201,7 @@ class SimpleAIService : Service() {
             val callerUid = Binder.getCallingUid()
             val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
             if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
-                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Apps to allow access")
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
@@ -245,7 +245,7 @@ class SimpleAIService : Service() {
             val callerUid = Binder.getCallingUid()
             val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
             if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
-                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Apps to allow access")
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
@@ -332,7 +332,7 @@ class SimpleAIService : Service() {
             val callerUid = Binder.getCallingUid()
             val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
             if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
-                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Apps to allow access")
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
@@ -420,7 +420,7 @@ class SimpleAIService : Service() {
             val callerUid = Binder.getCallingUid()
             val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
             if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
-                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Apps to allow access")
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {
@@ -483,7 +483,7 @@ class SimpleAIService : Service() {
             val callerUid = Binder.getCallingUid()
             val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
             if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
-                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Apps to allow access")
             val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
                 responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
             try {

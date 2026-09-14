@@ -1,6 +1,8 @@
 # SimpleAI Android
 
-SimpleAI manages shared AI models for compatible Android apps. Users download the features they need and approve clients under **Connected apps**. Voice capture and chat conversations belong to the connecting app; SimpleAI includes a translation test that exercises its service API.
+SimpleAI manages shared AI models for compatible Android apps. Users download the features they need and approve clients under **Apps**. Voice capture and chat conversations belong to the connecting app; SimpleAI includes a translator that exercises its service API.
+
+The app has four main screens: **Models** manages downloads, **Translate** translates text, **Apps** manages access approvals, and **Settings** contains network preferences, storage and support. Model actions live on individual detail screens.
 
 ## Capabilities and storage
 
@@ -63,6 +65,25 @@ Debug builds use Android's debug key. Release builds require all four signing pr
 
 The release pre-build fails with a clear error if signing is absent; it cannot silently produce an unsigned release. These commands only build artifacts and do not publish them. Release signing/builds were not exercised with production credentials during the audit work.
 
+## Publish to LelloStore
+
+From the repository root, use the same build-and-publish wrapper pattern as Pezzottify and LelloStore:
+
+```bash
+# Build the signed release and validate locally, without authentication or upload:
+./scripts/publish-android-to-lellostore.sh --dry-run --json
+# Build and publish after the publisher asks for confirmation:
+./scripts/publish-android-to-lellostore.sh
+# Optional beta channel:
+./scripts/publish-android-to-lellostore.sh --beta
+```
+
+Configure `android/signing.properties` first and update `android/version.properties` for each distributed version. The wrapper always builds `release` and selects exactly `android/app/build/outputs/apk/release/app-release.apk`; build/signing failures stop before publishing. It can be invoked from any working directory.
+
+Authentication, validation and upload remain in LelloStore's authoritative `scripts/publish-to-lellostore.py`. Set `LELLOSTORE_PUBLISHER` to that executable, or keep the LelloStore checkout at `$HOME/lelloprojects/lellostore` or alongside SimpleAI. The wrapper does not copy the publisher or store credentials.
+
+Defaults match Pezzottify: store `https://store.lelloman.com`, issuer `https://auth.lelloman.com`, public client ID `22cd4a2d-a771-41e3-b76e-3f83ff8e9bbf`. Override these with `LELLOSTORE_URL`, `LELLOSTORE_OIDC_ISSUER`, `LELLOSTORE_CLIENT_ID`, or forwarded `--store-url`, `--issuer`, `--client-id` options. All publisher upload arguments pass through unchanged. `--yes` skips its confirmation and should only be used for an already-authorized upload. `--dry-run` still builds a signed APK, but does not authenticate or upload. Build output goes to stderr so `--json` output remains usable by scripts.
+
 ## Client integration
 
 Copy [ISimpleAI.aidl](app/src/main/aidl/com/lelloman/simpleai/ISimpleAI.aidl) into the same package in the client. Enable AIDL in its Android build. If the client queries installation/package details on Android 11+, declare package visibility:
@@ -90,7 +111,7 @@ if (envelope["status"]?.jsonPrimitive?.content == "success") {
 }
 ```
 
-Protocol 1 returns `UNSUPPORTED_PROTOCOL`; a protocol newer than 2 returns `VERSION_TOO_OLD`. Service discovery is public. Expensive calls initially return `CLIENT_NOT_APPROVED`; direct users to SimpleAI → Connected apps and retry after approval. Approval is bound to package/signing identity. Per UID: one active request and up to 30 starts per minute. Four expensive requests can be active globally; excess requests return `RATE_LIMITED`.
+Protocol 1 returns `UNSUPPORTED_PROTOCOL`; a protocol newer than 2 returns `VERSION_TOO_OLD`. Service discovery is public. Expensive calls initially return `CLIENT_NOT_APPROVED`; direct users to SimpleAI → Apps and retry after approval. Approval is bound to package/signing identity. Per UID: one active request and up to 30 starts per minute. Four expensive requests can be active globally; excess requests return `RATE_LIMITED`.
 
 Example successful service response (illustrative state):
 
