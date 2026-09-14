@@ -65,9 +65,9 @@ fun TranslationLanguagesScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val downloadedLanguages = state.downloadedLanguages
-    val downloadingLanguage = state.downloadingLanguage
-    val languageDownloadError = state.languageDownloadError
-    val allLanguages = getLanguageInfoList(downloadedLanguages, downloadingLanguage)
+    val downloadingLanguages = state.downloadingLanguages
+    val languageDownloadError = state.languageDownloadErrors.entries.firstOrNull()
+    val allLanguages = getLanguageInfoList(downloadedLanguages, downloadingLanguages)
     val downloaded = allLanguages.filter { it.isDownloaded || it.isRequired }
     val available = allLanguages.filter { !it.isDownloaded && !it.isRequired }
 
@@ -75,8 +75,8 @@ fun TranslationLanguagesScreen(
 
     LaunchedEffect(languageDownloadError) {
         languageDownloadError?.let { error ->
-            snackbarHostState.showSnackbar(error)
-            viewModel.clearLanguageDownloadError()
+            snackbarHostState.showSnackbar("${error.key}: ${error.value}")
+            viewModel.clearLanguageDownloadError(error.key)
         }
     }
 
@@ -252,7 +252,7 @@ private fun LanguageCard(
  */
 private fun getLanguageInfoList(
     downloadedLanguages: Set<String>,
-    downloadingLanguage: String?
+    downloadingLanguages: Set<String>
 ): List<LanguageInfo> {
     return LANGUAGE_DATA.map { (code, name, flag) ->
         LanguageInfo(
@@ -260,7 +260,7 @@ private fun getLanguageInfoList(
             name = name,
             flag = flag,
             isDownloaded = code in downloadedLanguages,
-            isDownloading = code == downloadingLanguage,
+            isDownloading = code in downloadingLanguages,
             isRequired = code == "en" && downloadedLanguages.isNotEmpty()
         )
     }.sortedWith(compareBy({ !it.isRequired }, { !it.isDownloaded }, { it.name }))

@@ -40,8 +40,8 @@ data class CapabilitiesState(
     val cloudAiStatus: CapabilityStatus = CapabilityStatus.Checking,
     val localAiStatus: CapabilityStatus = CapabilityStatus.Checking,
     val downloadedLanguages: Set<String> = emptySet(),
-    val downloadingLanguage: String? = null,
-    val languageDownloadError: String? = null,
+    val downloadingLanguages: Set<String> = emptySet(),
+    val languageDownloadErrors: Map<String, String> = emptyMap(),
     val isServiceConnected: Boolean = false,
     val serviceError: String? = null,
     val downloadJobs: Map<String, String> = emptyMap(),
@@ -99,6 +99,9 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     }
 
     init {
+        viewModelScope.launch { models.languageDownloads.active.collect { active -> _state.update { it.copy(downloadingLanguages = active) } } }
+        viewModelScope.launch { models.languageDownloads.errors.collect { errors -> _state.update { it.copy(languageDownloadErrors = errors) } } }
+
         _state.update { it.copy(allowMeteredDownloads = DownloadPolicy.allowsMetered(application)) }
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
@@ -203,35 +206,9 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     // Translation Languages
     // =========================================================================
 
-    fun downloadTranslationLanguage(languageCode: String) {
-        viewModelScope.launch {
-            _state.update { it.copy(downloadingLanguage = languageCode, languageDownloadError = null) }
+    fun downloadTranslationLanguage(languageCode: String) = models.languageDownloads.start(languageCode)
 
-            translationManager.downloadLanguage(languageCode) { progress ->
-                // Progress callback (ML Kit doesn't provide granular progress)
-            }.fold(
-                onSuccess = {
-                    _state.update { it.copy(downloadingLanguage = null, languageDownloadError = null) }
-                    refreshCapabilities()
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "Failed to download language: $languageCode", e)
-                    val errorMessage = when {
-                        e.message?.contains("wifi", ignoreCase = true) == true ->
-                            "WiFi required for download"
-                        e.message?.contains("network", ignoreCase = true) == true ->
-                            "Network error. Check your connection."
-                        else -> e.message ?: "Download failed"
-                    }
-                    _state.update { it.copy(downloadingLanguage = null, languageDownloadError = errorMessage) }
-                }
-            )
-        }
-    }
-
-    fun clearLanguageDownloadError() {
-        _state.update { it.copy(languageDownloadError = null) }
-    }
+    fun clearLanguageDownloadError(languageCode: String) = models.languageDownloads.clearError(languageCode)
 
     fun deleteTranslationLanguage(languageCode: String) {
         viewModelScope.launch {

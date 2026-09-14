@@ -3,6 +3,7 @@ package com.lelloman.simpleai.model
 import android.content.Context
 import androidx.work.WorkManager
 import com.lelloman.simpleai.download.ModelDownloadWorker
+import com.lelloman.simpleai.download.KeyedDownloads
 import com.lelloman.simpleai.capability.CapabilityManager
 import com.lelloman.simpleai.download.ModelConfig
 import com.lelloman.simpleai.download.ModelDownloadManager
@@ -25,6 +26,7 @@ class ModelRepository private constructor(private val context: Context) {
     val capabilities = CapabilityManager(context)
     val translation = TranslationManager(context, capabilities::syncTranslationLanguages)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val languageDownloads = KeyedDownloads(scope) { translation.downloadLanguage(it) }
     private val downloads = ModelDownloadManager(context)
     val voice = ManagedModel(
         CapabilityManager.VOICE_COMMANDS_MODEL_SIZE,
