@@ -127,6 +127,7 @@ fun CapabilitiesScreen(
                 Text("App data: ${storage.usedBytes / (1024 * 1024)} MiB • Available: ${storage.availableBytes / (1024 * 1024)} MiB")
                 Text("Includes models, language packs, partial downloads and supporting app data.", style = MaterialTheme.typography.bodySmall)
             }
+            ConnectedApps()
             // Voice Commands capability
             CapabilityCard(
                 title = "Voice Commands",

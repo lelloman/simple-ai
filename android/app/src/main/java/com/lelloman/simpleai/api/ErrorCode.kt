@@ -7,6 +7,8 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class ErrorCode {
+    CLIENT_NOT_APPROVED,
+    RATE_LIMITED,
     /** SimpleAI version is older than client's required protocol */
     VERSION_TOO_OLD,
 

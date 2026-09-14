@@ -289,8 +289,9 @@ class OnnxNLUEngine(
     /**
      * Remove current adapter, reverting to pristine model state.
      */
-    suspend fun removeAdapter(): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun removeAdapter(ownerPrefix: String? = null): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
+            if (ownerPrefix != null && currentAdapter?.id?.startsWith(ownerPrefix) != true) return@withLock Result.success(Unit)
             try {
                 val buffer = modelBuffer ?: return@withLock Result.failure(
                     IllegalStateException("Model not loaded")

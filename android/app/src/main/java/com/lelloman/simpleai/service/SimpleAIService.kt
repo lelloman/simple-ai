@@ -5,6 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
+import android.os.SystemClock
+import com.lelloman.simpleai.access.CallerBudget
+import com.lelloman.simpleai.access.ClientAccess
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
@@ -72,6 +76,8 @@ class SimpleAIService : Service() {
         encodeDefaults = true
     }
 
+    private val callerBudget = CallerBudget(SystemClock::elapsedRealtime)
+
     private val binder = object : ISimpleAI.Stub() {
 
         override fun getServiceInfo(protocolVersion: Int): String {
@@ -92,6 +98,13 @@ class SimpleAIService : Service() {
             tokenizerFd: ParcelFileDescriptor?,
             configFd: ParcelFileDescriptor?
         ): String {
+            val callerUid = Binder.getCallingUid()
+            val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
+            if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+            val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
+                responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
+            try {
             // Validate protocol
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
@@ -131,7 +144,7 @@ class SimpleAIService : Service() {
             return runBlocking(Dispatchers.IO) {
                 try {
                     engine.classifyWithAdapter(
-                        text, adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd
+                        text, "$callerUid:$adapterId", adapterVersion, patchFd, headsFd, tokenizerFd, configFd
                     ).fold(
                         onSuccess = { result ->
                             ProtocolHandler.success(proto, buildJsonObject {
@@ -162,9 +175,17 @@ class SimpleAIService : Service() {
                     ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Error: ${e.message}")
                 }
             }
+            } finally { lease.close() }
         }
 
         override fun clearAdapter(protocolVersion: Int): String {
+            val callerUid = Binder.getCallingUid()
+            val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
+            if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+            val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
+                responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
+            try {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
@@ -178,7 +199,7 @@ class SimpleAIService : Service() {
             )
 
             return runBlocking(Dispatchers.IO) {
-                engine.removeAdapter().fold(
+                engine.removeAdapter("$callerUid:").fold(
                     onSuccess = {
                         ProtocolHandler.success(proto, buildJsonObject {
                             put("message", "Adapter removed")
@@ -189,6 +210,7 @@ class SimpleAIService : Service() {
                     }
                 )
             }
+            } finally { lease.close() }
         }
 
         override fun translate(
@@ -197,6 +219,13 @@ class SimpleAIService : Service() {
             sourceLang: String,
             targetLang: String
         ): String {
+            val callerUid = Binder.getCallingUid()
+            val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
+            if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+            val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
+                responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
+            try {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
@@ -250,6 +279,7 @@ class SimpleAIService : Service() {
                     }
                 )
             }
+            } finally { lease.close() }
         }
 
         override fun getTranslationLanguages(protocolVersion: Int): String {
@@ -272,6 +302,13 @@ class SimpleAIService : Service() {
             promptCacheKey: String?,
             authToken: String
         ): String {
+            val callerUid = Binder.getCallingUid()
+            val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
+            if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+            val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
+                responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
+            try {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
@@ -337,6 +374,7 @@ class SimpleAIService : Service() {
                     }
                 )
             }
+            } finally { lease.close() }
         }
 
         override fun localGenerate(
@@ -345,6 +383,13 @@ class SimpleAIService : Service() {
             maxTokens: Int,
             temperature: Float
         ): String {
+            val callerUid = Binder.getCallingUid()
+            val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
+            if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+            val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
+                responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
+            try {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
@@ -387,6 +432,7 @@ class SimpleAIService : Service() {
                     generationError(proto, e)
                 }
             )
+            } finally { lease.close() }
         }
 
         override fun localChat(
@@ -395,6 +441,13 @@ class SimpleAIService : Service() {
             toolsJson: String?,
             systemPrompt: String?
         ): String {
+            val callerUid = Binder.getCallingUid()
+            val responseProtocol = ProtocolHandler.clampProtocol(protocolVersion)
+            if (!ClientAccess.get(this@SimpleAIService).allowed(callerUid)) return ProtocolHandler.error(
+                responseProtocol, ErrorCode.CLIENT_NOT_APPROVED, "Open SimpleAI > Connected apps to approve this app")
+            val lease = callerBudget.acquire(callerUid) ?: return ProtocolHandler.error(
+                responseProtocol, ErrorCode.RATE_LIMITED, "Caller busy or request budget exceeded; retry later")
+            try {
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
@@ -447,6 +500,7 @@ class SimpleAIService : Service() {
                     generationError(proto, e)
                 }
             )
+            } finally { lease.close() }
         }
     }
 
