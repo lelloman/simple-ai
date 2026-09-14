@@ -213,7 +213,7 @@ class LlamaEngine(
         var firstTokenTime: Long? = null
 
         // Start prediction
-        helper.predict(prompt)
+        helper.predict(prompt, params)
 
         // Collect events with timeout - use first{} to exit on terminal events
         val terminal = try { withTimeoutOrNull(generationTimeoutMs) {
@@ -234,14 +234,7 @@ class LlamaEngine(
                             logger.i(TAG, "First token after ${ttft}ms (prompt processing time)")
                         }
                         responseBuilder.append(event.word)
-                        // Check if we've reached max tokens (approximate by char count)
-                        if (responseBuilder.length > params.maxTokens * 4) {
-                            resetBeforeGeneration = true
-                            helper.stopPrediction()
-                            true // stop collecting
-                        } else {
-                            false // continue collecting
-                        }
+                        false // Native n_predict enforces the token limit.
                     }
                     is LlamaHelper.LLMEvent.Done -> {
                         val total = System.currentTimeMillis() - startTime

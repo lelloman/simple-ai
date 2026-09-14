@@ -170,11 +170,11 @@ interface ISimpleAI {
     );
 
     /**
-     * Chat using local LLM with tool support.
+     * Chat using the local Qwen text template. Tool calling is unsupported.
      *
      * @param protocolVersion Client's protocol version
      * @param messagesJson JSON array of chat messages
-     * @param toolsJson JSON array of tool definitions (optional)
+     * @param toolsJson Must be null or an empty array for local chat
      * @param systemPrompt System prompt (optional)
      * @return JSON response with LLM response or tool calls
      */

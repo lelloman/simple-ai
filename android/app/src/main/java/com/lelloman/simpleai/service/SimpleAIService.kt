@@ -422,8 +422,6 @@ class SimpleAIService : Service() {
                 proto, ErrorCode.CAPABILITY_ERROR, "LLM engine not initialized"
             )
 
-            // For now, convert chat messages to a simple prompt
-            // Full chat formatting will be added when needed
             val messages = try {
                 json.parseToJsonElement(messagesJson).jsonArray
             } catch (e: Exception) {
@@ -433,20 +431,12 @@ class SimpleAIService : Service() {
                 )
             }
 
-            // Build prompt from messages (simplified - proper chat template should be used)
-            val promptBuilder = StringBuilder()
-            if (systemPrompt != null) {
-                promptBuilder.append("System: $systemPrompt\n\n")
+            val prompt = try {
+                com.lelloman.simpleai.llm.QwenChat.format(messages, systemPrompt, toolsJson)
+            } catch (e: Exception) {
+                return ProtocolHandler.error(proto, ErrorCode.INVALID_REQUEST, e.message ?: "Unsupported local chat request")
             }
-            for (msg in messages) {
-                val obj = msg.jsonObject
-                val role = obj["role"]?.jsonPrimitive?.content ?: "user"
-                val content = obj["content"]?.jsonPrimitive?.content ?: ""
-                promptBuilder.append("${role.replaceFirstChar { it.uppercase() }}: $content\n")
-            }
-            promptBuilder.append("Assistant:")
-
-            return engine.generate(promptBuilder.toString()).fold(
+            return engine.generate(prompt).fold(
                 onSuccess = { text ->
                     ProtocolHandler.success(proto, buildJsonObject {
                         put("role", "assistant")
@@ -481,6 +471,7 @@ class SimpleAIService : Service() {
 
     private fun buildCapabilityStatus(id: CapabilityId) = buildJsonObject {
         val capability = capabilityManager.getCapability(id)
+        if (id == CapabilityId.LOCAL_AI) put("supportsTools", false)
         when (val status = capability.status) {
             CapabilityStatus.Checking -> put("status", "checking")
             CapabilityStatus.Loading -> put("status", "loading")

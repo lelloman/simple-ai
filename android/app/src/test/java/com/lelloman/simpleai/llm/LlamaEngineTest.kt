@@ -41,7 +41,7 @@ private class FakeLlamaHelperWrapper : LlamaHelperWrapper {
         }
     }
 
-    override fun predict(prompt: String) {
+    override fun predict(prompt: String, params: GenerationParams) {
         predictCalled = true
         predictPrompt = prompt
     }

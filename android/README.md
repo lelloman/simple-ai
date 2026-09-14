@@ -421,7 +421,14 @@ val result = simpleAi.localGenerate(
 
 #### localChat
 
-Chat using local LLM with optional tool support.
+Chat using the local Qwen3 plain-text, non-thinking template. `toolsJson` must
+be null or an empty array; tool calls, multimodal content and explicit reasoning
+history are rejected. The conversation must end with a user message.
+
+The wrapper uses the lower-level llama context API to pass `temperature`,
+`top_p`, `top_k` and `n_predict` with the native API's expected numeric types.
+Token limits are enforced by native generation, not a character approximation.
+Template reference: [Qwen3 tokenizer configuration](https://huggingface.co/Qwen/Qwen3-1.7B/blob/main/tokenizer_config.json).
 
 ```kotlin
 val messages = """[
