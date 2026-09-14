@@ -430,6 +430,15 @@ The wrapper uses the lower-level llama context API to pass `temperature`,
 Token limits are enforced by native generation, not a character approximation.
 Template reference: [Qwen3 tokenizer configuration](https://huggingface.co/Qwen/Qwen3-1.7B/blob/main/tokenizer_config.json).
 
+NLU adapter files are validated before activation: heads must have 768 hidden
+features, 1–1024 labels per head, matching biases and finite weights. Label counts
+must match the heads; slot labels use BIO notation. Sequence lengths are 2–512.
+Configuration is limited to 1 MiB and tokenizer JSON to 32 MiB. LoRA patches allow
+up to 4096 non-overlapping entries, 16 MiB per entry and 128 MiB total, entirely
+within the model. Invalid input preserves the current adapter; a failure after
+mutation recovers the verified pristine base and requires resupplying adapter
+files. The service reads duplicated descriptors and leaves caller handles open.
+
 ```kotlin
 val messages = """[
     {"role": "user", "content": "Hello!"}

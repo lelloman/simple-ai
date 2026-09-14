@@ -206,6 +206,7 @@ class OnnxNLUEngine(
         configFd: ParcelFileDescriptor
     ): Result<Unit> = withContext(Dispatchers.IO) {
             var pendingTokenizer: NativeTokenizer? = null
+            var mutationStarted = false
             try {
                 val buffer = modelBuffer ?: return@withContext Result.failure(
                     IllegalStateException("Model not loaded")
@@ -217,48 +218,27 @@ class OnnxNLUEngine(
                     return@withContext Result.success(Unit)
                 }
 
-                _status.value = Status.Patching
-
-                // Close sessions for both heads-only and LoRA adapters before modifying weights.
-                currentSession = null
-                // Revert current patch if any
-                currentRevertPatch?.let { revert ->
-                    Log.i(TAG, "Reverting current patch: ${revert.adapterId}")
-                    loraPatcher.revertPatch(buffer, revert)
-                    currentSession = null
-                    currentRevertPatch = null
-                    currentAdapter?.tokenizer?.close()
-                    currentAdapter = null
-                }
-
-                // Apply new patch only if patchFd is provided
-                if (patchFd != null) {
-                    Log.i(TAG, "Applying LoRA adapter $adapterId v$adapterVersion")
-                    FileInputStream(patchFd.fileDescriptor).use { patchStream ->
-                        currentRevertPatch = loraPatcher.applyPatch(buffer, patchStream, adapterId, adapterVersion)
-                    }
-                } else {
-                    Log.i(TAG, "Applying adapter $adapterId v$adapterVersion (no LoRA patch)")
-                }
-
-                // Load heads
-                val headsData = FileInputStream(headsFd.fileDescriptor).use { headsStream ->
-                    loadHeads(headsStream)
-                }
-
-                val tokenizerJson = FileInputStream(tokenizerFd.fileDescriptor).use { it.bufferedReader().readText() }
-                val (intents, slotLabels, maxLength) = FileInputStream(configFd.fileDescriptor).use { loadConfig(it) }
+                // Parse and validate every external file before touching live resources.
+                val headsData = readDescriptor(headsFd, AdapterFiles::heads)
+                val (intents, slotLabels, maxLength) = readDescriptor(configFd) { AdapterFiles.config(it, headsData) }
+                val tokenizerJson = readDescriptor(tokenizerFd) { AdapterFiles.text(it, 32 * 1024 * 1024) }
                 val tokenizer = NativeTokenizer(tokenizerJson, maxLength).also { pendingTokenizer = it }
+                val patches = patchFd?.let { fd -> readDescriptor(fd) { loraPatcher.parsePatch(it, buffer.limit()) } } ?: emptyList()
+                val env = checkNotNull(ortEnv) { "ORT environment not initialized" }
 
-                // Force sync the patched buffer to disk (only needed if we applied a patch)
-                if (patchFd != null) {
-                    buffer.force()
-                }
+                _status.value = Status.Patching
+                mutationStarted = true
+                currentSession = null
+                currentAdapter?.tokenizer?.close()
+                currentAdapter = null
+                currentRevertPatch?.let { loraPatcher.revertPatch(buffer, it) }
+                currentRevertPatch = null
+                if (patches.isNotEmpty()) currentRevertPatch = loraPatcher.applyPatch(buffer, patches, adapterId, adapterVersion)
+
+                // Sync either applied or reverted weights before opening the session.
+                buffer.force()
 
                 // Create new ONNX session from the (possibly patched) file
-                val env = ortEnv ?: return@withContext Result.failure(
-                    IllegalStateException("ORT environment not initialized")
-                )
                 currentSession = OrtSession.SessionOptions().use { options ->
                     options.setIntraOpNumThreads(4)
                     env.createSession(workingModel.file.absolutePath, options)
@@ -286,7 +266,22 @@ class OnnxNLUEngine(
                 Result.success(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to apply adapter", e)
-                _status.value = Status.Error(e.message ?: "Failed to apply adapter")
+                if (mutationStarted) {
+                    try {
+                        currentSession = null
+                        currentAdapter?.tokenizer?.close()
+                        currentAdapter = null
+                        currentRevertPatch = null
+                        modelBuffer = null
+                        modelFileChannel?.close()
+                        modelFileChannel = null
+                        loadBaseModel() // Recover from immutable, verified weights.
+                        _status.value = Status.Ready
+                    } catch (rollback: Exception) {
+                        e.addSuppressed(rollback)
+                        _status.value = Status.Error("Adapter recovery failed; reload Voice Commands")
+                    }
+                }
                 Result.failure(e)
             } finally { pendingTokenizer?.close() }
     }
@@ -322,80 +317,8 @@ class OnnxNLUEngine(
         }
     }
 
-    private data class HeadsData(
-        val intentHead: FloatArray,
-        val intentBias: FloatArray,
-        val slotHead: FloatArray,
-        val slotBias: FloatArray,
-        val numIntents: Int,
-        val numSlots: Int
-    )
-
-    private fun loadHeads(inputStream: java.io.InputStream): HeadsData {
-        val headerBuffer = ByteArray(8)
-        val sizeBuffer = ByteArray(4)
-
-        // Intent head weight
-        inputStream.read(headerBuffer)
-        val intentHeader = ByteBuffer.wrap(headerBuffer).order(ByteOrder.LITTLE_ENDIAN)
-        val intentRows = intentHeader.int
-        val intentCols = intentHeader.int
-        val intentSize = intentRows * intentCols
-
-        val intentBytes = ByteArray(intentSize * 4)
-        inputStream.read(intentBytes)
-        val intentHead = FloatArray(intentSize)
-        ByteBuffer.wrap(intentBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(intentHead)
-
-        // Slot head weight
-        inputStream.read(headerBuffer)
-        val slotHeader = ByteBuffer.wrap(headerBuffer).order(ByteOrder.LITTLE_ENDIAN)
-        val slotRows = slotHeader.int
-        val slotCols = slotHeader.int
-        val slotSize = slotRows * slotCols
-
-        val slotBytes = ByteArray(slotSize * 4)
-        inputStream.read(slotBytes)
-        val slotHead = FloatArray(slotSize)
-        ByteBuffer.wrap(slotBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(slotHead)
-
-        // Intent bias
-        inputStream.read(sizeBuffer)
-        val intentBiasSize = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).int
-        val intentBiasBytes = ByteArray(intentBiasSize * 4)
-        inputStream.read(intentBiasBytes)
-        val intentBias = FloatArray(intentBiasSize)
-        ByteBuffer.wrap(intentBiasBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(intentBias)
-
-        // Slot bias
-        inputStream.read(sizeBuffer)
-        val slotBiasSize = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).int
-        val slotBiasBytes = ByteArray(slotBiasSize * 4)
-        inputStream.read(slotBiasBytes)
-        val slotBias = FloatArray(slotBiasSize)
-        ByteBuffer.wrap(slotBiasBytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(slotBias)
-
-        Log.i(TAG, "Loaded heads: intent=${intentRows}x${intentCols} + bias[$intentBiasSize], slot=${slotRows}x${slotCols} + bias[$slotBiasSize]")
-        return HeadsData(intentHead, intentBias, slotHead, slotBias, intentRows, slotRows)
-    }
-
-    private data class ConfigData(
-        val intents: List<String>,
-        val slotLabels: List<String>,
-        val maxLength: Int
-    )
-
-    private fun loadConfig(inputStream: java.io.InputStream): ConfigData {
-        val configJson = inputStream.bufferedReader().readText()
-        val config = Json.parseToJsonElement(configJson).jsonObject
-
-        val intents = (config["intents"] ?: throw IllegalStateException("Config missing 'intents' field")).jsonArray.map { it.jsonPrimitive.content }
-        val slotLabels = (config["slot_labels"] ?: throw IllegalStateException("Config missing 'slot_labels' field")).jsonArray.map { it.jsonPrimitive.content }
-        val maxLength = config["max_length"]?.jsonPrimitive?.int ?: 64
-
-        Log.i(TAG, "Loaded config: ${intents.size} intents, ${slotLabels.size} slots, maxLength=$maxLength")
-        return ConfigData(intents, slotLabels, maxLength)
-    }
+    private fun <T> readDescriptor(fd: ParcelFileDescriptor, read: (java.io.InputStream) -> T): T =
+        ParcelFileDescriptor.AutoCloseInputStream(ParcelFileDescriptor.dup(fd.fileDescriptor)).use(read)
 
     override suspend fun classify(text: String, adapterId: String): Result<ClassificationResult> =
         mutex.withLock { classifyLocked(text, adapterId) }

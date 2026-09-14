@@ -2,6 +2,7 @@ package com.lelloman.simpleai.nlu
 
 import android.util.Log
 import java.io.InputStream
+import java.io.DataInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -65,7 +66,11 @@ class LoraPatcher {
         adapterId: String,
         adapterVersion: String
     ): RevertPatch {
-        val patches = parsePatch(patchStream)
+        return applyPatch(modelBuffer, parsePatch(patchStream, modelBuffer.limit()), adapterId, adapterVersion)
+    }
+
+    fun applyPatch(modelBuffer: ByteBuffer, patches: List<Patch>, adapterId: String, adapterVersion: String): RevertPatch {
+        validate(patches, modelBuffer.limit())
         Log.i(TAG, "Applying ${patches.size} patches for $adapterId v$adapterVersion")
 
         // Capture original bytes before patching (this becomes the revert patch)
@@ -106,43 +111,33 @@ class LoraPatcher {
     /**
      * Parse a .lorapatch file.
      */
-    private fun parsePatch(inputStream: InputStream): List<Patch> {
-        val patches = mutableListOf<Patch>()
-
-        // Read header
-        val magic = ByteArray(4)
-        inputStream.read(magic)
-        require(magic.contentEquals(MAGIC)) { "Invalid patch file magic: ${magic.contentToString()}" }
-
-        val headerBuffer = ByteArray(8)
-        inputStream.read(headerBuffer)
-        val header = ByteBuffer.wrap(headerBuffer).order(ByteOrder.LITTLE_ENDIAN)
-        val version = header.int
-        val numPatches = header.int
-
-        require(version == VERSION) { "Unsupported patch version: $version" }
-        Log.i(TAG, "Patch file version $version with $numPatches patches")
-
-        // Read patches
-        for (i in 0 until numPatches) {
-            val patchHeader = ByteArray(12)
-            inputStream.read(patchHeader)
-            val patchBuf = ByteBuffer.wrap(patchHeader).order(ByteOrder.LITTLE_ENDIAN)
-            val offset = patchBuf.long
-            val dataLength = patchBuf.int
-
-            val data = ByteArray(dataLength)
-            var bytesRead = 0
-            while (bytesRead < dataLength) {
-                val read = inputStream.read(data, bytesRead, dataLength - bytesRead)
-                if (read == -1) break
-                bytesRead += read
-            }
-            require(bytesRead == dataLength) { "Incomplete patch data" }
-
-            patches.add(Patch(offset, data))
+    internal fun parsePatch(inputStream: InputStream, modelSize: Int): List<Patch> {
+        val input = DataInputStream(inputStream)
+        val magic = ByteArray(4).also { input.readFully(it) }
+        require(magic.contentEquals(MAGIC)) { "Invalid patch magic" }
+        require(Integer.reverseBytes(input.readInt()) == VERSION) { "Unsupported patch version" }
+        val count = Integer.reverseBytes(input.readInt())
+        require(count in 0..4096) { "Patch count exceeds limit" }
+        var total = 0L
+        val patches = List(count) {
+            val offset = java.lang.Long.reverseBytes(input.readLong())
+            val length = Integer.reverseBytes(input.readInt())
+            require(length in 1..(16 * 1024 * 1024)) { "Patch length exceeds limit" }
+            require(offset >= 0 && offset <= modelSize.toLong() - length) { "Patch outside model bounds" }
+            total += length
+            require(total <= 128L * 1024 * 1024) { "Total patch size exceeds limit" }
+            Patch(offset, ByteArray(length).also { input.readFully(it) })
         }
-
+        require(input.read() == -1) { "Unexpected trailing patch data" }
+        validate(patches, modelSize)
         return patches
+    }
+
+    private fun validate(patches: List<Patch>, modelSize: Int) {
+        var end = 0L
+        for (patch in patches.sortedBy { it.offset }) {
+            require(patch.offset >= end && patch.offset <= modelSize.toLong() - patch.data.size) { "Overlapping or out-of-bounds patches" }
+            end = patch.offset + patch.data.size
+        }
     }
 }
