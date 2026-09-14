@@ -1,18 +1,5 @@
 import java.util.Properties
 
-val versionMajor = 1
-val versionMinor = 0
-val gitCommitCount: Int by lazy {
-    try {
-        val process = ProcessBuilder("git", "rev-list", "--count", "HEAD")
-            .directory(projectDir)
-            .redirectErrorStream(true)
-            .start()
-        process.inputStream.bufferedReader().readText().trim().toInt()
-    } catch (e: Exception) {
-        1
-    }
-}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -21,9 +8,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Version identity is source-controlled and independent of clone depth or branch history.
+val releaseVersion = Properties().apply { rootProject.file("version.properties").inputStream().use { load(it) } }
+val appVersionCode = providers.gradleProperty("simpleai.versionCode").orElse(releaseVersion.getProperty("versionCode")).get().toInt()
+val appVersionName = providers.gradleProperty("simpleai.versionName").orElse(releaseVersion.getProperty("versionName")).get()
+require(appVersionCode in 1..2_100_000_000) { "simpleai.versionCode must be between 1 and 2100000000" }
+require(appVersionName.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.]+)?"))) { "Use a semantic simpleai.versionName, for example 1.0.227" }
+
 // Load signing.properties for release signing config
 val signingProperties = Properties().apply {
-    val signingPropsFile = rootProject.file("signing.properties")
+    val signingPropsFile = rootProject.file(providers.gradleProperty("simpleai.signingProperties").orElse("signing.properties").get())
     if (signingPropsFile.exists()) {
         signingPropsFile.inputStream().use { load(it) }
     }
@@ -49,8 +43,8 @@ android {
         applicationId = "com.lelloman.simpleai"
         minSdk = 24
         targetSdk = 36
-        versionCode = gitCommitCount
-        versionName = "$versionMajor.$versionMinor.$gitCommitCount"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -104,6 +98,20 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+}
+
+val validateReleaseConfiguration = tasks.register("validateReleaseConfiguration") {
+    doLast {
+        val required = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+        check(required.all { !signingProperties.getProperty(it).isNullOrBlank() }) {
+            "Release signing is required. Configure storeFile, storePassword, keyAlias and keyPassword in android/signing.properties (or -Psimpleai.signingProperties=/path/to/file)."
+        }
+        check(file(signingProperties.getProperty("storeFile")).isFile) { "Release keystore file does not exist" }
+        logger.lifecycle("Release identity: {} ({})", appVersionName, appVersionCode)
+    }
+}
+tasks.configureEach {
+    if (name == "preReleaseBuild") dependsOn(validateReleaseConfiguration)
 }
 
 val tokenizerSources = rootProject.file("tokenizer-native")

@@ -116,10 +116,10 @@ Android service providing AI capabilities to other apps via AIDL.
 
 | Capability | Description | Download Size |
 |------------|-------------|---------------|
-| Voice Commands | NLU intent classification + entity extraction | ~120 MB (XLM-RoBERTa) |
+| Voice Commands | NLU intent classification + entity extraction | 533.6 MB (XLM-RoBERTa int8; working copy also required) |
 | Translation | On-device translation via ML Kit | ~30 MB per language |
 | Cloud AI | Proxy to cloud LLM endpoint | None (requires auth) |
-| Local AI | On-device LLM inference | ~1.3 GB (Qwen 3 1.7B) |
+| Local AI | On-device LLM inference | 1.28 GB (Qwen3 1.7B Q4_K_M) |
 
 **Tech Stack:** Kotlin, Jetpack Compose, llama.cpp, ONNX Runtime, ML Kit
 
@@ -235,14 +235,14 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ### Android Setup
 
-1. Build and install the app:
+1. Follow the JDK/SDK/NDK/Rust setup in [android/README.md](android/README.md), then build and install the app:
    ```bash
    cd android
    ./gradlew assembleDebug
    ./gradlew installDebug
    ```
 
-2. Open the SimpleAI app to enable and download capabilities
+2. Open SimpleAI to download required capabilities and approve your client under Connected apps
 
 3. Integrate with your app using the AIDL interface (see [android/README.md](android/README.md))
 

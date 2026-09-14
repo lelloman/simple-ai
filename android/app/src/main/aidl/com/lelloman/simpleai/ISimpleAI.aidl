@@ -9,20 +9,20 @@ interface ISimpleAI {
     /**
      * Get service version and capabilities status.
      *
-     * @param protocolVersion Client's protocol version (e.g., 1, 2, 3)
+     * @param protocolVersion Client's protocol version (currently 2)
      * @return JSON response:
      *   {
      *     "status": "success",
-     *     "protocolVersion": 1,
+     *     "protocolVersion": 2,
      *     "data": {
-     *       "serviceVersion": 5,
-     *       "minProtocol": 1,
-     *       "maxProtocol": 3,
+     *       "serviceVersion": 2,
+     *       "minProtocol": 2,
+     *       "maxProtocol": 2,
      *       "capabilities": {
-     *         "voiceCommands": {"status": "ready", "modelSize": 120000000},
+     *         "voiceCommands": {"status": "ready", "modelSize": 533595982},
      *         "translation": {"status": "downloading", "progress": 0.45, "languages": ["en", "it"]},
      *         "cloudAi": {"status": "ready"},
-     *         "localAi": {"status": "not_downloaded", "modelSize": 1300000000}
+     *         "localAi": {"status": "not_downloaded", "modelSize": 1282439584}
      *       }
      *     }
      *   }
@@ -45,7 +45,7 @@ interface ISimpleAI {
      * this call returns. SimpleAI reads from them during this call but does not
      * take ownership.
      *
-     * @param protocolVersion Client's protocol version (e.g., 1, 2, 3)
+     * @param protocolVersion Client's protocol version (currently 2)
      * @param text Text to classify
      * @param adapterId Unique identifier for the adapter (e.g., "simpleephem")
      * @param adapterVersion Version string for change detection (e.g., "1.0.3")
@@ -58,7 +58,7 @@ interface ISimpleAI {
      *   Success:
      *   {
      *     "status": "success",
-     *     "protocolVersion": 1,
+     *     "protocolVersion": 2,
      *     "data": {
      *       "intent": "add_subject",
      *       "intentConfidence": 0.94,
@@ -81,7 +81,7 @@ interface ISimpleAI {
     );
 
     /**
-     * Remove currently applied adapter and restore pristine model.
+     * Remove the calling UID’s active adapter and restore pristine model.
      * Useful when client app is done and wants to free memory.
      *
      * @param protocolVersion Client's protocol version
@@ -103,7 +103,7 @@ interface ISimpleAI {
      * @return JSON response:
      *   {
      *     "status": "success",
-     *     "protocolVersion": 1,
+     *     "protocolVersion": 2,
      *     "data": {
      *       "translatedText": "Hello world",
      *       "detectedSourceLang": "it"
@@ -118,7 +118,7 @@ interface ISimpleAI {
     );
 
     /**
-     * Get list of downloaded translation languages.
+     * Get usable translation languages, including built-in English.
      *
      * @param protocolVersion Client's protocol version
      * @return JSON response with languages array

@@ -1,0 +1,4 @@
+# Copy to ignored android/local.properties. SDK can alternatively use ANDROID_HOME.
+sdk.dir=/absolute/path/to/Android/Sdk
+# Optional HTTPS base URL. Omit to keep Cloud AI visibly unavailable.
+# cloud.llm.endpoint=https://your-cloud-service.example

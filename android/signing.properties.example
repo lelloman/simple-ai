@@ -1,0 +1,6 @@
+# Use an absolute keystore path, or a path relative to android/app.
+# Copy to ignored android/signing.properties and fill values locally.
+storeFile=/absolute/path/to/release.jks
+storePassword=replace-locally
+keyAlias=release
+keyPassword=replace-locally
