@@ -339,7 +339,7 @@ class SimpleAIService : Service() {
             return runRequest(callerUid, responseProtocol) {
             RequestValidation.messages(messagesJson)
             require((systemPrompt?.length ?: 0) <= 32768 && (toolsJson?.length ?: 0) <= 32768 && (promptCacheKey?.length ?: 0) <= 256)
-            RequestValidation.text(authToken, "authToken", 8192)
+            // Legacy AIDL argument intentionally ignored: the gateway owns authentication.
             ProtocolHandler.validateProtocol(protocolVersion)?.let { return@runRequest it }
             val proto = ProtocolHandler.clampProtocol(protocolVersion)
 
@@ -366,7 +366,10 @@ class SimpleAIService : Service() {
             } else null
 
             return@runRequest withContext(Dispatchers.IO) {
-                cloudClient.chat(messages, tools, systemPrompt, promptCacheKey, authToken).fold(
+                val session = try { models.gatewayAuth.session() }
+                catch (e: CloudAuthException) { return@withContext ProtocolHandler.error(proto, ErrorCode.CLOUD_AUTH_FAILED, e.message ?: "Sign in to SimpleAI") }
+                val sourceApp = packageManager.getPackagesForUid(callerUid)?.sorted()?.joinToString(",")?.take(255) ?: "unknown"
+                cloudClient.chat(messages, tools, systemPrompt, promptCacheKey, session.token, session.server, sourceApp).fold(
                     onSuccess = { response ->
                         ProtocolHandler.success(proto, buildJsonObject {
                             put("role", response.role)

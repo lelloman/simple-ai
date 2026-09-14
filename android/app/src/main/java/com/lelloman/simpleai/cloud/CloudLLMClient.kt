@@ -46,6 +46,8 @@ class CloudLLMClient(private val endpointProvider: () -> String) {
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     private val endpoint: String
@@ -65,9 +67,11 @@ class CloudLLMClient(private val endpointProvider: () -> String) {
         tools: JsonArray?,
         systemPrompt: String?,
         promptCacheKey: String?,
-        authToken: String
+        authToken: String,
+        server: String = endpoint,
+        sourceApp: String = "com.lelloman.simpleai"
     ): Result<ChatResponse> = withContext(Dispatchers.IO) {
-        val chatUrl = CloudEndpoint.chatUrl(endpoint) ?: return@withContext Result.failure(
+        val chatUrl = CloudEndpoint.chatUrl(server) ?: return@withContext Result.failure(
             CloudUnavailableException("Set a server URL in Settings → Cloud AI")
         )
         try {
@@ -84,6 +88,7 @@ class CloudLLMClient(private val endpointProvider: () -> String) {
                 .url(chatUrl)
                 .header("Authorization", "Bearer $authToken")
                 .header("Content-Type", "application/json")
+                .header("X-SimpleAI-Source-App", sourceApp)
                 .post(requestJson.toRequestBody(JSON_MEDIA_TYPE))
                 .build()
 

@@ -158,3 +158,17 @@ When `gateway.auto_wake_enabled = true` and no runners are available:
 2. Sends Wake-on-LAN packet (via bouncer or idle-manager if configured)
 3. Waits up to `wake_timeout_secs` for the runner to connect
 4. Retries the request once connected
+
+### Personal Android gateway
+
+Users sign in inside SimpleAI Android, then approve any installed apps they wish
+to use it. Calling apps do not need OAuth clients or accounts. The gateway uses
+its own access token and reports caller package names as statistical metadata.
+`X-SimpleAI-Source-App` is stored in request history and never grants permissions.
+
+Configure `[oidc].android_client_id` with the gateway’s public OAuth client ID.
+Register `com.lelloman.simpleai:/oauth2redirect` with that client and enable
+public authorization code + PKCE and refresh tokens. The backend publishes only
+its issuer and this public client ID at `/.well-known/simple-ai`, and trusts the
+gateway audience alongside its primary audience. Do not add individual calling
+apps such as Pezzottify to `additional_audiences` for this integration.

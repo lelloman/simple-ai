@@ -24,11 +24,17 @@ class ModelRepository private constructor(private val context: Context) {
         }
     }
     val cloudSettings = com.lelloman.simpleai.cloud.CloudSettings(context.getSharedPreferences("cloud_settings", Context.MODE_PRIVATE))
+    val gatewayAuth = com.lelloman.simpleai.cloud.GatewayAuth(context, cloudSettings)
     val capabilities = CapabilityManager(context, cloudSettings.endpoint.value)
     val translation = TranslationManager(context, capabilities::syncTranslationLanguages)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     init {
-        scope.launch { cloudSettings.endpoint.collect { capabilities.updateCloudEndpoint(it) } }
+        scope.launch {
+            kotlinx.coroutines.flow.combine(cloudSettings.endpoint, gatewayAuth.signedIn) { endpoint, signedIn ->
+                if (signedIn) com.lelloman.simpleai.cloud.CloudEndpoint.status(endpoint)
+                else com.lelloman.simpleai.capability.CapabilityStatus.Error("Sign in to SimpleAI in Settings → Cloud AI", canRetry = false)
+            }.collect { capabilities.updateCloudStatus(it) }
+        }
     }
     val languageDownloads = KeyedDownloads(scope) { translation.downloadLanguage(it) }
     private val downloads = ModelDownloadManager(context)

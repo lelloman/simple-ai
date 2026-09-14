@@ -40,6 +40,7 @@ android {
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.lelloman.simpleai"
         applicationId = "com.lelloman.simpleai"
         minSdk = 24
         targetSdk = 36
@@ -141,6 +142,7 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    implementation("net.openid:appauth:0.11.1")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

@@ -11,3 +11,5 @@ pub mod models;
 pub mod ocr;
 pub mod responses;
 pub mod speech;
+
+pub mod gateway_auth;

@@ -121,7 +121,7 @@ pub struct JwksClient {
     jwks_uri: String,
     keys: Arc<RwLock<HashMap<String, DecodingKey>>>,
     issuer: String,
-    audience: String,
+    audiences: Vec<String>,
     /// Path to roles in JWT claims (e.g., "roles", "realm_access.roles").
     role_claim_path: String,
     /// Name of the admin role.
@@ -153,7 +153,10 @@ impl JwksClient {
             jwks_uri: oidc_discovery.jwks_uri,
             keys: Arc::new(RwLock::new(HashMap::new())),
             issuer: config.issuer.clone(),
-            audience: config.audience.clone(),
+            audiences: std::iter::once(config.audience.clone())
+                .chain(config.additional_audiences.iter().cloned())
+                .chain(config.android_client_id.iter().cloned())
+                .collect(),
             role_claim_path: config.role_claim_path.clone(),
             admin_role: config.admin_role.clone(),
             admin_users: config.admin_users.clone(),
@@ -261,7 +264,7 @@ impl JwksClient {
         // Validate token
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[&self.issuer]);
-        validation.set_audience(&[&self.audience]);
+        validation.set_audience(&self.audiences);
 
         let token_data = decode::<Claims>(token, key, &validation)
             .map_err(|e| AuthError::InvalidToken(e.to_string()))?;
@@ -297,6 +300,70 @@ mod tests {
     use super::*;
     use axum::http::header::AUTHORIZATION;
     use axum::http::HeaderMap;
+
+    // These keys are generated test fixtures only; never used by a deployed issuer.
+    #[tokio::test]
+    async fn trusted_audiences_preserve_signature_issuer_and_expiry_checks() {
+        use jsonwebtoken::{encode, EncodingKey, Header};
+        use serde_json::json;
+        let public = include_bytes!("../../tests/fixtures/test-oidc-public.pem");
+        let private = include_bytes!("../../tests/fixtures/test-oidc-private.pem");
+        let client = JwksClient {
+            http_client: Client::new(),
+            jwks_uri: String::new(),
+            keys: Arc::new(RwLock::new(HashMap::from([(
+                "test-key".to_string(),
+                DecodingKey::from_rsa_pem(public).unwrap(),
+            )]))),
+            issuer: "https://issuer.example".into(),
+            audiences: vec!["simple-ai".into(), "pezzottify".into()],
+            role_claim_path: "roles".into(),
+            admin_role: "admin".into(),
+            admin_users: vec![],
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some("test-key".into());
+        let sign = |aud: Value, issuer: &str, exp: u64| {
+            encode(
+                &header,
+                &json!({"sub":"test-user", "iss":issuer, "aud":aud, "iat":now-600, "exp":exp}),
+                &EncodingKey::from_rsa_pem(private).unwrap(),
+            )
+            .unwrap()
+        };
+        for audience in [
+            json!("simple-ai"),
+            json!("pezzottify"),
+            json!(["other", "pezzottify"]),
+        ] {
+            let token = sign(audience, "https://issuer.example", now + 600);
+            assert!(client.validate_token(&token).await.is_ok());
+        }
+        for token in [
+            sign(json!("untrusted"), "https://issuer.example", now + 600),
+            sign(
+                json!("pezzottify"),
+                "https://wrong-issuer.example",
+                now + 600,
+            ),
+            sign(json!("pezzottify"), "https://issuer.example", now - 300),
+            sign(json!([]), "https://issuer.example", now + 600),
+        ] {
+            assert!(client.validate_token(&token).await.is_err());
+        }
+        let token = sign(json!("pezzottify"), "https://issuer.example", now + 600);
+        let mut parts: Vec<_> = token.split('.').map(str::to_owned).collect();
+        let replacement = if parts[2].starts_with('A') { "B" } else { "A" };
+        parts[2].replace_range(..1, replacement);
+        assert!(client.validate_token(&parts.join(".")).await.is_err());
+        let mut primary_only = client;
+        primary_only.audiences = vec!["simple-ai".into()];
+        assert!(primary_only.validate_token(&token).await.is_err());
+    }
 
     fn empty_headers() -> HeaderMap {
         HeaderMap::new()

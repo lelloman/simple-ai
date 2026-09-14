@@ -137,7 +137,7 @@ interface ISimpleAI {
      * @param toolsJson JSON array of tool definitions (optional, can be null)
      * @param systemPrompt System prompt (optional, can be null)
      * @param promptCacheKey Prompt cache identity (optional, can be null)
-     * @param authToken Client's auth token for cloud service
+     * @param authToken Deprecated and ignored. Pass an empty string; SimpleAI owns sign-in.
      * @return JSON response with LLM response or tool calls
      */
     String cloudChat(

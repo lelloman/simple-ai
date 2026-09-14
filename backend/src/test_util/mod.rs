@@ -28,6 +28,8 @@ pub fn test_config() -> Config {
         oidc: OidcConfig {
             issuer: "https://test-issuer".to_string(),
             audience: "test-audience".to_string(),
+            additional_audiences: vec![],
+            android_client_id: None,
             role_claim_path: "roles".to_string(),
             admin_role: "admin".to_string(),
             admin_users: vec![],

@@ -67,6 +67,8 @@ impl AuditLogger {
         )
         .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
+        let _ = conn.execute("ALTER TABLE requests ADD COLUMN source_app TEXT", []);
+
         // Migration: add client_ip column if it doesn't exist (for existing databases)
         let _ = conn.execute("ALTER TABLE requests ADD COLUMN client_ip TEXT", []);
 
@@ -319,8 +321,8 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
-            "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model, client_ip)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model, client_ip, source_app)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 request.id,
                 request.timestamp.to_rfc3339(),
@@ -329,6 +331,7 @@ impl AuditLogger {
                 request.request_body,
                 request.model,
                 request.client_ip,
+                request.source_app,
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -724,7 +727,7 @@ impl AuditLogger {
         let query_sql = format!(
             "SELECT r.id, r.timestamp, r.user_id, u.email, r.request_path, r.model, r.client_ip,
                     resp.status, resp.latency_ms, resp.tokens_prompt, resp.tokens_completion,
-                    resp.runner_id, COALESCE(resp.wol_sent, 0)
+                    resp.runner_id, COALESCE(resp.wol_sent, 0), r.source_app
              FROM requests r
              LEFT JOIN users u ON u.id = r.user_id
              LEFT JOIN responses resp ON resp.request_id = r.id
@@ -759,6 +762,7 @@ impl AuditLogger {
                     tokens_completion: row.get(10)?,
                     runner_id: row.get(11)?,
                     wol_sent: row.get::<_, i32>(12)? != 0,
+                    source_app: row.get(13)?,
                 })
             })
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
@@ -1058,6 +1062,7 @@ pub struct RequestWithResponse {
     pub request_path: String,
     pub model: Option<String>,
     pub client_ip: Option<String>,
+    pub source_app: Option<String>,
     pub status: Option<i32>,
     pub latency_ms: Option<i64>,
     pub tokens_prompt: Option<i64>,
@@ -1760,6 +1765,17 @@ mod tests {
     }
 
     #[test]
+    fn source_app_is_persisted_as_attribution() {
+        let logger = AuditLogger::new(":memory:").unwrap();
+        logger.find_or_create_user("user123", None).unwrap();
+        let mut request = Request::new("user123".into(), "/v1/chat/completions".into());
+        request.source_app = Some("org.example.personal".into());
+        logger.log_request(&request).unwrap();
+        let (requests, _) = logger.get_requests_paginated(None, None, 1, 10).unwrap();
+        assert_eq!(requests[0].source_app.as_deref(), Some("org.example.personal"));
+    }
+
+    #[test]
     fn test_get_requests_paginated() {
         let logger = create_test_logger();
         let user = logger.find_or_create_user("user123", None).unwrap();
@@ -1886,6 +1902,7 @@ mod tests {
             request_path: "/v1/chat/completions".to_string(),
             model: Some("llama2".to_string()),
             client_ip: Some("192.168.1.100".to_string()),
+            source_app: Some("org.example.personal".to_string()),
             status: Some(200),
             latency_ms: Some(150),
             tokens_prompt: Some(10),

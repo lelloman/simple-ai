@@ -61,7 +61,7 @@ class CapabilityManager(
     private val _cloudAiStatus = MutableStateFlow(CloudEndpoint.status(cloudEndpoint))
     val cloudAiStatus: StateFlow<CapabilityStatus> = _cloudAiStatus.asStateFlow()
 
-    fun updateCloudEndpoint(endpoint: String) { _cloudAiStatus.value = CloudEndpoint.status(endpoint) }
+    fun updateCloudStatus(status: CapabilityStatus) { _cloudAiStatus.value = status }
 
     // Local AI capability
     private val _localAiStatus = MutableStateFlow<CapabilityStatus>(

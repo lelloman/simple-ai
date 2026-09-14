@@ -47,6 +47,12 @@ pub struct OllamaConfig {
 pub struct OidcConfig {
     pub issuer: String,
     pub audience: String,
+    /// Additional trusted client audiences from the same issuer. Empty by default.
+    #[serde(default)]
+    pub additional_audiences: Vec<String>,
+    /// Dedicated public client for the user's Android gateway.
+    #[serde(default)]
+    pub android_client_id: Option<String>,
     /// Path to roles in JWT claims (e.g., "roles", "realm_access.roles").
     /// Supports dot-separated paths. Default: "roles"
     #[serde(default = "default_role_claim_path")]
@@ -642,10 +648,23 @@ mod tests {
     }
 
     #[test]
+    fn test_oidc_audience_configuration_is_backward_compatible() {
+        let mut value = serde_json::json!({"issuer":"https://issuer.example", "audience":"simple-ai"});
+        let legacy: OidcConfig = serde_json::from_value(value.clone()).unwrap();
+        assert!(legacy.additional_audiences.is_empty());
+        value["additional_audiences"] = serde_json::json!(["pezzottify"]);
+        let extended: OidcConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(extended.audience, "simple-ai");
+        assert_eq!(extended.additional_audiences, vec!["pezzottify"]);
+    }
+
+    #[test]
     fn test_oidc_config_requires_issuer() {
         let config = OidcConfig {
             issuer: "".to_string(),
             audience: "test".to_string(),
+            additional_audiences: vec![],
+            android_client_id: None,
             role_claim_path: default_role_claim_path(),
             admin_role: default_admin_role(),
             admin_users: vec![],
@@ -658,6 +677,8 @@ mod tests {
         let config = OidcConfig {
             issuer: "https://auth.example.com".to_string(),
             audience: "my-app".to_string(),
+            additional_audiences: vec![],
+            android_client_id: None,
             role_claim_path: default_role_claim_path(),
             admin_role: default_admin_role(),
             admin_users: vec![],
@@ -677,6 +698,8 @@ mod tests {
         let config = OidcConfig {
             issuer: "https://auth.example.com".to_string(),
             audience: "my-app".to_string(),
+            additional_audiences: vec![],
+            android_client_id: None,
             role_claim_path: "realm_access.roles".to_string(),
             admin_role: "super-admin".to_string(),
             admin_users: vec!["user-1".to_string(), "user-2".to_string()],

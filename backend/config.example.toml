@@ -17,6 +17,10 @@ model = "llama3.2"
 issuer = "https://auth.example.com/realms/main"
 # Required: OIDC client ID (audience claim in tokens)
 audience = "simple-ai"
+# Optional: other explicitly trusted client IDs from this issuer (for Android callers).
+additional_audiences = []
+# Public native client; register com.lelloman.simpleai:/oauth2redirect with PKCE.
+# android_client_id = "your-simpleai-public-client-id"
 
 [database]
 url = "sqlite:./data/audit.db"

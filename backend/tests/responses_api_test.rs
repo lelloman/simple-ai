@@ -28,6 +28,8 @@ async fn create_test_state(
         oidc: simple_ai_backend::config::OidcConfig {
             issuer: "https://example.com".to_string(),
             audience: "".to_string(),
+            additional_audiences: vec![],
+            android_client_id: None,
             role_claim_path: "roles".to_string(),
             admin_role: "admin".to_string(),
             admin_users: vec![],
@@ -82,6 +84,8 @@ async fn create_test_state(
     let mock_oidc_config = simple_ai_backend::config::OidcConfig {
         issuer: format!("{}/", mock_server.uri()),
         audience: "test".to_string(),
+        additional_audiences: vec![],
+            android_client_id: None,
         role_claim_path: "roles".to_string(),
         admin_role: "admin".to_string(),
         admin_users: vec![],

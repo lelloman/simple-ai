@@ -12,6 +12,7 @@ pub struct Request {
     pub request_body: String,
     pub model: Option<String>,
     pub client_ip: Option<String>,
+    pub source_app: Option<String>,
 }
 
 impl Request {
@@ -24,6 +25,7 @@ impl Request {
             request_body: String::new(),
             model: None,
             client_ip: None,
+            source_app: None,
         }
     }
 }

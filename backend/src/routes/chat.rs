@@ -276,6 +276,10 @@ async fn chat_completions(
     let mut req_log = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
     req_log.request_body = serde_json::to_string(&request).unwrap_or_default();
     req_log.model = Some(model.clone());
+    // Informational attribution only: never consulted by authentication or authorization.
+    req_log.source_app = headers.get("x-simpleai-source-app").and_then(|h| h.to_str().ok())
+        .filter(|v| !v.is_empty() && v.len() <= 255 && v.bytes().all(|c| c.is_ascii_alphanumeric() || b"._,-".contains(&c)))
+        .map(str::to_owned);
     req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
 
     let request_id = state

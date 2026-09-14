@@ -10,7 +10,7 @@ The app has four main screens: **Models** manages downloads, **Translate** trans
 |---|---|---|
 | Voice Commands | On-device XLM-RoBERTa int8 plus client adapter | 533,595,982 bytes (533.6 MB) |
 | Translation | On-device ML Kit, 59 supported languages | About 30 MB per pack; varies by language. English is built in. |
-| Cloud AI | HTTPS request to the configured provider, using client-supplied authorization | No model download |
+| Cloud AI | HTTPS request to the configured provider, using the user’s SimpleAI sign-in | No model download |
 | Local AI | On-device Qwen3 1.7B Q4_K_M; plain-text chat, no tool calling | 1,282,439,584 bytes (1.28 GB) |
 
 Sizes use decimal MB/GB. Voice Commands also needs a 533.6 MB working copy; interrupted downloads and model loading need additional space. Download checks reserve 67.1 MB. Model URLs/revisions/hashes are authoritative in [NluModel.kt](app/src/main/java/com/lelloman/simpleai/model/NluModel.kt) and [AvailableModels.kt](app/src/main/java/com/lelloman/simpleai/model/AvailableModels.kt).
@@ -42,7 +42,7 @@ Set `ANDROID_HOME` to your SDK directory, or copy [local.properties.example](loc
 
 Gradle builds the Rust tokenizer JNI library for ARM64/ARMv7 and a host library for JVM tests. Cargo dependencies are locked in `tokenizer-native/Cargo.lock`. Initial setup needs network access; `./scripts/check --offline` uses the Gradle cache once dependencies exist. Small tokenizer fixtures were generated with Python `tokenizers==0.22.2`; see `tokenizer-native/generate_fixtures.py`.
 
-Configure the server on the device under **Settings → Cloud AI**. Enter an HTTPS base URL and save; subsequent requests use it immediately. Clear the field to disable Cloud AI. This device-local setting survives restarts and is excluded from backup. Connected apps still supply their own authentication token; saving does not verify connectivity.
+Configure the server on the device under **Settings → Cloud AI**. Enter an HTTPS base URL and save; subsequent requests use it immediately. Clear the field to disable Cloud AI. This device-local setting survives restarts and is excluded from backup. Sign in inside SimpleAI after saving. Approved apps share this gateway without their own accounts. Changing the server clears the gateway credential; sign-out removes it locally. Saving alone does not verify connectivity.
 
 An optional initial default can be supplied in `local.properties`:
 
@@ -50,7 +50,7 @@ An optional initial default can be supplied in `local.properties`:
 cloud.llm.endpoint=https://your-cloud-service.example
 ```
 
-Use an HTTPS base URL without credentials, query or fragment. SimpleAI appends `/v1/chat/completions`. The device setting overrides the build default, including when explicitly cleared. Missing/invalid configuration is visibly unavailable; configured availability does not certify connectivity or credentials. Tokens are supplied per request by the client, never stored in the build configuration.
+Use an HTTPS base URL without credentials, query or fragment. SimpleAI appends `/v1/chat/completions`. The device setting overrides the build default, including when explicitly cleared. Missing/invalid configuration is visibly unavailable; configured availability does not certify connectivity or credentials. OAuth tokens are owned by SimpleAI and stored encrypted with Android Keystore, outside backups. They are never exposed to calling apps or stored in build configuration.
 
 ## Version and signing policy
 
@@ -129,7 +129,7 @@ Example successful service response (illustrative state):
     "capabilities": {
       "voiceCommands": {"status": "ready", "loaded": false},
       "translation": {"status": "ready", "languages": ["it"], "builtInLanguages": ["en"]},
-      "cloudAi": {"status": "error", "message": "Cloud AI is not configured in this app build", "canRetry": false},
+      "cloudAi": {"status": "error", "message": "Sign in to SimpleAI in Settings → Cloud AI", "canRetry": false},
       "localAi": {"status": "not_downloaded", "modelSize": 1282439584}
     }
   }
@@ -148,7 +148,7 @@ api.translate(2, "Hello", "en", "it")
 api.getTranslationLanguages(2) // Includes built-in English.
 api.localGenerate(2, "Write a short greeting", 128, 0.7f)
 api.localChat(2, """[{"role":"user","content":"Hello"}]""", null, null)
-api.cloudChat(2, """[{"role":"user","content":"Hello"}]""", null, null, null, authToken)
+api.cloudChat(2, """[{"role":"user","content":"Hello"}]""", null, null, null, "")
 ```
 
 Local chat uses the Qwen text template with thinking disabled; tool calls/structured content are rejected. Local generation accepts 1–2,048 output tokens and finite temperature 0–2. Cloud chat may include tool definitions and a cache key; HTTP 429 returns `RATE_LIMITED`, and response usage may be absent/null.
@@ -175,3 +175,18 @@ Both legacy cloud backup and Android 12+ cloud/device transfer allow only `downl
 The check script builds APKs, runs unit tests/lint, tests the Rust tokenizer and checks native 16 KB alignment. Reports are in `app/build/reports/` and `app/build/test-results/`. There is no JaCoCo task or asserted Android coverage percentage. See [coverage map and CI limits](../docs/android-test-coverage.md), [accessibility checklist](../docs/android-accessibility-checks.md), and [16 KB runtime checks](../docs/android-16kb-validation.md).
 
 About → Copy support diagnostics includes build/protocol, device ABI/API and pinned model identity; it excludes prompts, answers, tokens, client approvals and endpoints. See [metadata](../docs/android-metadata.md) and [cloud logging policy](../docs/android-cloud-diagnostics.md). This repository's license is Apache 2.0; model/library terms are linked separately in About.
+
+### Personal gateway sign-in
+
+The server exposes public `/.well-known/simple-ai` metadata with `issuer` and
+`client_id`. Configure `[oidc].android_client_id` with a public OAuth client
+supporting authorization code + PKCE and the exact redirect URI
+`com.lelloman.simpleai:/oauth2redirect`. A web client may be reused only when it
+supports public native authentication without an embedded secret. The Android
+app uses AppAuth and sends its own access token; the server validates its signature,
+issuer, audience, and expiry. The deprecated AIDL `authToken` argument is ignored.
+Use an empty string in new callers. Local app approval is still required.
+
+The gateway derives `X-SimpleAI-Source-App` from the Binder caller’s package name(s).
+It is stored as `requests.source_app` and returned in request history solely for
+usage attribution; it is not trusted for server authentication or authorization.

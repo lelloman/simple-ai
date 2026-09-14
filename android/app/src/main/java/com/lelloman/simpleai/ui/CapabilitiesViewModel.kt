@@ -82,8 +82,11 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
     private val models = ModelRepository.get(application)
 
     val cloudEndpoint = models.cloudSettings.endpoint
+    val gatewaySignedIn = models.gatewayAuth.signedIn
+    val gatewayAuthError = models.gatewayAuth.error
+    fun signOutGateway() { viewModelScope.launch { models.gatewayAuth.signOut() } }
     suspend fun saveCloudEndpoint(endpoint: String): Boolean = withContext(Dispatchers.IO) {
-        models.cloudSettings.save(endpoint)
+        models.gatewayAuth.changeServer(endpoint)
     }
 
     private val translationManager = models.translation

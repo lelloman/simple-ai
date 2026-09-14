@@ -29,6 +29,8 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         oidc: simple_ai_backend::config::OidcConfig {
             issuer: "https://example.com".to_string(),
             audience: "".to_string(),
+            additional_audiences: vec![],
+            android_client_id: None,
             role_claim_path: "roles".to_string(),
             admin_role: "admin".to_string(),
             admin_users: vec![],
@@ -86,6 +88,8 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
     let mock_oidc_config = simple_ai_backend::config::OidcConfig {
         issuer: format!("{}/", mock_server.uri()),
         audience: "test".to_string(),
+        additional_audiences: vec![],
+            android_client_id: None,
         role_claim_path: "roles".to_string(),
         admin_role: "admin".to_string(),
         admin_users: vec![],
@@ -356,4 +360,27 @@ async fn test_nonexistent_route_returns_404() {
 
     let status = send_request(&app, http::Method::GET, "/nonexistent", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn gateway_metadata_exposes_only_public_login_configuration() {
+    let mut state = create_test_state().await.unwrap();
+    let config = &mut Arc::get_mut(&mut state).unwrap().config.oidc;
+    config.android_client_id = Some("gateway-client".into());
+    let expected_issuer = config.issuer.clone();
+    let app = routes::gateway_auth::router(state);
+    let response = app.oneshot(http::Request::builder().uri("/.well-known/simple-ai").body(axum::body::Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(value, json!({"issuer":expected_issuer,"client_id":"gateway-client"}));
+}
+
+#[tokio::test]
+async fn source_app_header_does_not_authenticate_a_caller() {
+    let state = create_test_state().await.unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert("x-simpleai-source-app", HeaderValue::from_static("com.lelloman.pezzottify"));
+    let result = routes::auth_helpers::authenticate_request(&state, &headers).await;
+    assert_eq!(result.err().unwrap().0, StatusCode::UNAUTHORIZED);
 }

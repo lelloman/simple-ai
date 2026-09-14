@@ -20,6 +20,8 @@ import com.lelloman.simpleai.R
 fun SettingsScreen(viewModel: CapabilitiesViewModel, onAbout: () -> Unit) {
     val strings = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsState()
+    val signedIn by viewModel.gatewaySignedIn.collectAsState()
+    val authError by viewModel.gatewayAuthError.collectAsState()
     val endpoint by viewModel.cloudEndpoint.collectAsState()
     var cloudInfo by rememberSaveable { mutableStateOf(false) }
     var draft by rememberSaveable { mutableStateOf("") }
@@ -41,6 +43,12 @@ fun SettingsScreen(viewModel: CapabilitiesViewModel, onAbout: () -> Unit) {
         }
         HorizontalDivider()
         ModelRow(stringResource(R.string.ui_cloud_ai), endpoint.ifBlank { stringResource(R.string.settings_not_configured) }, { draft = endpoint; saveFailed = false; cloudInfo = true })
+        if (endpoint.isNotBlank()) {
+            Text(stringResource(if (signedIn) R.string.gateway_signed_in else R.string.gateway_signed_out))
+            if (signedIn) TextButton(onClick = viewModel::signOutGateway) { Text(stringResource(R.string.gateway_sign_out)) }
+            else Button(onClick = { strings.startActivity(android.content.Intent(strings, com.lelloman.simpleai.cloud.GatewayLoginActivity::class.java)) }) { Text(stringResource(R.string.gateway_sign_in)) }
+            authError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
         state.serviceError?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
             TextButton(onClick = viewModel::refreshCapabilities) { Text(stringResource(R.string.ui_retry_connection)) }

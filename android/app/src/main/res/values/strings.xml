@@ -107,8 +107,12 @@
     <string name="cloud_server_url">Server URL</string>
     <string name="cloud_server_hint">HTTPS base URL. Leave empty to disable Cloud AI.</string>
     <string name="cloud_server_invalid">Enter an HTTPS URL without credentials, query or fragment.</string>
-    <string name="cloud_server_auth">Connected apps supply their own sign-in token. Saving this URL does not test the connection.</string>
+    <string name="cloud_server_auth">Sign in to SimpleAI after saving. Apps you approve can use your connection without their own account. Changing servers signs you out.</string>
     <string name="cloud_server_save_failed">Could not save. Try again.</string>
     <string name="cloud_server_save">Save</string>
     <string name="cloud_server_cancel">Cancel</string>
+    <string name="gateway_signed_in">Signed in to your server</string>
+    <string name="gateway_signed_out">Sign in to let approved apps use Cloud AI</string>
+    <string name="gateway_sign_in">Sign in</string>
+    <string name="gateway_sign_out">Sign out</string>
 </resources>
