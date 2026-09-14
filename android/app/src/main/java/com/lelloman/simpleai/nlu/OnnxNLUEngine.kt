@@ -6,6 +6,7 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import com.lelloman.simpleai.model.NluModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,8 +47,8 @@ class OnnxNLUEngine(
         private const val PAD_TOKEN_ID = 1L
         private const val UNK_TOKEN_ID = 3L
 
-        private const val BASE_MODEL_URL = "https://huggingface.co/lelloman/xlm-roberta-base-onnx-int8/resolve/main/xlm_roberta_base_int8.onnx"
-        private const val BASE_MODEL_FILE = "xlm_roberta_base_int8.onnx"
+        private const val BASE_MODEL_URL = NluModel.URL
+        private const val BASE_MODEL_FILE = NluModel.FILE_NAME
     }
 
     sealed class Status {
@@ -81,6 +82,10 @@ class OnnxNLUEngine(
 
     private val baseModelFile: File
         get() = File(nluDir, BASE_MODEL_FILE)
+
+    private val workingModel by lazy {
+        WorkingModelFile(baseModelFile, File(nluDir, "adapter-working.onnx"), NluModel.SHA256)
+    }
 
     /**
      * Check if the base model is already downloaded.
@@ -148,7 +153,8 @@ class OnnxNLUEngine(
 
         // Memory-map the file instead of reading into heap
         Log.i(TAG, "Memory-mapping base model...")
-        val raf = RandomAccessFile(baseModelFile, "rw")
+        val workingFile = workingModel.prepare()
+        val raf = RandomAccessFile(workingFile, "rw")
         val channel = raf.channel
         modelFileChannel = channel
         modelBuffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, baseModelFile.length())
@@ -269,7 +275,7 @@ class OnnxNLUEngine(
                 val sessionOptions = OrtSession.SessionOptions().apply {
                     setIntraOpNumThreads(4)
                 }
-                currentSession = env.createSession(baseModelFile.absolutePath, sessionOptions)
+                currentSession = env.createSession(workingModel.file.absolutePath, sessionOptions)
 
                 currentAdapter = LoadedAdapter(
                     id = adapterId,
@@ -662,6 +668,7 @@ class OnnxNLUEngine(
         modelBuffer = null
         modelFileChannel?.close()
         modelFileChannel = null
+        workingModel.discard()
         ortEnv?.close()
         ortEnv = null
     }

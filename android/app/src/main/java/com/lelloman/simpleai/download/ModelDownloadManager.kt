@@ -3,6 +3,7 @@ package com.lelloman.simpleai.download
 import android.content.Context
 import android.os.StatFs
 import com.lelloman.simpleai.model.LocalAIModel
+import com.lelloman.simpleai.model.NluModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -193,7 +194,7 @@ class ModelDownloadManager(
         nluDir.mkdirs()
         val targetFile = File(nluDir, "xlm_roberta_base_int8.onnx")
         val tempFile = File(nluDir, "xlm_roberta_base_int8.onnx.tmp")
-        val url = "https://huggingface.co/lelloman/xlm-roberta-base-onnx-int8/resolve/main/xlm_roberta_base_int8.onnx"
+        val url = NluModel.URL
 
         try {
             val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
