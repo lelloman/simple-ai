@@ -242,7 +242,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build /v1 routes, optionally with rate limiting
     let v1_routes = simple_ai_backend::routes::chat::router(state.clone())
-        .merge(simple_ai_backend::routes::gateway_auth::router(state.clone()))
         .merge(simple_ai_backend::routes::embeddings::router(state.clone()))
         .merge(simple_ai_backend::routes::classifications::router(
             state.clone(),
@@ -274,6 +273,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let app = simple_ai_backend::routes::health::router()
+        .merge(simple_ai_backend::routes::gateway_auth::router(state.clone()))
         .nest("/v1", v1_routes)
         .nest(
             "/admin",
