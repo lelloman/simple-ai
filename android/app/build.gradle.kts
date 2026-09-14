@@ -43,6 +43,7 @@ val cloudLlmEndpoint = localProperties.getProperty("cloud.llm.endpoint", "")
 android {
     namespace = "com.lelloman.simpleai"
     compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.lelloman.simpleai"
@@ -103,6 +104,32 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+}
+
+val tokenizerSources = rootProject.file("tokenizer-native")
+val tokenizerJni = layout.buildDirectory.dir("generated/tokenizerJni")
+val buildTokenizerAndroid = tasks.register<Exec>("buildTokenizerAndroid") {
+    workingDir(tokenizerSources)
+    inputs.files(fileTree(tokenizerSources) { include("src/**", "Cargo.toml", "Cargo.lock") })
+    outputs.dir(tokenizerJni)
+    environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+    environment("RUSTFLAGS", "-C link-arg=-Wl,-z,max-page-size=16384")
+    commandLine("cargo", "ndk", "-t", "arm64-v8a", "-t", "armeabi-v7a", "-o", tokenizerJni.get().asFile.absolutePath, "build", "--release", "--locked")
+}
+android.sourceSets.getByName("main").jniLibs.srcDir(tokenizerJni)
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("JniLibFolders")) dependsOn(buildTokenizerAndroid)
+}
+val buildTokenizerHost = tasks.register<Exec>("buildTokenizerHost") {
+    workingDir(tokenizerSources)
+    inputs.files(fileTree(tokenizerSources) { include("src/**", "Cargo.toml", "Cargo.lock") })
+    outputs.file(File(tokenizerSources, "target/debug/${System.mapLibraryName("simpleai_tokenizer")}"))
+    commandLine("cargo", "build", "--locked")
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(buildTokenizerHost)
+    inputs.file(buildTokenizerHost.map { it.outputs.files.singleFile })
+    systemProperty("java.library.path", File(tokenizerSources, "target/debug").absolutePath)
 }
 
 dependencies {

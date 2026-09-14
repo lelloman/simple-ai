@@ -604,3 +604,5 @@ buildConfigField("int", "MAX_PROTOCOL_VERSION", "2")  // Bump when adding new fe
 ## License
 
 Apache 2.0
+
+Native tokenizer build: the Android app uses the upstream Hugging Face tokenizers engine through `tokenizer-native/`. Install Rust, cargo-ndk 4.1.2, the aarch64-linux-android and armv7-linux-androideabi Rust targets, and Android NDK 27.0.12077973. Gradle builds the two Android ABIs automatically, with 16 KB ELF alignment, and builds the host JNI library for JVM tests. Rust dependencies are pinned by tokenizer-native/Cargo.lock. The small multilingual Unigram/BPE reference fixtures can be regenerated with tokenizer-native/generate_fixtures.py using Python tokenizers==0.22.2; the Kotlin tests compare IDs, attention masks and original UTF-16 text offsets.

@@ -101,8 +101,7 @@ class OnnxNLUEngine(
         val slotBias: FloatArray,
         val numIntents: Int,
         val numSlots: Int,
-        val vocab: Map<String, Long>,
-        val merges: List<Pair<String, String>>,
+        val tokenizer: NativeTokenizer,
         val maxLength: Int,
         val intents: List<String>,
         val slotLabels: List<String>
@@ -215,6 +214,7 @@ class OnnxNLUEngine(
         configFd: ParcelFileDescriptor
     ): Result<Unit> = withContext(Dispatchers.IO) {
         mutex.withLock {
+            var pendingTokenizer: NativeTokenizer? = null
             try {
                 val buffer = modelBuffer ?: return@withContext Result.failure(
                     IllegalStateException("Model not loaded")
@@ -235,6 +235,7 @@ class OnnxNLUEngine(
                     currentSession?.close()
                     currentSession = null
                     currentRevertPatch = null
+                    currentAdapter?.tokenizer?.close()
                     currentAdapter = null
                 }
 
@@ -253,15 +254,9 @@ class OnnxNLUEngine(
                     loadHeads(headsStream)
                 }
 
-                // Load tokenizer
-                val (vocab, merges) = FileInputStream(tokenizerFd.fileDescriptor).use { tokenizerStream ->
-                    loadTokenizer(tokenizerStream)
-                }
-
-                // Load config
-                val (intents, slotLabels, maxLength) = FileInputStream(configFd.fileDescriptor).use { configStream ->
-                    loadConfig(configStream)
-                }
+                val tokenizerJson = FileInputStream(tokenizerFd.fileDescriptor).use { it.bufferedReader().readText() }
+                val (intents, slotLabels, maxLength) = FileInputStream(configFd.fileDescriptor).use { loadConfig(it) }
+                val tokenizer = NativeTokenizer(tokenizerJson, maxLength).also { pendingTokenizer = it }
 
                 // Force sync the patched buffer to disk (only needed if we applied a patch)
                 if (patchFd != null) {
@@ -277,6 +272,7 @@ class OnnxNLUEngine(
                 }
                 currentSession = env.createSession(workingModel.file.absolutePath, sessionOptions)
 
+                currentAdapter?.tokenizer?.close()
                 currentAdapter = LoadedAdapter(
                     id = adapterId,
                     version = adapterVersion,
@@ -286,13 +282,13 @@ class OnnxNLUEngine(
                     slotBias = headsData.slotBias,
                     numIntents = headsData.numIntents,
                     numSlots = headsData.numSlots,
-                    vocab = vocab,
-                    merges = merges,
+                    tokenizer = tokenizer,
                     maxLength = maxLength,
                     intents = intents,
                     slotLabels = slotLabels
                 )
 
+                pendingTokenizer = null
                 _status.value = Status.Ready
                 Log.i(TAG, "Adapter $adapterId v$adapterVersion applied successfully")
                 Result.success(Unit)
@@ -300,7 +296,7 @@ class OnnxNLUEngine(
                 Log.e(TAG, "Failed to apply adapter", e)
                 _status.value = Status.Error(e.message ?: "Failed to apply adapter")
                 Result.failure(e)
-            }
+            } finally { pendingTokenizer?.close() }
         }
     }
 
@@ -323,6 +319,7 @@ class OnnxNLUEngine(
                 currentSession?.close()
                 currentSession = null
                 currentRevertPatch = null
+                currentAdapter?.tokenizer?.close()
                 currentAdapter = null
 
                 _status.value = Status.Ready
@@ -392,38 +389,6 @@ class OnnxNLUEngine(
         return HeadsData(intentHead, intentBias, slotHead, slotBias, intentRows, slotRows)
     }
 
-    private fun loadTokenizer(inputStream: java.io.InputStream): Pair<Map<String, Long>, List<Pair<String, String>>> {
-        val tokenizerJson = inputStream.bufferedReader().readText()
-        val tokenizer = Json.parseToJsonElement(tokenizerJson).jsonObject
-
-        val model = (tokenizer["model"] ?: throw IllegalStateException("Tokenizer missing 'model' field")).jsonObject
-        val vocabElement = model["vocab"] ?: throw IllegalStateException("Tokenizer model missing 'vocab' field")
-
-        // SentencePiece format: vocab is array of [token, score] pairs
-        // BPE format: vocab is object of {token: id}
-        val vocab: Map<String, Long> = if (vocabElement is JsonArray) {
-            // SentencePiece format: [["token", score], ...]
-            vocabElement.mapIndexed { index, element ->
-                val token = element.jsonArray[0].jsonPrimitive.content
-                token to index.toLong()
-            }.toMap()
-        } else {
-            // BPE format: {"token": id, ...}
-            vocabElement.jsonObject.entries.associate { (token, id) ->
-                token to id.jsonPrimitive.long
-            }
-        }
-
-        val mergesArray = model["merges"]?.jsonArray ?: JsonArray(emptyList())
-        val merges = mergesArray.map { mergeElement ->
-            val parts = mergeElement.jsonPrimitive.content.split(" ")
-            parts[0] to parts[1]
-        }
-
-        Log.i(TAG, "Loaded tokenizer: ${vocab.size} vocab, ${merges.size} merges")
-        return vocab to merges
-    }
-
     private data class ConfigData(
         val intents: List<String>,
         val slotLabels: List<String>,
@@ -461,7 +426,9 @@ class OnnxNLUEngine(
                 }
 
                 // Tokenize
-                val (inputIds, attentionMask) = tokenize(text, adapter.vocab, adapter.merges, adapter.maxLength)
+                val encoding = adapter.tokenizer.encode(text)
+                val inputIds = encoding.ids
+                val attentionMask = encoding.mask
 
                 // Run encoder inference
                 val env = ortEnv ?: return@withContext Result.failure(IllegalStateException("ORT not initialized"))
@@ -508,7 +475,7 @@ class OnnxNLUEngine(
                 }
 
                 // Extract slots from BIO tags
-                val slots = extractSlots(inputIds, rawSlotLabels, adapter.vocab)
+                val slots = extractSlots(text, encoding.offsets, rawSlotLabels)
 
                 // Clean up
                 inputIdsTensor.close()
@@ -542,114 +509,30 @@ class OnnxNLUEngine(
         return output
     }
 
-    private fun tokenize(
-        text: String,
-        vocab: Map<String, Long>,
-        merges: List<Pair<String, String>>,
-        maxLength: Int
-    ): Pair<LongArray, LongArray> {
-        val tokens = bpeTokenize(text.lowercase(), vocab, merges)
-
-        val inputIds = LongArray(maxLength) { PAD_TOKEN_ID }
-        val attentionMask = LongArray(maxLength) { 0L }
-
-        inputIds[0] = CLS_TOKEN_ID
-        attentionMask[0] = 1L
-
-        val maxTokens = minOf(tokens.size, maxLength - 2)
-        for (i in 0 until maxTokens) {
-            inputIds[i + 1] = tokens[i]
-            attentionMask[i + 1] = 1L
-        }
-
-        inputIds[maxTokens + 1] = SEP_TOKEN_ID
-        attentionMask[maxTokens + 1] = 1L
-
-        return inputIds to attentionMask
-    }
-
-    private fun bpeTokenize(text: String, vocab: Map<String, Long>, merges: List<Pair<String, String>>): List<Long> {
-        val result = mutableListOf<Long>()
-        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
-
-        for ((wordIdx, word) in words.withIndex()) {
-            val processedWord = if (wordIdx == 0) word else "▁$word"
-            var tokens = processedWord.map { it.toString() }.toMutableList()
-
-            for ((first, second) in merges) {
-                var i = 0
-                while (i < tokens.size - 1) {
-                    if (tokens[i] == first && tokens[i + 1] == second) {
-                        tokens[i] = first + second
-                        tokens.removeAt(i + 1)
-                    } else {
-                        i++
-                    }
-                }
-            }
-
-            for (token in tokens) {
-                val id = vocab[token] ?: vocab["▁$token"] ?: UNK_TOKEN_ID
-                result.add(id)
-            }
-        }
-
-        return result
-    }
-
     private fun extractSlots(
-        inputIds: LongArray,
-        slotLabels: List<String>,
-        vocab: Map<String, Long>
+        text: String,
+        offsets: List<Pair<Int, Int>>,
+        labels: List<String>
     ): Map<String, List<String>> {
         val slots = mutableMapOf<String, MutableList<String>>()
-        val reverseVocab = vocab.entries.associate { it.value to it.key }
-
-        var currentSlot: String? = null
-        var currentValue = StringBuilder()
-
-        for (i in 1 until slotLabels.size) {
-            val label = slotLabels[i]
-            val tokenId = inputIds[i]
-
-            if (tokenId == SEP_TOKEN_ID || tokenId == PAD_TOKEN_ID) break
-
-            val token = reverseVocab[tokenId] ?: continue
-
+        var kind: String? = null
+        var start = 0
+        var end = 0
+        fun flush() {
+            kind?.let { if (end > start) slots.getOrPut(it) { mutableListOf() }.add(text.substring(start, end)) }
+            kind = null
+        }
+        for (i in labels.indices) {
+            val (a, b) = offsets[i]
+            if (a == b) { flush(); continue }
+            val label = labels[i]
             when {
-                label.startsWith("B-") -> {
-                    if (currentSlot != null && currentValue.isNotEmpty()) {
-                        val cleanValue = currentValue.toString().replace("▁", " ").trim()
-                        if (cleanValue.isNotEmpty()) {
-                            slots.getOrPut(currentSlot) { mutableListOf() }.add(cleanValue)
-                        }
-                    }
-                    currentSlot = label.removePrefix("B-")
-                    currentValue = StringBuilder(token)
-                }
-                label.startsWith("I-") && currentSlot == label.removePrefix("I-") -> {
-                    currentValue.append(token)
-                }
-                else -> {
-                    if (currentSlot != null && currentValue.isNotEmpty()) {
-                        val cleanValue = currentValue.toString().replace("▁", " ").trim()
-                        if (cleanValue.isNotEmpty()) {
-                            slots.getOrPut(currentSlot) { mutableListOf() }.add(cleanValue)
-                        }
-                    }
-                    currentSlot = null
-                    currentValue = StringBuilder()
-                }
+                label.startsWith("B-") -> { flush(); kind = label.removePrefix("B-"); start = a; end = b }
+                label.startsWith("I-") && kind == label.removePrefix("I-") -> end = b
+                else -> flush()
             }
         }
-
-        if (currentSlot != null && currentValue.isNotEmpty()) {
-            val cleanValue = currentValue.toString().replace("▁", " ").trim()
-            if (cleanValue.isNotEmpty()) {
-                slots.getOrPut(currentSlot) { mutableListOf() }.add(cleanValue)
-            }
-        }
-
+        flush()
         return slots
     }
 
@@ -664,6 +547,7 @@ class OnnxNLUEngine(
         currentSession?.close()
         currentSession = null
         currentRevertPatch = null
+        currentAdapter?.tokenizer?.close()
         currentAdapter = null
         modelBuffer = null
         modelFileChannel?.close()

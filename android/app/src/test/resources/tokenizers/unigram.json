@@ -1,0 +1,254 @@
+{
+  "version": "1.0",
+  "truncation": {
+    "direction": "Right",
+    "max_length": 64,
+    "strategy": "LongestFirst",
+    "stride": 0
+  },
+  "padding": {
+    "strategy": {
+      "Fixed": 64
+    },
+    "direction": "Right",
+    "pad_to_multiple_of": null,
+    "pad_id": 1,
+    "pad_type_id": 0,
+    "pad_token": "<pad>"
+  },
+  "added_tokens": [],
+  "normalizer": {
+    "type": "NFC"
+  },
+  "pre_tokenizer": {
+    "type": "Metaspace",
+    "replacement": "▁",
+    "prepend_scheme": "always",
+    "split": true
+  },
+  "post_processor": {
+    "type": "TemplateProcessing",
+    "single": [
+      {
+        "SpecialToken": {
+          "id": "<s>",
+          "type_id": 0
+        }
+      },
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "SpecialToken": {
+          "id": "</s>",
+          "type_id": 0
+        }
+      }
+    ],
+    "pair": [
+      {
+        "Sequence": {
+          "id": "A",
+          "type_id": 0
+        }
+      },
+      {
+        "Sequence": {
+          "id": "B",
+          "type_id": 1
+        }
+      }
+    ],
+    "special_tokens": {
+      "</s>": {
+        "id": "</s>",
+        "ids": [
+          2
+        ],
+        "tokens": [
+          "</s>"
+        ]
+      },
+      "<s>": {
+        "id": "<s>",
+        "ids": [
+          0
+        ],
+        "tokens": [
+          "<s>"
+        ]
+      }
+    }
+  },
+  "decoder": null,
+  "model": {
+    "type": "Unigram",
+    "unk_id": 3,
+    "vocab": [
+      [
+        "<s>",
+        0.0
+      ],
+      [
+        "<pad>",
+        0.0
+      ],
+      [
+        "</s>",
+        0.0
+      ],
+      [
+        "<unk>",
+        0.0
+      ],
+      [
+        " ",
+        -10.0
+      ],
+      [
+        "!",
+        -10.0
+      ],
+      [
+        ",",
+        -10.0
+      ],
+      [
+        "C",
+        -10.0
+      ],
+      [
+        "H",
+        -10.0
+      ],
+      [
+        "J",
+        -10.0
+      ],
+      [
+        "a",
+        -10.0
+      ],
+      [
+        "c",
+        -10.0
+      ],
+      [
+        "e",
+        -10.0
+      ],
+      [
+        "f",
+        -10.0
+      ],
+      [
+        "h",
+        -10.0
+      ],
+      [
+        "i",
+        -10.0
+      ],
+      [
+        "l",
+        -10.0
+      ],
+      [
+        "n",
+        -10.0
+      ],
+      [
+        "o",
+        -10.0
+      ],
+      [
+        "t",
+        -10.0
+      ],
+      [
+        "à",
+        -10.0
+      ],
+      [
+        "è",
+        -10.0
+      ],
+      [
+        "́",
+        -10.0
+      ],
+      [
+        "ا",
+        -10.0
+      ],
+      [
+        "ب",
+        -10.0
+      ],
+      [
+        "ح",
+        -10.0
+      ],
+      [
+        "ر",
+        -10.0
+      ],
+      [
+        "ع",
+        -10.0
+      ],
+      [
+        "ل",
+        -10.0
+      ],
+      [
+        "م",
+        -10.0
+      ],
+      [
+        "▁",
+        -10.0
+      ],
+      [
+        "世",
+        -10.0
+      ],
+      [
+        "你",
+        -10.0
+      ],
+      [
+        "好",
+        -10.0
+      ],
+      [
+        "界",
+        -10.0
+      ],
+      [
+        "😀",
+        -10.0
+      ],
+      [
+        "▁Hello",
+        -1.0
+      ],
+      [
+        "▁John",
+        -1.0
+      ],
+      [
+        "▁città",
+        -1.0
+      ],
+      [
+        "▁你好世界",
+        -1.0
+      ]
+    ],
+    "byte_fallback": false
+  }
+}
