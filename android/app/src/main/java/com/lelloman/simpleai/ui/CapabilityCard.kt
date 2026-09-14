@@ -183,11 +183,6 @@ fun CapabilityCard(
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        if (onConfigure != null) {
-                            OutlinedButton(onClick = onConfigure) {
-                                Text("Configure")
-                            }
-                        }
                     }
                 }
 
@@ -227,6 +222,14 @@ fun CapabilityCard(
                             }
                         }
                     }
+                }
+            }
+
+            // Setup must remain reachable before any models exist and after errors.
+            if (onConfigure != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onConfigure) {
+                    Text(if (status is CapabilityStatus.NotDownloaded) "Download languages" else "Manage languages")
                 }
             }
 
