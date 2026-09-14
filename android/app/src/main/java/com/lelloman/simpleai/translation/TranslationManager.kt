@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -27,7 +29,8 @@ import kotlin.coroutines.resumeWithException
  * - IT -> ES becomes IT -> EN -> ES
  */
 class TranslationManager(
-    private val context: Context
+    private val context: Context,
+    private val onLanguagesChanged: (Set<String>) -> Unit = {}
 ) {
     companion object {
         private const val TAG = "TranslationManager"
@@ -103,6 +106,8 @@ class TranslationManager(
         val SUPPORTED_LANGUAGES: Set<String> = LANGUAGE_MAP.keys
     }
 
+    private val operationMutex = Mutex()
+
     private val modelManager = RemoteModelManager.getInstance()
     private val languageIdentifier = LanguageIdentification.getClient()
 
@@ -112,16 +117,23 @@ class TranslationManager(
     private val _downloadedLanguages = MutableStateFlow<Set<String>>(emptySet())
     val downloadedLanguages: StateFlow<Set<String>> = _downloadedLanguages.asStateFlow()
 
+    private fun updateLanguages(languages: Set<String>) {
+        onLanguagesChanged(languages)
+        _downloadedLanguages.value = languages
+    }
+
     /**
      * Initialize by checking which languages are already downloaded.
      */
     suspend fun initialize() = withContext(Dispatchers.IO) {
-        try {
-            val downloaded = getDownloadedLanguages()
-            _downloadedLanguages.value = downloaded
-            Log.i(TAG, "Initialized with downloaded languages: $downloaded")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize", e)
+        operationMutex.withLock {
+            try {
+                val downloaded = getDownloadedLanguages()
+                updateLanguages(downloaded)
+                Log.i(TAG, "Initialized with downloaded languages: $downloaded")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize", e)
+            }
         }
     }
 
@@ -177,7 +189,7 @@ class TranslationManager(
             }
 
             // Update downloaded languages
-            _downloadedLanguages.value = getDownloadedLanguages()
+            operationMutex.withLock { updateLanguages(getDownloadedLanguages()) }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -188,39 +200,41 @@ class TranslationManager(
      * Delete a downloaded language model.
      */
     suspend fun deleteLanguage(languageCode: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val mlKitCode = LANGUAGE_MAP[languageCode]
-            ?: return@withContext Result.failure(IllegalArgumentException("Unknown language: $languageCode"))
+        operationMutex.withLock {
+            val mlKitCode = LANGUAGE_MAP[languageCode]
+                ?: return@withContext Result.failure(IllegalArgumentException("Unknown language: $languageCode"))
 
-        try {
-            val model = TranslateRemoteModel.Builder(mlKitCode).build()
+            try {
+                val model = TranslateRemoteModel.Builder(mlKitCode).build()
 
-            suspendCancellableCoroutine<Unit> { cont ->
-                modelManager.deleteDownloadedModel(model)
-                    .addOnSuccessListener {
-                        Log.i(TAG, "Deleted language: $languageCode")
-                        cont.resume(Unit)
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "Failed to delete language: $languageCode", e)
-                        cont.resumeWithException(e)
-                    }
-            }
-
-            // Clear cached translators for this language
-            translatorCache.entries.removeIf { (pair, translator) ->
-                if (pair.first == languageCode || pair.second == languageCode) {
-                    translator.close()
-                    true
-                } else {
-                    false
+                suspendCancellableCoroutine<Unit> { cont ->
+                    modelManager.deleteDownloadedModel(model)
+                        .addOnSuccessListener {
+                            Log.i(TAG, "Deleted language: $languageCode")
+                            cont.resume(Unit)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Failed to delete language: $languageCode", e)
+                            cont.resumeWithException(e)
+                        }
                 }
-            }
 
-            // Update downloaded languages
-            _downloadedLanguages.value = getDownloadedLanguages()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+                // Clear cached translators for this language
+                translatorCache.entries.removeIf { (pair, translator) ->
+                    if (pair.first == languageCode || pair.second == languageCode) {
+                        translator.close()
+                        true
+                    } else {
+                        false
+                    }
+                }
+
+                // Update downloaded languages
+                updateLanguages(getDownloadedLanguages())
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
         }
     }
 
@@ -237,52 +251,54 @@ class TranslationManager(
         sourceLang: String,
         targetLang: String
     ): Result<TranslationResult> = withContext(Dispatchers.IO) {
-        try {
-            // Detect language if "auto"
-            val actualSourceLang = if (sourceLang == "auto") {
-                detectLanguage(text) ?: return@withContext Result.failure(
-                    IllegalStateException("Could not detect source language")
-                )
-            } else {
-                sourceLang
-            }
+        operationMutex.withLock {
+            try {
+                // Detect language if "auto"
+                val actualSourceLang = if (sourceLang == "auto") {
+                    detectLanguage(text) ?: return@withContext Result.failure(
+                        IllegalStateException("Could not detect source language")
+                    )
+                } else {
+                    sourceLang
+                }
 
-            // Same language, no translation needed
-            if (actualSourceLang == targetLang) {
-                return@withContext Result.success(
-                    TranslationResult(text, actualSourceLang)
-                )
-            }
+                // Same language, no translation needed
+                if (actualSourceLang == targetLang) {
+                    return@withContext Result.success(
+                        TranslationResult(text, actualSourceLang)
+                    )
+                }
 
-            // Check if languages are downloaded
-            val downloaded = _downloadedLanguages.value
-            if (actualSourceLang !in downloaded) {
-                return@withContext Result.failure(
-                    IllegalStateException("Source language '$actualSourceLang' not downloaded")
-                )
-            }
-            if (targetLang !in downloaded) {
-                return@withContext Result.failure(
-                    IllegalStateException("Target language '$targetLang' not downloaded")
-                )
-            }
+                // Check if languages are downloaded
+                val downloaded = _downloadedLanguages.value
+                if (actualSourceLang !in downloaded) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Source language '$actualSourceLang' not downloaded")
+                    )
+                }
+                if (targetLang !in downloaded) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Target language '$targetLang' not downloaded")
+                    )
+                }
 
-            // Translate
-            val translator = getOrCreateTranslator(actualSourceLang, targetLang)
-            val translatedText = suspendCancellableCoroutine<String> { cont ->
-                translator.translate(text)
-                    .addOnSuccessListener { translated ->
-                        cont.resume(translated)
-                    }
-                    .addOnFailureListener { e ->
-                        cont.resumeWithException(e)
-                    }
-            }
+                // Translate
+                val translator = getOrCreateTranslator(actualSourceLang, targetLang)
+                val translatedText = suspendCancellableCoroutine<String> { cont ->
+                    translator.translate(text)
+                        .addOnSuccessListener { translated ->
+                            cont.resume(translated)
+                        }
+                        .addOnFailureListener { e ->
+                            cont.resumeWithException(e)
+                        }
+                }
 
-            Result.success(TranslationResult(translatedText, actualSourceLang))
-        } catch (e: Exception) {
-            Log.e(TAG, "Translation failed", e)
-            Result.failure(e)
+                Result.success(TranslationResult(translatedText, actualSourceLang))
+            } catch (e: Exception) {
+                Log.e(TAG, "Translation failed", e)
+                Result.failure(e)
+            }
         }
     }
 

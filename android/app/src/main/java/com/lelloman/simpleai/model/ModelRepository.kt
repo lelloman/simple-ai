@@ -6,6 +6,7 @@ import com.lelloman.simpleai.download.ModelConfig
 import com.lelloman.simpleai.download.ModelDownloadManager
 import com.lelloman.simpleai.llm.LlamaEngine
 import com.lelloman.simpleai.nlu.OnnxNLUEngine
+import com.lelloman.simpleai.translation.TranslationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ class ModelRepository private constructor(private val context: Context) {
         }
     }
     val capabilities = CapabilityManager(context)
+    val translation = TranslationManager(context, capabilities::syncTranslationLanguages)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val downloads = ModelDownloadManager(context)
     val voice = ManagedModel(
@@ -54,6 +56,7 @@ class ModelRepository private constructor(private val context: Context) {
     fun downloadVoice() { scope.launch { voice.downloadAndActivate() } }
     fun downloadLocal() { scope.launch { local.downloadAndActivate() } }
     fun initialize() {
+        scope.launch { translation.initialize() }
         scope.launch { voice.initialize() }
         scope.launch { local.initialize() }
     }

@@ -17,7 +17,6 @@ import com.lelloman.simpleai.download.ModelDownloadManager
 import com.lelloman.simpleai.model.ModelRepository
 import com.lelloman.simpleai.model.LocalAIModel
 import com.lelloman.simpleai.service.SimpleAIService
-import com.lelloman.simpleai.translation.TranslationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,7 +72,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
 
     private val models = ModelRepository.get(application)
 
-    private val translationManager = TranslationManager(application)
+    private val translationManager = models.translation
     private val downloadManager = ModelDownloadManager(application)
 
     private val serviceConnection = object : ServiceConnection {
@@ -334,6 +333,5 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             context.unbindService(serviceConnection)
             isBound = false
         }
-        translationManager.release()
     }
 }

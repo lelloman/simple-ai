@@ -14,6 +14,16 @@ import org.junit.Before
 import org.junit.Test
 
 class CapabilityManagerTest {
+    @Test
+    fun `shared translation inventory updates readiness for service clients`() {
+        val manager = CapabilityManager(mockContext)
+        manager.syncTranslationLanguages(setOf("en", "it"))
+        assertEquals(setOf("en", "it"), manager.downloadedLanguages.value)
+        assertEquals(CapabilityStatus.Ready, manager.translationStatus.value)
+        manager.syncTranslationLanguages(emptySet())
+        assertTrue(manager.downloadedLanguages.value.isEmpty())
+        assertTrue(manager.translationStatus.value is CapabilityStatus.NotDownloaded)
+    }
 
     private lateinit var mockContext: Context
     private lateinit var mockPrefs: SharedPreferences

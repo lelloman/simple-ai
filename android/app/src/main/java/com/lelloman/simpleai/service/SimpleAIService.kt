@@ -62,7 +62,7 @@ class SimpleAIService : Service() {
     // Engines
     private val models by lazy { ModelRepository.get(this) }
     private val nluEngine: OnnxNLUEngine? get() = models.voice.engine
-    private var translationManager: TranslationManager? = null
+    private val translationManager: TranslationManager get() = models.translation
     private val cloudClient = CloudLLMClient()
     private val llamaEngine: LlamaEngine? get() = models.local.engine
 
@@ -237,9 +237,7 @@ class SimpleAIService : Service() {
                 }
             }
 
-            val manager = translationManager ?: return ProtocolHandler.error(
-                proto, ErrorCode.CAPABILITY_ERROR, "Translation manager not initialized"
-            )
+            val manager = translationManager
 
             // Validate languages
             if (!manager.isLanguageSupported(targetLang)) {
@@ -557,52 +555,6 @@ class SimpleAIService : Service() {
 
     private fun initializeEngines() {
         models.initialize()
-
-        // Initialize Translation manager
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                Log.i(TAG, "Initializing Translation manager...")
-                val manager = TranslationManager(this@SimpleAIService)
-                manager.initialize()
-                translationManager = manager
-
-                // Initial sync with capability manager
-                val downloaded = manager.downloadedLanguages.value
-                syncTranslationLanguages(downloaded)
-
-                if (downloaded.isNotEmpty()) {
-                    capabilityManager.updateTranslationStatus(CapabilityStatus.Ready)
-                    Log.i(TAG, "Translation ready with languages: $downloaded")
-                } else {
-                    Log.i(TAG, "Translation manager initialized, no languages downloaded")
-                }
-
-                // Observe ongoing changes to downloaded languages
-                manager.downloadedLanguages.collect { languages ->
-                    syncTranslationLanguages(languages)
-                    if (languages.isNotEmpty()) {
-                        capabilityManager.updateTranslationStatus(CapabilityStatus.Ready)
-                    } else {
-                        capabilityManager.updateTranslationStatus(CapabilityStatus.NotDownloaded(0))
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing Translation", e)
-                capabilityManager.updateTranslationStatus(
-                    CapabilityStatus.Error(e.message ?: "Initialization error")
-                )
-            }
-        }
-
-    }
-
-    /**
-     * Sync downloaded languages from TranslationManager to CapabilityManager.
-     * This ensures both components have the same view of downloaded languages.
-     */
-    private fun syncTranslationLanguages(languages: Set<String>) {
-        capabilityManager.syncTranslationLanguages(languages)
-        Log.d(TAG, "Synced translation languages: $languages")
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -617,8 +569,6 @@ class SimpleAIService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.i(TAG, "SimpleAIService onDestroy")
-        translationManager?.release()
-        translationManager = null
         serviceScope.cancel()
     }
 

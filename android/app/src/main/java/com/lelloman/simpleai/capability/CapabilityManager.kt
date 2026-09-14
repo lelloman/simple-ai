@@ -143,6 +143,7 @@ class CapabilityManager(
      * This replaces the current set entirely to ensure consistency.
      */
     fun syncTranslationLanguages(languages: Set<String>) {
+        _translationStatus.value = if (languages.isEmpty()) CapabilityStatus.NotDownloaded(0) else CapabilityStatus.Ready
         _downloadedLanguages.value = languages
         persistTranslationLanguages(languages)
     }
