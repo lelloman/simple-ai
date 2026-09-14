@@ -30,6 +30,8 @@ data class GenerationParams(
     val topK: Int = 40
 )
 
+class GenerationTimeoutException(val partialText: String) : RuntimeException("Generation timed out")
+
 data class ModelInfo(
     val name: String,
     val path: String,
@@ -201,7 +203,7 @@ class LlamaEngine(
         helper.predict(prompt)
 
         // Collect events with timeout - use first{} to exit on terminal events
-        withTimeoutOrNull(generationTimeoutMs) {
+        val terminal = try { withTimeoutOrNull(generationTimeoutMs) {
             llmFlow.first { event ->
                 when (event) {
                     is LlamaHelper.LLMEvent.Started -> {
@@ -240,7 +242,12 @@ class LlamaEngine(
                     }
                 }
             }
+        } } finally {
+            // Stop native work on timeout, errors and coroutine cancellation too.
+            helper.stopPrediction()
         }
+
+        if (terminal == null) throw GenerationTimeoutException(responseBuilder.toString())
 
         return if (hasError) null else responseBuilder.toString()
     }

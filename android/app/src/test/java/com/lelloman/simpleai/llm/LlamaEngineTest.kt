@@ -10,6 +10,9 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import org.nehuatl.llamacpp.LlamaHelper
 
 /**
  * Simple test double for LlamaHelperWrapper that doesn't require MockK reflection.
@@ -72,6 +75,26 @@ private class FakeLlamaHelperWrapper : LlamaHelperWrapper {
 }
 
 class LlamaEngineTest {
+    @Test fun `timeout without output is a failure and stops native prediction`() {
+        val engine = createEngine()
+        val file = File(tempDir, "timeout.gguf").apply { writeText("model") }
+        engine.loadModel(file)
+        val result = engine.generate("hello")
+        assertTrue(result.exceptionOrNull() is GenerationTimeoutException)
+        assertEquals("", (result.exceptionOrNull() as GenerationTimeoutException).partialText)
+        assertTrue(fakeWrapper.stopPredictionCalled)
+    }
+
+    @Test fun `partial output remains a timeout rather than successful completion`() = runBlocking {
+        val engine = createEngine(200)
+        engine.loadModel(File(tempDir, "partial.gguf").apply { writeText("model") })
+        val result = async(Dispatchers.IO) { engine.generate("hello") }
+        engine.llmFlow.subscriptionCount.first { it > 0 }
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Ongoing("partial", 1))
+        val failure = result.await().exceptionOrNull() as GenerationTimeoutException
+        assertEquals("partial", failure.partialText)
+        assertTrue(fakeWrapper.stopPredictionCalled)
+    }
 
     private lateinit var tempDir: File
     private lateinit var mockContext: Context

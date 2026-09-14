@@ -37,6 +37,9 @@ enum class ErrorCode {
     /** Requested translation language not downloaded */
     TRANSLATION_LANGUAGE_NOT_AVAILABLE,
 
+    /** Local prediction exceeded its deadline; partial text may be supplied in details. */
+    GENERATION_TIMEOUT,
+
     /** Unexpected internal error */
     INTERNAL_ERROR
 }

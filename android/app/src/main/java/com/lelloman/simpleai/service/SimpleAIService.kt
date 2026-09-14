@@ -22,6 +22,7 @@ import com.lelloman.simpleai.cloud.CloudUnavailableException
 import com.lelloman.simpleai.capability.CapabilityManager
 import com.lelloman.simpleai.capability.CapabilityStatus
 import com.lelloman.simpleai.llm.GenerationParams
+import com.lelloman.simpleai.llm.GenerationTimeoutException
 import com.lelloman.simpleai.llm.LlamaEngine
 import com.lelloman.simpleai.model.ModelRepository
 import com.lelloman.simpleai.model.LocalAIModel
@@ -402,7 +403,7 @@ class SimpleAIService : Service() {
                     })
                 },
                 onFailure = { e ->
-                    ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Generation failed: ${e.message}")
+                    generationError(proto, e)
                 }
             )
         }
@@ -472,11 +473,18 @@ class SimpleAIService : Service() {
                     })
                 },
                 onFailure = { e ->
-                    ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Generation failed: ${e.message}")
+                    generationError(proto, e)
                 }
             )
         }
     }
+
+    private fun generationError(proto: Int, error: Throwable): String =
+        if (error is GenerationTimeoutException) {
+            ProtocolHandler.error(proto, ErrorCode.GENERATION_TIMEOUT, "Generation timed out", buildJsonObject {
+                put("partialText", error.partialText)
+            })
+        } else ProtocolHandler.error(proto, ErrorCode.INTERNAL_ERROR, "Generation failed: ${error.message}")
 
     private fun buildServiceInfoData() = buildJsonObject {
         put("serviceVersion", BuildConfig.SERVICE_VERSION)
