@@ -31,10 +31,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * UI state for the capabilities screen.
  */
 data class CapabilitiesState(
-    val voiceCommandsStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(534_000_000),
-    val translationStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(0),
+    val voiceCommandsStatus: CapabilityStatus = CapabilityStatus.Checking,
+    val translationStatus: CapabilityStatus = CapabilityStatus.Checking,
     val cloudAiStatus: CapabilityStatus = CapabilityStatus.Ready,
-    val localAiStatus: CapabilityStatus = CapabilityStatus.NotDownloaded(LocalAIModel.SIZE_BYTES),
+    val localAiStatus: CapabilityStatus = CapabilityStatus.Checking,
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguage: String? = null,
     val languageDownloadError: String? = null,
@@ -80,12 +80,7 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             Log.i(TAG, "Service connected")
             simpleAiService = ISimpleAI.Stub.asInterface(service)
             _state.update { it.copy(isServiceConnected = true) }
-            // Refresh immediately and again after a short delay to catch initialization
             refreshCapabilities()
-            viewModelScope.launch {
-                kotlinx.coroutines.delay(500)
-                refreshCapabilities()
-            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -99,6 +94,16 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
     init {
         startAndBindService()
         initializeTranslationManager()
+        viewModelScope.launch {
+            models.capabilities.translationStatus.collect { status ->
+                _state.update { it.copy(translationStatus = status) }
+            }
+        }
+        viewModelScope.launch {
+            models.capabilities.cloudAiStatus.collect { status ->
+                _state.update { it.copy(cloudAiStatus = status) }
+            }
+        }
         viewModelScope.launch {
             models.capabilities.voiceCommandsStatus.collect { status ->
                 _state.update { it.copy(voiceCommandsStatus = status) }
@@ -142,83 +147,15 @@ class CapabilitiesViewModel(application: Application) : AndroidViewModel(applica
             val service = simpleAiService ?: return@launch
 
             try {
-                val response = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     ServiceInfoClient.request(service::getServiceInfo)
                 }
 
-                parseServiceInfo(response)
+                _state.update { it.copy(serviceError = null) }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to refresh capabilities", e)
                 _state.update { it.copy(serviceError = e.message ?: "Could not connect to SimpleAI") }
             }
-        }
-    }
-
-    private fun parseServiceInfo(capabilities: kotlinx.serialization.json.JsonObject) {
-        try {
-
-            // Parse voice commands
-            val voiceCommands = capabilities["voiceCommands"]?.jsonObject
-            val vcStatus = parseCapabilityStatus(voiceCommands)
-
-            // Parse translation
-            val translation = capabilities["translation"]?.jsonObject
-            val transStatus = parseCapabilityStatus(translation)
-            // Note: downloadedLanguages comes from TranslationManager's StateFlow,
-            // not from the service, to ensure we have the most up-to-date data
-
-            // Parse cloud AI
-            val cloudAi = capabilities["cloudAi"]?.jsonObject
-            val cloudStatus = parseCapabilityStatus(cloudAi)
-
-            // Parse local AI
-            val localAi = capabilities["localAi"]?.jsonObject
-            val localStatus = parseCapabilityStatus(localAi)
-
-            _state.update { currentState ->
-                currentState.copy(
-                    serviceError = null,
-                    // Don't overwrite if currently downloading (ViewModel manages download progress)
-                    voiceCommandsStatus = if (currentState.voiceCommandsStatus is CapabilityStatus.Downloading) {
-                        currentState.voiceCommandsStatus
-                    } else {
-                        vcStatus
-                    },
-                    translationStatus = transStatus,
-                    cloudAiStatus = cloudStatus,
-                    localAiStatus = if (currentState.localAiStatus is CapabilityStatus.Downloading) {
-                        currentState.localAiStatus
-                    } else {
-                        localStatus
-                    }
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse service info", e)
-            _state.update { it.copy(serviceError = "Could not read service status: ${e.message}") }
-        }
-    }
-
-    private fun parseCapabilityStatus(json: kotlinx.serialization.json.JsonObject?): CapabilityStatus {
-        if (json == null) return CapabilityStatus.NotDownloaded(0)
-
-        return when (json["status"]?.jsonPrimitive?.content) {
-            "ready" -> CapabilityStatus.Ready
-            "not_downloaded" -> {
-                val size = json["modelSize"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0
-                CapabilityStatus.NotDownloaded(size)
-            }
-            "downloading" -> {
-                val downloaded = json["downloadedBytes"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0
-                val total = json["totalBytes"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0
-                CapabilityStatus.Downloading(downloaded, total)
-            }
-            "error" -> {
-                val message = json["message"]?.jsonPrimitive?.content ?: "Unknown error"
-                val canRetry = json["canRetry"]?.jsonPrimitive?.content?.toBoolean() ?: true
-                CapabilityStatus.Error(message, canRetry)
-            }
-            else -> CapabilityStatus.NotDownloaded(0)
         }
     }
 

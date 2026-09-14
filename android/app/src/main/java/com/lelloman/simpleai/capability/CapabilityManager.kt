@@ -40,13 +40,13 @@ class CapabilityManager(
 
     // Voice Commands capability
     private val _voiceCommandsStatus = MutableStateFlow<CapabilityStatus>(
-        CapabilityStatus.NotDownloaded(VOICE_COMMANDS_MODEL_SIZE)
+        CapabilityStatus.Checking
     )
     val voiceCommandsStatus: StateFlow<CapabilityStatus> = _voiceCommandsStatus.asStateFlow()
 
     // Translation capability
     private val _translationStatus = MutableStateFlow<CapabilityStatus>(
-        CapabilityStatus.NotDownloaded(0)
+        CapabilityStatus.Checking
     )
     val translationStatus: StateFlow<CapabilityStatus> = _translationStatus.asStateFlow()
 
@@ -59,7 +59,7 @@ class CapabilityManager(
 
     // Local AI capability
     private val _localAiStatus = MutableStateFlow<CapabilityStatus>(
-        CapabilityStatus.NotDownloaded(LOCAL_AI_MODEL_SIZE)
+        CapabilityStatus.Checking
     )
     val localAiStatus: StateFlow<CapabilityStatus> = _localAiStatus.asStateFlow()
 
@@ -74,9 +74,6 @@ class CapabilityManager(
             try {
                 val languages = json.decodeFromString<Set<String>>(languagesJson)
                 _downloadedLanguages.value = languages
-                if (languages.isNotEmpty()) {
-                    _translationStatus.value = CapabilityStatus.Ready
-                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load translation languages", e)
             }

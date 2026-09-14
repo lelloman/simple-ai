@@ -92,6 +92,12 @@ fun CapabilityCard(
 
             // Status-specific content
             when (status) {
+                CapabilityStatus.Checking, CapabilityStatus.Loading -> {
+                    Column {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text(if (status == CapabilityStatus.Checking) "Checking availability…" else "Loading model…")
+                    }
+                }
                 is CapabilityStatus.NotDownloaded -> {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

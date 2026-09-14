@@ -482,6 +482,8 @@ class SimpleAIService : Service() {
     private fun buildCapabilityStatus(id: CapabilityId) = buildJsonObject {
         val capability = capabilityManager.getCapability(id)
         when (val status = capability.status) {
+            CapabilityStatus.Checking -> put("status", "checking")
+            CapabilityStatus.Loading -> put("status", "loading")
             is CapabilityStatus.NotDownloaded -> {
                 put("status", "not_downloaded")
                 put("modelSize", status.totalBytes)
@@ -506,6 +508,8 @@ class SimpleAIService : Service() {
     private fun buildTranslationCapabilityStatus() = buildJsonObject {
         val capability = capabilityManager.getCapability(CapabilityId.TRANSLATION)
         when (val status = capability.status) {
+            CapabilityStatus.Checking -> put("status", "checking")
+            CapabilityStatus.Loading -> put("status", "loading")
             is CapabilityStatus.NotDownloaded -> {
                 put("status", "not_downloaded")
             }

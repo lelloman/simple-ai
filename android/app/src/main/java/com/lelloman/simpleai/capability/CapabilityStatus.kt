@@ -7,6 +7,11 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 sealed class CapabilityStatus {
+    @Serializable
+    data object Checking : CapabilityStatus()
+
+    @Serializable
+    data object Loading : CapabilityStatus()
 
     /** Capability requires download before use */
     @Serializable

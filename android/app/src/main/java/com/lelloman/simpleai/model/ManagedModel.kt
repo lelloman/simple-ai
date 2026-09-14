@@ -50,7 +50,7 @@ class ManagedModel<E>(
             publish(CapabilityStatus.NotDownloaded(size))
             return
         }
-        publish(CapabilityStatus.Downloading(0, 0))
+        publish(CapabilityStatus.Loading)
         try {
             load().fold(
                 onSuccess = { engine = it; publish(CapabilityStatus.Ready) },

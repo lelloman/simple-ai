@@ -63,15 +63,15 @@ class CapabilityManagerTest {
     // =========================================================================
 
     @Test
-    fun `voiceCommandsStatus is NotDownloaded initially`() {
+    fun `voiceCommandsStatus is Checking initially`() {
         val status = manager.voiceCommandsStatus.value
-        assertTrue(status is CapabilityStatus.NotDownloaded)
+        assertEquals(CapabilityStatus.Checking, status)
     }
 
     @Test
-    fun `translationStatus is NotDownloaded initially`() {
+    fun `translationStatus is Checking initially`() {
         val status = manager.translationStatus.value
-        assertTrue(status is CapabilityStatus.NotDownloaded)
+        assertEquals(CapabilityStatus.Checking, status)
     }
 
     @Test
@@ -81,9 +81,9 @@ class CapabilityManagerTest {
     }
 
     @Test
-    fun `localAiStatus is NotDownloaded initially`() {
+    fun `localAiStatus is Checking initially`() {
         val status = manager.localAiStatus.value
-        assertTrue(status is CapabilityStatus.NotDownloaded)
+        assertEquals(CapabilityStatus.Checking, status)
     }
 
     @Test
@@ -290,12 +290,12 @@ class CapabilityManagerTest {
     }
 
     @Test
-    fun `sets translation status to Ready when languages loaded from persistence`() {
+    fun `keeps translation Checking until persisted inventory is verified`() {
         every { mockPrefs.getString("translation_languages", null) } returns """["en","it"]"""
 
         val newManager = CapabilityManager(mockContext)
 
-        assertTrue(newManager.translationStatus.value is CapabilityStatus.Ready)
+        assertEquals(CapabilityStatus.Checking, newManager.translationStatus.value)
     }
 
     @Test

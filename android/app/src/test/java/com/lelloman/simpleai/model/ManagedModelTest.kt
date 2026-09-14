@@ -57,7 +57,7 @@ class ManagedModelTest {
             val job = launch { model.downloadAndActivate() }
             runCurrent()
             assertNull(model.engine)
-            assertFalse(status is CapabilityStatus.Ready)
+            assertEquals(CapabilityStatus.Loading, status)
             loaded.complete(Unit)
             job.join()
             assertEquals(CapabilityStatus.Ready, status)
