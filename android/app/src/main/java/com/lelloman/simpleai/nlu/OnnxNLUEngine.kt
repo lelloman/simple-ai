@@ -64,7 +64,10 @@ class OnnxNLUEngine(
     private var ortEnv: OrtEnvironment? = null
     private var modelBuffer: MappedByteBuffer? = null
     private var modelFileChannel: FileChannel? = null
-    private var currentSession: OrtSession? = null
+    private val sessions = NativeResourceSlot<OrtSession>()
+    private var currentSession: OrtSession?
+        get() = sessions.value
+        set(value) { sessions.value = value }
     private var currentRevertPatch: LoraPatcher.RevertPatch? = null
     private var currentAdapter: LoadedAdapter? = null
 
@@ -216,11 +219,12 @@ class OnnxNLUEngine(
 
                 _status.value = Status.Patching
 
+                // Close sessions for both heads-only and LoRA adapters before modifying weights.
+                currentSession = null
                 // Revert current patch if any
                 currentRevertPatch?.let { revert ->
                     Log.i(TAG, "Reverting current patch: ${revert.adapterId}")
                     loraPatcher.revertPatch(buffer, revert)
-                    currentSession?.close()
                     currentSession = null
                     currentRevertPatch = null
                     currentAdapter?.tokenizer?.close()
@@ -255,10 +259,10 @@ class OnnxNLUEngine(
                 val env = ortEnv ?: return@withContext Result.failure(
                     IllegalStateException("ORT environment not initialized")
                 )
-                val sessionOptions = OrtSession.SessionOptions().apply {
-                    setIntraOpNumThreads(4)
+                currentSession = OrtSession.SessionOptions().use { options ->
+                    options.setIntraOpNumThreads(4)
+                    env.createSession(workingModel.file.absolutePath, options)
                 }
-                currentSession = env.createSession(workingModel.file.absolutePath, sessionOptions)
 
                 currentAdapter?.tokenizer?.close()
                 currentAdapter = LoadedAdapter(
@@ -303,7 +307,6 @@ class OnnxNLUEngine(
                     buffer.force() // Sync changes to disk
                 }
 
-                currentSession?.close()
                 currentSession = null
                 currentRevertPatch = null
                 currentAdapter?.tokenizer?.close()
@@ -423,23 +426,24 @@ class OnnxNLUEngine(
                 // Run encoder inference
                 val env = ortEnv ?: return@withContext Result.failure(IllegalStateException("ORT not initialized"))
 
-                val inputIdsTensor = OnnxTensor.createTensor(
+                NativeResources().use { resources ->
+                val inputIdsTensor = resources.own(OnnxTensor.createTensor(
                     env,
                     LongBuffer.wrap(inputIds),
                     longArrayOf(1, inputIds.size.toLong())
-                )
-                val attentionMaskTensor = OnnxTensor.createTensor(
+                ))
+                val attentionMaskTensor = resources.own(OnnxTensor.createTensor(
                     env,
                     LongBuffer.wrap(attentionMask),
                     longArrayOf(1, attentionMask.size.toLong())
-                )
+                ))
 
                 val inputs = mapOf(
                     "input_ids" to inputIdsTensor,
                     "attention_mask" to attentionMaskTensor
                 )
 
-                val outputs = session.run(inputs)
+                val outputs = resources.own(session.run(inputs))
 
                 // Get encoder output (last_hidden_state)
                 @Suppress("UNCHECKED_CAST")
@@ -467,11 +471,6 @@ class OnnxNLUEngine(
                 // Extract slots from BIO tags
                 val slots = extractSlots(text, encoding.offsets, rawSlotLabels)
 
-                // Clean up
-                inputIdsTensor.close()
-                attentionMaskTensor.close()
-                outputs.close()
-
                 Result.success(
                     ClassificationResult(
                         intent = intent,
@@ -480,6 +479,7 @@ class OnnxNLUEngine(
                         rawSlotLabels = rawSlotLabels
                     )
                 )
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Classification failed", e)
                 Result.failure(e)
@@ -534,7 +534,6 @@ class OnnxNLUEngine(
     }
 
     override fun release() = runBlocking { mutex.withLock {
-        currentSession?.close()
         currentSession = null
         currentRevertPatch = null
         currentAdapter?.tokenizer?.close()
