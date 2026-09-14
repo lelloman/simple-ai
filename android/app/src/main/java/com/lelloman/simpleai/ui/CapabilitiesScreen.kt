@@ -160,7 +160,7 @@ fun CapabilitiesScreen(
                 extraContent = {
                     if (state.cloudAiStatus is CapabilityStatus.Ready) {
                         Text(
-                            text = "No download required",
+                            text = "Configured. Requests require internet and authorization from the client app.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

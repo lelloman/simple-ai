@@ -33,7 +33,7 @@ import kotlinx.serialization.json.jsonPrimitive
 data class CapabilitiesState(
     val voiceCommandsStatus: CapabilityStatus = CapabilityStatus.Checking,
     val translationStatus: CapabilityStatus = CapabilityStatus.Checking,
-    val cloudAiStatus: CapabilityStatus = CapabilityStatus.Ready,
+    val cloudAiStatus: CapabilityStatus = CapabilityStatus.Checking,
     val localAiStatus: CapabilityStatus = CapabilityStatus.Checking,
     val downloadedLanguages: Set<String> = emptySet(),
     val downloadingLanguage: String? = null,

@@ -3,6 +3,8 @@ package com.lelloman.simpleai.capability
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.lelloman.simpleai.BuildConfig
+import com.lelloman.simpleai.cloud.CloudEndpoint
 import com.lelloman.simpleai.model.LocalAIModel
 import com.lelloman.simpleai.translation.TranslationManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +17,8 @@ import kotlinx.serialization.json.Json
  * Manages all SimpleAI capabilities, their download status, and persistence.
  */
 class CapabilityManager(
-    private val context: Context
+    private val context: Context,
+    cloudEndpoint: String = BuildConfig.CLOUD_LLM_ENDPOINT
 ) {
     companion object {
         private const val TAG = "CapabilityManager"
@@ -53,8 +56,8 @@ class CapabilityManager(
     private val _downloadedLanguages = MutableStateFlow<Set<String>>(emptySet())
     val downloadedLanguages: StateFlow<Set<String>> = _downloadedLanguages.asStateFlow()
 
-    // Cloud AI capability (always ready, no download needed)
-    private val _cloudAiStatus = MutableStateFlow<CapabilityStatus>(CapabilityStatus.Ready)
+    // Configuration availability only; network/authentication is checked per request.
+    private val _cloudAiStatus = MutableStateFlow(CloudEndpoint.status(cloudEndpoint))
     val cloudAiStatus: StateFlow<CapabilityStatus> = _cloudAiStatus.asStateFlow()
 
     // Local AI capability

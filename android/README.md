@@ -8,7 +8,14 @@ An Android service that provides AI capabilities to other apps. SimpleAI acts as
 |------------|-------------|-------------------|
 | **Voice Commands** | NLU intent classification + entity extraction | ~120 MB (XLM-RoBERTa) |
 | **Translation** | On-device translation via ML Kit | ~30 MB per language |
-| **Cloud AI** | Proxy to cloud LLM endpoint | None (requires client auth) |
+| **Cloud AI** | Proxy to cloud LLM endpoint | Configured build and client auth |
+
+Cloud configuration is set when building the app in `android/local.properties`:
+`cloud.llm.endpoint=https://your-service.example`. Use an HTTPS base URL without
+credentials, query parameters, or fragments; the client app supplies authorization
+for each request. SimpleAI appends `/v1/chat/completions`. An absent or invalid
+endpoint is unavailable. A configured endpoint's Ready status does not certify
+network connectivity or the caller's credentials; those are checked per request.
 | **Local AI** | On-device LLM inference | ~1.3 GB (Qwen 3 1.7B) |
 
 ## Requirements

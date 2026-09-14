@@ -16,7 +16,7 @@ import org.junit.Test
 class CapabilityManagerTest {
     @Test
     fun `shared translation inventory updates readiness for service clients`() {
-        val manager = CapabilityManager(mockContext)
+        val manager = CapabilityManager(mockContext, "https://cloud.example")
         manager.syncTranslationLanguages(setOf("en", "it"))
         assertEquals(setOf("en", "it"), manager.downloadedLanguages.value)
         assertEquals(CapabilityStatus.Ready, manager.translationStatus.value)
@@ -50,7 +50,7 @@ class CapabilityManagerTest {
             every { getSharedPreferences(any(), any()) } returns mockPrefs
         }
 
-        manager = CapabilityManager(mockContext)
+        manager = CapabilityManager(mockContext, "https://cloud.example")
     }
 
     @After
@@ -235,7 +235,7 @@ class CapabilityManagerTest {
         val capability = manager.getCapability(CapabilityId.CLOUD_AI)
         assertEquals(CapabilityId.CLOUD_AI, capability.id)
         assertEquals("Cloud AI", capability.name)
-        assertTrue(capability.isReady) // Cloud AI is always ready
+        assertTrue(capability.isReady) // A configured Cloud AI endpoint is available
     }
 
     @Test
@@ -282,7 +282,7 @@ class CapabilityManagerTest {
         every { mockPrefs.getString("translation_languages", null) } returns """["en","it","fr"]"""
 
         // Create new manager to trigger load
-        val newManager = CapabilityManager(mockContext)
+        val newManager = CapabilityManager(mockContext, "https://cloud.example")
 
         assertTrue(newManager.downloadedLanguages.value.contains("en"))
         assertTrue(newManager.downloadedLanguages.value.contains("it"))
@@ -293,7 +293,7 @@ class CapabilityManagerTest {
     fun `keeps translation Checking until persisted inventory is verified`() {
         every { mockPrefs.getString("translation_languages", null) } returns """["en","it"]"""
 
-        val newManager = CapabilityManager(mockContext)
+        val newManager = CapabilityManager(mockContext, "https://cloud.example")
 
         assertEquals(CapabilityStatus.Checking, newManager.translationStatus.value)
     }
@@ -303,7 +303,7 @@ class CapabilityManagerTest {
         every { mockPrefs.getString("translation_languages", null) } returns "invalid json"
 
         // Should not throw
-        val newManager = CapabilityManager(mockContext)
+        val newManager = CapabilityManager(mockContext, "https://cloud.example")
 
         // Should fall back to empty
         assertTrue(newManager.downloadedLanguages.value.isEmpty())

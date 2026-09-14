@@ -65,6 +65,9 @@ class CloudLLMClient {
         promptCacheKey: String?,
         authToken: String
     ): Result<ChatResponse> = withContext(Dispatchers.IO) {
+        val chatUrl = CloudEndpoint.chatUrl(endpoint) ?: return@withContext Result.failure(
+            CloudUnavailableException("Cloud AI is not configured in this app build")
+        )
         try {
             // Build messages array with optional system prompt
             val fullMessages = buildMessages(messages, systemPrompt)
@@ -76,7 +79,7 @@ class CloudLLMClient {
             Log.d(TAG, "Sending request to $endpoint/v1/chat/completions")
 
             val request = Request.Builder()
-                .url("$endpoint/v1/chat/completions")
+                .url(chatUrl)
                 .header("Authorization", "Bearer $authToken")
                 .header("Content-Type", "application/json")
                 .post(requestJson.toRequestBody(JSON_MEDIA_TYPE))
