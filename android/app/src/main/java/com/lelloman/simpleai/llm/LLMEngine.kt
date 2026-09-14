@@ -72,14 +72,18 @@ class LlamaEngine(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    internal val llmFlow = MutableSharedFlow<LlamaHelper.LLMEvent>(
+    private fun newEventFlow() = MutableSharedFlow<LlamaHelper.LLMEvent>(
         replay = 0,
         extraBufferCapacity = 256,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
-    private var llamaHelper: LlamaHelperWrapper? = null
-    private var _modelInfo: ModelInfo? = null
+    @Volatile internal var llmFlow = newEventFlow()
+        private set
+    private var resetBeforeGeneration = false
+
+    @Volatile private var llamaHelper: LlamaHelperWrapper? = null
+    @Volatile private var _modelInfo: ModelInfo? = null
     private var currentModelPath: String? = null
 
     override val isLoaded: Boolean
@@ -88,7 +92,7 @@ class LlamaEngine(
     override val modelInfo: ModelInfo?
         get() = _modelInfo
 
-    override fun loadModel(modelPath: File): Result<Unit> {
+    @Synchronized override fun loadModel(modelPath: File): Result<Unit> {
         return try {
             if (!modelPath.exists()) {
                 return Result.failure(IllegalArgumentException("Model file does not exist: ${modelPath.absolutePath}"))
@@ -103,6 +107,7 @@ class LlamaEngine(
             val contentUriString = uriResolver(modelPath)
             logger.i(TAG, "Content URI: $contentUriString")
 
+            llmFlow = newEventFlow()
             val helper = helperFactory(contentResolver, scope, llmFlow)
 
             // Load model using content URI
@@ -148,7 +153,7 @@ class LlamaEngine(
         }
     }
 
-    override fun unloadModel() {
+    @Synchronized override fun unloadModel() {
         try {
             llamaHelper?.let { helper ->
                 helper.abort()
@@ -160,9 +165,16 @@ class LlamaEngine(
         llamaHelper = null
         _modelInfo = null
         currentModelPath = null
+        resetBeforeGeneration = false
     }
 
-    override fun generate(prompt: String, params: GenerationParams): Result<String> {
+    @Synchronized override fun generate(prompt: String, params: GenerationParams): Result<String> {
+        // A stopped request has no tagged terminal acknowledgement. Recreate the
+        // helper with a separate stream before another caller can start.
+        if (resetBeforeGeneration) {
+            val path = currentModelPath ?: return Result.failure(IllegalStateException("Model not loaded"))
+            loadModel(File(path)).exceptionOrNull()?.let { return Result.failure(it) }
+        }
         val helper = llamaHelper
             ?: return Result.failure(IllegalStateException("Model not loaded"))
 
@@ -185,6 +197,7 @@ class LlamaEngine(
 
         } catch (e: Exception) {
             logger.e(TAG, "Error during generation", e)
+            resetBeforeGeneration = true
             Result.failure(e)
         }
     }
@@ -223,6 +236,7 @@ class LlamaEngine(
                         responseBuilder.append(event.word)
                         // Check if we've reached max tokens (approximate by char count)
                         if (responseBuilder.length > params.maxTokens * 4) {
+                            resetBeforeGeneration = true
                             helper.stopPrediction()
                             true // stop collecting
                         } else {
@@ -238,6 +252,7 @@ class LlamaEngine(
                     is LlamaHelper.LLMEvent.Error -> {
                         logger.e(TAG, "Generation error after ${System.currentTimeMillis() - startTime}ms: ${event.message}")
                         hasError = true
+                        resetBeforeGeneration = true
                         true // stop collecting
                     }
                 }
@@ -252,7 +267,7 @@ class LlamaEngine(
         return if (hasError) null else responseBuilder.toString()
     }
 
-    fun release() {
+    @Synchronized fun release() {
         unloadModel()
         scope.cancel()
     }

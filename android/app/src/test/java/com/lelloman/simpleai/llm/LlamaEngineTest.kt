@@ -75,6 +75,44 @@ private class FakeLlamaHelperWrapper : LlamaHelperWrapper {
 }
 
 class LlamaEngineTest {
+    @Test fun `concurrent callers receive only their own generation`() = runBlocking {
+        val engine = createEngine(2000)
+        engine.loadModel(File(tempDir, "concurrent.gguf").apply { writeText("model") })
+        val first = async(Dispatchers.IO) { engine.generate("first") }
+        withTimeout(1000) { engine.llmFlow.subscriptionCount.first { it > 0 } }
+        val second = async(Dispatchers.IO) { engine.generate("second") }
+        delay(50)
+        assertEquals("first", fakeWrapper.predictPrompt)
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Ongoing("one", 1))
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Done("one", 1, 1))
+        assertEquals("one", first.await().getOrThrow())
+        withTimeout(1000) {
+            while (fakeWrapper.predictPrompt != "second") delay(1)
+            engine.llmFlow.subscriptionCount.first { it > 0 }
+        }
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Ongoing("two", 1))
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Done("two", 1, 1))
+        assertEquals("two", second.await().getOrThrow())
+    }
+
+    @Test fun `late events from timed out helper cannot reach the next caller`() = runBlocking {
+        val engine = createEngine(200)
+        engine.loadModel(File(tempDir, "late.gguf").apply { writeText("model") })
+        val oldFlow = engine.llmFlow
+        assertTrue(engine.generate("timeout").isFailure)
+        val next = async(Dispatchers.IO) { engine.generate("next") }
+        withTimeout(1000) {
+            while (engine.llmFlow === oldFlow) delay(1)
+            engine.llmFlow.subscriptionCount.first { it > 0 }
+        }
+        oldFlow.emit(LlamaHelper.LLMEvent.Ongoing("stale", 1))
+        oldFlow.emit(LlamaHelper.LLMEvent.Done("stale", 1, 1))
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Ongoing("fresh", 1))
+        engine.llmFlow.emit(LlamaHelper.LLMEvent.Done("fresh", 1, 1))
+        assertEquals("fresh", next.await().getOrThrow())
+        assertTrue(fakeWrapper.releaseCalled)
+    }
+
     @Test fun `timeout without output is a failure and stops native prediction`() {
         val engine = createEngine()
         val file = File(tempDir, "timeout.gguf").apply { writeText("model") }
