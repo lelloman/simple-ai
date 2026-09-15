@@ -20,6 +20,14 @@ class RequestContractTest {
         assertTrue(runCatching { RequestValidation.generation("hello", 2049, 1f) }.isFailure)
         RequestValidation.generation("hello", 2048, 0f)
     }
+    @Test fun cloudRequestsUseConfiguredFastClassInsteadOfAccountDependentDefault() {
+        val messages = kotlinx.serialization.json.Json.parseToJsonElement("""[{"role":"user","content":"hello"}]""") as kotlinx.serialization.json.JsonArray
+        val tools = kotlinx.serialization.json.JsonArray(emptyList())
+        val body = CloudLLMClient { "" }.buildRequestBody(messages, tools, "conversation-1")
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("class:fast"), body["model"])
+        assertEquals(messages, body["messages"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("conversation-1"), body["prompt_cache_key"])
+    }
     @Test fun nullUsageIsOptional() {
         val response = CloudLLMClient { "" }.parseResponse("""{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":null}""")
         assertNull(response.usage)

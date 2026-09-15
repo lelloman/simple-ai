@@ -151,7 +151,7 @@ api.localChat(2, """[{"role":"user","content":"Hello"}]""", null, null)
 api.cloudChat(2, """[{"role":"user","content":"Hello"}]""", null, null, null, "")
 ```
 
-Local chat uses the Qwen text template with thinking disabled; tool calls/structured content are rejected. Local generation accepts 1–2,048 output tokens and finite temperature 0–2. Cloud chat may include tool definitions and a cache key; HTTP 429 returns `RATE_LIMITED`, and response usage may be absent/null.
+Local chat uses the Qwen text template with thinking disabled; tool calls/structured content are rejected. Local generation accepts 1–2,048 output tokens and finite temperature 0–2. Cloud chat explicitly requests `class:fast`, using the server’s configured fast-model routing regardless of the signed-in user’s roles. Cloud chat may include tool definitions and a cache key; HTTP 429 returns `RATE_LIMITED`, and response usage may be absent/null.
 
 `classify(2, text, adapterId, adapterVersion, patchFd, headsFd, tokenizerFd, configFd)` applies a client adapter and returns intent/confidence/slots. Descriptors must remain open until the call returns, then the client closes them. Adapter identity is scoped to Binder UID; selection plus inference is atomic. `clearAdapter(2)` only removes that UID's active adapter. The base model remains immutable; all patches target a checked working copy.
 

@@ -139,12 +139,14 @@ class CloudLLMClient(private val endpointProvider: () -> String) {
         return JsonArray(listOf(systemMessage) + messages)
     }
 
-    private fun buildRequestBody(
+    internal fun buildRequestBody(
         messages: JsonArray,
         tools: JsonArray?,
         promptCacheKey: String?
     ): JsonObject {
         val fields = mutableMapOf<String, JsonElement>(
+            // Select the server-managed class explicitly, independent of the user’s roles.
+            "model" to kotlinx.serialization.json.JsonPrimitive("class:fast"),
             "messages" to messages
         )
 
