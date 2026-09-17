@@ -127,6 +127,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
 
     Ok(Arc::new(AppState {
+        lan_local: Default::default(),
         config,
         jwks_client,
         ollama_client,

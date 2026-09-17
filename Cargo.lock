@@ -2311,6 +2311,7 @@ dependencies = [
  "hex",
  "hmac",
  "http",
+ "ipnet",
  "jsonwebtoken",
  "mockall",
  "prometheus-client",

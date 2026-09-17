@@ -16,7 +16,7 @@ use simple_ai_common::{
     SpeechStreamFormat,
 };
 
-use super::auth_helpers::{authenticate_request, extract_client_ip};
+use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
@@ -127,11 +127,13 @@ where
 }
 
 async fn list_voices(
+    connect_info: Option<ConnectInfo<SocketAddr>>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<VoicesQuery>,
 ) -> Result<Json<VoicesResponse>, (StatusCode, String)> {
-    let (auth_user, _user) = authenticate_request(&state, &headers).await?;
+    let (auth_user, _user) =
+        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
     if !state.config.gateway.enabled {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -176,7 +178,8 @@ async fn create_speech(
     Json(request): Json<SpeechRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
-    let (auth_user, user) = authenticate_request(&state, &headers).await?;
+    let (auth_user, user) =
+        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
 
     if !state.config.gateway.enabled {
         return Err((

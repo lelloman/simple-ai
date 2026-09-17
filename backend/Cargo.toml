@@ -42,6 +42,7 @@ thiserror = { workspace = true }
 # Crypto (API keys)
 sha2 = "0.10"
 hex = "0.4"
+ipnet = "2"
 rand = "0.8"
 hmac = "0.12"
 prometheus-client = "0.22"

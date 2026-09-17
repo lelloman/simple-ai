@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use super::auth_helpers::authenticate_request;
+use super::auth_helpers::authenticate_inference_request;
 use crate::AppState;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -51,12 +51,14 @@ pub fn router(state: Arc<AppState>) -> Router {
 }
 
 async fn extract(
+    connect_info: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(request): Json<ExtractRequest>,
 ) -> Result<Json<ExtractResponse>, (StatusCode, String)> {
     let start = Instant::now();
-    let (_auth_user, user) = authenticate_request(&state, &headers).await?;
+    let (_auth_user, user) =
+        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
 
     if request.url.trim().is_empty() || request.html.trim().is_empty() {
         return Err((

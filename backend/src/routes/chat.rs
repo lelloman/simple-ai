@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::auth_helpers::{authenticate_request, extract_client_ip};
+use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{
     can_request_model, CapacityReservation, ModelRequest, RoutedStream, SchedulerError,
 };
@@ -227,7 +227,8 @@ async fn chat_completions(
     let start = Instant::now();
 
     // Authenticate user - try API key first, then fall back to JWT
-    let (auth_user, user) = authenticate_request(&state, &headers).await?;
+    let (auth_user, user) =
+        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
 
     // Parse and validate model request
     let model_request = match &request.model {

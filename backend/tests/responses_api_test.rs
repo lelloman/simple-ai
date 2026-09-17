@@ -122,6 +122,7 @@ async fn create_test_state(
     let (request_events_tx, _) = tokio::sync::broadcast::channel(64);
 
     Ok(Arc::new(AppState {
+        lan_local: Default::default(),
         config,
         jwks_client,
         ollama_client,
@@ -503,4 +504,207 @@ async fn test_responses_surfaces_upstream_error() {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let text = String::from_utf8(body.to_vec()).unwrap();
     assert!(text.contains("500 Internal Server Error"));
+}
+
+#[cfg(test)]
+mod lan_local_tests {
+    use super::*;
+    use axum::http::HeaderMap;
+    use simple_ai_backend::lan_local::LanLocalUpdate;
+    use simple_ai_backend::routes::auth_helpers::{
+        authenticate_inference_request, authenticate_request,
+    };
+
+    #[tokio::test]
+    async fn lan_identity_and_explicit_credentials() {
+        let state = create_test_state("http://localhost:11434").await.unwrap();
+        state
+            .lan_local
+            .update(LanLocalUpdate {
+                enabled: true,
+                network: Some("192.168.1.0/24".into()),
+                duration_seconds: Some(60),
+            })
+            .unwrap();
+        let peer = Some("192.168.1.12:1234".parse().unwrap());
+        let mut headers = HeaderMap::new();
+        let (auth, user) = authenticate_inference_request(&state, &headers, peer)
+            .await
+            .unwrap();
+        assert_eq!(user.id, "lan-local");
+        assert!(!auth.is_admin());
+        assert!(auth.has_role("model:specific"));
+        assert!(authenticate_request(&state, &headers).await.is_err());
+        for token in ["Bearer sk-invalid", "Bearer invalid-jwt", "", "Basic abc"] {
+            headers.insert("authorization", token.parse().unwrap());
+            assert_eq!(
+                authenticate_inference_request(&state, &headers, peer)
+                    .await
+                    .unwrap_err()
+                    .0,
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        state
+            .audit_logger
+            .find_or_create_user("real-user", None)
+            .unwrap();
+        let (_, token) = state
+            .audit_logger
+            .create_api_key("real-user", "test", &[])
+            .unwrap();
+        headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
+        let (auth, user) = authenticate_inference_request(&state, &headers, peer)
+            .await
+            .unwrap();
+        assert_eq!(auth.sub, "real-user");
+        assert!(!auth.has_role("model:specific"));
+        assert_eq!(user.id, "real-user");
+        headers.remove("authorization");
+        state.audit_logger.disable_user("lan-local").unwrap();
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    #[tokio::test]
+    async fn admin_toggle_requires_admin_and_validates_input() {
+        let state = create_test_state("http://localhost:11434").await.unwrap();
+        state
+            .audit_logger
+            .find_or_create_user("admin-user", None)
+            .unwrap();
+        let (_, token) = state
+            .audit_logger
+            .create_api_key("admin-user", "admin", &["admin".into()])
+            .unwrap();
+        let app = routes::admin::router(state.clone());
+        let peer = axum::extract::ConnectInfo(
+            "192.168.1.12:1234".parse::<std::net::SocketAddr>().unwrap(),
+        );
+        for (body, expected) in [
+            (
+                json!({"enabled":true,"network":"0.0.0.0/0","duration_seconds":60}),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                json!({"enabled":true,"network":"192.168.1.0/24"}),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                json!({"enabled":true,"network":"192.168.1.0/24","duration_seconds":60}),
+                StatusCode::OK,
+            ),
+        ] {
+            let request = http::Request::builder()
+                .method("PUT")
+                .uri("/api/lan-local")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap();
+            assert_eq!(
+                app.clone().oneshot(request).await.unwrap().status(),
+                expected
+            );
+        }
+        assert!(state.lan_local.status().enabled);
+        for method in ["GET", "PUT"] {
+            let request = http::Request::builder()
+                .method(method)
+                .uri("/api/lan-local")
+                .extension(peer)
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"enabled":false}"#))
+                .unwrap();
+            assert_eq!(
+                app.clone().oneshot(request).await.unwrap().status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+        state
+            .audit_logger
+            .find_or_create_user("ordinary-user", None)
+            .unwrap();
+        let (_, ordinary) = state
+            .audit_logger
+            .create_api_key("ordinary-user", "ordinary", &[])
+            .unwrap();
+        let request = http::Request::builder()
+            .uri("/api/lan-local")
+            .header("authorization", format!("Bearer {ordinary}"))
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+        let request = http::Request::builder()
+            .method("PUT")
+            .uri("/api/lan-local")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"enabled":false}"#))
+            .unwrap();
+        assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::OK);
+        assert!(!state.lan_local.status().enabled);
+    }
+
+    #[tokio::test]
+    async fn tokenless_inference_uses_connection_address() {
+        let ollama = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .and(wiremock::matchers::body_partial_json(json!({"model":"llama3"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "message": {"role":"assistant", "content":"Hello LAN"},
+                "done":true, "prompt_eval_count":1, "eval_count":2
+            })))
+            .expect(1)
+            .mount(&ollama)
+            .await;
+        let state = create_test_state(&ollama.uri()).await.unwrap();
+        state
+            .lan_local
+            .update(LanLocalUpdate {
+                enabled: true,
+                network: Some("192.168.1.0/24".into()),
+                duration_seconds: Some(60),
+            })
+            .unwrap();
+        let app = routes::responses::router(state.clone());
+        for (ip, forwarded, expected) in [
+            ("192.168.1.12:1234", false, StatusCode::OK),
+            ("192.168.2.12:1234", false, StatusCode::UNAUTHORIZED),
+            ("192.168.1.12:1234", true, StatusCode::UNAUTHORIZED),
+            ("8.8.8.8:1234", true, StatusCode::UNAUTHORIZED),
+        ] {
+            let mut request = http::Request::builder()
+                .method("POST")
+                .uri("/responses")
+                .extension(axum::extract::ConnectInfo(
+                    ip.parse::<std::net::SocketAddr>().unwrap(),
+                ))
+                .header("content-type", "application/json");
+            if forwarded {
+                request = request.header("x-forwarded-for", "192.168.1.12");
+            }
+            let response = app
+                .clone()
+                .oneshot(
+                    request
+                        .body(Body::from(
+                            json!({"model":"llama3", "input":"Hello", "stream":false})
+                                .to_string(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected);
+        }
+    }
 }

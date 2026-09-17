@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::auth_helpers::{authenticate_request, extract_client_ip};
+use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
 use crate::gateway::{CapacityReservation, RoutedStream};
 use crate::models::request::{Request, Response as AuditResponse};
@@ -435,7 +435,8 @@ async fn create_response(
     Json(request): Json<ResponseCreateRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
-    let (auth_user, user) = authenticate_request(&state, &headers).await?;
+    let (auth_user, user) =
+        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
     let mut chat_request = build_chat_request(request);
 
     let model_request = ModelRequest::parse(

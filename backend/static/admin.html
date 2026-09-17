@@ -141,6 +141,29 @@
                             </div>
                         </div>
 
+                        <section class="mt-6 rounded-lg bg-white p-5 shadow" aria-labelledby="lan-local-title">
+                            <h3 id="lan-local-title" class="font-medium text-gray-900">Temporary LAN-local access</h3>
+                            <p class="mt-1 text-sm text-gray-500">Tokenless requests from this private network use the shared lan-local user. Tokens still take priority. Connect directly to the server's LAN address.</p>
+                            <p id="lan-local-status" class="mt-2 text-sm" role="status">Loading access status…</p>
+                            <form onsubmit="updateLanLocal(event, true)" class="mt-3 flex flex-wrap items-end gap-3">
+                                <label class="text-sm">LAN subnet or device
+                                    <input id="lan-local-network" required placeholder="192.168.1.0/24 or 192.168.1.10/32" class="mt-1 block w-80 rounded border border-gray-300 px-3 py-2">
+                                </label>
+                                <label class="text-sm">Timeout
+                                    <select id="lan-local-duration" class="mt-1 block rounded border border-gray-300 px-3 py-2">
+                                        <option value="900">15 minutes</option>
+                                        <option value="3600" selected>1 hour</option>
+                                        <option value="14400">4 hours</option>
+                                        <option value="28800">8 hours</option>
+                                        <option value="86400">24 hours</option>
+                                    </select>
+                                </label>
+                                <button id="lan-local-enable" type="submit" disabled class="rounded bg-primary-600 px-3 py-2 text-sm text-white disabled:opacity-50">Enable / renew</button>
+                                <button id="lan-local-disable" type="button" disabled onclick="updateLanLocal(event, false)" class="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50">Disable</button>
+                            </form>
+                            <p id="lan-local-error" class="mt-2 text-sm text-red-600" role="alert"></p>
+                        </section>
+
                         <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
                             <div class="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
                                 <div>
@@ -1471,6 +1494,10 @@
             }
 
             currentPage = page;
+            if (page === 'dashboard') {
+                loadLanLocal();
+                refreshInterval = setInterval(loadLanLocal, 10000);
+            }
 
             // Update nav (user-detail highlights the Users nav)
             document.querySelectorAll('.nav-link').forEach(el => {
@@ -1533,6 +1560,69 @@
                 renderRequestsRouterEvents();
             }
             // user-detail page is handled by showUserDetail()
+        }
+
+        let lanLocalLoading = false;
+        let lanLocalUpdating = false;
+        let lanLocalRevision = 0;
+
+        function renderLanLocal(data) {
+            document.getElementById('lan-local-status').textContent = data.enabled
+                ? `ON — ${data.network}; expires ${new Date(data.expires_at).toLocaleString()}`
+                : 'OFF — token authentication required';
+            if (data.network && !document.getElementById('lan-local-network').value) {
+                document.getElementById('lan-local-network').value = data.network;
+            }
+            document.getElementById('lan-local-enable').disabled = false;
+            document.getElementById('lan-local-disable').disabled = !data.enabled;
+        }
+
+        async function loadLanLocal() {
+            if (lanLocalLoading || lanLocalUpdating) return;
+            lanLocalLoading = true;
+            const revision = lanLocalRevision;
+            try {
+                const data = await apiFetch('/admin/api/lan-local');
+                if (revision !== lanLocalRevision) return;
+                renderLanLocal(data);
+                document.getElementById('lan-local-error').textContent = '';
+            } catch (error) {
+                if (revision !== lanLocalRevision) return;
+                document.getElementById('lan-local-status').textContent = 'Access status unavailable';
+                document.getElementById('lan-local-error').textContent = error.message;
+            } finally {
+                lanLocalLoading = false;
+            }
+        }
+
+        async function updateLanLocal(event, enabled) {
+            event.preventDefault();
+            if (lanLocalUpdating) return;
+            lanLocalUpdating = true;
+            // Ignore any status poll started before this user action.
+            lanLocalRevision++;
+            document.getElementById('lan-local-enable').disabled = true;
+            document.getElementById('lan-local-disable').disabled = true;
+            try {
+                const data = await apiFetch('/admin/api/lan-local', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        enabled,
+                        ...(enabled ? {
+                            network: document.getElementById('lan-local-network').value.trim(),
+                            duration_seconds: Number(document.getElementById('lan-local-duration').value)
+                        } : {})
+                    })
+                });
+                renderLanLocal(data);
+                document.getElementById('lan-local-error').textContent = '';
+            } catch (error) {
+                document.getElementById('lan-local-error').textContent = error.message;
+                document.getElementById('lan-local-enable').disabled = false;
+                document.getElementById('lan-local-disable').disabled = false;
+            } finally {
+                lanLocalUpdating = false;
+            }
         }
 
         // Render dashboard stats from local state

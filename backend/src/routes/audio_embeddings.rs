@@ -10,7 +10,7 @@ use axum::{
 };
 use simple_ai_common::{AudioEmbeddingOptions, AudioEmbeddingResponse};
 
-use super::auth_helpers::{authenticate_request, extract_client_ip};
+use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
@@ -41,7 +41,8 @@ async fn create_audio_embedding(
     mut multipart: Multipart,
 ) -> Result<Json<AudioEmbeddingResponse>, (StatusCode, String)> {
     let start = Instant::now();
-    let (auth_user, user) = authenticate_request(&state, &headers).await?;
+    let (auth_user, user) =
+        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
 
     if !state.config.gateway.enabled {
         return Err((

@@ -75,6 +75,24 @@ async fn require_admin(
     }
 }
 
+async fn lan_local_status(
+    State(state): State<Arc<AppState>>,
+) -> Json<crate::lan_local::LanLocalStatus> {
+    Json(state.lan_local.status())
+}
+
+async fn lan_local_update(
+    State(state): State<Arc<AppState>>,
+    Json(update): Json<crate::lan_local::LanLocalUpdate>,
+) -> Result<Json<crate::lan_local::LanLocalStatus>, (StatusCode, String)> {
+    let status = state
+        .lan_local
+        .update(update)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    tracing::info!(enabled = status.enabled, network = ?status.network, expires_at = ?status.expires_at, "LAN-local access updated");
+    Ok(Json(status))
+}
+
 /// Runner info for API response.
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerInfo {
@@ -1422,6 +1440,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/runners/:id/unload-model", post(unload_model))
         .route("/models", get(list_models))
         // JSON API endpoints (for SPA dashboard)
+        .route("/api/lan-local", get(lan_local_status).put(lan_local_update))
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
         .route("/api/requests/:id/cancel", post(api_request_cancel))

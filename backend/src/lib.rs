@@ -7,6 +7,7 @@ pub mod config;
 pub mod gateway;
 pub mod llm;
 pub mod logging;
+pub mod lan_local;
 pub mod models;
 pub mod rate_limit;
 pub mod routes;
@@ -61,6 +62,7 @@ pub struct RequestEvent {
 
 /// Shared application state.
 pub struct AppState {
+    pub lan_local: lan_local::LanLocalAccess,
     pub config: Config,
     pub jwks_client: JwksClient,
     pub ollama_client: OllamaClient,

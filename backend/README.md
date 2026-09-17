@@ -172,3 +172,28 @@ public authorization code + PKCE and refresh tokens. The backend publishes only
 its issuer and this public client ID at `/.well-known/simple-ai`, and trusts the
 gateway audience alongside its primary audience. Do not add individual calling
 apps such as Pezzottify to `additional_audiences` for this integration.
+
+### Temporary LAN-local access
+
+In the admin dashboard, use **Temporary LAN-local access** to enter your private
+LAN CIDR (for example `192.168.1.0/24`), select a timeout, and enable access.
+Use `/32` for a single IPv4 device or `/128` for a single IPv6 device. IPv6 unique
+local networks are supported too. You can renew or disable access at any time;
+the maximum duration is 24 hours and restarting the server disables it.
+
+During this window, tokenless inference requests from the selected network use
+the shared `lan-local` user, with permission to select specific models and existing
+request tracking, but no admin privileges. Disabling that user also blocks this access. Any supplied Authorization
+header goes through normal authentication, including rejection of invalid tokens.
+Admin APIs always require an authenticated administrator. Expiry prevents new
+requests; work already accepted can finish.
+
+Connect directly to the server's LAN IP and port. The network check uses the TCP
+peer address. Requests with `Forwarded`, `X-Forwarded-For`, or `X-Real-IP` headers
+are ineligible. Do not route external traffic through a proxy that hides its
+origin behind an allowed LAN address without forwarding headers.
+
+The admin API exposes `GET /admin/api/lan-local` and `PUT /admin/api/lan-local`.
+To enable, send `{"enabled":true,"network":"192.168.1.0/24","duration_seconds":3600}`;
+to disable, send `{"enabled":false}`. Status includes `enabled`, `network`,
+`expires_at`, and `remaining_seconds`. This setting is local to each server process.

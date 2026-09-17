@@ -206,6 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     let state = Arc::new(AppState {
+        lan_local: Default::default(),
         config: config.clone(),
         jwks_client,
         ollama_client,

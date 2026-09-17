@@ -19,6 +19,33 @@ pub fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> Optio
     addr.map(|a| a.ip().to_string())
 }
 
+/// Authenticate inference requests, allowing the temporary LAN identity only
+/// when no Authorization header was supplied.
+pub async fn authenticate_inference_request(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+) -> Result<(AuthUser, User), (StatusCode, String)> {
+    if !headers.contains_key("authorization") && state.lan_local.allows(headers, peer) {
+        let user = state
+            .audit_logger
+            .find_or_create_user("lan-local", None)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        if !user.is_enabled {
+            return Err((StatusCode::FORBIDDEN, "User is disabled".to_string()));
+        }
+        return Ok((
+            AuthUser::new(
+                user.id.clone(),
+                None,
+                vec![crate::gateway::model_class::roles::MODEL_SPECIFIC.to_string()],
+            ),
+            user,
+        ));
+    }
+    authenticate_request(state, headers).await
+}
+
 /// Authenticate a request using API key or JWT.
 pub async fn authenticate_request(
     state: &AppState,
