@@ -43,3 +43,7 @@ Container: `docker.io/kyuz0/vllm-therock-gfx1151:latest`, image ID `6572ae5da5ee
 Raw results: [Halo 1 CPU](halo1-cpu.json), [Halo 2 CPU](halo2-cpu.json), [Halo 1 ROCm GPU](halo1-rocm.json). GPU inference was tested on Halo 1 only; Halo 2 had a different container inventory. Both production Halo providers remain configured for CPU.
 
 A CPU control run in the **same ROCm container** gave medians of **43.96 / 389.15 / 309.59 ms** (short / medium / batch16), close to the installed CPU environment. The corresponding GPU speedups were **6.56× / 15.31× / 9.53×**. This control set `OPENBLAS_NUM_THREADS=8` and `OMP_NUM_THREADS=8` as well as the script's eight PyTorch threads: an initial run without the BLAS cap oversubscribed CPU threads and was stopped without producing a completed report. Raw controlled results: [halo1-rocm-cpu.json](halo1-rocm-cpu.json). CPU remains FP32 and GPU FP16, so these are practical configuration comparisons, not precision-matched measurements.
+
+## Halo-only serving decision
+
+After the CPU/GPU comparison, serving was restricted to Halo 1 and Halo 2. Extraction is disabled in the RTX runner configuration, and the gateway now uses `["halo"]` for both extraction class preferences and speculative wake targets. Verified that RTX no longer advertises the model, both Halos still perform extraction, and the public gateway continues to list GLiNER. The earlier three-runner rollout and RTX measurements above are historical validation records.

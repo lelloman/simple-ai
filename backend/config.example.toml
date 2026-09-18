@@ -122,6 +122,7 @@ wake_preferred_classes = [] # e.g. ["big"]
 # First machine type in the list is most preferred.
 # Runners with machine types not in the list are deprioritized.
 [routing.class_preferences]
+information_extraction = ["halo"] # GLiNER is served only by Halo runners
 fast = ["gpu-server", "halo"]   # Prefer gpu-server for fast models
 big = ["halo", "gpu-server"]    # Prefer halo for big models
 audio_embeddings = ["gpu-server"] # Prefer RTX/CUDA for audio embedding models
@@ -133,6 +134,7 @@ ocr = ["gpu-server"]              # Prefer machines with OCR dependencies instal
 # When speculative_wake_enabled=true and no runners are available,
 # wake ALL machines in this list for the requested class.
 [routing.speculative_wake_targets]
+information_extraction = ["halo"]
 fast = ["halo", "gpu-server"]   # Wake both; use whichever boots first
 big = ["halo"]                  # Only halos can run big models
 audio_embeddings = ["gpu-server"]

@@ -53,7 +53,9 @@ These limits bound service work; they are not promises about quality or the unde
 
 ## Runner setup
 
-On each runner, copy `scripts/setup-extraction.sh` and `scripts/extraction-requirements.txt` together and run:
+GLiNER is deployed only on **Halo 1 and Halo 2**. Extraction is disabled on the RTX runner. Gateway routing preferences and speculative wake targets for `information_extraction` are both `["halo"]`. The public endpoint and model ID are unchanged.
+
+On each Halo runner, copy `scripts/setup-extraction.sh` and `scripts/extraction-requirements.txt` together and run:
 
 ```bash
 bash setup-extraction.sh /home/lelloman/.simple-ai-extraction cpu
@@ -82,6 +84,12 @@ Gateway configuration:
 ```toml
 [models]
 information_extraction = ["fastino/gliner2.5-multi-v1"]
+
+[routing.class_preferences]
+information_extraction = ["halo"]
+
+[routing.speculative_wake_targets]
+information_extraction = ["halo"]
 ```
 
 Deploy the gateway before updated runners: older gateways cannot decode the new capability enum. Runner configs without extraction remain compatible because it defaults to disabled. For rollback, disable extraction on runners before rolling back the gateway.
