@@ -1,0 +1,229 @@
+{
+  "host": "halo1",
+  "device": "cpu",
+  "torch": "2.13.0+cpu",
+  "revision": "235cf92d6d4318da9bfca0d08975c8fa7250d13b",
+  "threads": 8,
+  "batch_size": 4,
+  "load_seconds": 3.4722275300000547,
+  "gpu": null,
+  "peak_cuda_mib": null,
+  "results": [
+    {
+      "workload": "short",
+      "input_count": 1,
+      "characters": 90,
+      "median_ms": 44.3535,
+      "min_ms": 44.229,
+      "max_ms": 44.571,
+      "documents_per_second": 22.546135028802688,
+      "times_ms": [
+        44.282,
+        44.229,
+        44.265,
+        44.253,
+        44.279,
+        44.472,
+        44.446,
+        44.425,
+        44.474,
+        44.571
+      ],
+      "sample": {
+        "index": 0,
+        "result": {
+          "entities": {
+            "person": [
+              {
+                "text": "Marco Bianchi",
+                "confidence": 0.9972571730613708,
+                "start": 69,
+                "end": 82
+              },
+              {
+                "text": "Giulia Rossi",
+                "confidence": 0.9969393014907837,
+                "start": 0,
+                "end": 12
+              }
+            ],
+            "organization": [
+              {
+                "text": "Acme",
+                "confidence": 0.9939069151878357,
+                "start": 24,
+                "end": 28
+              }
+            ],
+            "location": [
+              {
+                "text": "Roma",
+                "confidence": 0.9986158609390259,
+                "start": 85,
+                "end": 89
+              },
+              {
+                "text": "Milano",
+                "confidence": 0.9974518418312073,
+                "start": 31,
+                "end": 37
+              }
+            ],
+            "date": [
+              {
+                "text": "15 settembre",
+                "confidence": 0.9884369969367981,
+                "start": 42,
+                "end": 54
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "workload": "medium",
+      "input_count": 1,
+      "characters": 1506,
+      "median_ms": 387.536,
+      "min_ms": 385.485,
+      "max_ms": 416.523,
+      "documents_per_second": 2.58040543330168,
+      "times_ms": [
+        386.228,
+        385.485,
+        386.236,
+        385.85,
+        395.603,
+        387.101,
+        387.971,
+        389.45,
+        395.803,
+        416.523
+      ],
+      "sample": {
+        "index": 0,
+        "result": {
+          "entities": {
+            "person": [
+              {
+                "text": "Giulia Rossi",
+                "confidence": 0.9946973323822021,
+                "start": 1416,
+                "end": 1428
+              },
+              {
+                "text": "Marco Bianchi",
+                "confidence": 0.9966514706611633,
+                "start": 1485,
+                "end": 1498
+              }
+            ],
+            "organization": [
+              {
+                "text": "Acme",
+                "confidence": 0.9894410371780396,
+                "start": 1440,
+                "end": 1444
+              }
+            ],
+            "location": [
+              {
+                "text": "Milano",
+                "confidence": 0.9922468662261963,
+                "start": 1447,
+                "end": 1453
+              },
+              {
+                "text": "Roma",
+                "confidence": 0.997698962688446,
+                "start": 1501,
+                "end": 1505
+              }
+            ],
+            "date": [
+              {
+                "text": "15 settembre",
+                "confidence": 0.9716367125511169,
+                "start": 1458,
+                "end": 1470
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "workload": "batch16",
+      "input_count": 16,
+      "characters": 1440,
+      "median_ms": 320.9835,
+      "min_ms": 320.577,
+      "max_ms": 335.027,
+      "documents_per_second": 49.84679897876371,
+      "times_ms": [
+        335.027,
+        320.577,
+        320.665,
+        320.947,
+        325.453,
+        321.02,
+        321.874,
+        321.174,
+        320.647,
+        320.784
+      ],
+      "sample": {
+        "index": 0,
+        "result": {
+          "entities": {
+            "person": [
+              {
+                "text": "Marco Bianchi",
+                "confidence": 0.9972571730613708,
+                "start": 69,
+                "end": 82
+              },
+              {
+                "text": "Giulia Rossi",
+                "confidence": 0.9969393014907837,
+                "start": 0,
+                "end": 12
+              }
+            ],
+            "organization": [
+              {
+                "text": "Acme",
+                "confidence": 0.9939069151878357,
+                "start": 24,
+                "end": 28
+              }
+            ],
+            "location": [
+              {
+                "text": "Roma",
+                "confidence": 0.9986158609390259,
+                "start": 85,
+                "end": 89
+              },
+              {
+                "text": "Milano",
+                "confidence": 0.9974518418312073,
+                "start": 31,
+                "end": 37
+              }
+            ],
+            "date": [
+              {
+                "text": "15 settembre",
+                "confidence": 0.9884369969367981,
+                "start": 42,
+                "end": 54
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
