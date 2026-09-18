@@ -103,6 +103,8 @@ pub struct EnginesConfig {
     pub vllm: Option<VllmEngineConfig>,
     /// Process-backed zero-shot text classification engine.
     pub classification: Option<ClassificationEngineConfig>,
+    #[serde(default)]
+    pub extraction: ExtractionEngineConfig,
 }
 
 /// Process-backed Hugging Face NLI classification engine configuration.
@@ -947,5 +949,37 @@ mod tests {
         assert!(config.model_routes["qwen3.8-27b"]
             .aliases
             .contains(&"Qwen3.8-27B-Uncensored-Q4_K_M".to_owned()));
+    }
+}
+
+/// Process-backed GLiNER provider; CPU by default, CUDA opt-in.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ExtractionEngineConfig {
+    pub enabled: bool,
+    pub command: Vec<String>,
+    pub model_id: String,
+    pub revision: String,
+    pub model_path: Option<String>,
+    pub device: String,
+    pub batch_size: u32,
+    pub num_threads: u32,
+    pub startup_timeout_secs: u64,
+    pub request_timeout_secs: u64,
+}
+impl Default for ExtractionEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            command: vec![],
+            model_id: "fastino/gliner2.5-multi-v1".into(),
+            revision: "235cf92d6d4318da9bfca0d08975c8fa7250d13b".into(),
+            model_path: None,
+            device: "cpu".into(),
+            batch_size: 4,
+            num_threads: 8,
+            startup_timeout_secs: 600,
+            request_timeout_secs: 180,
+        }
     }
 }

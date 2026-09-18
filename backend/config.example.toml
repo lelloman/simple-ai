@@ -54,6 +54,8 @@ port = 9
 # bouncer_url = "tcp://host.docker.internal:9999"
 
 [models]
+# Multilingual entities, records, relations and label classification.
+information_extraction = ["fastino/gliner2.5-multi-v1"]
 # Model classification for routing and permissions.
 # Users with "model:specific" role can request exact models.
 # Users without it can only request classes, plus configured audio embedding and TTS models.

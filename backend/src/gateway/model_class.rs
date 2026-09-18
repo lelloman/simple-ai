@@ -26,6 +26,7 @@ pub enum ModelClass {
     Tts,
     /// NLI models exposed through `/v1/classifications`
     TextClassification,
+    InformationExtraction,
 }
 
 impl ModelClass {
@@ -38,6 +39,7 @@ impl ModelClass {
             "embed_large" => Some(Self::EmbedLarge),
             "audio_embeddings" => Some(Self::AudioEmbeddings),
             "tts" => Some(Self::Tts),
+            "information_extraction" | "extraction" => Some(Self::InformationExtraction),
             "text_classification" | "classification" => Some(Self::TextClassification),
             _ => None,
         }
@@ -52,6 +54,7 @@ impl ModelClass {
             Self::EmbedLarge => "embed_large",
             Self::AudioEmbeddings => "audio_embeddings",
             Self::Tts => "tts",
+            Self::InformationExtraction => "information_extraction",
             Self::TextClassification => "text_classification",
         }
     }
@@ -74,6 +77,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
         Some("embed_large") => Some(ModelClass::EmbedLarge),
         Some("audio_embeddings") => Some(ModelClass::AudioEmbeddings),
         Some("tts") => Some(ModelClass::Tts),
+        Some("information_extraction") => Some(ModelClass::InformationExtraction),
         Some("text_classification") => Some(ModelClass::TextClassification),
         _ => None,
     }

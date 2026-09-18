@@ -292,6 +292,7 @@ fn compute_protected_classes(
         ModelClass::AudioEmbeddings,
         ModelClass::Tts,
         ModelClass::TextClassification,
+        ModelClass::InformationExtraction,
     ] {
         let has_class = models
             .iter()

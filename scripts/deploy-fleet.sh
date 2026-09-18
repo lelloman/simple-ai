@@ -12,6 +12,7 @@ AUDIO_PROVIDER="$PROJECT_DIR/scripts/simple_ai_audio_provider.py"
 XTTS_PROVIDER="$PROJECT_DIR/scripts/simple_ai_xtts_provider.py"
 CHATTERBOX_PROVIDER="$PROJECT_DIR/scripts/simple_ai_chatterbox_provider.py"
 CLASSIFICATION_PROVIDER="$PROJECT_DIR/scripts/simple_ai_classification_provider.py"
+EXTRACTION_PROVIDER="$PROJECT_DIR/scripts/simple_ai_extraction_provider.py"
 
 # CLI options
 BUILD=false
@@ -254,6 +255,7 @@ deploy_host() {
         echo "[DRY-RUN] Would upload audio provider to $ssh_target:$deploy_dir/simple-ai-audio-provider.py"
         echo "[DRY-RUN] Would upload XTTS provider to $ssh_target:$deploy_dir/simple-ai-xtts-provider.py"
         echo "[DRY-RUN] Would upload Chatterbox provider to $ssh_target:$deploy_dir/simple-ai-chatterbox-provider.py"
+        echo "[DRY-RUN] Would upload extraction provider to $ssh_target:$deploy_dir/simple-ai-extraction-provider.py"
         echo "[DRY-RUN] Would upload classification provider to $ssh_target:$deploy_dir/simple-ai-classification-provider.py"
         echo "[DRY-RUN] Would upload config from $config_path to $ssh_target:$deploy_dir/config.toml"
         echo "[DRY-RUN] Would install systemd service with deploy_dir=$deploy_dir"
@@ -301,6 +303,7 @@ deploy_host() {
     # Upload Hugging Face NLI provider used by text classification runners.
     echo "  Uploading classification provider..."
     scp -q "$CLASSIFICATION_PROVIDER" "$ssh_target:$deploy_dir/simple-ai-classification-provider.py"
+    scp -q "$EXTRACTION_PROVIDER" "$ssh_target:$deploy_dir/simple-ai-extraction-provider.py"
     ssh "$ssh_target" "chmod +x $deploy_dir/simple-ai-classification-provider.py"
 
     # Upload config

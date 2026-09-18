@@ -14,7 +14,9 @@ use super::{
 };
 use crate::routes::embeddings::{EmbeddingRequest, EmbeddingResponse};
 use simple_ai_common::{AudioEmbeddingResponse, SpeechRequest};
-use simple_ai_common::{ClassificationRequest, ClassificationResponse};
+use simple_ai_common::{
+    ClassificationRequest, ClassificationResponse, ExtractionRequest, ExtractionResponse,
+};
 
 #[derive(Debug)]
 pub struct ScheduledResponse<T> {
@@ -209,6 +211,28 @@ impl RequestScheduler {
         let routed = self
             .inference_router
             .classification::<ClassificationRequest, ClassificationResponse>(model, request)
+            .await?;
+        Ok(ScheduledResponse {
+            response: routed.response,
+            runner_id: routed.runner_id,
+            resolved_model: routed.resolved_model,
+            wol_sent: prepared.wol_sent,
+        })
+    }
+
+    pub async fn extraction(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        request: &ExtractionRequest,
+    ) -> Result<ScheduledResponse<ExtractionResponse>, SchedulerError> {
+        let prepared = self
+            .prepare_for_request(request_id, model, model_request, None)
+            .await?;
+        let routed = self
+            .inference_router
+            .extraction::<ExtractionRequest, ExtractionResponse>(model, request)
             .await?;
         Ok(ScheduledResponse {
             response: routed.response,

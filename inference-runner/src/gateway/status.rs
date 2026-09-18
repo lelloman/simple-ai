@@ -220,6 +220,32 @@ impl StatusCollector {
             }
         }
 
+        for engine in engines
+            .iter()
+            .filter(|engine| engine.engine_type == "extraction")
+        {
+            for model in &engine.available_models {
+                if capabilities.iter().any(|info| {
+                    info.capability == Capability::InformationExtraction
+                        && info.model_id == model.id
+                }) {
+                    continue;
+                }
+                capabilities.push(CapabilityInfo {
+                    capability: Capability::InformationExtraction,
+                    status: if engine.loaded_models.contains(&model.id) {
+                        CapabilityStatus::Loaded
+                    } else {
+                        CapabilityStatus::Unloaded
+                    },
+                    model_id: model.id.clone(),
+                    active_requests: 0,
+                    avg_latency_ms: None,
+                    metadata: None,
+                });
+            }
+        }
+
         if self.ocr_available {
             let provider_info = simple_ai_common::OcrProviderInfo {
                 provider: self.config.ocr.provider.clone(),
@@ -530,6 +556,43 @@ mod tests {
         let capabilities = collector.collect_capabilities(&engines).await;
         assert_eq!(capabilities.len(), 1);
         assert_eq!(capabilities[0].capability, Capability::TextClassification);
+        assert_eq!(capabilities[0].status, CapabilityStatus::Loaded);
+        assert_eq!(capabilities[0].model_id, model_id);
+    }
+
+    #[tokio::test]
+    async fn extraction_engine_advertises_models_automatically() {
+        let config = test_config();
+        let registry = std::sync::Arc::new(crate::engine::EngineRegistry::new());
+        let collector = StatusCollector::new(config, registry, false);
+        let model_id = "fastino/gliner2.5-multi-v1".to_string();
+        let engines = vec![EngineStatus {
+            engine_type: "extraction".to_string(),
+            resource_group: Some("cuda:0".to_string()),
+            is_healthy: true,
+            version: None,
+            loaded_models: vec![model_id.clone()],
+            available_models: vec![simple_ai_common::ModelInfo {
+                id: model_id.clone(),
+                name: "BGE-M3 Zero-shot".to_string(),
+                size_bytes: Some(1_140_000_000),
+                parameter_count: Some(568_000_000),
+                context_length: Some(8192),
+                quantization: Some("F16".to_string()),
+                modified_at: None,
+                reasoning: None,
+            }],
+            error: None,
+            batch_size: 64,
+            prompt_cache: None,
+        }];
+
+        let capabilities = collector.collect_capabilities(&engines).await;
+        assert_eq!(capabilities.len(), 1);
+        assert_eq!(
+            capabilities[0].capability,
+            Capability::InformationExtraction
+        );
         assert_eq!(capabilities[0].status, CapabilityStatus::Loaded);
         assert_eq!(capabilities[0].model_id, model_id);
     }

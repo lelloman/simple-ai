@@ -5,6 +5,8 @@
 
 mod audio_embeddings;
 mod classification;
+mod extraction;
+pub use extraction::ExtractionEngine;
 mod llama_cpp;
 mod ollama;
 mod registry;
@@ -25,7 +27,8 @@ use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
     AudioEmbeddingOptions, AudioEmbeddingResponse, ChatCompletionRequest, ChatCompletionResponse,
-    ClassificationRequest, ClassificationResponse, ReasoningCapabilities, SpeechRequest,
+    ClassificationRequest, ClassificationResponse, ExtractionRequest, ExtractionResponse,
+    ReasoningCapabilities, SpeechRequest,
 };
 use std::pin::Pin;
 
@@ -139,6 +142,18 @@ pub trait InferenceEngine: Send + Sync {
     ) -> Result<ClassificationResponse> {
         Err(crate::error::Error::NotSupported(format!(
             "Text classification not supported by {} engine",
+            self.engine_type()
+        )))
+    }
+
+    /// Extract entities, records, relations and classification labels.
+    async fn extract(
+        &self,
+        _model_id: &str,
+        _request: &ExtractionRequest,
+    ) -> Result<ExtractionResponse> {
+        Err(crate::error::Error::NotSupported(format!(
+            "Text extraction not supported by {} engine",
             self.engine_type()
         )))
     }

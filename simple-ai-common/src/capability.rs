@@ -25,11 +25,13 @@ pub enum Capability {
     Tts,
     /// Zero-shot text classification using NLI models
     TextClassification,
+    /// Schema-driven multilingual information extraction
+    InformationExtraction,
 }
 
 impl Capability {
     /// All capability variants for iteration.
-    pub const ALL: [Capability; 8] = [
+    pub const ALL: [Capability; 9] = [
         Capability::FastChat,
         Capability::LargeChat,
         Capability::Embeddings,
@@ -38,6 +40,7 @@ impl Capability {
         Capability::AudioEmbeddings,
         Capability::Tts,
         Capability::TextClassification,
+        Capability::InformationExtraction,
     ];
 }
 
@@ -51,6 +54,7 @@ impl std::fmt::Display for Capability {
             Capability::Ocr => write!(f, "ocr"),
             Capability::AudioEmbeddings => write!(f, "audio_embeddings"),
             Capability::Tts => write!(f, "tts"),
+            Capability::InformationExtraction => write!(f, "information_extraction"),
             Capability::TextClassification => write!(f, "text_classification"),
         }
     }

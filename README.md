@@ -250,6 +250,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-eval.md](docs/qwen36-local-eval.md).
 
+### Multilingual information extraction
+
+`POST /v1/extractions` provides GLiNER2.5 entities, classification, relations, and records via `class:information_extraction`. See [API and runner setup](docs/information-extraction.md) and [CPU/CUDA measurements](docs/evals/gliner25/README.md).
+
 ### Zero-shot text classification
 
 Classification is a first-class routed capability. A request supplies stable label IDs and

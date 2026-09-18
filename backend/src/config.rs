@@ -200,6 +200,8 @@ pub struct ModelsConfig {
     /// Models classified as zero-shot text classifiers.
     #[serde(default)]
     pub text_classification: Vec<String>,
+    #[serde(default)]
+    pub information_extraction: Vec<String>,
 }
 
 impl Default for ModelsConfig {
@@ -212,6 +214,7 @@ impl Default for ModelsConfig {
             audio_embeddings: vec![],
             tts: vec![],
             text_classification: vec![],
+            information_extraction: vec![],
         }
     }
 }
@@ -263,6 +266,11 @@ impl ModelsConfig {
         for id in &self.text_classification {
             if lower == id.to_lowercase() {
                 return Some("text_classification");
+            }
+        }
+        for id in &self.information_extraction {
+            if lower == id.to_lowercase() {
+                return Some("information_extraction");
             }
         }
 
@@ -649,7 +657,8 @@ mod tests {
 
     #[test]
     fn test_oidc_audience_configuration_is_backward_compatible() {
-        let mut value = serde_json::json!({"issuer":"https://issuer.example", "audience":"simple-ai"});
+        let mut value =
+            serde_json::json!({"issuer":"https://issuer.example", "audience":"simple-ai"});
         let legacy: OidcConfig = serde_json::from_value(value.clone()).unwrap();
         assert!(legacy.additional_audiences.is_empty());
         value["additional_audiences"] = serde_json::json!(["pezzottify"]);
