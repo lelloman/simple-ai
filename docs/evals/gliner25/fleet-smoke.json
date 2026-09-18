@@ -1,0 +1,425 @@
+[
+  {
+    "host": "rtx",
+    "cold_request_seconds": 7.052,
+    "request": {
+      "model": "fastino/gliner2.5-multi-v1",
+      "input": [
+        "Giulia Rossi lavora per Acme a Milano.",
+        "Zoë Müller works in Zürich."
+      ],
+      "schema": {
+        "entities": [
+          "person",
+          "organization",
+          "location"
+        ],
+        "classifications": [
+          {
+            "task": "topic",
+            "labels": [
+              "employment",
+              "shopping"
+            ]
+          }
+        ],
+        "relations": [
+          "works_for"
+        ]
+      }
+    },
+    "response": {
+      "object": "list",
+      "model": "fastino/gliner2.5-multi-v1",
+      "revision": "235cf92d6d4318da9bfca0d08975c8fa7250d13b",
+      "data": [
+        {
+          "index": 0,
+          "result": {
+            "entities": {
+              "location": [
+                {
+                  "confidence": 0.9997370839118958,
+                  "end": 37,
+                  "start": 31,
+                  "text": "Milano"
+                }
+              ],
+              "organization": [
+                {
+                  "confidence": 0.9983301758766174,
+                  "end": 28,
+                  "start": 24,
+                  "text": "Acme"
+                }
+              ],
+              "person": [
+                {
+                  "confidence": 0.9992268085479736,
+                  "end": 12,
+                  "start": 0,
+                  "text": "Giulia Rossi"
+                }
+              ]
+            },
+            "relation_extraction": {
+              "works_for": [
+                {
+                  "head": {
+                    "confidence": 0.9425032734870912,
+                    "end": 12,
+                    "start": 0,
+                    "text": "Giulia Rossi"
+                  },
+                  "tail": {
+                    "confidence": 0.9425032734870912,
+                    "end": 28,
+                    "start": 24,
+                    "text": "Acme"
+                  }
+                }
+              ]
+            },
+            "topic": {
+              "confidence": 0.9999362230300904,
+              "label": "employment"
+            }
+          }
+        },
+        {
+          "index": 1,
+          "result": {
+            "entities": {
+              "location": [
+                {
+                  "confidence": 0.9982970356941224,
+                  "end": 26,
+                  "start": 20,
+                  "text": "Zürich"
+                }
+              ],
+              "organization": [],
+              "person": [
+                {
+                  "confidence": 0.9989797472953796,
+                  "end": 10,
+                  "start": 0,
+                  "text": "Zoë Müller"
+                }
+              ]
+            },
+            "relation_extraction": {
+              "works_for": [
+                {
+                  "head": {
+                    "confidence": 0.950205385684967,
+                    "end": 10,
+                    "start": 0,
+                    "text": "Zoë Müller"
+                  },
+                  "tail": {
+                    "confidence": 0.950205385684967,
+                    "end": 26,
+                    "start": 20,
+                    "text": "Zürich"
+                  }
+                }
+              ]
+            },
+            "topic": {
+              "confidence": 0.9993855953216552,
+              "label": "employment"
+            }
+          }
+        }
+      ],
+      "usage": {
+        "input_count": 2,
+        "input_characters": 65
+      },
+      "inference_ms": 188.645
+    }
+  },
+  {
+    "host": "halo1",
+    "cold_request_seconds": 4.543,
+    "request": {
+      "model": "fastino/gliner2.5-multi-v1",
+      "input": [
+        "Giulia Rossi lavora per Acme a Milano.",
+        "Zoë Müller works in Zürich."
+      ],
+      "schema": {
+        "entities": [
+          "person",
+          "organization",
+          "location"
+        ],
+        "classifications": [
+          {
+            "task": "topic",
+            "labels": [
+              "employment",
+              "shopping"
+            ]
+          }
+        ],
+        "relations": [
+          "works_for"
+        ]
+      }
+    },
+    "response": {
+      "object": "list",
+      "model": "fastino/gliner2.5-multi-v1",
+      "revision": "235cf92d6d4318da9bfca0d08975c8fa7250d13b",
+      "data": [
+        {
+          "index": 0,
+          "result": {
+            "entities": {
+              "location": [
+                {
+                  "confidence": 0.9997370839118958,
+                  "end": 37,
+                  "start": 31,
+                  "text": "Milano"
+                }
+              ],
+              "organization": [
+                {
+                  "confidence": 0.9983301758766174,
+                  "end": 28,
+                  "start": 24,
+                  "text": "Acme"
+                }
+              ],
+              "person": [
+                {
+                  "confidence": 0.9992268085479736,
+                  "end": 12,
+                  "start": 0,
+                  "text": "Giulia Rossi"
+                }
+              ]
+            },
+            "relation_extraction": {
+              "works_for": [
+                {
+                  "head": {
+                    "confidence": 0.942503035068512,
+                    "end": 12,
+                    "start": 0,
+                    "text": "Giulia Rossi"
+                  },
+                  "tail": {
+                    "confidence": 0.942503035068512,
+                    "end": 28,
+                    "start": 24,
+                    "text": "Acme"
+                  }
+                }
+              ]
+            },
+            "topic": {
+              "confidence": 0.9999362230300904,
+              "label": "employment"
+            }
+          }
+        },
+        {
+          "index": 1,
+          "result": {
+            "entities": {
+              "location": [
+                {
+                  "confidence": 0.9982970356941224,
+                  "end": 26,
+                  "start": 20,
+                  "text": "Zürich"
+                }
+              ],
+              "organization": [],
+              "person": [
+                {
+                  "confidence": 0.9989797472953796,
+                  "end": 10,
+                  "start": 0,
+                  "text": "Zoë Müller"
+                }
+              ]
+            },
+            "relation_extraction": {
+              "works_for": [
+                {
+                  "head": {
+                    "confidence": 0.950205624103546,
+                    "end": 10,
+                    "start": 0,
+                    "text": "Zoë Müller"
+                  },
+                  "tail": {
+                    "confidence": 0.950205624103546,
+                    "end": 26,
+                    "start": 20,
+                    "text": "Zürich"
+                  }
+                }
+              ]
+            },
+            "topic": {
+              "confidence": 0.9993855953216552,
+              "label": "employment"
+            }
+          }
+        }
+      ],
+      "usage": {
+        "input_count": 2,
+        "input_characters": 65
+      },
+      "inference_ms": 94.584
+    }
+  },
+  {
+    "host": "halo2",
+    "cold_request_seconds": 4.54,
+    "request": {
+      "model": "fastino/gliner2.5-multi-v1",
+      "input": [
+        "Giulia Rossi lavora per Acme a Milano.",
+        "Zoë Müller works in Zürich."
+      ],
+      "schema": {
+        "entities": [
+          "person",
+          "organization",
+          "location"
+        ],
+        "classifications": [
+          {
+            "task": "topic",
+            "labels": [
+              "employment",
+              "shopping"
+            ]
+          }
+        ],
+        "relations": [
+          "works_for"
+        ]
+      }
+    },
+    "response": {
+      "object": "list",
+      "model": "fastino/gliner2.5-multi-v1",
+      "revision": "235cf92d6d4318da9bfca0d08975c8fa7250d13b",
+      "data": [
+        {
+          "index": 0,
+          "result": {
+            "entities": {
+              "location": [
+                {
+                  "confidence": 0.9997370839118958,
+                  "end": 37,
+                  "start": 31,
+                  "text": "Milano"
+                }
+              ],
+              "organization": [
+                {
+                  "confidence": 0.9983301758766174,
+                  "end": 28,
+                  "start": 24,
+                  "text": "Acme"
+                }
+              ],
+              "person": [
+                {
+                  "confidence": 0.9992268085479736,
+                  "end": 12,
+                  "start": 0,
+                  "text": "Giulia Rossi"
+                }
+              ]
+            },
+            "relation_extraction": {
+              "works_for": [
+                {
+                  "head": {
+                    "confidence": 0.942503035068512,
+                    "end": 12,
+                    "start": 0,
+                    "text": "Giulia Rossi"
+                  },
+                  "tail": {
+                    "confidence": 0.942503035068512,
+                    "end": 28,
+                    "start": 24,
+                    "text": "Acme"
+                  }
+                }
+              ]
+            },
+            "topic": {
+              "confidence": 0.9999362230300904,
+              "label": "employment"
+            }
+          }
+        },
+        {
+          "index": 1,
+          "result": {
+            "entities": {
+              "location": [
+                {
+                  "confidence": 0.9982970356941224,
+                  "end": 26,
+                  "start": 20,
+                  "text": "Zürich"
+                }
+              ],
+              "organization": [],
+              "person": [
+                {
+                  "confidence": 0.9989797472953796,
+                  "end": 10,
+                  "start": 0,
+                  "text": "Zoë Müller"
+                }
+              ]
+            },
+            "relation_extraction": {
+              "works_for": [
+                {
+                  "head": {
+                    "confidence": 0.950205624103546,
+                    "end": 10,
+                    "start": 0,
+                    "text": "Zoë Müller"
+                  },
+                  "tail": {
+                    "confidence": 0.950205624103546,
+                    "end": 26,
+                    "start": 20,
+                    "text": "Zürich"
+                  }
+                }
+              ]
+            },
+            "topic": {
+              "confidence": 0.9993855953216552,
+              "label": "employment"
+            }
+          }
+        }
+      ],
+      "usage": {
+        "input_count": 2,
+        "input_characters": 65
+      },
+      "inference_ms": 91.973
+    }
+  }
+]
