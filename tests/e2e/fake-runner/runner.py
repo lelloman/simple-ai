@@ -60,7 +60,7 @@ def build_register_message():
         "runner_name": RUNNER_NAME,
         "machine_type": MACHINE_TYPE,
         "http_port": HTTP_PORT,
-        "protocol_version": 1,
+        "protocol_version": 2,
         "auth_token": AUTH_TOKEN,
         "mac_address": MAC_ADDRESS,
         "status": build_status(),
