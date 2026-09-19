@@ -1,5 +1,9 @@
 FROM rust:1.91-bookworm AS builder
 
+COPY --from=simple-server-source Cargo.toml /simple-server/Cargo.toml
+COPY --from=simple-server-source src /simple-server/src
+COPY --from=simple-server-source examples /simple-server/examples
+
 WORKDIR /app
 
 # Copy workspace manifests and Cargo.lock

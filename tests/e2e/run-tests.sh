@@ -17,3 +17,6 @@ sleep 5
 
 echo "=== Running tests ==="
 docker compose run --rm test-runner
+
+# Exercise both signals against the actual release backend.
+python3 test-lifecycle.py

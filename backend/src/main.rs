@@ -1,5 +1,3 @@
-use simple_server::axum::response::Html;
-use simple_server::axum::routing::get;
 use simple_ai_backend::audit::AuditLogger;
 use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::circuit_breaker::CircuitBreaker;
@@ -11,10 +9,27 @@ use simple_ai_backend::gateway::{
 use simple_ai_backend::llm::OllamaClient;
 use simple_ai_backend::wol::WakeService;
 use simple_ai_backend::AppState;
+use simple_server::axum::response::Html;
+use simple_server::axum::routing::get;
 use std::sync::Arc;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("Service failed: {error}");
+        // A timed-out blocking operation must not extend runtime teardown forever.
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    use simple_server::lifecycle::{Lifecycle, Shutdown, ShutdownOptions, Signals};
+    let signals = Signals::install()?;
+    let mut lifecycle = Lifecycle::new(ShutdownOptions {
+        grace_period: std::time::Duration::from_secs(30),
+    });
+    // Keep request-serving workers alive until HTTP has finished draining.
+    let workers_stop = Shutdown::new();
     let config = Config::load()?;
 
     use tracing_subscriber::layer::SubscriberExt;
@@ -73,9 +88,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let registry = runner_registry.clone();
         let mut runner_events = runner_registry.subscribe_events();
         let mut circuit_events = circuit_breaker.subscribe();
-        tokio::spawn(async move {
+        let stop = workers_stop.clone();
+        lifecycle.service("affinity-events", async move {
             loop {
                 tokio::select! {
+                    biased;
+                    _ = stop.requested() => break,
                     event = runner_events.recv() => match event {
                         Ok(RunnerEvent::Disconnected { runner_id }) => {
                             let removed = affinity_store.invalidate_runner_id(&runner_id);
@@ -121,7 +139,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        });
+            Ok::<(), std::io::Error>(())
+        })?;
     }
 
     // Initialize wake service for on-demand runner waking
@@ -162,39 +181,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router_telemetry = Arc::new(RouterTelemetry::new());
 
     // Initialize batch queue if batching is enabled
-    let (batch_queue, batch_dispatcher) = if config.gateway.enabled
-        && config.gateway.batching_enabled
-    {
-        let queue_config = BatchQueueConfig::new(
-            config.gateway.batch_timeout_ms,
-            config.gateway.batch_saturation_timeout_ms,
-            config.gateway.min_batch_size,
-        );
-        let queue = Arc::new(BatchQueue::new(queue_config));
+    let (batch_queue, batch_dispatcher) =
+        if config.gateway.enabled && config.gateway.batching_enabled {
+            let queue_config = BatchQueueConfig::new(
+                config.gateway.batch_timeout_ms,
+                config.gateway.batch_saturation_timeout_ms,
+                config.gateway.min_batch_size,
+            );
+            let queue = Arc::new(BatchQueue::new(queue_config));
 
-        // Create and spawn batch dispatcher (keep Arc for cache invalidation)
-        let dispatcher = Arc::new(BatchDispatcher::new(
-            queue.clone(),
-            runner_registry.clone(),
-            inference_router.clone(),
-            router_telemetry.clone(),
-        ));
-        let dispatcher_clone = dispatcher.clone();
-        tokio::spawn(async move {
-            dispatcher_clone.run().await;
-        });
+            // Create and spawn batch dispatcher (keep Arc for cache invalidation)
+            let dispatcher = Arc::new(BatchDispatcher::new(
+                queue.clone(),
+                runner_registry.clone(),
+                inference_router.clone(),
+                router_telemetry.clone(),
+            ));
+            let dispatcher_clone = dispatcher.clone();
+            let stop = workers_stop.clone();
+            lifecycle.service("batch-dispatcher", async move {
+                dispatcher_clone.run_until_shutdown(stop).await;
+                Ok::<(), std::io::Error>(())
+            })?;
 
-        tracing::info!(
+            tracing::info!(
             "Request batching enabled (timeout={}ms, saturation_timeout={}ms, min_batch_size={})",
             config.gateway.batch_timeout_ms,
             config.gateway.batch_saturation_timeout_ms,
             config.gateway.min_batch_size
         );
 
-        (Some(queue), Some(dispatcher))
-    } else {
-        (None, None)
-    };
+            (Some(queue), Some(dispatcher))
+        } else {
+            (None, None)
+        };
 
     let request_scheduler = Arc::new(RequestScheduler::new(
         inference_router.clone(),
@@ -244,7 +264,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build /v1 routes, optionally with rate limiting
     let v1_routes = simple_ai_backend::routes::chat::router(state.clone())
         .merge(simple_ai_backend::routes::embeddings::router(state.clone()))
-        .merge(simple_ai_backend::routes::extractions::router(state.clone()))
+        .merge(simple_ai_backend::routes::extractions::router(
+            state.clone(),
+        ))
         .merge(simple_ai_backend::routes::classifications::router(
             state.clone(),
         ))
@@ -275,7 +297,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let app = simple_ai_backend::routes::health::router()
-        .merge(simple_ai_backend::routes::gateway_auth::router(state.clone()))
+        .merge(simple_ai_backend::routes::gateway_auth::router(
+            state.clone(),
+        ))
         .nest("/v1", v1_routes)
         .nest(
             "/admin",
@@ -293,35 +317,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", config.host, config.port);
     tracing::info!("Listening on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    simple_server::axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
-
+    let listener = simple_server::http::bind(&addr).await?;
+    let shutdown = lifecycle.shutdown();
+    lifecycle.service("http", async move {
+        let result = simple_server::http::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            shutdown,
+        )
+        .await;
+        workers_stop.request();
+        result
+    })?;
+    let report = lifecycle
+        .run(signals.wait(), async { Ok::<(), std::io::Error>(()) })
+        .await?;
+    tracing::info!(?report, "Graceful shutdown complete");
     Ok(())
-}
-
-async fn shutdown_signal() {
-    let interrupt = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("install SIGINT handler");
-    };
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("install SIGTERM handler")
-            .recv()
-            .await;
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        _ = interrupt => {},
-        _ = terminate => {},
-    }
-    tracing::info!("Shutdown signal received; draining HTTP requests");
 }

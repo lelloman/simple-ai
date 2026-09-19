@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout reviewed simple-server source
+        run: bash scripts/checkout-simple-server.sh
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -57,6 +60,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout reviewed simple-server source
+        run: bash scripts/checkout-simple-server.sh
+
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -94,6 +100,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout reviewed simple-server source
+        run: bash scripts/checkout-simple-server.sh
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1

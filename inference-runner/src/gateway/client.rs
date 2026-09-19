@@ -54,8 +54,17 @@ impl GatewayClient {
 
     /// Start the client with automatic reconnection.
     ///
-    /// This runs indefinitely, reconnecting on connection loss.
-    pub async fn run(&self) {
+    /// Reconnects on connection loss until application shutdown.
+    pub async fn run_until_shutdown(&self, stop: simple_server::lifecycle::Shutdown) {
+        tokio::select! {
+            biased;
+            _ = stop.requested() => {},
+            _ = self.run() => {},
+        }
+        tracing::info!("Gateway client stopped");
+    }
+
+    async fn run(&self) {
         loop {
             tracing::info!("Connecting to gateway at {}", self.config.ws_url);
 
@@ -131,34 +140,10 @@ impl GatewayClient {
         // Create channel for outbound messages
         let (tx, mut rx) = mpsc::channel::<RunnerMessage>(32);
 
-        // Spawn heartbeat task
-        let heartbeat_interval = Duration::from_secs(self.config.heartbeat_interval_secs);
-        let heartbeat_tx = tx.clone();
-        let status_collector = self.status_collector.clone();
-        let heartbeat_handle = tokio::spawn(async move {
-            let mut ticker = interval(heartbeat_interval);
-            loop {
-                ticker.tick().await;
-                let status = status_collector.collect().await;
-                if heartbeat_tx
-                    .send(RunnerMessage::Heartbeat(status))
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
-
-        // Main message loop
-        let result = self
-            .message_loop(&mut write, &mut read, &mut rx, tx.clone())
-            .await;
-
-        // Clean up
-        heartbeat_handle.abort();
-
-        result
+        // Heartbeats belong to this connection future, so cancellation cannot
+        // leave a detached status collector running after shutdown/reconnect.
+        self.message_loop(&mut write, &mut read, &mut rx, tx.clone())
+            .await
     }
 
     async fn message_loop<S, R>(
@@ -172,8 +157,14 @@ impl GatewayClient {
         S: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
         R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
     {
+        let mut heartbeat = interval(Duration::from_secs(self.config.heartbeat_interval_secs));
         loop {
             tokio::select! {
+                _ = heartbeat.tick() => {
+                    let status = self.status_collector.collect().await;
+                    let json = serde_json::to_string(&RunnerMessage::Heartbeat(status))?;
+                    write.send(Message::Text(json)).await?;
+                }
                 // Handle outbound messages
                 Some(msg) = rx.recv() => {
                     let json = serde_json::to_string(&msg)?;
@@ -182,7 +173,8 @@ impl GatewayClient {
                 }
 
                 // Handle inbound messages
-                Some(result) = read.next() => {
+                result = read.next() => {
+                    let Some(result) = result else { return Ok(()); };
                     match result {
                         Ok(Message::Text(text)) => {
                             if let Err(e) = self.handle_gateway_message(&text, &tx).await {

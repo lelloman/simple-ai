@@ -355,7 +355,7 @@ cd android && ./gradlew test
 #### Backend
 
 ```bash
-docker build -t simple-ai-backend backend/
+docker build --build-context simple-server-source=../simple-server -f backend/Dockerfile -t simple-ai-backend .
 docker run -p 8080:8080 \
   -e SIMPLEAI__OIDC__ISSUER=https://auth.example.com \
   -e SIMPLEAI__OIDC__AUDIENCE=simple-ai \
@@ -366,13 +366,12 @@ docker run -p 8080:8080 \
 
 #### Inference Runner
 
+The runner is built from the workspace and uses `config.toml` (see
+`inference-runner/config.example.toml`):
+
 ```bash
-docker build -t simple-ai-runner inference-runner/
-docker run \
-  -e GATEWAY_URL=ws://gateway:8080/ws/runners \
-  -e RUNNER_ID=runner-1 \
-  -e RUNNER_AUTH_TOKEN=secret \
-  simple-ai-runner
+cargo build --locked --release -p inference-runner
+./target/release/simple-ai-runner
 ```
 
 ### Production Considerations
@@ -439,3 +438,5 @@ Contributions are welcome! Please:
 - **Issues**: Report bugs on GitHub
 - **Documentation**: See component-specific READMEs
 - **Android API**: See [android/README.md](android/README.md)
+
+Shared signal handling and shutdown scope: [Step 02 lifecycle](docs/step-02-lifecycle.md).

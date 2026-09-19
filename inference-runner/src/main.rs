@@ -4,7 +4,6 @@ use std::env;
 use std::sync::Arc;
 
 use simple_server::axum::Router;
-use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -34,7 +33,15 @@ fn print_version() {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("Service failed: {error}");
+        // A timed-out blocking operation must not extend runtime teardown forever.
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Handle --version / -V
     let args: Vec<String> = env::args().collect();
     if args.iter().any(|a| a == "--version" || a == "-V") {
@@ -47,6 +54,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    use simple_server::lifecycle::{Lifecycle, ShutdownOptions, Signals};
+    let signals = Signals::install()?;
+    let mut lifecycle = Lifecycle::new(ShutdownOptions {
+        grace_period: std::time::Duration::from_secs(30),
+    });
 
     // Load configuration
     let config = Config::load().map_err(|e| {
@@ -203,10 +216,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             registry,
         );
 
-        // Spawn gateway client task
-        tokio::spawn(async move {
-            client.run().await;
-        });
+        let stop = lifecycle.shutdown();
+        lifecycle.service("gateway", async move {
+            client.run_until_shutdown(stop).await;
+            Ok::<(), std::io::Error>(())
+        })?;
         tracing::info!(
             "Gateway client started, connecting to {}",
             gateway_config.ws_url
@@ -218,7 +232,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build router
     let app = Router::new()
         .nest("/v1", api::router())
-        .route("/health", simple_server::axum::routing::get(api::health::health))
+        .route(
+            "/health",
+            simple_server::axum::routing::get(api::health::health),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -226,8 +243,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("{}:{}", config.api.host, config.api.port);
     tracing::info!("Listening on {}", addr);
 
-    let listener = TcpListener::bind(&addr).await?;
-    simple_server::axum::serve(listener, app).await?;
+    let listener = simple_server::http::bind(&addr).await?;
+    lifecycle.service(
+        "http",
+        simple_server::http::serve(listener, app, lifecycle.shutdown()),
+    )?;
+    let report = lifecycle
+        .run(signals.wait(), async { Ok::<(), std::io::Error>(()) })
+        .await?;
+    tracing::info!(?report, "Graceful shutdown complete");
 
     Ok(())
 }

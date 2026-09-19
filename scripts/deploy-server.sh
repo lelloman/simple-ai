@@ -83,7 +83,7 @@ run() {
 }
 
 echo "Building backend image: $IMAGE"
-run docker build -f "$PROJECT_DIR/backend/Dockerfile" -t "$IMAGE" "$PROJECT_DIR"
+run docker build --build-context "simple-server-source=${SIMPLE_SERVER_CONTEXT:-$PROJECT_DIR/../simple-server}" -f "$PROJECT_DIR/backend/Dockerfile" -t "$IMAGE" "$PROJECT_DIR"
 
 echo "Pushing backend image: $IMAGE"
 run docker push "$IMAGE"

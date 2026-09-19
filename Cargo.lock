@@ -2325,6 +2325,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.24.0",
+ "tokio-util",
  "tower",
  "tower-http",
  "tower-test",
@@ -2347,9 +2348,11 @@ dependencies = [
 [[package]]
 name = "simple-server"
 version = "0.1.0"
-source = "git+https://github.com/lelloman/simple-server?rev=46a36391ccca522f3ec9aa24206f2b231162dd96#46a36391ccca522f3ec9aa24206f2b231162dd96"
 dependencies = [
  "axum",
+ "futures-util",
+ "tokio",
+ "tower-service",
 ]
 
 [[package]]
@@ -2700,6 +2703,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

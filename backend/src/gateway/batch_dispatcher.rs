@@ -14,6 +14,7 @@ use super::{AffinityDecision, InferenceRouter, RouterError, RouterTelemetry, Run
 
 /// Batch dispatcher that processes queued requests.
 pub struct BatchDispatcher {
+    tasks: tokio_util::task::TaskTracker,
     queue: Arc<BatchQueue>,
     registry: Arc<RunnerRegistry>,
     router: Arc<InferenceRouter>,
@@ -31,6 +32,7 @@ impl BatchDispatcher {
         telemetry: Arc<RouterTelemetry>,
     ) -> Self {
         Self {
+            tasks: tokio_util::task::TaskTracker::new(),
             queue,
             registry,
             router,
@@ -43,12 +45,20 @@ impl BatchDispatcher {
     ///
     /// This method runs indefinitely, processing batches as they become ready.
     pub async fn run(&self) {
+        self.run_until_shutdown(simple_server::lifecycle::Shutdown::new())
+            .await;
+    }
+
+    /// The caller stops dispatch only after HTTP consumers have drained.
+    pub async fn run_until_shutdown(&self, stop: simple_server::lifecycle::Shutdown) {
         let notify = self.queue.notifier();
         let check_interval = Duration::from_millis(10);
 
         loop {
             // Wait for notification or timeout (for periodic timeout-based dispatch)
             tokio::select! {
+                biased;
+                _ = stop.requested() => break,
                 _ = notify.notified() => {
                     // New request added, check all models
                 }
@@ -62,6 +72,8 @@ impl BatchDispatcher {
                 tracing::warn!("Batch dispatch error: {}", e);
             }
         }
+        self.tasks.close();
+        self.tasks.wait().await;
     }
 
     /// Try to dispatch batches for all pending models.
@@ -229,7 +241,7 @@ impl BatchDispatcher {
             );
 
             let router = self.router.clone();
-            tokio::spawn(async move {
+            self.tasks.spawn(async move {
                 let result = router
                     .execute_chat_plan::<_, simple_ai_common::ChatCompletionResponse>(
                         reserved,
@@ -508,6 +520,18 @@ mod tests {
 
         let batch = queue.take_batch("model-a", 4).await.unwrap();
         dispatcher.dispatch_batch(batch).await.unwrap();
+
+        // Shutdown must join already-dispatched requests even before callers
+        // start polling their responses (including abandoned HTTP consumers).
+        let stop = simple_server::lifecycle::Shutdown::new();
+        stop.request();
+        tokio::time::timeout(Duration::from_secs(5), dispatcher.run_until_shutdown(stop))
+            .await
+            .unwrap();
+        assert_eq!(runner_1_count.load(Ordering::SeqCst), 2);
+        assert_eq!(runner_2_count.load(Ordering::SeqCst), 2);
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
+        assert_eq!(registry.get_active_requests("runner-2").await, 0);
 
         let mut handled_by = Vec::new();
         for receiver in receivers {
