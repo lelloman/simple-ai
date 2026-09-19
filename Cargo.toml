@@ -23,7 +23,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
-axum = "0.7"
+simple-server = { git = "https://github.com/lelloman/simple-server", rev = "46a36391ccca522f3ec9aa24206f2b231162dd96" }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 config = "0.14"
 

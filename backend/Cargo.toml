@@ -10,7 +10,7 @@ authors.workspace = true
 simple-ai-common = { workspace = true }
 
 # Web framework
-axum = { workspace = true, features = ["ws", "multipart"] }
+simple-server = { workspace = true, features = ["ws", "multipart"] }
 tokio = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 

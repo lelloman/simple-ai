@@ -22,7 +22,7 @@ pub use tts::TtsEngine;
 pub use vllm::VllmEngine;
 
 use async_trait::async_trait;
-use axum::body::Bytes;
+use simple_server::axum::body::Bytes;
 use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{

@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
-use axum::body::Body;
-use axum::extract::State;
-use axum::http::{header, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::{Json, Router};
+use simple_server::axum::body::Body;
+use simple_server::axum::extract::State;
+use simple_server::axum::http::{header, HeaderValue, StatusCode};
+use simple_server::axum::response::{IntoResponse, Response};
+use simple_server::axum::routing::post;
+use simple_server::axum::{Json, Router};
 use futures_util::{stream, StreamExt};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
 

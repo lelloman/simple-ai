@@ -1,4 +1,4 @@
-use axum::{
+use simple_server::axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -21,7 +21,10 @@ pub struct DetectLanguageResponse {
 }
 
 async fn detect_language(
-    connect_info: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
+    connect_info: Result<
+        simple_server::axum::extract::ConnectInfo<std::net::SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(request): Json<DetectLanguageRequest>,
@@ -29,7 +32,7 @@ async fn detect_language(
     super::auth_helpers::authenticate_inference_request(
         &state,
         &headers,
-        connect_info.map(|c| c.0),
+        connect_info.as_ref().ok().map(|c| c.0),
     )
     .await?;
 

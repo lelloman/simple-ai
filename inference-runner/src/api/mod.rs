@@ -12,7 +12,7 @@ pub mod speech;
 
 use std::sync::Arc;
 
-use axum::Router;
+use simple_server::axum::Router;
 
 use crate::state::AppState;
 

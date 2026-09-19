@@ -1,6 +1,6 @@
 //! Integration tests for the inference-runner HTTP API.
 
-use axum::{
+use simple_server::axum::{
     body::Body,
     http::{Request, StatusCode},
     Router,
@@ -13,7 +13,7 @@ use tower::ServiceExt;
 #[tokio::test]
 async fn test_health_endpoint() {
     // Build a minimal router with just the health endpoint
-    let app = Router::new().route("/health", axum::routing::get(health_handler));
+    let app = Router::new().route("/health", simple_server::axum::routing::get(health_handler));
 
     let response = app
         .oneshot(
@@ -28,10 +28,10 @@ async fn test_health_endpoint() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-async fn health_handler() -> (StatusCode, axum::Json<serde_json::Value>) {
+async fn health_handler() -> (StatusCode, simple_server::axum::Json<serde_json::Value>) {
     (
         StatusCode::OK,
-        axum::Json(serde_json::json!({"status": "ok"})),
+        simple_server::axum::Json(serde_json::json!({"status": "ok"})),
     )
 }
 

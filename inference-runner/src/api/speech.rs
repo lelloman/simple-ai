@@ -3,12 +3,12 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use axum::body::{Body, Bytes};
-use axum::extract::State;
-use axum::http::{header, HeaderValue, StatusCode};
-use axum::response::Response;
-use axum::routing::post;
-use axum::{Json, Router};
+use simple_server::axum::body::{Body, Bytes};
+use simple_server::axum::extract::State;
+use simple_server::axum::http::{header, HeaderValue, StatusCode};
+use simple_server::axum::response::Response;
+use simple_server::axum::routing::post;
+use simple_server::axum::{Json, Router};
 use futures_util::stream;
 use simple_ai_common::{SpeechRequest, SpeechStreamFormat};
 

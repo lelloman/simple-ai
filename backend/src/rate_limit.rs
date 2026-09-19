@@ -1,4 +1,4 @@
-use axum::{
+use simple_server::axum::{
     extract::Request,
     http::StatusCode,
     middleware::Next,
@@ -74,14 +74,14 @@ fn extract_ip(request: &Request) -> String {
     // Fall back to connection info
     request
         .extensions()
-        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .get::<simple_server::axum::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|ci| ci.0.ip().to_string())
         .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Axum middleware that enforces per-IP rate limiting.
 pub async fn rate_limit_middleware(
-    axum::extract::State(limiter): axum::extract::State<Arc<RateLimiter>>,
+    simple_server::axum::extract::State(limiter): simple_server::axum::extract::State<Arc<RateLimiter>>,
     request: Request,
     next: Next,
 ) -> Response {

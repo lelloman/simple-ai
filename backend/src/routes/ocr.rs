@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{
+use simple_server::axum::{
     extract::{ConnectInfo, DefaultBodyLimit, Multipart, State},
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -25,13 +25,16 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 async fn ocr(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<OcrResponse>, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
 
     if !state.config.gateway.enabled {
         return Err((
@@ -80,7 +83,7 @@ async fn ocr(
 
     let mut req_log = Request::new(user.id.clone(), "/v1/ocr".to_string());
     req_log.model = Some("ocr".to_string());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|c| c.0));
     req_log.request_body = options_json.clone();
     let request_id = state
         .audit_logger

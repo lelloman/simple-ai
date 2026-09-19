@@ -2,7 +2,7 @@
 //!
 //! Provides:
 //! - JSON API endpoints for SPA dashboard (`/admin/api/*`)
-//! - Runners list and wake (`/admin/runners`, `/admin/runners/:id/wake`)
+//! - Runners list and wake (`/admin/runners`, `/admin/runners/{id}/wake`)
 //! - Models list (`/admin/models`)
 //! - SSE endpoint for real-time runner events (`/admin/runners/events`)
 //! - WebSocket endpoint for real-time runner events with token refresh (`/admin/ws`)
@@ -12,7 +12,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::{
+use simple_server::axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, Query, Request, State,
@@ -285,7 +285,7 @@ pub struct WakeResponse {
     pub message: String,
 }
 
-/// POST /admin/runners/:id/wake - Send Wake-on-LAN packet to runner
+/// POST /admin/runners/{id}/wake - Send Wake-on-LAN packet to runner
 async fn wake_runner(
     State(state): State<Arc<AppState>>,
     Path(runner_id): Path<String>,
@@ -368,7 +368,7 @@ pub struct LoadModelResponse {
     pub message: String,
 }
 
-/// POST /admin/runners/:id/load-model - Load a model on a runner
+/// POST /admin/runners/{id}/load-model - Load a model on a runner
 async fn load_model(
     State(state): State<Arc<AppState>>,
     Path(runner_id): Path<String>,
@@ -447,7 +447,7 @@ async fn load_model(
     }
 }
 
-/// POST /admin/runners/:id/unload-model - Unload a model on a runner
+/// POST /admin/runners/{id}/unload-model - Unload a model on a runner
 async fn unload_model(
     State(state): State<Arc<AppState>>,
     Path(runner_id): Path<String>,
@@ -607,7 +607,7 @@ struct CancelRequestResponse {
     cancelled: bool,
 }
 
-/// POST /admin/api/requests/:id/cancel - Cancel active inference work.
+/// POST /admin/api/requests/{id}/cancel - Cancel active inference work.
 async fn api_request_cancel(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<String>,
@@ -714,7 +714,7 @@ async fn api_keys_create(
     Ok(Json(CreateApiKeyResponse { key, secret }))
 }
 
-/// PATCH /admin/api/keys/:id - Replace an active key's roles.
+/// PATCH /admin/api/keys/{id} - Replace an active key's roles.
 async fn api_key_roles_update(
     State(state): State<Arc<AppState>>,
     Path(key_id): Path<String>,
@@ -733,7 +733,7 @@ async fn api_key_roles_update(
     }
 }
 
-/// GET /admin/api/keys/:id/secret - Return a stored API key secret.
+/// GET /admin/api/keys/{id}/secret - Return a stored API key secret.
 async fn api_key_secret(
     State(state): State<Arc<AppState>>,
     Path(key_id): Path<String>,
@@ -751,7 +751,7 @@ async fn api_key_secret(
     }
 }
 
-/// DELETE /admin/api/keys/:id - Revoke an API key
+/// DELETE /admin/api/keys/{id} - Revoke an API key
 async fn api_keys_revoke(
     State(state): State<Arc<AppState>>,
     Path(key_id): Path<String>,
@@ -1156,7 +1156,7 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
 
             // Send ping for keep-alive
             _ = ping_interval.tick() => {
-                if ws_tx.send(Message::Ping(vec![])).await.is_err() {
+                if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
                     break;
                 }
             }
@@ -1317,7 +1317,7 @@ async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> Response {
     match state.inference_router.affinity_store().metrics().encode() {
         Ok(body) => (
             [(
-                axum::http::header::CONTENT_TYPE,
+                simple_server::axum::http::header::CONTENT_TYPE,
                 "application/openmetrics-text; version=1.0.0; charset=utf-8",
             )],
             body,
@@ -1360,7 +1360,7 @@ where
     S::Error: std::error::Error + Send + Sync + 'static,
 {
     let json = serde_json::to_string(msg)?;
-    sink.send(Message::Text(json)).await?;
+    sink.send(Message::Text(json.into())).await?;
     Ok(())
 }
 
@@ -1435,22 +1435,22 @@ pub fn router(state: Arc<AppState>) -> Router {
     // Admin routes with middleware authentication
     let admin_routes = Router::new()
         .route("/runners", get(list_runners))
-        .route("/runners/:id/wake", post(wake_runner))
-        .route("/runners/:id/load-model", post(load_model))
-        .route("/runners/:id/unload-model", post(unload_model))
+        .route("/runners/{id}/wake", post(wake_runner))
+        .route("/runners/{id}/load-model", post(load_model))
+        .route("/runners/{id}/unload-model", post(unload_model))
         .route("/models", get(list_models))
         // JSON API endpoints (for SPA dashboard)
         .route("/api/lan-local", get(lan_local_status).put(lan_local_update))
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
-        .route("/api/requests/:id/cancel", post(api_request_cancel))
+        .route("/api/requests/{id}/cancel", post(api_request_cancel))
         .route("/api/model-speeds", get(api_model_speeds))
         .route("/metrics", get(prometheus_metrics))
         .route("/api/keys", get(api_keys_list).post(api_keys_create))
-        .route("/api/keys/:id/secret", get(api_key_secret))
+        .route("/api/keys/{id}/secret", get(api_key_secret))
         .route(
-            "/api/keys/:id",
-            axum::routing::patch(api_key_roles_update).delete(api_keys_revoke),
+            "/api/keys/{id}",
+            simple_server::axum::routing::patch(api_key_roles_update).delete(api_keys_revoke),
         )
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);

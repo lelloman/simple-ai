@@ -1,6 +1,6 @@
-use axum::body::{Body, Bytes};
-use axum::http::HeaderMap;
-use axum::{
+use simple_server::axum::body::{Body, Bytes};
+use simple_server::axum::http::HeaderMap;
+use simple_server::axum::{
     extract::{ConnectInfo, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response as AxumResponse},
@@ -220,7 +220,10 @@ async fn finalize_stream_response(
 /// POST /v1/chat/completions - OpenAI-compatible chat endpoint
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     Json(mut request): Json<ChatCompletionRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
@@ -228,7 +231,7 @@ async fn chat_completions(
 
     // Authenticate user - try API key first, then fall back to JWT
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
 
     // Parse and validate model request
     let model_request = match &request.model {
@@ -281,7 +284,7 @@ async fn chat_completions(
     req_log.source_app = headers.get("x-simpleai-source-app").and_then(|h| h.to_str().ok())
         .filter(|v| !v.is_empty() && v.len() <= 255 && v.bytes().all(|c| c.is_ascii_alphanumeric() || b"._,-".contains(&c)))
         .map(str::to_owned);
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|c| c.0));
 
     let request_id = state
         .audit_logger

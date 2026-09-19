@@ -2,7 +2,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{
+use simple_server::axum::{
     extract::DefaultBodyLimit,
     extract::State,
     http::{HeaderMap, StatusCode},
@@ -51,14 +51,17 @@ pub fn router(state: Arc<AppState>) -> Router {
 }
 
 async fn extract(
-    connect_info: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
+    connect_info: Result<
+        simple_server::axum::extract::ConnectInfo<std::net::SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(request): Json<ExtractRequest>,
 ) -> Result<Json<ExtractResponse>, (StatusCode, String)> {
     let start = Instant::now();
     let (_auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
 
     if request.url.trim().is_empty() || request.html.trim().is_empty() {
         return Err((

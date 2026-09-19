@@ -1,6 +1,6 @@
-use axum::http::{header, StatusCode};
-use axum::response::{IntoResponse, Response};
-use axum::{routing::get, Json, Router};
+use simple_server::axum::http::{header, StatusCode};
+use simple_server::axum::response::{IntoResponse, Response};
+use simple_server::axum::{routing::get, Json, Router};
 use serde::Serialize;
 
 #[derive(Serialize)]

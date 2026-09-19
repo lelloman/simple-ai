@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{
+use simple_server::axum::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -66,14 +66,17 @@ pub struct EmbeddingUsage {
 /// POST /v1/embeddings - OpenAI-compatible embeddings endpoint
 async fn create_embeddings(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     Json(request): Json<EmbeddingRequest>,
 ) -> Result<Json<EmbeddingResponse>, (StatusCode, String)> {
     let start = Instant::now();
 
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
 
     // Parse and validate model request
     let model_request = ModelRequest::parse(&request.model);
@@ -97,7 +100,7 @@ async fn create_embeddings(
     // Log request
     let mut req_log = Request::new(user.id.clone(), "/v1/embeddings".to_string());
     req_log.model = Some(model.clone());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|c| c.0));
 
     let request_id = state
         .audit_logger

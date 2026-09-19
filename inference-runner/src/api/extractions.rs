@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, routing::post, Json, Router};
+use simple_server::axum::{extract::State, routing::post, Json, Router};
 use simple_ai_common::{ExtractionRequest, ExtractionResponse};
 
 use crate::error::{Error, Result};

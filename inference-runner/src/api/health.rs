@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::Json;
+use simple_server::axum::extract::State;
+use simple_server::axum::http::StatusCode;
+use simple_server::axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;

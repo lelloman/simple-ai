@@ -14,7 +14,7 @@ path = "src/main.rs"
 simple-ai-common = { workspace = true }
 
 # Web framework
-axum = { workspace = true, features = ["multipart"] }
+simple-server = { workspace = true, features = ["multipart"] }
 tokio = { workspace = true }
 tower-http = { workspace = true }
 

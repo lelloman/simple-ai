@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Multipart, State};
-use axum::routing::post;
-use axum::{Json, Router};
+use simple_server::axum::extract::{DefaultBodyLimit, Multipart, State};
+use simple_server::axum::routing::post;
+use simple_server::axum::{Json, Router};
 use simple_ai_common::{OcrOptions, OcrResponse};
 
 use crate::error::{Error, Result};

@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{
+use simple_server::axum::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -62,14 +62,17 @@ fn validate(request: &ClassificationRequest) -> Result<(), (StatusCode, String)>
 
 async fn create_classifications(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     Json(request): Json<ClassificationRequest>,
 ) -> Result<Json<ClassificationResponse>, (StatusCode, String)> {
     let start = Instant::now();
     validate(&request)?;
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
     let model_request = ModelRequest::parse(&request.model);
     if !can_request_model(&auth_user.roles, &model_request) {
         return Err((
@@ -105,7 +108,7 @@ async fn create_classifications(
 
     let mut req_log = Request::new(user.id.clone(), "/v1/classifications".to_string());
     req_log.model = Some(model.clone());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|info| info.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|info| info.0));
     let request_id = state
         .audit_logger
         .log_request(&req_log)

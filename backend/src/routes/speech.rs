@@ -3,12 +3,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::body::Body;
-use axum::extract::{ConnectInfo, Query, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use axum::response::Response as AxumResponse;
-use axum::routing::{get, post};
-use axum::{Json, Router};
+use simple_server::axum::body::Body;
+use simple_server::axum::extract::{ConnectInfo, Query, State};
+use simple_server::axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use simple_server::axum::response::Response as AxumResponse;
+use simple_server::axum::routing::{get, post};
+use simple_server::axum::{Json, Router};
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
@@ -127,13 +127,16 @@ where
 }
 
 async fn list_voices(
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<VoicesQuery>,
 ) -> Result<Json<VoicesResponse>, (StatusCode, String)> {
     let (auth_user, _user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
     if !state.config.gateway.enabled {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -173,13 +176,16 @@ fn response_body(response: reqwest::Response) -> Body {
 
 async fn create_speech(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     Json(request): Json<SpeechRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
 
     if !state.config.gateway.enabled {
         return Err((
@@ -217,7 +223,7 @@ async fn create_speech(
 
     let mut req_log = Request::new(user.id.clone(), "/v1/audio/speech".to_string());
     req_log.model = Some(model.clone());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|c| c.0));
     req_log.request_body = request_json;
     let request_id = state
         .audit_logger

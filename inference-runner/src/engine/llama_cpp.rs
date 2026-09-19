@@ -15,7 +15,7 @@ const HEALTH_CHECK_INTERVAL_MS: u64 = 200;
 const SERVER_STARTING_POLL_MS: u64 = 100;
 
 use async_trait::async_trait;
-use axum::body::Bytes;
+use simple_server::axum::body::Bytes;
 use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

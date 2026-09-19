@@ -1,5 +1,5 @@
-use axum::response::Html;
-use axum::routing::get;
+use simple_server::axum::response::Html;
+use simple_server::axum::routing::get;
 use simple_ai_backend::audit::AuditLogger;
 use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::circuit_breaker::CircuitBreaker;
@@ -266,7 +266,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Rate limiting enabled: {} requests/minute per IP",
             config.gateway.rate_limit_rpm
         );
-        v1_routes.layer(axum::middleware::from_fn_with_state(
+        v1_routes.layer(simple_server::axum::middleware::from_fn_with_state(
             limiter,
             simple_ai_backend::rate_limit::rate_limit_middleware,
         ))
@@ -286,7 +286,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // WebSocket endpoint for runner connections
         .route("/ws/runners", get(ws_handler).with_state(ws_state))
         .layer(cors)
-        .layer(axum::middleware::from_fn(
+        .layer(simple_server::axum::middleware::from_fn(
             simple_ai_backend::logging::request_logger,
         ));
 
@@ -294,7 +294,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(
+    simple_server::axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )

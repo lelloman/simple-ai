@@ -1,6 +1,6 @@
-use axum::body::{Body, Bytes};
-use axum::http::HeaderMap;
-use axum::{
+use simple_server::axum::body::{Body, Bytes};
+use simple_server::axum::http::HeaderMap;
+use simple_server::axum::{
     extract::{ConnectInfo, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response as AxumResponse},
@@ -430,13 +430,16 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
 /// POST /v1/responses - OpenAI-compatible responses endpoint.
 async fn create_response(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     Json(request): Json<ResponseCreateRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
     let mut chat_request = build_chat_request(request);
 
     let model_request = ModelRequest::parse(
@@ -473,7 +476,7 @@ async fn create_response(
     let mut req_log = Request::new(user.id.clone(), "/v1/responses".to_string());
     req_log.request_body = serde_json::to_string(&chat_request).unwrap_or_default();
     req_log.model = Some(model.clone());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|c| c.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|c| c.0));
 
     let request_id = state
         .audit_logger

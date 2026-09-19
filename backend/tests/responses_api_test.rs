@@ -1,4 +1,4 @@
-use axum::body::{to_bytes, Body, Bytes};
+use simple_server::axum::body::{to_bytes, Body, Bytes};
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -157,7 +157,7 @@ async fn create_api_key(state: &Arc<AppState>) -> String {
 }
 
 async fn send_request(
-    app: &axum::Router,
+    app: &simple_server::axum::Router,
     method: http::Method,
     uri: &str,
     api_key: Option<&str>,
@@ -208,7 +208,7 @@ async fn test_responses_non_streaming_success_maps_text_output() {
 
     let state = create_test_state(&ollama.uri()).await.unwrap();
     let api_key = create_api_key(&state).await;
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "class:fast".to_string(),
@@ -269,7 +269,7 @@ async fn test_responses_non_streaming_success_maps_tool_calls() {
 
     let state = create_test_state(&ollama.uri()).await.unwrap();
     let api_key = create_api_key(&state).await;
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "class:fast".to_string(),
@@ -328,7 +328,7 @@ async fn test_responses_accepts_function_call_output_input() {
 
     let state = create_test_state(&ollama.uri()).await.unwrap();
     let api_key = create_api_key(&state).await;
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "class:fast".to_string(),
@@ -389,7 +389,7 @@ async fn test_responses_streaming_emits_responses_events_and_filters_internal_me
 
     let state = create_test_state(&ollama.uri()).await.unwrap();
     let api_key = create_api_key(&state).await;
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "class:fast".to_string(),
@@ -437,7 +437,7 @@ async fn test_responses_rejects_specific_model_for_api_key_user_without_roles() 
     let ollama = MockServer::start().await;
     let state = create_test_state(&ollama.uri()).await.unwrap();
     let api_key = create_api_key(&state).await;
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "llama3".to_string(),
@@ -477,7 +477,7 @@ async fn test_responses_surfaces_upstream_error() {
 
     let state = create_test_state(&ollama.uri()).await.unwrap();
     let api_key = create_api_key(&state).await;
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "class:fast".to_string(),
@@ -509,7 +509,7 @@ async fn test_responses_surfaces_upstream_error() {
 #[cfg(test)]
 mod lan_local_tests {
     use super::*;
-    use axum::http::HeaderMap;
+    use simple_server::axum::http::HeaderMap;
     use simple_ai_backend::lan_local::LanLocalUpdate;
     use simple_ai_backend::routes::auth_helpers::{
         authenticate_inference_request, authenticate_request,
@@ -582,7 +582,7 @@ mod lan_local_tests {
             .create_api_key("admin-user", "admin", &["admin".into()])
             .unwrap();
         let app = routes::admin::router(state.clone());
-        let peer = axum::extract::ConnectInfo(
+        let peer = simple_server::axum::extract::ConnectInfo(
             "192.168.1.12:1234".parse::<std::net::SocketAddr>().unwrap(),
         );
         for (body, expected) in [
@@ -685,7 +685,7 @@ mod lan_local_tests {
             let mut request = http::Request::builder()
                 .method("POST")
                 .uri("/responses")
-                .extension(axum::extract::ConnectInfo(
+                .extension(simple_server::axum::extract::ConnectInfo(
                     ip.parse::<std::net::SocketAddr>().unwrap(),
                 ))
                 .header("content-type", "application/json");

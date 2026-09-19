@@ -1,4 +1,4 @@
-use axum::{extract::Request, middleware::Next, response::Response};
+use simple_server::axum::{extract::Request, middleware::Next, response::Response};
 use std::time::Instant;
 
 /// Middleware that logs HTTP requests at INFO level.

@@ -3,7 +3,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::{
+use simple_server::axum::{
     extract::{
         ws::{Message, WebSocket},
         ConnectInfo, State, WebSocketUpgrade,
@@ -314,7 +314,7 @@ where
     S::Error: std::error::Error + Send + Sync + 'static,
 {
     let json = serde_json::to_string(msg)?;
-    sink.send(Message::Text(json)).await?;
+    sink.send(Message::Text(json.into())).await?;
     Ok(())
 }
 

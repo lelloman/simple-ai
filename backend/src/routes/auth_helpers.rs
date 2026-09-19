@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use axum::http::{HeaderMap, StatusCode};
+use simple_server::axum::http::{HeaderMap, StatusCode};
 
 use crate::auth::AuthUser;
 use crate::models::user::User;

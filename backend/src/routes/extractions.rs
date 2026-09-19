@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{
+use simple_server::axum::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -19,7 +19,10 @@ use crate::{AppState, RequestEvent};
 
 async fn create_extractions(
     State(state): State<Arc<AppState>>,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    connect_info: Result<
+        ConnectInfo<SocketAddr>,
+        simple_server::axum::extract::rejection::ExtensionRejection,
+    >,
     headers: HeaderMap,
     Json(request): Json<ExtractionRequest>,
 ) -> Result<Json<ExtractionResponse>, (StatusCode, String)> {
@@ -28,7 +31,7 @@ async fn create_extractions(
         .validate()
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
     let model_request = ModelRequest::parse(&request.model);
     if matches!(&model_request, ModelRequest::Class(class) if *class != ModelClass::InformationExtraction)
     {
@@ -59,7 +62,7 @@ async fn create_extractions(
     };
     let mut req_log = Request::new(user.id.clone(), "/v1/extractions".to_string());
     req_log.model = Some(model.clone());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.map(|info| info.0));
+    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|info| info.0));
     let request_id = state
         .audit_logger
         .log_request(&req_log)

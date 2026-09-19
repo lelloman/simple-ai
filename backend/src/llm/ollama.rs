@@ -1,4 +1,4 @@
-use axum::body::Bytes;
+use simple_server::axum::body::Bytes;
 use futures_util::stream::{self, Stream};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -105,13 +105,13 @@ pub enum OllamaError {
 }
 
 impl OllamaError {
-    pub fn client_status(&self) -> axum::http::StatusCode {
+    pub fn client_status(&self) -> simple_server::axum::http::StatusCode {
         match self {
             Self::Upstream { status, .. } if (400..500).contains(status) => {
-                axum::http::StatusCode::from_u16(*status)
-                    .unwrap_or(axum::http::StatusCode::BAD_REQUEST)
+                simple_server::axum::http::StatusCode::from_u16(*status)
+                    .unwrap_or(simple_server::axum::http::StatusCode::BAD_REQUEST)
             }
-            _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            _ => simple_server::axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -633,7 +633,7 @@ mod tests {
             status: 400,
             message: "context length exceeded".to_string(),
         };
-        assert_eq!(error.client_status(), axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(error.client_status(), simple_server::axum::http::StatusCode::BAD_REQUEST);
     }
 
     #[test]

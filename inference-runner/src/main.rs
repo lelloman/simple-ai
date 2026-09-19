@@ -3,7 +3,7 @@
 use std::env;
 use std::sync::Arc;
 
-use axum::Router;
+use simple_server::axum::Router;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -218,7 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build router
     let app = Router::new()
         .nest("/v1", api::router())
-        .route("/health", axum::routing::get(api::health::health))
+        .route("/health", simple_server::axum::routing::get(api::health::health))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -227,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Listening on {}", addr);
 
     let listener = TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    simple_server::axum::serve(listener, app).await?;
 
     Ok(())
 }

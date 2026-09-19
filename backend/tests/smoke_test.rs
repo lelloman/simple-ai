@@ -150,7 +150,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
 }
 
 async fn send_request(
-    app: &axum::Router,
+    app: &simple_server::axum::Router,
     method: http::Method,
     uri: &str,
     body: Option<Bytes>,
@@ -163,9 +163,9 @@ async fn send_request(
 
     let req = req_builder
         .body(if let Some(b) = body {
-            axum::body::Body::from(b)
+            simple_server::axum::body::Body::from(b)
         } else {
-            axum::body::Body::empty()
+            simple_server::axum::body::Body::empty()
         })
         .unwrap();
 
@@ -176,7 +176,7 @@ async fn send_request(
 #[tokio::test]
 async fn test_chat_completions_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = axum::Router::new().nest("/v1", routes::chat::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::chat::router(state));
 
     let request = ChatCompletionRequest {
         messages: vec![ChatMessage {
@@ -230,7 +230,7 @@ async fn test_api_key_authentication_preserves_key_roles() {
 #[tokio::test]
 async fn test_responses_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = axum::Router::new().nest("/v1", routes::responses::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::responses::router(state));
 
     let request = ResponseCreateRequest {
         model: "test-model".to_string(),
@@ -322,7 +322,7 @@ async fn test_admin_request_cancel_requires_auth() {
 #[tokio::test]
 async fn test_embeddings_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = axum::Router::new().nest("/v1", routes::embeddings::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::embeddings::router(state));
 
     let body = Bytes::from(r#"{"input": "Hello world", "model": "nomic-embed-text"}"#);
     let status = send_request(&app, http::Method::POST, "/v1/embeddings", Some(body)).await;
@@ -332,7 +332,7 @@ async fn test_embeddings_requires_auth() {
 #[tokio::test]
 async fn test_speech_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = axum::Router::new().nest("/v1", routes::speech::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::speech::router(state));
 
     let body = Bytes::from(r#"{"model":"tts-local","input":"hello","voice":"alloy"}"#);
     let status = send_request(&app, http::Method::POST, "/v1/audio/speech", Some(body)).await;
@@ -342,13 +342,13 @@ async fn test_speech_requires_auth() {
 #[tokio::test]
 async fn test_audio_embeddings_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = axum::Router::new().nest("/v1", routes::audio_embeddings::router(state));
+    let app = simple_server::axum::Router::new().nest("/v1", routes::audio_embeddings::router(state));
 
     let req = http::Request::builder()
         .method(http::Method::POST)
         .uri("/v1/audio/embeddings")
         .header("Content-Type", "multipart/form-data; boundary=x")
-        .body(axum::body::Body::from("--x--\r\n"))
+        .body(simple_server::axum::body::Body::from("--x--\r\n"))
         .unwrap();
     let response = app.oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -370,9 +370,9 @@ async fn gateway_metadata_exposes_only_public_login_configuration() {
     config.android_client_id = Some("gateway-client".into());
     let expected_issuer = config.issuer.clone();
     let app = routes::gateway_auth::router(state);
-    let response = app.oneshot(http::Request::builder().uri("/.well-known/simple-ai").body(axum::body::Body::empty()).unwrap()).await.unwrap();
+    let response = app.oneshot(http::Request::builder().uri("/.well-known/simple-ai").body(simple_server::axum::body::Body::empty()).unwrap()).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let bytes = simple_server::axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
     let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(value, json!({"issuer":expected_issuer,"client_id":"gateway-client"}));
 }

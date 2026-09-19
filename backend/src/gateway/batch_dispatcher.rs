@@ -263,7 +263,7 @@ impl BatchDispatcher {
 mod tests {
     use super::*;
     use crate::gateway::batch_queue::BatchQueueConfig;
-    use axum::{extract::State, routing::post, Json, Router};
+    use simple_server::axum::{extract::State, routing::post, Json, Router};
     use simple_ai_common::{
         ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus,
     };
@@ -455,7 +455,7 @@ mod tests {
             .with_state(counter);
 
         tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
+            simple_server::axum::serve(listener, app).await.unwrap();
         });
 
         format!("http://{}", addr)
