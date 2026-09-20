@@ -10,6 +10,7 @@ name = "simple-ai-runner"
 path = "src/main.rs"
 
 [dependencies]
+tracing-log = "0.2"
 # Internal crates
 simple-ai-common = { workspace = true }
 

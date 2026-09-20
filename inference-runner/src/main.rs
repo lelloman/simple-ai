@@ -1,11 +1,12 @@
 //! Simple AI Runner - abstracts local inference engines and exposes OpenAI-compatible API.
+mod logging_setup;
 
 use std::env;
 use std::sync::Arc;
 
 use simple_server::axum::Router;
 use tower_http::cors::CorsLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::EnvFilter;
 
 mod api;
 mod capability;
@@ -50,10 +51,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize tracing
-    tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    logging_setup::init(
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        false,
+        false,
+    )
+    .map_err(|error| -> Box<dyn std::error::Error> { error })?;
 
     use simple_server::lifecycle::{Lifecycle, ShutdownOptions, Signals};
     let signals = Signals::install()?;

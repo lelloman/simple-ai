@@ -6,6 +6,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+tracing-log = "0.2"
 # Internal crates
 simple-ai-common = { workspace = true }
 

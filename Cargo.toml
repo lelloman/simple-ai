@@ -23,7 +23,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
-simple-server = { path = "../simple-server", features = ["lifecycle"] }
+simple-server = { path = "../simple-server", features = ["lifecycle", "logging"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 config = "0.14"
 

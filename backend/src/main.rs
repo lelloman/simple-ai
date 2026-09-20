@@ -1,3 +1,4 @@
+mod logging_setup;
 use simple_ai_backend::audit::AuditLogger;
 use simple_ai_backend::auth::JwksClient;
 use simple_ai_backend::circuit_breaker::CircuitBreaker;
@@ -32,16 +33,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let workers_stop = Shutdown::new();
     let config = Config::load()?;
 
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
-
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| config.logging.level.clone().into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    logging_setup::init(
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| config.logging.level.clone().into()),
+        false,
+        false,
+    )
+    .map_err(|error| -> Box<dyn std::error::Error> { error })?;
 
     tracing::info!("Starting SimpleAI API Gateway");
 
