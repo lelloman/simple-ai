@@ -11,7 +11,7 @@ tracing-log = "0.2"
 simple-ai-common = { workspace = true }
 
 # Web framework
-simple-server = { workspace = true, features = ["cors", "response-headers", "body-limit", "ws", "multipart", "http-tracing"] }
+simple-server = { workspace = true, features = ["cors", "response-headers", "body-limit", "ws", "multipart", "http-tracing", "health"] }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["rt"] }
 

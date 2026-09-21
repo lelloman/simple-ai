@@ -1,7 +1,10 @@
+use serde::Serialize;
 use simple_server::axum::http::{header, StatusCode};
 use simple_server::axum::response::{IntoResponse, Response};
-use simple_server::axum::{routing::get, Json, Router};
-use serde::Serialize;
+use simple_server::axum::{
+    routing::{get, get_service},
+    Json, Router,
+};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -9,11 +12,14 @@ struct HealthResponse {
     version: &'static str,
 }
 
-async fn health() -> Json<HealthResponse> {
+fn health(
+    _: Result<(), simple_server::health::CheckFailure<std::convert::Infallible>>,
+) -> Response {
     Json(HealthResponse {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
     })
+    .into_response()
 }
 
 async fn metrics() -> Response {
@@ -37,6 +43,51 @@ async fn metrics() -> Response {
 
 pub fn router() -> Router {
     Router::new()
-        .route("/health", get(health))
+        .route(
+            "/health",
+            get_service(simple_server::health::Probe::liveness().endpoint(health)),
+        )
         .route("/metrics", get(metrics))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use simple_server::axum::{
+        body::{to_bytes, Body},
+        http::Request,
+    };
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn health_preserves_get_head_and_method_contract() {
+        let app = router();
+        let get = app
+            .clone()
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(get.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(get.into_body(), usize::MAX).await.unwrap()).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"status":"ok", "version":env!("CARGO_PKG_VERSION")})
+        );
+        let head = app
+            .clone()
+            .oneshot(Request::head("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(head.status(), StatusCode::OK);
+        assert!(to_bytes(head.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .is_empty());
+        let post = app
+            .oneshot(Request::post("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(post.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
 }
