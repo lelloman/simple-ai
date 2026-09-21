@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use simple_server::axum::extract::{DefaultBodyLimit, Multipart, State};
+use simple_ai_common::{AudioEmbeddingOptions, AudioEmbeddingResponse};
+use simple_server::axum::extract::{Multipart, State};
 use simple_server::axum::routing::post;
 use simple_server::axum::{Json, Router};
-use simple_ai_common::{AudioEmbeddingOptions, AudioEmbeddingResponse};
 
 use crate::error::{Error, Result};
 use crate::state::AppState;
@@ -15,7 +15,7 @@ const DEFAULT_FILE_NAME: &str = "upload.bin";
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/audio/embeddings", post(create_audio_embedding))
-        .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
+        .layer(simple_server::body_limit::BodyLimit::max(200 * 1024 * 1024))
 }
 
 async fn create_audio_embedding(

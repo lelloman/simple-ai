@@ -2,13 +2,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
+use simple_ai_common::{OcrOptions, OcrResponse};
 use simple_server::axum::{
-    extract::{ConnectInfo, DefaultBodyLimit, Multipart, State},
+    extract::{ConnectInfo, Multipart, State},
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
 };
-use simple_ai_common::{OcrOptions, OcrResponse};
 
 use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::models::request::{Request, Response};
@@ -19,7 +19,7 @@ const DEFAULT_FILE_NAME: &str = "upload.bin";
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/ocr", post(ocr))
-        .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
+        .layer(simple_server::body_limit::BodyLimit::max(25 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -34,7 +34,8 @@ async fn ocr(
 ) -> Result<Json<OcrResponse>, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
 
     if !state.config.gateway.enabled {
         return Err((

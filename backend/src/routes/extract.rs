@@ -2,14 +2,13 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
 use simple_server::axum::{
-    extract::DefaultBodyLimit,
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
@@ -46,7 +45,7 @@ pub struct ExtractResponse {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/extract", post(extract))
-        .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
+        .layer(simple_server::body_limit::BodyLimit::max(25 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -61,7 +60,8 @@ async fn extract(
 ) -> Result<Json<ExtractResponse>, (StatusCode, String)> {
     let start = Instant::now();
     let (_auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
 
     if request.url.trim().is_empty() || request.html.trim().is_empty() {
         return Err((

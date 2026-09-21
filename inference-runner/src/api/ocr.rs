@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use simple_server::axum::extract::{DefaultBodyLimit, Multipart, State};
+use simple_ai_common::{OcrOptions, OcrResponse};
+use simple_server::axum::extract::{Multipart, State};
 use simple_server::axum::routing::post;
 use simple_server::axum::{Json, Router};
-use simple_ai_common::{OcrOptions, OcrResponse};
 
 use crate::error::{Error, Result};
 use crate::ocr::write_upload;
@@ -14,7 +14,7 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/ocr", post(ocr))
-        .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
+        .layer(simple_server::body_limit::BodyLimit::max(100 * 1024 * 1024))
 }
 
 async fn ocr(

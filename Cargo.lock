@@ -2355,6 +2355,7 @@ dependencies = [
  "futures-util",
  "http-body",
  "tokio",
+ "tower-layer",
  "tower-service",
  "tracing",
  "tracing-subscriber",

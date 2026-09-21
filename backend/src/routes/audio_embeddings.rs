@@ -2,13 +2,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
+use simple_ai_common::{AudioEmbeddingOptions, AudioEmbeddingResponse};
 use simple_server::axum::{
-    extract::{ConnectInfo, DefaultBodyLimit, Multipart, State},
+    extract::{ConnectInfo, Multipart, State},
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
 };
-use simple_ai_common::{AudioEmbeddingOptions, AudioEmbeddingResponse};
 
 use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
@@ -20,7 +20,7 @@ const DEFAULT_FILE_NAME: &str = "upload.bin";
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/audio/embeddings", post(create_audio_embedding))
-        .layer(DefaultBodyLimit::max(200 * 1024 * 1024))
+        .layer(simple_server::body_limit::BodyLimit::max(200 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -45,7 +45,8 @@ async fn create_audio_embedding(
 ) -> Result<Json<AudioEmbeddingResponse>, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
 
     if !state.config.gateway.enabled {
         return Err((
