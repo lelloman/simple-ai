@@ -1,3 +1,5 @@
+use futures_util::{future::Abortable, stream};
+use simple_ai_common::InferenceMetrics;
 use simple_server::axum::body::{Body, Bytes};
 use simple_server::axum::http::HeaderMap;
 use simple_server::axum::{
@@ -7,8 +9,6 @@ use simple_server::axum::{
     routing::post,
     Json, Router,
 };
-use futures_util::{future::Abortable, stream};
-use simple_ai_common::InferenceMetrics;
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -231,7 +231,8 @@ async fn chat_completions(
 
     // Authenticate user - try API key first, then fall back to JWT
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
 
     // Parse and validate model request
     let model_request = match &request.model {
@@ -281,8 +282,15 @@ async fn chat_completions(
     req_log.request_body = serde_json::to_string(&request).unwrap_or_default();
     req_log.model = Some(model.clone());
     // Informational attribution only: never consulted by authentication or authorization.
-    req_log.source_app = headers.get("x-simpleai-source-app").and_then(|h| h.to_str().ok())
-        .filter(|v| !v.is_empty() && v.len() <= 255 && v.bytes().all(|c| c.is_ascii_alphanumeric() || b"._,-".contains(&c)))
+    req_log.source_app = headers
+        .get("x-simpleai-source-app")
+        .and_then(|h| h.to_str().ok())
+        .filter(|v| {
+            !v.is_empty()
+                && v.len() <= 255
+                && v.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"._,-".contains(&c))
+        })
         .map(str::to_owned);
     req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|c| c.0));
 
@@ -433,9 +441,11 @@ async fn chat_completions(
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/event-stream"),
         );
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        simple_server::response_headers::replace(
+            response.headers_mut(),
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        );
         response
             .headers_mut()
             .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));

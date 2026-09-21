@@ -15,7 +15,7 @@ tracing-log = "0.2"
 simple-ai-common = { workspace = true }
 
 # Web framework
-simple-server = { workspace = true, features = ["body-limit", "multipart"] }
+simple-server = { workspace = true, features = ["response-headers", "body-limit", "multipart"] }
 tokio = { workspace = true }
 tower-http = { workspace = true }
 

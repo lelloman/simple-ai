@@ -1,3 +1,9 @@
+use futures_util::{future::Abortable, stream, StreamExt};
+use simple_ai_common::{
+    ChatCompletionChunk, ChatCompletionRequest, InferenceMetrics, ResponseCreateRequest,
+    ResponseInput, ResponseObject, ResponseOutputContent, ResponseOutputItem,
+    ResponseOutputMessage,
+};
 use simple_server::axum::body::{Body, Bytes};
 use simple_server::axum::http::HeaderMap;
 use simple_server::axum::{
@@ -6,12 +12,6 @@ use simple_server::axum::{
     response::{IntoResponse, Response as AxumResponse},
     routing::post,
     Json, Router,
-};
-use futures_util::{future::Abortable, stream, StreamExt};
-use simple_ai_common::{
-    ChatCompletionChunk, ChatCompletionRequest, InferenceMetrics, ResponseCreateRequest,
-    ResponseInput, ResponseObject, ResponseOutputContent, ResponseOutputItem,
-    ResponseOutputMessage,
 };
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -439,7 +439,8 @@ async fn create_response(
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
     let mut chat_request = build_chat_request(request);
 
     let model_request = ModelRequest::parse(
@@ -623,9 +624,11 @@ async fn create_response(
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/event-stream"),
         );
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        simple_server::response_headers::replace(
+            response.headers_mut(),
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        );
         response
             .headers_mut()
             .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));

@@ -3,14 +3,14 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use futures_util::stream;
+use simple_ai_common::{SpeechRequest, SpeechStreamFormat};
 use simple_server::axum::body::{Body, Bytes};
 use simple_server::axum::extract::State;
 use simple_server::axum::http::{header, HeaderValue, StatusCode};
 use simple_server::axum::response::Response;
 use simple_server::axum::routing::post;
 use simple_server::axum::{Json, Router};
-use futures_util::stream;
-use simple_ai_common::{SpeechRequest, SpeechStreamFormat};
 
 use crate::engine::ModelLease;
 use crate::error::Result;
@@ -82,9 +82,11 @@ async fn create_speech(
         .headers_mut()
         .insert(header::CONTENT_TYPE, content_type);
     if resolved_request.stream_format_or_default() == SpeechStreamFormat::Sse {
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        simple_server::response_headers::replace(
+            response.headers_mut(),
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        );
         response
             .headers_mut()
             .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));

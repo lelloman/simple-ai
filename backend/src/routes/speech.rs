@@ -3,18 +3,18 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use simple_server::axum::body::Body;
-use simple_server::axum::extract::{ConnectInfo, Query, State};
-use simple_server::axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use simple_server::axum::response::Response as AxumResponse;
-use simple_server::axum::routing::{get, post};
-use simple_server::axum::{Json, Router};
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
     Capability, RunnerStatus, SpeechProviderInfo, SpeechRequest, SpeechResponseFormat,
     SpeechStreamFormat,
 };
+use simple_server::axum::body::Body;
+use simple_server::axum::extract::{ConnectInfo, Query, State};
+use simple_server::axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use simple_server::axum::response::Response as AxumResponse;
+use simple_server::axum::routing::{get, post};
+use simple_server::axum::{Json, Router};
 
 use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
@@ -136,7 +136,8 @@ async fn list_voices(
     Query(query): Query<VoicesQuery>,
 ) -> Result<Json<VoicesResponse>, (StatusCode, String)> {
     let (auth_user, _user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
     if !state.config.gateway.enabled {
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
@@ -185,7 +186,8 @@ async fn create_speech(
 ) -> Result<AxumResponse, (StatusCode, String)> {
     let start = Instant::now();
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
 
     if !state.config.gateway.enabled {
         return Err((
@@ -293,9 +295,11 @@ async fn create_speech(
                 .headers_mut()
                 .insert(header::CONTENT_TYPE, content_type);
             if request.stream_format_or_default() == SpeechStreamFormat::Sse {
-                response
-                    .headers_mut()
-                    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+                simple_server::response_headers::replace(
+                    response.headers_mut(),
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("no-cache"),
+                );
                 response
                     .headers_mut()
                     .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));

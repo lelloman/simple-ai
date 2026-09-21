@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
+use futures_util::{stream, StreamExt};
+use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
 use simple_server::axum::body::Body;
 use simple_server::axum::extract::State;
 use simple_server::axum::http::{header, HeaderValue, StatusCode};
 use simple_server::axum::response::{IntoResponse, Response};
 use simple_server::axum::routing::post;
 use simple_server::axum::{Json, Router};
-use futures_util::{stream, StreamExt};
-use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
 
 use crate::error::{Error, Result};
 use crate::state::AppState;
@@ -61,9 +61,11 @@ async fn chat_completions(
             header::CONTENT_TYPE,
             HeaderValue::from_static("text/event-stream"),
         );
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        simple_server::response_headers::replace(
+            response.headers_mut(),
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        );
         response
             .headers_mut()
             .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
