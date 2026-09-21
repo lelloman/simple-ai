@@ -5,7 +5,6 @@ use std::env;
 use std::sync::Arc;
 
 use simple_server::axum::Router;
-use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
 mod api;
@@ -239,7 +238,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "/health",
             simple_server::axum::routing::get(api::health::health),
         )
-        .layer(CorsLayer::permissive())
+        .layer(cors_policy())
         .with_state(state);
 
     // Start server
@@ -257,4 +256,85 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(?report, "Graceful shutdown complete");
 
     Ok(())
+}
+
+fn cors_policy() -> simple_server::cors::CorsLayer {
+    simple_server::cors::CorsConfig::default()
+        .allow_any_origin()
+        .allow_any_method()
+        .allow_any_header()
+        .expose_any_header()
+        .build()
+        .expect("static wildcard CORS policy without credentials")
+}
+
+#[cfg(test)]
+mod cors_tests {
+    use super::cors_policy;
+    use simple_server::axum::{
+        body::{to_bytes, Body},
+        http::{Request, StatusCode},
+        routing::get,
+        Router,
+    };
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn production_cors_policy_preserves_preflights_and_error_responses() {
+        let app = Router::new()
+            .route(
+                "/protected",
+                get(|| async { (StatusCode::UNAUTHORIZED, "denied") }),
+            )
+            .layer(cors_policy());
+        for origin in ["https://app.example", "https://other.example", "null"] {
+            for (method, status, body) in [
+                ("GET", StatusCode::UNAUTHORIZED, "denied"),
+                ("OPTIONS", StatusCode::OK, ""),
+            ] {
+                let response = app
+                    .clone()
+                    .oneshot(
+                        Request::builder()
+                            .method(method)
+                            .uri("/protected")
+                            .header("origin", origin)
+                            .header("access-control-request-method", "POST")
+                            .header(
+                                "access-control-request-headers",
+                                "authorization,content-type",
+                            )
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), status);
+                assert_eq!(response.headers()["access-control-allow-origin"], "*");
+                assert!(!response
+                    .headers()
+                    .contains_key("access-control-allow-credentials"));
+                assert_eq!(
+                    response.headers()["vary"],
+                    "origin, access-control-request-method, access-control-request-headers"
+                );
+                if method == "OPTIONS" {
+                    assert_eq!(response.headers()["access-control-allow-methods"], "*");
+                    assert_eq!(response.headers()["access-control-allow-headers"], "*");
+                    assert!(!response
+                        .headers()
+                        .contains_key("access-control-expose-headers"));
+                } else {
+                    assert_eq!(response.headers()["access-control-expose-headers"], "*");
+                }
+                assert_eq!(
+                    to_bytes(response.into_body(), usize::MAX)
+                        .await
+                        .unwrap()
+                        .as_ref(),
+                    body.as_bytes()
+                );
+            }
+        }
+    }
 }
