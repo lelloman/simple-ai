@@ -14,7 +14,7 @@ use super::{AffinityDecision, InferenceRouter, RouterError, RouterTelemetry, Run
 
 /// Batch dispatcher that processes queued requests.
 pub struct BatchDispatcher {
-    tasks: tokio_util::task::TaskTracker,
+    tasks: simple_server::tasks::WorkTracker,
     queue: Arc<BatchQueue>,
     registry: Arc<RunnerRegistry>,
     router: Arc<InferenceRouter>,
@@ -32,7 +32,7 @@ impl BatchDispatcher {
         telemetry: Arc<RouterTelemetry>,
     ) -> Self {
         Self {
-            tasks: tokio_util::task::TaskTracker::new(),
+            tasks: simple_server::tasks::WorkTracker::new(),
             queue,
             registry,
             router,
@@ -161,6 +161,20 @@ impl BatchDispatcher {
         let mut first_error = None;
 
         for queued in batch.requests {
+            let guard = match self
+                .tasks
+                .try_acquire(format!("batch:{}", queued.request_id))
+            {
+                Ok(guard) => guard,
+                Err(error) => {
+                    let message = format!("batch dispatcher admission closed: {error}");
+                    first_error.get_or_insert_with(|| message.clone());
+                    let _ = queued
+                        .response_tx
+                        .send(Err(RouterError::ConnectionFailed(message)));
+                    continue;
+                }
+            };
             let plan = match self
                 .router
                 .plan_queued_request(
@@ -241,7 +255,8 @@ impl BatchDispatcher {
             );
 
             let router = self.router.clone();
-            self.tasks.spawn(async move {
+            tokio::spawn(async move {
+                let _guard = guard;
                 let result = router
                     .execute_chat_plan::<_, simple_ai_common::ChatCompletionResponse>(
                         reserved,
@@ -275,10 +290,10 @@ impl BatchDispatcher {
 mod tests {
     use super::*;
     use crate::gateway::batch_queue::BatchQueueConfig;
-    use simple_server::axum::{extract::State, routing::post, Json, Router};
     use simple_ai_common::{
         ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus,
     };
+    use simple_server::axum::{extract::State, routing::post, Json, Router};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::mpsc;
     use uuid::Uuid;
@@ -544,6 +559,22 @@ mod tests {
         assert_eq!(registry.get_active_requests("runner-2").await, 0);
         assert_eq!(handled_by.iter().filter(|id| *id == "runner-1").count(), 2);
         assert_eq!(handled_by.iter().filter(|id| *id == "runner-2").count(), 2);
+
+        // A stopped dispatcher must reject the caller explicitly without
+        // reserving runner capacity or issuing another outbound request.
+        let late = queue
+            .enqueue("model-a".to_string(), create_test_request())
+            .await;
+        let batch = queue.take_batch("model-a", 1).await.unwrap();
+        assert!(dispatcher.dispatch_batch(batch).await.is_err());
+        assert!(matches!(
+            late.await.unwrap(),
+            Err(RouterError::ConnectionFailed(_))
+        ));
+        assert_eq!(runner_1_count.load(Ordering::SeqCst), 2);
+        assert_eq!(runner_2_count.load(Ordering::SeqCst), 2);
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
+        assert_eq!(registry.get_active_requests("runner-2").await, 0);
     }
 
     #[tokio::test]
