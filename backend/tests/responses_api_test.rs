@@ -509,11 +509,11 @@ async fn test_responses_surfaces_upstream_error() {
 #[cfg(test)]
 mod lan_local_tests {
     use super::*;
-    use simple_server::axum::http::HeaderMap;
     use simple_ai_backend::lan_local::LanLocalUpdate;
     use simple_ai_backend::routes::auth_helpers::{
         authenticate_inference_request, authenticate_request,
     };
+    use simple_server::axum::http::{HeaderMap, HeaderValue};
 
     #[tokio::test]
     async fn lan_identity_and_explicit_credentials() {
@@ -562,6 +562,120 @@ mod lan_local_tests {
         assert_eq!(user.id, "real-user");
         headers.remove("authorization");
         state.audit_logger.disable_user("lan-local").unwrap();
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn authorization_header_compatibility_matrix() {
+        let state = create_test_state("http://localhost:11434").await.unwrap();
+        state
+            .audit_logger
+            .find_or_create_user("key-user", None)
+            .unwrap();
+        let (_, key) = state
+            .audit_logger
+            .create_api_key("key-user", "matrix", &[])
+            .unwrap();
+        state
+            .lan_local
+            .update(LanLocalUpdate {
+                enabled: true,
+                network: Some("192.168.1.0/24".into()),
+                duration_seconds: Some(60),
+            })
+            .unwrap();
+        let peer = Some("192.168.1.12:1234".parse().unwrap());
+
+        let mut headers = HeaderMap::new();
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap()
+                .0
+                .sub,
+            "lan-local"
+        );
+        headers.insert("authorization", format!("Bearer {key}").parse().unwrap());
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap()
+                .0
+                .sub,
+            "key-user"
+        );
+
+        // Existing behavior selects the first Authorization value, including
+        // when a second value is present. An explicit bad value never gets LAN access.
+        headers.append("authorization", "Bearer sk-invalid".parse().unwrap());
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap()
+                .0
+                .sub,
+            "key-user"
+        );
+        headers.clear();
+        headers.append("authorization", "Bearer sk-invalid".parse().unwrap());
+        headers.append("authorization", format!("Bearer {key}").parse().unwrap());
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+
+        for value in [
+            "",
+            "bearer sk-invalid",
+            "Bearer  sk-invalid",
+            "Bearer ",
+            "Basic x",
+        ] {
+            headers.clear();
+            headers.insert("authorization", value.parse().unwrap());
+            assert_eq!(
+                authenticate_inference_request(&state, &headers, peer)
+                    .await
+                    .unwrap_err()
+                    .0,
+                StatusCode::UNAUTHORIZED,
+                "{value:?}"
+            );
+        }
+        headers.clear();
+        headers.insert(
+            "authorization",
+            HeaderValue::from_bytes(b"Bearer \xff").unwrap(),
+        );
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+
+        headers.clear();
+        headers.insert("forwarded", "for=192.168.1.12".parse().unwrap());
+        assert_eq!(
+            authenticate_inference_request(&state, &headers, peer)
+                .await
+                .unwrap_err()
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+        headers.clear();
+        state.audit_logger.disable_user("key-user").unwrap();
+        headers.insert("authorization", format!("Bearer {key}").parse().unwrap());
         assert_eq!(
             authenticate_inference_request(&state, &headers, peer)
                 .await

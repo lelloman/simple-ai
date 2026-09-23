@@ -51,7 +51,7 @@ async fn require_admin(
 
     match auth_result {
         Ok(user) => {
-            if !user.is_admin() {
+            if !crate::routes::auth_helpers::authorize_admin(&user) {
                 return (
                     StatusCode::FORBIDDEN,
                     Html("<h1>403 Forbidden</h1><p>Admin access required.</p>"),
@@ -1335,7 +1335,7 @@ async fn validate_admin_token(state: &AppState, token: &str) -> Result<(), Strin
         .await
         .map_err(|e| format!("Invalid token: {}", e))?;
 
-    if !user.is_admin() {
+    if !crate::routes::auth_helpers::authorize_admin(&user) {
         return Err("Admin access required".to_string());
     }
 
@@ -1379,7 +1379,7 @@ async fn runner_events(
         .await
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    if !user.is_admin() {
+    if !crate::routes::auth_helpers::authorize_admin(&user) {
         return Err(StatusCode::FORBIDDEN);
     }
 
