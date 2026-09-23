@@ -12,10 +12,12 @@ or capacity reservation for late dispatch. Routing, audit and response semantics
 for accepted requests are unchanged. Inference-runner protocol/process ownership
 remains application-owned.
 
-06b remains Pending for the application's model-aware batch scheduler. It waits
-for batch size/readiness or age, adapts waiting to runner saturation, and reserves
-live per-model runner capacity. The shared job scheduler does not replace this
-contract; adding unused cron/fixed-interval features would not be adoption.
+06b now adopts `BatchReadiness` in the production gateway's per-model dispatch
+check (shared revision `8edcf14`). Full batches dispatch immediately; partial
+batches require the configured minimum and normal or saturated age threshold.
+Model identity, cancellation pruning, routing, live runner reservations and
+request ownership stay in the gateway. This is scoped scheduling-primitive
+adoption, not replacement of the inference protocol or runner registry.
 06c is N/A for independently managed background jobs: batch readiness ages are
 not execution/queue-expiry budgets, and outbound inference request errors/timeouts
 remain routing/client behavior. No job circuit/pause/retry policy is introduced.
@@ -32,3 +34,9 @@ which were not reformatted. Inference-runner/GPU/browser suites were not rerun.
 Used isolated worktree, temporary test databases and loopback listeners with
 three Cargo jobs and debug info disabled. Unrelated README/semantic-scoring work
 in the original checkout is outside this migration.
+
+06b verification (2026-09-23): baseline 314 backend tests; final 315 passed,
+with the same one ignored doctest. Existing loopback mock-runner tests cover
+capacity release and drain; readiness tests cover size, age, saturation, minimum,
+model isolation and empty queues. Backend all-target Clippy completes with
+existing warnings. GPU/inference-runner and browser suites were not rerun.

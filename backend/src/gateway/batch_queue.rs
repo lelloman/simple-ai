@@ -231,32 +231,19 @@ impl BatchQueue {
     ) -> bool {
         let queues = self.queues.read().await;
 
-        if let Some(queue) = queues.get(model) {
-            if queue.is_empty() {
-                return false;
+        queues.get(model).is_some_and(|queue| {
+            simple_server::task_scheduling::BatchReadiness {
+                minimum: self.config.min_batch_size as usize,
+                fill_timeout: self.config.batch_timeout,
+                saturation_timeout: self.config.saturation_timeout,
             }
-
-            // Dispatch if we have enough requests
-            if queue.len() >= runner_batch_size as usize {
-                return true;
-            }
-
-            // Dispatch if we've waited long enough (and have at least min_batch_size)
-            if queue.len() >= self.config.min_batch_size as usize {
-                if let Some(age) = queue.age() {
-                    let timeout = if runners_saturated {
-                        self.config.saturation_timeout
-                    } else {
-                        self.config.batch_timeout
-                    };
-                    if age >= timeout {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
+            .ready(
+                queue.len(),
+                runner_batch_size as usize,
+                queue.age(),
+                runners_saturated,
+            )
+        })
     }
 
     /// Take a batch of requests for the given model.
@@ -351,6 +338,22 @@ mod tests {
             stream: None,
             prompt_cache_key: None,
         }
+    }
+
+    #[tokio::test]
+    async fn readiness_keeps_models_separate_and_full_batches_override_minimum() {
+        let queue = BatchQueue::new(BatchQueueConfig::new(0, 0, 8));
+        assert!(!queue.should_dispatch("absent", 0, false).await);
+        let _a = queue.enqueue("a".into(), create_test_request()).await;
+        let _b = queue.enqueue("b".into(), create_test_request()).await;
+        assert!(!queue.should_dispatch("a", 2, false).await);
+        assert!(!queue.should_dispatch("b", 2, true).await);
+        // A runner requesting one item receives a full batch even though the
+        // configured minimum for a partially filled batch is eight.
+        assert!(queue.should_dispatch("a", 1, true).await);
+        assert_eq!(queue.take_batch("a", 1).await.unwrap().requests.len(), 1);
+        assert!(!queue.should_dispatch("a", 0, false).await);
+        assert_eq!(queue.pending_count("b").await, 1);
     }
 
     #[tokio::test]
