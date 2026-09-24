@@ -17,6 +17,25 @@ use crate::config::ModelsConfig;
 use crate::config::{GatewayConfig, RoutingConfig, WolConfig};
 use crate::gateway::{classify_model, ModelClass, ModelRequest, RunnerEvent, RunnerRegistry};
 
+/// Request-owned activity lease. Cancellation drops it and stops renewal.
+pub struct RunnerActivity(tokio::task::JoinHandle<()>);
+impl RunnerActivity {
+    fn start(period: Duration, renew: impl Fn() + Send + 'static) -> Self {
+        Self(tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(period);
+            loop {
+                ticks.tick().await;
+                renew();
+            }
+        }))
+    }
+}
+impl Drop for RunnerActivity {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Errors that can occur during WOL operations.
 #[derive(Debug, thiserror::Error)]
 pub enum WolError {
@@ -547,6 +566,14 @@ impl WakeService {
         Ok(())
     }
 
+    /// Keep loading/queued/in-flight work visible to the power manager.
+    pub fn keep_runner_awake(self: &Arc<Self>, runner_id: String) -> RunnerActivity {
+        let service = self.clone();
+        RunnerActivity::start(Duration::from_secs(30), move || {
+            service.keepalive_runner(runner_id.clone());
+        })
+    }
+
     /// Send a keepalive signal to idle-manager for a runner.
     ///
     /// Fire-and-forget: logs a warning on failure but never blocks the caller.
@@ -858,5 +885,33 @@ mod wake_service_tests {
         };
         assert_eq!(result.runner_id, "runner-1");
         assert_eq!(result.runners_woken, 2);
+    }
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::*;
+    #[tokio::test]
+    async fn activity_renews_until_request_is_dropped() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let activity = RunnerActivity::start(Duration::from_millis(10), move || {
+            let _ = tx.send(());
+        });
+        timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        drop(activity);
+        while rx.try_recv().is_ok() {}
+        // Aborting the request must drop the renewal sender, not leave an
+        // orphan task keeping a machine awake forever.
+        assert_eq!(
+            timeout(Duration::from_secs(1), rx.recv()).await.unwrap(),
+            None
+        );
     }
 }

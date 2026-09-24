@@ -14,6 +14,7 @@ use super::{AffinityDecision, InferenceRouter, RouterError, RouterTelemetry, Run
 
 /// Batch dispatcher that processes queued requests.
 pub struct BatchDispatcher {
+    wake_service: Option<Arc<crate::wol::WakeService>>,
     tasks: simple_server::tasks::WorkTracker,
     queue: Arc<BatchQueue>,
     registry: Arc<RunnerRegistry>,
@@ -32,6 +33,7 @@ impl BatchDispatcher {
         telemetry: Arc<RouterTelemetry>,
     ) -> Self {
         Self {
+            wake_service: None,
             tasks: simple_server::tasks::WorkTracker::new(),
             queue,
             registry,
@@ -39,6 +41,11 @@ impl BatchDispatcher {
             telemetry,
             batch_size_cache: RwLock::new(std::collections::HashMap::new()),
         }
+    }
+
+    pub fn with_wake_service(mut self, service: Arc<crate::wol::WakeService>) -> Self {
+        self.wake_service = Some(service);
+        self
     }
 
     /// Run the dispatcher loop.
@@ -254,9 +261,14 @@ impl BatchDispatcher {
                 reserved.plan.runner.has_model_or_alias(&resolved_model)
             );
 
+            let activity = self
+                .wake_service
+                .as_ref()
+                .map(|service| service.keep_runner_awake(runner_id.clone()));
             let router = self.router.clone();
             tokio::spawn(async move {
                 let _guard = guard;
+                let _activity = activity;
                 let result = router
                     .execute_chat_plan::<_, simple_ai_common::ChatCompletionResponse>(
                         reserved,

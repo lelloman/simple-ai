@@ -80,6 +80,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, affinity.clone())
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = if use_batching {
             let batch_queue = self
                 .batch_queue
@@ -122,6 +125,9 @@ impl RequestScheduler {
                 }
                 Err(error) => return Err(error.into()),
             };
+            let _selected_activity = self
+                .wake_service
+                .keep_runner_awake(reserved.plan.runner.id.clone());
             self.emit_affinity_decision(request_id, &reserved.plan)
                 .await;
             self.inference_router
@@ -147,6 +153,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, affinity.clone())
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let plan = prepared.plan;
         let reserved = match self.inference_router.reserve_plan(plan).await {
             Ok(reserved) => reserved,
@@ -186,6 +195,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, None)
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = self
             .inference_router
             .embed::<EmbeddingRequest, EmbeddingResponse>(model, request)
@@ -208,6 +220,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, None)
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = self
             .inference_router
             .classification::<ClassificationRequest, ClassificationResponse>(model, request)
@@ -230,6 +245,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, None)
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = self
             .inference_router
             .extraction::<ExtractionRequest, ExtractionResponse>(model, request)
@@ -254,6 +272,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, None)
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = self
             .inference_router
             .audio_embedding_multipart(model, file_name, file_bytes, options_json)
@@ -276,6 +297,9 @@ impl RequestScheduler {
         let prepared = self
             .prepare_for_request(request_id, model, model_request, None)
             .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = self.inference_router.speech_raw(model, request).await?;
         Ok(ScheduledResponse {
             response: routed.response,
@@ -465,6 +489,7 @@ impl RequestScheduler {
             return Ok(());
         }
 
+        let _activity = self.wake_service.keep_runner_awake(plan.runner.id.clone());
         self.router_telemetry
             .set_runner_state(
                 &plan.runner.id,

@@ -189,12 +189,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let queue = Arc::new(BatchQueue::new(queue_config));
 
             // Create and spawn batch dispatcher (keep Arc for cache invalidation)
-            let dispatcher = Arc::new(BatchDispatcher::new(
-                queue.clone(),
-                runner_registry.clone(),
-                inference_router.clone(),
-                router_telemetry.clone(),
-            ));
+            let dispatcher = Arc::new(
+                BatchDispatcher::new(
+                    queue.clone(),
+                    runner_registry.clone(),
+                    inference_router.clone(),
+                    router_telemetry.clone(),
+                )
+                .with_wake_service(wake_service.clone()),
+            );
             let dispatcher_clone = dispatcher.clone();
             let stop = workers_stop.clone();
             lifecycle.service("batch-dispatcher", async move {
