@@ -4,50 +4,36 @@ use simple_server::axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use governor::{
-    clock::DefaultClock,
-    state::{InMemoryState, NotKeyed},
-    Quota, RateLimiter as GovernorRateLimiter,
-};
-use std::collections::HashMap;
-use std::num::NonZeroU32;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use simple_server::rate_limit::{KeyedLimiter, Quota, StoreConfig};
+use std::{num::NonZeroU32, sync::Arc, time::Duration};
 
-/// Per-IP rate limiter using the GCRA algorithm.
+/// Shared GCRA budgets; identity and response policy remain application-owned.
 pub struct RateLimiter {
-    limiters:
-        Mutex<HashMap<String, Arc<GovernorRateLimiter<NotKeyed, InMemoryState, DefaultClock>>>>,
-    quota: Quota,
+    limiter: KeyedLimiter<String>,
 }
 
 impl RateLimiter {
-    /// Create a new rate limiter with the given requests-per-minute limit.
     pub fn new(rpm: u32) -> Self {
-        let per_minute = NonZeroU32::new(rpm).expect("rate_limit_rpm must be > 0");
-        let quota = Quota::per_minute(per_minute);
+        let burst = NonZeroU32::new(rpm).expect("rate_limit_rpm must be > 0");
+        let quota = Quota::replenishing(Duration::from_secs(60) / rpm, burst)
+            .expect("rate_limit_rpm produces a positive refill interval");
         Self {
-            limiters: Mutex::new(HashMap::new()),
-            quota,
+            // Preserve the existing unbounded per-IP map. Adding a capacity
+            // policy would change admission for previously accepted identities.
+            limiter: KeyedLimiter::new(quota, StoreConfig::unbounded()),
         }
     }
 
-    /// Check if a request from the given key is allowed.
-    /// Returns Ok(()) if allowed, Err(retry_after_secs) if rate limited.
     async fn check(&self, key: &str) -> Result<(), u64> {
-        let mut limiters = self.limiters.lock().await;
-        let limiter = limiters
-            .entry(key.to_string())
-            .or_insert_with(|| Arc::new(GovernorRateLimiter::direct(self.quota)));
-
-        match limiter.check() {
-            Ok(()) => Ok(()),
-            Err(not_until) => {
-                let retry_after =
-                    not_until.wait_time_from(governor::clock::Clock::now(&DefaultClock::default()));
-                Err(retry_after.as_secs().max(1))
-            }
-        }
+        self.limiter
+            .check(key.to_owned(), NonZeroU32::new(1).unwrap())
+            .map_err(|rejection| {
+                rejection
+                    .retry_after
+                    .expect("unit GCRA check has a retry duration")
+                    .as_secs()
+                    .max(1)
+            })
     }
 }
 
@@ -81,7 +67,9 @@ fn extract_ip(request: &Request) -> String {
 
 /// Axum middleware that enforces per-IP rate limiting.
 pub async fn rate_limit_middleware(
-    simple_server::axum::extract::State(limiter): simple_server::axum::extract::State<Arc<RateLimiter>>,
+    simple_server::axum::extract::State(limiter): simple_server::axum::extract::State<
+        Arc<RateLimiter>,
+    >,
     request: Request,
     next: Next,
 ) -> Response {
@@ -136,5 +124,113 @@ mod tests {
         limiter.check("127.0.0.1").await.ok();
         let err = limiter.check("127.0.0.1").await.unwrap_err();
         assert!(err >= 1);
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+    use simple_server::axum::{
+        body::Body,
+        extract::ConnectInfo,
+        http::{HeaderValue, Request},
+        middleware,
+        routing::post,
+        Router,
+    };
+    use std::net::SocketAddr;
+
+    #[test]
+    fn client_key_precedence_and_unknown_are_unchanged() {
+        let peer: SocketAddr = "192.0.2.1:1234".parse().unwrap();
+        let mut request = Request::new(Body::empty());
+        assert_eq!(extract_ip(&request), "unknown");
+        request.extensions_mut().insert(ConnectInfo(peer));
+        assert_eq!(extract_ip(&request), "192.0.2.1");
+        request
+            .headers_mut()
+            .insert("x-real-ip", HeaderValue::from_static("not-normalized"));
+        assert_eq!(extract_ip(&request), "not-normalized");
+        request.headers_mut().insert(
+            "x-forwarded-for",
+            HeaderValue::from_static(" 198.51.100.1, 192.0.2.5"),
+        );
+        request
+            .headers_mut()
+            .append("x-forwarded-for", HeaderValue::from_static("other"));
+        assert_eq!(extract_ip(&request), "198.51.100.1");
+        request
+            .headers_mut()
+            .insert("x-forwarded-for", HeaderValue::from_bytes(b"\xff").unwrap());
+        assert_eq!(extract_ip(&request), "not-normalized");
+        request
+            .headers_mut()
+            .insert("x-forwarded-for", HeaderValue::from_static(""));
+        assert_eq!(extract_ip(&request), "");
+    }
+
+    #[tokio::test]
+    async fn real_http_rate_contract_preserves_body_keys_and_public_routes() {
+        let app = Router::new()
+            .route("/v1/test", post(|body: String| async move { body }))
+            .layer(middleware::from_fn_with_state(
+                Arc::new(RateLimiter::new(1)),
+                rate_limit_middleware,
+            ))
+            .route("/public", post(|| async { "public" }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let task =
+            tokio::spawn(async move { simple_server::axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let url = format!("http://{addr}/v1/test");
+        let ok = client
+            .post(&url)
+            .header("x-forwarded-for", "a")
+            .body("stream-preserved")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), 200);
+        assert_eq!(ok.text().await.unwrap(), "stream-preserved");
+        let denied = client
+            .post(&url)
+            .header("x-forwarded-for", "a")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), 429);
+        assert!((1..=60).contains(
+            &denied.headers()["retry-after"]
+                .to_str()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap()
+        ));
+        assert_eq!(denied.text().await.unwrap(), "Rate limit exceeded");
+        assert_eq!(
+            client
+                .post(&url)
+                .header("x-forwarded-for", "b")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            200
+        );
+        assert_eq!(client.post(&url).send().await.unwrap().status(), 200);
+        assert_eq!(client.post(&url).send().await.unwrap().status(), 429);
+        assert_eq!(
+            client
+                .post(format!("http://{addr}/public"))
+                .header("x-forwarded-for", "a")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            200
+        );
+        task.abort();
+        let _ = task.await;
     }
 }

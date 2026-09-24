@@ -11,7 +11,7 @@ tracing-log = "0.2"
 simple-ai-common = { workspace = true }
 
 # Web framework
-simple-server = { workspace = true, features = ["tasks", "task-scheduling", "cors", "response-headers", "body-limit", "ws", "multipart", "http-tracing", "health", "auth"] }
+simple-server = { workspace = true, features = ["tasks", "task-scheduling", "cors", "response-headers", "body-limit", "ws", "multipart", "http-tracing", "health", "auth", "rate-limit"] }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["rt"] }
 
@@ -47,9 +47,6 @@ ipnet = "2"
 rand = "0.8"
 hmac = "0.12"
 prometheus-client = "0.22"
-
-# Rate limiting
-governor = "0.8"
 
 # Language detection
 fasttext = "0.7"

@@ -354,6 +354,12 @@ cd android && ./gradlew test
 
 #### Backend
 
+Use the reviewed shared-library revision recorded in `simple-server.rev`:
+
+```bash
+bash scripts/checkout-simple-server.sh
+```
+
 ```bash
 docker build --build-context simple-server-source=../simple-server -f backend/Dockerfile -t simple-ai-backend .
 docker run -p 8080:8080 \
