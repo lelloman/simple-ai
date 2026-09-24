@@ -105,15 +105,15 @@ impl ConnectedRunner {
     }
 
     pub fn prompt_cache_accepts_key(&self, resolved_model: &str) -> bool {
-        let local_model = self.resolve_model_alias(resolved_model);
         self.status.engines.iter().any(|engine| {
-            let matches_model = engine.loaded_models.iter().any(|model| {
-                model.eq_ignore_ascii_case(resolved_model)
-                    || model.eq_ignore_ascii_case(&local_model)
-            }) || engine.available_models.iter().any(|model| {
-                model.id.eq_ignore_ascii_case(resolved_model)
-                    || model.id.eq_ignore_ascii_case(&local_model)
-            });
+            let matches_model = engine
+                .loaded_models
+                .iter()
+                .any(|model| self.same_model(model, resolved_model))
+                || engine
+                    .available_models
+                    .iter()
+                    .any(|model| self.same_model(&model.id, resolved_model));
             matches_model
                 && engine
                     .prompt_cache
@@ -123,16 +123,15 @@ impl ConnectedRunner {
     }
 
     pub fn batch_size_for_model(&self, resolved_model: &str) -> u32 {
-        let local_model = self.resolve_model_alias(resolved_model);
         let mut matching: Vec<u32> = self
             .status
             .engines
             .iter()
             .filter(|engine| {
-                engine.loaded_models.iter().any(|model| {
-                    model.eq_ignore_ascii_case(resolved_model)
-                        || model.eq_ignore_ascii_case(&local_model)
-                })
+                engine
+                    .loaded_models
+                    .iter()
+                    .any(|model| self.same_model(model, resolved_model))
             })
             .map(|engine| engine.batch_size.max(1))
             .collect();
@@ -142,10 +141,10 @@ impl ConnectedRunner {
                 .engines
                 .iter()
                 .filter(|engine| {
-                    engine.available_models.iter().any(|model| {
-                        model.id.eq_ignore_ascii_case(resolved_model)
-                            || model.id.eq_ignore_ascii_case(&local_model)
-                    })
+                    engine
+                        .available_models
+                        .iter()
+                        .any(|model| self.same_model(&model.id, resolved_model))
                 })
                 .map(|engine| engine.batch_size.max(1))
                 .collect();
@@ -188,39 +187,37 @@ impl ConnectedRunner {
             .unwrap_or_else(|| canonical.to_string())
     }
 
-    /// Check if the runner has a model or an alias for it.
-    pub fn has_model_or_alias(&self, model_id: &str) -> bool {
-        self.has_model(model_id)
-            || self
-                .model_aliases
-                .get(model_id)
-                .map(|local| self.has_model(local))
-                .unwrap_or(false)
+    /// Normalize both sides: older runners may advertise another alias for
+    /// the same local model. The wire name is not a unique model identity.
+    fn same_model(&self, advertised: &str, requested: &str) -> bool {
+        self.resolve_model_alias(advertised)
+            .eq_ignore_ascii_case(&self.resolve_model_alias(requested))
     }
 
-    /// Check if the runner has a model available on disk or via alias mapping.
+    pub fn has_model_or_alias(&self, model_id: &str) -> bool {
+        self.loaded_models()
+            .iter()
+            .any(|m| self.same_model(m, model_id))
+    }
+
     pub fn has_available_model_or_alias(&self, model_id: &str) -> bool {
-        self.available_models().iter().any(|m| m == model_id)
-            || self
-                .model_aliases
-                .get(model_id)
-                .map(|local| self.available_models().iter().any(|m| m == local))
-                .unwrap_or(false)
+        self.available_models()
+            .iter()
+            .any(|m| self.same_model(m, model_id))
     }
 
     /// Whether loading `model_id` requires evicting a model from another engine
     /// that owns the same exclusive hardware resource.
     pub fn has_resource_conflict_for_model(&self, model_id: &str) -> bool {
-        let local_model = self.resolve_model_alias(model_id);
         let target_engines: Vec<&EngineStatus> = self
             .status
             .engines
             .iter()
             .filter(|engine| {
-                engine.available_models.iter().any(|model| {
-                    model.id.eq_ignore_ascii_case(model_id)
-                        || model.id.eq_ignore_ascii_case(&local_model)
-                })
+                engine
+                    .available_models
+                    .iter()
+                    .any(|model| self.same_model(&model.id, model_id))
             })
             .collect();
 
@@ -735,6 +732,42 @@ mod tests {
             }],
             metrics: None,
             model_aliases: std::collections::HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn shared_aliases_match_available_loaded_and_batch_capacity() {
+        for advertised in ["code:smart", "qwen3.8-flash-next", "local-qwen"] {
+            let registry = RunnerRegistry::new();
+            let (tx, _rx) = mpsc::channel(32);
+            let mut status = create_test_status(vec![advertised.into()]);
+            status.model_aliases = HashMap::from([
+                ("code:smart".into(), "local-qwen".into()),
+                ("qwen3.8-flash-next".into(), "local-qwen".into()),
+            ]);
+            status.engines[0].batch_size = 4;
+            registry
+                .register(
+                    "runner".into(),
+                    "Runner".into(),
+                    None,
+                    status,
+                    None,
+                    tx,
+                    None,
+                )
+                .await;
+            for requested in ["code:smart", "qwen3.8-flash-next", "local-qwen"] {
+                assert_eq!(registry.with_model(requested).await.len(), 1);
+                assert_eq!(registry.with_available_model(requested).await.len(), 1);
+                let mut runner = registry.get("runner").await.unwrap();
+                assert_eq!(runner.batch_size_for_model(requested), 4);
+                runner.status.engines[0].loaded_models.clear();
+                assert!(!runner.has_model_or_alias(requested));
+                assert!(runner.has_available_model_or_alias(requested));
+                assert_eq!(runner.batch_size_for_model(requested), 4);
+                assert!(!runner.has_available_model_or_alias("unrelated"));
+            }
         }
     }
 
