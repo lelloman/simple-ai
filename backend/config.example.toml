@@ -41,7 +41,9 @@ runner_timeout_secs = 60
 # Enable wake-on-demand when no runners available
 auto_wake_enabled = false
 # Timeout waiting for runner to wake (seconds)
-wake_timeout_secs = 90
+# Allow idle-manager retries and host boot before runner registration.
+# This is separate from routing.model_prepare_timeout_secs.
+wake_timeout_secs = 480
 # URL of idle-manager service (optional, for orchestrated wake)
 # idle_manager_url = "http://idle-manager:8090"
 

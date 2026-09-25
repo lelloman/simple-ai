@@ -117,7 +117,8 @@ pub struct GatewayConfig {
     /// If set, WOL requests are sent to idle-manager instead of direct WOL.
     #[serde(default)]
     pub idle_manager_url: Option<String>,
-    /// Timeout for waiting for runners to wake (seconds). Default: 90
+    /// Timeout for waiting for runners to wake (seconds). Default: 480.
+    /// Includes idle-manager wake retries, firmware boot and runner registration.
     #[serde(default = "default_wake_timeout")]
     pub wake_timeout_secs: u64,
     /// Whether to auto-wake runners when no runners available. Default: false
@@ -422,7 +423,7 @@ fn default_runner_timeout() -> u64 {
     90
 }
 fn default_wake_timeout() -> u64 {
-    90
+    480
 }
 fn default_wol_broadcast() -> String {
     "255.255.255.255".to_string()
@@ -768,7 +769,7 @@ mod tests {
         assert!(!config.enabled);
         assert_eq!(config.auth_token, "change-me-in-production");
         assert_eq!(config.runner_timeout_secs, 90);
-        assert_eq!(config.wake_timeout_secs, 90);
+        assert_eq!(config.wake_timeout_secs, 480);
         assert!(!config.auto_wake_enabled);
         assert!(config.idle_manager_url.is_none());
         assert!(!config.batching_enabled);
