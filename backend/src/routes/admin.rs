@@ -12,11 +12,10 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
-use simple_server::axum::{
-    extract::ws::{Message, WebSocket},
-    response::sse::{Event, KeepAlive, Sse},
-};
-use simple_server::web::compat::WebSocketUpgrade;
+use futures_util::{SinkExt, StreamExt as FuturesStreamExt};
+use serde::{Deserialize, Serialize};
+use simple_server::axum::response::sse::{Event, KeepAlive, Sse};
+use simple_server::web::ws::{Message, WebSocket, WebSocketUpgrade};
 use simple_server::web::{
     extract::{Path, Query, Request, State},
     http::StatusCode,
@@ -25,8 +24,6 @@ use simple_server::web::{
     routing::{get, post},
     Json, Router,
 };
-use futures_util::{SinkExt, StreamExt as FuturesStreamExt};
-use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
 

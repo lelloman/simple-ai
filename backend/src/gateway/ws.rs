@@ -3,13 +3,12 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use simple_server::axum::extract::ws::{Message, WebSocket};
-use simple_server::web::compat::WebSocketUpgrade;
+use futures_util::{SinkExt, StreamExt};
+use simple_server::web::ws::{Message, WebSocket, WebSocketUpgrade};
 use simple_server::web::{
     extract::{ConnectInfo, State},
     response::IntoResponse,
 };
-use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
 

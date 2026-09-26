@@ -54,3 +54,51 @@ The four Python scenario groups were run separately so an early failure could
 not hide results from later groups.
 
 This is a local migration commit, not a deployment or publication.
+
+## Owned WebSocket contracts (2026-09-26)
+
+The backend runner gateway (`gateway/ws.rs`) and admin dashboard
+(`routes/admin.rs`) now use `simple_server::web::ws::{WebSocketUpgrade,
+WebSocket, Message}` in production. The active `simple-server.rev` pin is
+`46c724315a3ed35e35cb086b2328bb4040cd0531`. This migration starts from master
+`672c586`; the earlier revision and checks above remain historical evidence.
+Both routes retain their message authentication, registration/version checks,
+timeouts, default transport limits, ping/pong handling, event subscriptions,
+token refresh, and application-owned disconnect cleanup. No task or shutdown
+policy changed.
+
+The inference runner's gateway connection is an outbound tokio-tungstenite
+client; the shared server upgrade API does not apply to it. The backend's SSE
+events (`Event`, `KeepAlive`, `Sse`, and compatibility response conversion) and
+custom HTTP tracing observer response type remain Axum migration exposure.
+
+Verification in the isolated migration worktree:
+
+- Baseline `cargo test --locked --workspace`: 462 passed, one ignored doctest.
+- New real loopback TCP checks passed before and after the import migration:
+  gateway upgrade, rejected runner secret, registration acknowledgment and
+  peer-derived HTTP address, ping/pong payload, close and registry cleanup;
+  admin upgrade with malformed and invalid-token authentication rejection.
+  The gateway test calls the production handler; the admin test serves the
+  production admin router. Fixtures use in-memory databases and local mock OIDC.
+- Final full workspace tests: 464 passed, one ignored doctest, including the
+  existing actual inference-runner process/mock-engine E2E.
+- `cargo build --locked --workspace` and `git diff --check` passed.
+- Strict `cargo clippy --locked --workspace --all-targets -- -D warnings`
+  stops at the same three baseline `derivable_impls` findings in
+  `simple-ai-common`. It does not qualify the entire workspace as lint-clean.
+- `cargo fmt --all -- --check` retains pre-existing formatting failures;
+  migration import edits and added test code are formatted. Broad baseline
+  formatting was not rewritten.
+
+Host checks use `CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0`, default isolated
+worktree `target`, and the unchanged ignored `scripts/configs/rtx.toml` fixture
+required by existing `include_str!` tests. The new transport checks do not
+qualify successful JWT refresh, real GPU engines, or physical Wake-on-LAN;
+Docker gateway E2E was not rerun for this import-only migration.
+
+Integration rebases master onto the committed migration in a clean linked
+worktree, verifies commit ancestry and identical tested tree, and restores the
+original checkout with unrelated README and semantic evaluation work preserved.
+Temporary worktrees, migration branch, fixtures, build output, and logs are
+removed after successful verification. Nothing is pushed or deployed.

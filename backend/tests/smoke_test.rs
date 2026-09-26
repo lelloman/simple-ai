@@ -18,6 +18,37 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+#[tokio::test]
+async fn admin_websocket_auth_rejections_over_tcp() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::{connect_async, tungstenite::Message};
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let state = create_test_state().await.unwrap();
+        let app = routes::admin::router(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let shutdown = simple_server::lifecycle::Shutdown::new();
+        let stop = shutdown.clone();
+        let server = tokio::spawn(simple_server::web::serve(listener, app, shutdown));
+        for message in [
+            r#"{"type":"unknown"}"#,
+            r#"{"type":"auth","token":"invalid"}"#,
+        ] {
+            let (mut socket, response) = connect_async(format!("ws://{addr}/ws")).await.unwrap();
+            assert_eq!(response.status(), 101);
+            socket.send(Message::Text(message.into())).await.unwrap();
+            let result = socket.next().await.unwrap().unwrap();
+            let error: serde_json::Value = serde_json::from_str(result.to_text().unwrap()).unwrap();
+            assert_eq!(error["type"], "auth_error");
+            assert!(!error["message"].as_str().unwrap().is_empty());
+        }
+        stop.request();
+        server.await.unwrap().unwrap();
+    })
+    .await
+    .expect("Admin WebSocket transport test timed out");
+}
+
 async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
     let config = Config {
         host: "0.0.0.0".to_string(),
