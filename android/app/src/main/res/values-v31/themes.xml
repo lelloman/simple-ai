@@ -3,6 +3,6 @@
 
     <style name="Theme.SimpleAI" parent="android:Theme.Material.Light.NoActionBar">
         <!-- Splash screen background color (matches icon background) -->
-        <item name="android:windowSplashScreenBackground">#3DDC84</item>
+        <item name="android:windowSplashScreenBackground">#FFFFFF</item>
     </style>
 </resources>

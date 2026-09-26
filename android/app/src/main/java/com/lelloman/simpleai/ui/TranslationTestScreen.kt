@@ -1,5 +1,8 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.lellodesign.LelloButton
+import com.lelloman.lellodesign.LelloTextButton
+
 import com.lelloman.simpleai.R
 
 import androidx.compose.foundation.layout.Arrangement
@@ -11,11 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -35,7 +39,6 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -85,35 +88,20 @@ fun TranslationTestScreen(
             } else {
                 Text(stringResource(R.string.translate_empty_title), style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(R.string.translate_empty_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onLanguages) { Text(stringResource(R.string.ui_download_languages)) }
+                LelloButton(onClick = onLanguages) { Text(stringResource(R.string.ui_download_languages)) }
             }
         }
         return
     }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(strings.getString(R.string.nav_translate)) },
-                actions = { TextButton(onClick = onLanguages) { Text(stringResource(R.string.model_languages)) } },
-                navigationIcon = {
-                    if (onBack != null) IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = strings.getString(R.string.ui_back)
-                        )
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Column(
+    run {
+        com.lelloman.lellodesign.LelloWorkspace(
             modifier = Modifier
+                .widthIn(max = 720.dp)
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
         ) {
+            LelloTextButton(onClick = onLanguages) { Text(stringResource(R.string.model_languages)) }
             // Language selection row
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -168,7 +156,7 @@ fun TranslationTestScreen(
             )
 
             // Translate button
-            Button(
+            LelloButton(
                 onClick = { viewModel.translate() },
                 enabled = inputText.isNotBlank() && !translationState.isTranslating,
                 modifier = Modifier.fillMaxWidth()
@@ -235,7 +223,7 @@ fun TranslationTestScreen(
                             SelectionContainer {
                                 Text(translationState.translatedText ?: "", style = MaterialTheme.typography.bodyLarge)
                             }
-                            TextButton(onClick = {
+                            LelloTextButton(onClick = {
                                 clipboard.setText(AnnotatedString(translationState.translatedText.orEmpty()))
                                 copied = true
                             }) { Text(strings.getString(R.string.ui_copy_translation)) }

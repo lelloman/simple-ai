@@ -1,5 +1,10 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.lellodesign.LelloAccount
+import com.lelloman.lellodesign.LelloSection
+import com.lelloman.lellodesign.LelloButton
+import com.lelloman.lellodesign.LelloTextButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,29 +34,36 @@ fun SettingsScreen(viewModel: CapabilitiesViewModel, onAbout: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     SimplePage(stringResource(R.string.nav_settings)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.settings_mobile), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.settings_mobile_hint), style = MaterialTheme.typography.bodySmall)
+        LelloSection(stringResource(R.string.settings_downloads)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_mobile), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.settings_mobile_hint), style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(state.allowMeteredDownloads, viewModel::setAllowMeteredDownloads,
+                    modifier = Modifier.semantics { contentDescription = strings.getString(R.string.settings_mobile) })
             }
-            Switch(state.allowMeteredDownloads, viewModel::setAllowMeteredDownloads, modifier = Modifier.semantics { contentDescription = strings.getString(R.string.settings_mobile) })
         }
-        HorizontalDivider()
         state.storage?.let {
-            Text(stringResource(R.string.settings_storage), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.settings_storage_values, formatSize(it.usedBytes), formatSize(it.availableBytes)), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LelloSection(stringResource(R.string.settings_storage)) {
+                Text(stringResource(R.string.settings_storage_values, formatSize(it.usedBytes), formatSize(it.availableBytes)),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-        HorizontalDivider()
-        ModelRow(stringResource(R.string.ui_cloud_ai), endpoint.ifBlank { stringResource(R.string.settings_not_configured) }, { draft = endpoint; saveFailed = false; cloudInfo = true })
-        if (endpoint.isNotBlank()) {
-            Text(stringResource(if (signedIn) R.string.gateway_signed_in else R.string.gateway_signed_out))
-            if (signedIn) TextButton(onClick = viewModel::signOutGateway) { Text(stringResource(R.string.gateway_sign_out)) }
-            else Button(onClick = { strings.startActivity(android.content.Intent(strings, com.lelloman.simpleai.cloud.GatewayLoginActivity::class.java)) }) { Text(stringResource(R.string.gateway_sign_in)) }
-            authError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        LelloSection(stringResource(R.string.ui_cloud_ai)) {
+            LelloAccount(stringResource(if (signedIn) R.string.gateway_signed_in else R.string.gateway_signed_out),
+                onClick = { draft = endpoint; saveFailed = false; cloudInfo = true })
+            ModelRow(stringResource(R.string.cloud_server_title), endpoint.ifBlank { stringResource(R.string.settings_not_configured) },
+                { draft = endpoint; saveFailed = false; cloudInfo = true })
+            if (endpoint.isNotBlank()) {
+                if (signedIn) LelloTextButton(onClick = viewModel::signOutGateway) { Text(stringResource(R.string.gateway_sign_out)) }
+                else LelloButton(onClick = { strings.startActivity(android.content.Intent(strings, com.lelloman.simpleai.cloud.GatewayLoginActivity::class.java)) }) { Text(stringResource(R.string.gateway_sign_in)) }
+                authError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
         }
         state.serviceError?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = viewModel::refreshCapabilities) { Text(stringResource(R.string.ui_retry_connection)) }
+            LelloTextButton(onClick = viewModel::refreshCapabilities) { Text(stringResource(R.string.ui_retry_connection)) }
         }
         ModelRow(stringResource(R.string.settings_about), stringResource(R.string.settings_about_hint), onAbout)
     }
@@ -75,7 +87,7 @@ fun SettingsScreen(viewModel: CapabilitiesViewModel, onAbout: () -> Unit) {
                 }
             },
             confirmButton = {
-                TextButton(enabled = valid && !saving, onClick = {
+                LelloTextButton(enabled = valid && !saving, onClick = {
                     saving = true
                     scope.launch {
                         try {
@@ -84,7 +96,7 @@ fun SettingsScreen(viewModel: CapabilitiesViewModel, onAbout: () -> Unit) {
                     }
                 }) { Text(stringResource(R.string.cloud_server_save)) }
             },
-            dismissButton = { TextButton(enabled = !saving, onClick = { cloudInfo = false }) { Text(stringResource(R.string.cloud_server_cancel)) } }
+            dismissButton = { LelloTextButton(enabled = !saving, onClick = { cloudInfo = false }) { Text(stringResource(R.string.cloud_server_cancel)) } }
         )
     }
 }

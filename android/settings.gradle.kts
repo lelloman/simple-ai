@@ -20,5 +20,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SimpleAI"
-include(":app")
+include(":app", ":lellodesign")
  

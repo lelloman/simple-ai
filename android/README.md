@@ -4,6 +4,9 @@ SimpleAI manages shared AI models for compatible Android apps. Users download th
 
 The app has four main screens: **Models** manages downloads, **Translate** translates text, **Apps** manages access approvals, and **Settings** contains network preferences, storage and support. Model actions live on individual detail screens.
 
+The interface adopts the pinned LelloDesign green open-workspace specification; see
+[design adoption](../docs/android-lellodesign.md) for the reference and layout decisions.
+
 ## Capabilities and storage
 
 | Capability | Processing | Artifact download |

@@ -1,6 +1,12 @@
 package com.lelloman.simpleai
 
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.*
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.painterResource
+import com.lelloman.lellodesign.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
@@ -56,7 +62,22 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermission()
         enableEdgeToEdge()
         setContent {
-            SimpleAITheme {
+            val preferences = remember { getSharedPreferences("appearance", MODE_PRIVATE) }
+            var appearance by remember { mutableStateOf(LelloAppearance.entries.firstOrNull {
+                it.name == preferences.getString("mode", null)
+            } ?: LelloAppearance.System) }
+            val dark = when (appearance) {
+                LelloAppearance.Light -> false
+                LelloAppearance.Dark -> true
+                LelloAppearance.System -> isSystemInDarkTheme()
+            }
+            SideEffect {
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+            SimpleAITheme(darkTheme = dark) {
                 val navController = rememberNavController()
                 // Share ViewModel across all screens by creating it at NavHost level
                 val sharedViewModel: CapabilitiesViewModel = viewModel()
@@ -64,32 +85,62 @@ class MainActivity : ComponentActivity() {
                 val entry by navController.currentBackStackEntryAsState()
                 val destination = entry?.destination
                 val rootScreen = destination == null || destination.hasRoute<Capabilities>() || destination.hasRoute<TranslationTest>() || destination.hasRoute<Apps>() || destination.hasRoute<Settings>()
-                Scaffold(contentWindowInsets = WindowInsets(0, 0, 0, 0), bottomBar = {
-                    if (rootScreen) NavigationBar {
-                        val tabs = listOf(
-                            Triple(Capabilities, R.string.nav_models, Icons.AutoMirrored.Filled.List),
-                            Triple(TranslationTest, R.string.nav_translate, Icons.Default.Edit),
-                            Triple(Apps, R.string.nav_apps, Icons.Default.Person),
-                            Triple(Settings, R.string.nav_settings, Icons.Default.Settings)
-                        )
-                        tabs.forEach { (route, label, icon) ->
-                            val selected = when (route) {
-                                TranslationTest -> destination?.hasRoute<TranslationTest>() == true
-                                Capabilities -> destination?.hasRoute<Capabilities>() != false
-                                Apps -> destination?.hasRoute<Apps>() == true
-                                else -> destination?.hasRoute<Settings>() == true
-                            }
-                            NavigationBarItem(selected = selected, onClick = {
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }, icon = { Icon(icon, null) }, label = { Text(stringResource(label)) })
+                val selectedId = when {
+                    destination?.hasRoute<TranslationTest>() == true -> "translate"
+                    destination?.hasRoute<Apps>() == true -> "apps"
+                    destination?.hasRoute<Settings>() == true || destination?.hasRoute<About>() == true -> "settings"
+                    else -> "models"
+                }
+                val tabs = listOf(
+                    LelloDestination("models", stringResource(R.string.nav_models)) { Icon(Icons.AutoMirrored.Filled.List, null) },
+                    LelloDestination("translate", stringResource(R.string.nav_translate)) { Icon(Icons.Default.Edit, null) },
+                    LelloDestination("apps", stringResource(R.string.nav_apps)) { Icon(Icons.Default.Person, null) },
+                    LelloDestination("settings", stringResource(R.string.nav_settings)) { Icon(Icons.Default.Settings, null) },
+                )
+                val title = when {
+                    destination?.hasRoute<TranslationLanguages>() == true -> stringResource(R.string.ui_manage_languages)
+                    destination?.hasRoute<About>() == true -> stringResource(R.string.ui_about)
+                    destination?.hasRoute<ModelDetail>() == true -> stringResource(
+                        if (entry?.toRoute<ModelDetail>()?.model == "voice") R.string.ui_voice_commands else R.string.ui_local_ai)
+                    else -> tabs.first { it.id == selectedId }.label
+                }
+                LelloScaffold(
+                    productName = stringResource(R.string.app_name), title = title,
+                    destinations = tabs, selectedId = selectedId,
+                    mobileNavigation = LelloMobileNavigation.Bottom,
+                    bottomDestinations = if (rootScreen) tabs else emptyList(),
+                    onBack = if (rootScreen) null else ({ navController.popBackStack(); Unit }),
+                    logo = {
+                        Surface(color = androidx.compose.ui.graphics.Color.White,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp)) {
+                            Icon(painterResource(R.drawable.ic_brand), null,
+                                modifier = Modifier.size(32.dp), tint = androidx.compose.ui.graphics.Color.Unspecified)
                         }
-                    }
-                }) { padding ->
-                    NavHost(navController = navController, startDestination = Capabilities, modifier = Modifier.padding(padding)) {
+                    },
+                    account = { compact ->
+                        val signedIn by sharedViewModel.gatewaySignedIn.collectAsState()
+                        LelloAccount(stringResource(if (signedIn) R.string.gateway_signed_in else R.string.gateway_signed_out),
+                            onClick = { navController.navigate(Settings) { launchSingleTop = true } }, compact = compact)
+                    },
+                    actions = { LelloAppearanceSelector(appearance, onSelected = {
+                        appearance = it
+                        preferences.edit().putString("mode", it.name).apply()
+                    }) },
+                    onNavigate = { id ->
+                        val route = when (id) {
+                            "translate" -> TranslationTest
+                            "apps" -> Apps
+                            "settings" -> Settings
+                            else -> Capabilities
+                        }
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                ) { padding ->
+                    NavHost(navController = navController, startDestination = Capabilities, modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
                         composable<Capabilities> {
                             CapabilitiesScreen(sharedViewModel,
                                 onNavigateToTranslationLanguages = { navController.navigate(TranslationLanguages) },

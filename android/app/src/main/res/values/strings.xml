@@ -115,4 +115,5 @@
     <string name="gateway_signed_out">Sign in to let approved apps use Cloud AI</string>
     <string name="gateway_sign_in">Sign in</string>
     <string name="gateway_sign_out">Sign out</string>
+    <string name="settings_downloads">Downloads</string>
 </resources>

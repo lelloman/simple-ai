@@ -1,5 +1,7 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.lellodesign.LelloTextButton
+
 import com.lelloman.simpleai.R
 
 import androidx.compose.foundation.layout.Arrangement
@@ -15,13 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,7 +36,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -102,8 +103,8 @@ fun TranslationLanguagesScreen(
             onDismissRequest = { deleteLanguage = null },
             title = { Text(strings.getString(R.string.ui_delete, language.name)) },
             text = { Text(strings.getString(R.string.ui_apps_will_need_this_language_pack_downloaded_again_before_transla)) },
-            confirmButton = { TextButton(onClick = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null }) { Text(strings.getString(R.string.ui_delete_language_pack)) } },
-            dismissButton = { TextButton(onClick = { deleteLanguage = null }) { Text(strings.getString(R.string.ui_cancel)) } }
+            confirmButton = { LelloTextButton(onClick = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null }) { Text(strings.getString(R.string.ui_delete_language_pack)) } },
+            dismissButton = { LelloTextButton(onClick = { deleteLanguage = null }) { Text(strings.getString(R.string.ui_cancel)) } }
         )
     }
     LaunchedEffect(state.languageOperationMessage) {
@@ -114,19 +115,6 @@ fun TranslationLanguagesScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(strings.getString(R.string.ui_manage_languages)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = strings.getString(R.string.ui_back)
-                        )
-                    }
-                }
-            )
-        },
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
                 Snackbar(
@@ -144,7 +132,7 @@ fun TranslationLanguagesScreen(
         ) {
             item {
                 OutlinedTextField(query, { query = it }, label = { Text(strings.getString(R.string.ui_search_languages)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = {
-                    if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text(strings.getString(R.string.ui_clear)) }
+                    if (query.isNotEmpty()) LelloTextButton(onClick = { query = "" }) { Text(strings.getString(R.string.ui_clear)) }
                 })
                 if (matching.isEmpty()) Text(strings.getString(R.string.ui_no_languages_match_your_search))
             }
@@ -208,16 +196,7 @@ private fun LanguageCard(
     onAction: () -> Unit
 ) {
     val strings = androidx.compose.ui.platform.LocalContext.current
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (language.isDownloaded || language.isBuiltIn) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            }
-        )
-    ) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

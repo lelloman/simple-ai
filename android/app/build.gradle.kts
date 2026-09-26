@@ -142,6 +142,8 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    implementation(project(":lellodesign"))
+    implementation("androidx.compose.material:material-icons-core")
     implementation("net.openid:appauth:0.11.1")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation(libs.androidx.core.ktx)

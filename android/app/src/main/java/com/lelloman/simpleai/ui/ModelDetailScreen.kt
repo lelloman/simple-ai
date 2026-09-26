@@ -1,9 +1,12 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.lellodesign.LelloButton
+import com.lelloman.lellodesign.LelloOutlinedButton
+import com.lelloman.lellodesign.LelloTextButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -30,11 +33,11 @@ fun ModelDetailScreen(model: String, viewModel: CapabilitiesViewModel, onBack: (
         onDismissRequest = { confirmDelete = false },
         title = { Text(stringResource(R.string.ui_delete, title)) },
         text = { Text(stringResource(R.string.model_delete_body)) },
-        confirmButton = { TextButton(onClick = {
+        confirmButton = { LelloTextButton(onClick = {
             if (voice) viewModel.deleteVoiceCommands() else viewModel.deleteLocalAi()
             confirmDelete = false
         }) { Text(stringResource(R.string.ui_delete_2)) } },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.ui_cancel)) } }
+        dismissButton = { LelloTextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.ui_cancel)) } }
     )
     SimplePage(title, onBack) {
         Text(stringResource(if (voice) R.string.model_voice_purpose else R.string.model_local_purpose), style = MaterialTheme.typography.bodyLarge)
@@ -44,7 +47,7 @@ fun ModelDetailScreen(model: String, viewModel: CapabilitiesViewModel, onBack: (
         when {
             downloaded -> {
                 Text(stringResource(R.string.model_ready), color = MaterialTheme.colorScheme.primary)
-                OutlinedButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.model_remove)) }
+                LelloOutlinedButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.model_remove)) }
             }
             running || status is CapabilityStatus.Downloading -> {
                 if (status is CapabilityStatus.Downloading) {
@@ -54,7 +57,7 @@ fun ModelDetailScreen(model: String, viewModel: CapabilitiesViewModel, onBack: (
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(stringResource(R.string.model_queued))
                 }
-                OutlinedButton(onClick = { viewModel.pauseDownload(model) }) { Text(stringResource(R.string.model_pause)) }
+                LelloOutlinedButton(onClick = { viewModel.pauseDownload(model) }) { Text(stringResource(R.string.model_pause)) }
             }
             status == CapabilityStatus.Checking || status == CapabilityStatus.Loading -> {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -63,10 +66,10 @@ fun ModelDetailScreen(model: String, viewModel: CapabilitiesViewModel, onBack: (
             else -> {
                 if (status is CapabilityStatus.Error && job != "CANCELLED") Text(status.message, color = MaterialTheme.colorScheme.error)
                 val partial = job in listOf("CANCELLED", "FAILED") && status is CapabilityStatus.Error
-                Button(onClick = { if (voice) viewModel.downloadVoiceCommands() else viewModel.downloadLocalAi() }, enabled = status !is CapabilityStatus.Error || status.canRetry) {
+                LelloButton(onClick = { if (voice) viewModel.downloadVoiceCommands() else viewModel.downloadLocalAi() }, enabled = status !is CapabilityStatus.Error || status.canRetry) {
                     Text(stringResource(if (partial) R.string.model_resume else R.string.model_download))
                 }
-                if (partial) TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.model_remove_partial)) }
+                if (partial) LelloTextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.model_remove_partial)) }
             }
         }
     }
@@ -75,9 +78,7 @@ fun ModelDetailScreen(model: String, viewModel: CapabilitiesViewModel, onBack: (
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SimplePage(title: String, onBack: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = {
-        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.ui_back)) }
-    }) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
-    }
+    com.lelloman.lellodesign.LelloWorkspace(
+        Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()), content = content
+    )
 }

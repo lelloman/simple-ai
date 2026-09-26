@@ -1,5 +1,8 @@
 package com.lelloman.simpleai.ui
 
+import com.lelloman.lellodesign.LelloButton
+import com.lelloman.lellodesign.LelloTextButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,12 +27,12 @@ fun ConnectedApps() {
         } else {
             Text(stringResource(R.string.apps_hint), style = MaterialTheme.typography.bodyMedium)
             clients.sortedBy { it.approved }.forEach { client ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+                    Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(client.packages, style = MaterialTheme.typography.titleMedium)
                         Text(stringResource(if (client.approved) R.string.ui_approved else R.string.apps_waiting), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (client.approved) TextButton(onClick = { access.setApproved(client, false) }, modifier = Modifier.semantics { contentDescription = context.getString(R.string.apps_revoke_label, client.packages) }) { Text(stringResource(R.string.apps_revoke)) }
-                        else Button(onClick = { access.setApproved(client, true) }, modifier = Modifier.semantics { contentDescription = context.getString(R.string.apps_approve_label, client.packages) }) { Text(stringResource(R.string.apps_approve)) }
+                        if (client.approved) LelloTextButton(onClick = { access.setApproved(client, false) }, modifier = Modifier.semantics { contentDescription = context.getString(R.string.apps_revoke_label, client.packages) }) { Text(stringResource(R.string.apps_revoke)) }
+                        else LelloButton(onClick = { access.setApproved(client, true) }, modifier = Modifier.semantics { contentDescription = context.getString(R.string.apps_approve_label, client.packages) }) { Text(stringResource(R.string.apps_approve)) }
                     }
                 }
             }
