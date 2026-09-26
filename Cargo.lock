@@ -2267,6 +2267,7 @@ name = "simple-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bytes",
  "chrono",
  "cron",
  "futures-util",
@@ -2274,7 +2275,9 @@ dependencies = [
  "http-body",
  "pin-project-lite",
  "rand 0.8.5",
+ "serde",
  "tokio",
+ "tower",
  "tower-http",
  "tower-layer",
  "tower-service",

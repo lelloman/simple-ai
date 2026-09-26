@@ -305,7 +305,7 @@ mod tests {
     use simple_ai_common::{
         ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus,
     };
-    use simple_server::axum::{extract::State, routing::post, Json, Router};
+    use simple_server::web::{extract::State, routing::post, Json, Router};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::mpsc;
     use uuid::Uuid;
@@ -494,7 +494,7 @@ mod tests {
             .with_state(counter);
 
         tokio::spawn(async move {
-            simple_server::axum::serve(listener, app).await.unwrap();
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new()).await.unwrap();
         });
 
         format!("http://{}", addr)

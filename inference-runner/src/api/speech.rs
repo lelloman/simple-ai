@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use futures_util::stream;
 use simple_ai_common::{SpeechRequest, SpeechStreamFormat};
-use simple_server::axum::body::{Body, Bytes};
-use simple_server::axum::extract::State;
-use simple_server::axum::http::{header, HeaderValue, StatusCode};
-use simple_server::axum::response::Response;
-use simple_server::axum::routing::post;
-use simple_server::axum::{Json, Router};
+use simple_server::web::body::{Body, Bytes};
+use simple_server::web::extract::State;
+use simple_server::web::http::{header, HeaderValue, StatusCode};
+use simple_server::web::response::Response;
+use simple_server::web::routing::post;
+use simple_server::web::{Json, Router};
 
 use crate::engine::ModelLease;
 use crate::error::Result;

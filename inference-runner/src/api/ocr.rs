@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use simple_ai_common::{OcrOptions, OcrResponse};
-use simple_server::axum::extract::{Multipart, State};
-use simple_server::axum::routing::post;
-use simple_server::axum::{Json, Router};
+use simple_server::web::extract::{Multipart, State};
+use simple_server::web::routing::post;
+use simple_server::web::{Json, Router};
 
 use crate::error::{Error, Result};
 use crate::ocr::write_upload;

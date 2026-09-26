@@ -1,7 +1,7 @@
 use serde::Serialize;
-use simple_server::axum::http::{header, StatusCode};
-use simple_server::axum::response::{IntoResponse, Response};
-use simple_server::axum::{
+use simple_server::web::http::{header, StatusCode};
+use simple_server::web::response::{IntoResponse, Response};
+use simple_server::web::{
     routing::{get, get_service},
     Json, Router,
 };
@@ -53,7 +53,7 @@ pub fn router() -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::axum::{
+    use simple_server::web::{
         body::{to_bytes, Body},
         http::Request,
     };

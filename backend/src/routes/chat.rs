@@ -1,8 +1,8 @@
 use futures_util::{future::Abortable, stream};
 use simple_ai_common::InferenceMetrics;
-use simple_server::axum::body::{Body, Bytes};
-use simple_server::axum::http::HeaderMap;
-use simple_server::axum::{
+use simple_server::web::body::{Body, Bytes};
+use simple_server::web::http::HeaderMap;
+use simple_server::web::{
     extract::{ConnectInfo, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response as AxumResponse},
@@ -222,7 +222,7 @@ async fn chat_completions(
     State(state): State<Arc<AppState>>,
     connect_info: Result<
         ConnectInfo<SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::extract::RejectionResponse,
     >,
     headers: HeaderMap,
     Json(mut request): Json<ChatCompletionRequest>,

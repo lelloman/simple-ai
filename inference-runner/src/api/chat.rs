@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use futures_util::{stream, StreamExt};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
-use simple_server::axum::body::Body;
-use simple_server::axum::extract::State;
-use simple_server::axum::http::{header, HeaderValue, StatusCode};
-use simple_server::axum::response::{IntoResponse, Response};
-use simple_server::axum::routing::post;
-use simple_server::axum::{Json, Router};
+use simple_server::web::body::Body;
+use simple_server::web::extract::State;
+use simple_server::web::http::{header, HeaderValue, StatusCode};
+use simple_server::web::response::{IntoResponse, Response};
+use simple_server::web::routing::post;
+use simple_server::web::{Json, Router};
 
 use crate::error::{Error, Result};
 use crate::state::AppState;

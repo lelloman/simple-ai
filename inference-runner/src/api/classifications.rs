@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use simple_server::axum::{extract::State, routing::post, Json, Router};
+use simple_server::web::{extract::State, routing::post, Json, Router};
 use simple_ai_common::{ClassificationRequest, ClassificationResponse};
 
 use crate::error::{Error, Result};

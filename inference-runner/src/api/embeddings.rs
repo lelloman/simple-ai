@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use simple_server::axum::extract::State;
-use simple_server::axum::routing::post;
-use simple_server::axum::{Json, Router};
+use simple_server::web::extract::State;
+use simple_server::web::routing::post;
+use simple_server::web::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;

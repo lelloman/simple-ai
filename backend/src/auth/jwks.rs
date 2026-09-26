@@ -1,4 +1,4 @@
-use simple_server::axum::http::HeaderMap;
+use simple_server::web::http::HeaderMap;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -298,8 +298,8 @@ struct OidcDiscovery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::axum::http::header::AUTHORIZATION;
-    use simple_server::axum::http::HeaderMap;
+    use simple_server::web::http::header::AUTHORIZATION;
+    use simple_server::web::http::HeaderMap;
 
     // These keys are generated test fixtures only; never used by a deployed issuer.
     #[tokio::test]

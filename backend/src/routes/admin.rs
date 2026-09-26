@@ -13,20 +13,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use simple_server::axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, Query, Request, State,
-    },
+    extract::ws::{Message, WebSocket},
+    response::sse::{Event, KeepAlive, Sse},
+};
+use simple_server::web::compat::WebSocketUpgrade;
+use simple_server::web::{
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     middleware::{self, Next},
-    response::{
-        sse::{Event, KeepAlive, Sse},
-        Html, IntoResponse, Response,
-    },
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
-use futures_util::{stream::Stream, SinkExt, StreamExt as FuturesStreamExt};
+use futures_util::{SinkExt, StreamExt as FuturesStreamExt};
 use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as TokioStreamExt;
@@ -1317,7 +1316,7 @@ async fn prometheus_metrics(State(state): State<Arc<AppState>>) -> Response {
     match state.inference_router.affinity_store().metrics().encode() {
         Ok(body) => (
             [(
-                simple_server::axum::http::header::CONTENT_TYPE,
+                simple_server::web::http::header::CONTENT_TYPE,
                 "application/openmetrics-text; version=1.0.0; charset=utf-8",
             )],
             body,
@@ -1371,7 +1370,7 @@ where
 async fn runner_events(
     State(state): State<Arc<AppState>>,
     Query(auth): Query<SseAuthQuery>,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+) -> Result<Response, StatusCode> {
     // Validate JWT from query parameter
     let user = state
         .jwks_client
@@ -1408,7 +1407,9 @@ async fn runner_events(
 
                 // Serialize event data
                 match serde_json::to_string(&event) {
-                    Ok(data) => Some(Ok(Event::default().event(event_type).data(data))),
+                    Ok(data) => Some(Ok::<_, Infallible>(
+                        Event::default().event(event_type).data(data),
+                    )),
                     Err(_) => None,
                 }
             }
@@ -1416,7 +1417,9 @@ async fn runner_events(
         }
     });
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+    Ok(simple_server::web::compat::response(
+        Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))),
+    ))
 }
 
 /// Build the admin router.
@@ -1450,7 +1453,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/keys/{id}/secret", get(api_key_secret))
         .route(
             "/api/keys/{id}",
-            simple_server::axum::routing::patch(api_key_roles_update).delete(api_keys_revoke),
+            simple_server::web::routing::patch(api_key_roles_update).delete(api_keys_revoke),
         )
         .layer(middleware::from_fn_with_state(state.clone(), require_admin))
         .with_state(state);

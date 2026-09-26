@@ -1,8 +1,8 @@
-use simple_server::axum::{extract::Request, middleware::Next, response::Response};
+use simple_server::web::{extract::Request, middleware::Next, response::Response};
 
 /// Observe safe route templates and the complete response body lifecycle.
 pub async fn request_logger(request: Request, next: Next) -> Response {
-    simple_server::http_tracing::trace_with_observer(request, RequestObserver, |request| {
+    simple_server::web::compat::trace_with_observer(request, RequestObserver, |request| {
         next.run(request)
     })
     .await
@@ -12,7 +12,7 @@ impl simple_server::http_tracing::Observer for RequestObserver {
     fn on_response(
         &mut self,
         span: &tracing::Span,
-        response: &Response,
+        response: &simple_server::axum::response::Response,
         latency: std::time::Duration,
     ) {
         let status = response.status().as_u16();

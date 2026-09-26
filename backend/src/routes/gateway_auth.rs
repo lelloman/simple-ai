@@ -1,4 +1,4 @@
-use simple_server::axum::{extract::State, routing::get, Json, Router};
+use simple_server::web::{extract::State, routing::get, Json, Router};
 use serde_json::{json, Value};
 use crate::AppState;
 

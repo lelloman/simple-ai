@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use simple_server::axum::{
+use simple_server::web::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -64,7 +64,7 @@ async fn create_classifications(
     State(state): State<Arc<AppState>>,
     connect_info: Result<
         ConnectInfo<SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::extract::RejectionResponse,
     >,
     headers: HeaderMap,
     Json(request): Json<ClassificationRequest>,

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use simple_server::axum::{extract::State, routing::get, Json, Router};
+use simple_server::web::{extract::State, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use simple_ai_common::ReasoningCapabilities;
 

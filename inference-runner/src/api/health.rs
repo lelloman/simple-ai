@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use simple_server::axum::extract::State;
-use simple_server::axum::http::StatusCode;
-use simple_server::axum::Json;
+use simple_server::web::extract::State;
+use simple_server::web::http::StatusCode;
+use simple_server::web::Json;
 
 use crate::state::AppState;
 

@@ -4,7 +4,7 @@ mod logging_setup;
 use std::env;
 use std::sync::Arc;
 
-use simple_server::axum::Router;
+use simple_server::web::Router;
 use tracing_subscriber::EnvFilter;
 
 mod api;
@@ -236,7 +236,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/v1", api::router())
         .route(
             "/health",
-            simple_server::axum::routing::get(api::health::health),
+            simple_server::web::routing::get(api::health::health),
         )
         .layer(cors_policy())
         .with_state(state);
@@ -248,7 +248,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listener = simple_server::http::bind(&addr).await?;
     lifecycle.service(
         "http",
-        simple_server::http::serve(listener, app, lifecycle.shutdown()),
+        simple_server::web::serve(listener, app, lifecycle.shutdown()),
     )?;
     let report = lifecycle
         .run(signals.wait(), async { Ok::<(), std::io::Error>(()) })
@@ -271,7 +271,7 @@ fn cors_policy() -> simple_server::cors::CorsLayer {
 #[cfg(test)]
 mod cors_tests {
     use super::cors_policy;
-    use simple_server::axum::{
+    use simple_server::web::{
         body::{to_bytes, Body},
         http::{Request, StatusCode},
         routing::get,

@@ -3,11 +3,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use simple_server::axum::{
-    extract::{
-        ws::{Message, WebSocket},
-        ConnectInfo, State, WebSocketUpgrade,
-    },
+use simple_server::axum::extract::ws::{Message, WebSocket};
+use simple_server::web::compat::WebSocketUpgrade;
+use simple_server::web::{
+    extract::{ConnectInfo, State},
     response::IntoResponse,
 };
 use futures_util::{SinkExt, StreamExt};

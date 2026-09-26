@@ -9,12 +9,12 @@ use simple_ai_common::{
     Capability, RunnerStatus, SpeechProviderInfo, SpeechRequest, SpeechResponseFormat,
     SpeechStreamFormat,
 };
-use simple_server::axum::body::Body;
-use simple_server::axum::extract::{ConnectInfo, Query, State};
-use simple_server::axum::http::{header, HeaderMap, HeaderValue, StatusCode};
-use simple_server::axum::response::Response as AxumResponse;
-use simple_server::axum::routing::{get, post};
-use simple_server::axum::{Json, Router};
+use simple_server::web::body::Body;
+use simple_server::web::extract::{ConnectInfo, Query, State};
+use simple_server::web::http::{header, HeaderMap, HeaderValue, StatusCode};
+use simple_server::web::response::Response as AxumResponse;
+use simple_server::web::routing::{get, post};
+use simple_server::web::{Json, Router};
 
 use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
@@ -129,7 +129,7 @@ where
 async fn list_voices(
     connect_info: Result<
         ConnectInfo<SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::extract::RejectionResponse,
     >,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -179,7 +179,7 @@ async fn create_speech(
     State(state): State<Arc<AppState>>,
     connect_info: Result<
         ConnectInfo<SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::extract::RejectionResponse,
     >,
     headers: HeaderMap,
     Json(request): Json<SpeechRequest>,

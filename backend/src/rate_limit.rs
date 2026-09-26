@@ -1,4 +1,4 @@
-use simple_server::axum::{
+use simple_server::web::{
     extract::Request,
     http::StatusCode,
     middleware::Next,
@@ -60,14 +60,14 @@ fn extract_ip(request: &Request) -> String {
     // Fall back to connection info
     request
         .extensions()
-        .get::<simple_server::axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .get::<simple_server::web::extract::ConnectInfo<std::net::SocketAddr>>()
         .map(|ci| ci.0.ip().to_string())
         .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Axum middleware that enforces per-IP rate limiting.
 pub async fn rate_limit_middleware(
-    simple_server::axum::extract::State(limiter): simple_server::axum::extract::State<
+    simple_server::web::extract::State(limiter): simple_server::web::extract::State<
         Arc<RateLimiter>,
     >,
     request: Request,
@@ -130,7 +130,7 @@ mod tests {
 #[cfg(test)]
 mod contract_tests {
     use super::*;
-    use simple_server::axum::{
+    use simple_server::web::{
         body::Body,
         extract::ConnectInfo,
         http::{HeaderValue, Request},
@@ -181,7 +181,7 @@ mod contract_tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let task =
-            tokio::spawn(async move { simple_server::axum::serve(listener, app).await.unwrap() });
+            tokio::spawn(async move { simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new()).await.unwrap() });
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let url = format!("http://{addr}/v1/test");
         let ok = client

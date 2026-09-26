@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use simple_server::auth::{Access, AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
-use simple_server::axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
+use simple_server::web::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 
 use crate::auth::AuthUser;
 use crate::models::user::User;

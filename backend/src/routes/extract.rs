@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use simple_server::axum::{
+use simple_server::web::{
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -51,8 +51,8 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 async fn extract(
     connect_info: Result<
-        simple_server::axum::extract::ConnectInfo<std::net::SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::web::extract::ConnectInfo<std::net::SocketAddr>,
+        simple_server::extract::RejectionResponse,
     >,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

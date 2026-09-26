@@ -4,9 +4,9 @@ use simple_ai_common::{
     ResponseInput, ResponseObject, ResponseOutputContent, ResponseOutputItem,
     ResponseOutputMessage,
 };
-use simple_server::axum::body::{Body, Bytes};
-use simple_server::axum::http::HeaderMap;
-use simple_server::axum::{
+use simple_server::web::body::{Body, Bytes};
+use simple_server::web::http::HeaderMap;
+use simple_server::web::{
     extract::{ConnectInfo, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response as AxumResponse},
@@ -432,7 +432,7 @@ async fn create_response(
     State(state): State<Arc<AppState>>,
     connect_info: Result<
         ConnectInfo<SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::extract::RejectionResponse,
     >,
     headers: HeaderMap,
     Json(request): Json<ResponseCreateRequest>,

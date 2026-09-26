@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use std::{collections::VecDeque, io::Cursor, net::SocketAddr};
 
 use async_trait::async_trait;
-use simple_server::axum::body::Bytes;
+use simple_server::web::body::Bytes;
 use base64::Engine as _;
 use futures_util::{stream, Stream, StreamExt};
 use serde_json::{json, Value};

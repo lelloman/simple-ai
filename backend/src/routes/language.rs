@@ -1,4 +1,4 @@
-use simple_server::axum::{
+use simple_server::web::{
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -22,8 +22,8 @@ pub struct DetectLanguageResponse {
 
 async fn detect_language(
     connect_info: Result<
-        simple_server::axum::extract::ConnectInfo<std::net::SocketAddr>,
-        simple_server::axum::extract::rejection::ExtensionRejection,
+        simple_server::web::extract::ConnectInfo<std::net::SocketAddr>,
+        simple_server::extract::RejectionResponse,
     >,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

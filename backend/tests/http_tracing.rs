@@ -36,7 +36,7 @@ impl Capture {
             .collect()
     }
 }
-use simple_server::axum::{
+use simple_server::web::{
     body::{to_bytes, Body, Bytes},
     http::{Request, Response},
     middleware,
@@ -53,7 +53,7 @@ async fn adapter_preserves_all_status_info_policy_safe_labels_and_response_contr
         .route(
             "/probe/{status}",
             get(
-                |simple_server::axum::extract::Path(status): simple_server::axum::extract::Path<
+                |simple_server::web::extract::Path(status): simple_server::web::extract::Path<
                     u16,
                 >| async move {
                     Response::builder()

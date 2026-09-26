@@ -1,7 +1,7 @@
 //! Ollama inference engine implementation.
 
 use async_trait::async_trait;
-use simple_server::axum::body::Bytes;
+use simple_server::web::body::Bytes;
 use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

@@ -3,7 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use simple_server::axum::http::HeaderMap;
+use simple_server::web::http::HeaderMap;
 use chrono::{DateTime, Utc};
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};

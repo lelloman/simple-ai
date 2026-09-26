@@ -1,8 +1,8 @@
 //! Error types for the inference runner.
 
-use simple_server::axum::http::StatusCode;
-use simple_server::axum::response::{IntoResponse, Response};
-use simple_server::axum::Json;
+use simple_server::web::http::StatusCode;
+use simple_server::web::response::{IntoResponse, Response};
+use simple_server::web::Json;
 use serde_json::json;
 
 /// Error types for inference operations.
@@ -76,7 +76,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::axum::body::to_bytes;
+    use simple_server::web::body::to_bytes;
 
     #[tokio::test]
     async fn upstream_bad_request_preserves_status_and_message() {

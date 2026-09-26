@@ -50,13 +50,13 @@ pub enum RouterError {
 impl RouterError {
     /// HTTP status suitable for returning to an API client.
     /// Preserve runner-side client errors; keep infrastructure failures server-side.
-    pub fn client_status(&self) -> simple_server::axum::http::StatusCode {
+    pub fn client_status(&self) -> simple_server::web::http::StatusCode {
         match self {
             Self::RunnerError { status, .. } if (400..500).contains(status) => {
-                simple_server::axum::http::StatusCode::from_u16(*status)
-                    .unwrap_or(simple_server::axum::http::StatusCode::BAD_REQUEST)
+                simple_server::web::http::StatusCode::from_u16(*status)
+                    .unwrap_or(simple_server::web::http::StatusCode::BAD_REQUEST)
             }
-            _ => simple_server::axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            _ => simple_server::web::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -1508,7 +1508,7 @@ pub struct ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::axum::{extract::State, routing::post, Json, Router};
+    use simple_server::web::{extract::State, routing::post, Json, Router};
     use simple_ai_common::{
         ChatCompletionRequest, ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo,
         PromptCacheCapabilities, PromptCacheScope, RunnerHealth, RunnerStatus,
@@ -1600,7 +1600,7 @@ mod tests {
             status: 400,
             body: "context length exceeded".to_string(),
         };
-        assert_eq!(error.client_status(), simple_server::axum::http::StatusCode::BAD_REQUEST);
+        assert_eq!(error.client_status(), simple_server::web::http::StatusCode::BAD_REQUEST);
     }
 
     #[test]
@@ -1611,7 +1611,7 @@ mod tests {
         };
         assert_eq!(
             error.client_status(),
-            simple_server::axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            simple_server::web::http::StatusCode::INTERNAL_SERVER_ERROR
         );
     }
 
@@ -2206,7 +2206,7 @@ mod tests {
         let app = Router::new()
             .route("/v1/chat/completions", post(capture_chat_body))
             .with_state(captured.clone());
-        tokio::spawn(async move { simple_server::axum::serve(listener, app).await.unwrap() });
+        tokio::spawn(async move { simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new()).await.unwrap() });
 
         let registry = Arc::new(RunnerRegistry::new());
         let mut status = create_test_status(vec!["model-a".to_string()]);
