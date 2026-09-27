@@ -354,7 +354,8 @@ cd android && ./gradlew test
 
 #### Backend
 
-Use the reviewed shared-library revision recorded in `simple-server.rev`:
+Use the reviewed shared-library revision recorded in `simple-server.rev`
+(`ca98a4159e1cb0dd7b9db2faa9a076d198b7973b`):
 
 ```bash
 bash scripts/checkout-simple-server.sh

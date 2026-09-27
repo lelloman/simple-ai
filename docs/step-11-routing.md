@@ -18,10 +18,12 @@ of the enclosing gateway. Its backend differential contract verifies GET/HEAD,
 POST using outer state and unsupported-method behavior. This preserves existing
 route assembly and avoids moving application state ownership.
 
-Explicit remaining boundaries are gateway WebSocket socket/message callbacks,
-admin SSE event/keepalive production through `web::compat::response`, and the
-tracing observer backend response callback through `web::compat::trace_with_observer`.
-Multipart is fully shared. Ordinary routing has no backend conversion.
+At this migration point, the explicit remaining boundaries were gateway
+WebSocket socket/message callbacks, admin SSE event/keepalive production through
+`web::compat::response`, and the tracing observer backend response callback.
+The later WebSocket and Step 03c follow-ups moved the first and third to owned
+contracts. Admin SSE remains the compatibility boundary. Multipart is fully
+shared. Ordinary routing has no backend conversion.
 
 ## Verification
 

@@ -69,8 +69,10 @@ policy changed.
 
 The inference runner's gateway connection is an outbound tokio-tungstenite
 client; the shared server upgrade API does not apply to it. The backend's SSE
-events (`Event`, `KeepAlive`, `Sse`, and compatibility response conversion) and
-custom HTTP tracing observer response type remain Axum migration exposure.
+events (`Event`, `KeepAlive`, `Sse`, and compatibility response conversion)
+remain Axum migration exposure. The custom HTTP tracing observer moved to the
+owned `simple_server::web::tracing` contracts in the subsequent Step 03c
+follow-up documented in `docs/step-03c-http-tracing.md`.
 
 Verification in the isolated migration worktree:
 
