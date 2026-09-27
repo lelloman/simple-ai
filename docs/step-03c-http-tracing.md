@@ -5,8 +5,7 @@ Production backend `main` already installs `logging::request_logger` around the 
 The production observer uses the owned `simple_server::web::tracing` request,
 response metadata, observer, lifecycle and default finish-event contracts. Its
 response callback no longer exposes an Axum response type. The admin SSE
-producer still uses `simple_server::axum::response::sse` and
-`web::compat::response`; that separate streaming migration remains pending.
+producer subsequently moved to owned `web::sse`; see [its migration record](step-11-sse.md).
 
 Validation: baseline `cargo test --locked -p simple-ai-backend` passed 310 tests with one existing ignored doctest; final passed 312 with the same ignore. Two new integration tests verify the production middleware's all-status INFO policy, matched route privacy, unchanged headers/body, lazy SSE body polling, and exactly-once completion/cancellation. Existing smoke/auth/backend tests also pass. All-target Clippy exits successfully with 12 backend and 3 common-library warnings in unchanged code, and no new adapter/test findings. Changed files pass rustfmt and diff whitespace checks. Full inference-runner/Android/GPU/browser/deployed-OIDC checks were not run; repository-wide formatting is not claimed.
 
@@ -44,5 +43,5 @@ ephemeral sockets and fixture-process execution; a sandboxed attempt was denied
 those operations, while the unrestricted rerun passed.
 
 No Android, browser, GPU/model-download, Docker or deployed-service checks are
-claimed for this import-only migration. Admin SSE remains on the compatibility
-response bridge. No push or deployment is included.
+claimed for this import-only migration. The later owned SSE migration removes
+the separate compatibility response bridge. No push or deployment is included.

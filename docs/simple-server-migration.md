@@ -104,3 +104,14 @@ worktree, verifies commit ancestry and identical tested tree, and restores the
 original checkout with unrelated README and semantic evaluation work preserved.
 Temporary worktrees, migration branch, fixtures, build output, and logs are
 removed after successful verification. Nothing is pushed or deployed.
+
+## Owned SSE — 2026-09-27
+
+Admin runner events now use owned `web::sse` builders/keepalive/response
+conversion. `web-compat` is removed from workspace features. No backend/compat
+imports remain in production or test Rust source. Reviewed library pin and
+README instructions are updated. Backend/common before: 374 pass, one ignore;
+after: 376 pass, same ignore. New real-HTTP JWT/event tests and paused-time
+heartbeat/lag tests pass before/after. Locked workspace build and non-strict
+Clippy pass; existing strict-Clippy, formatting and missing runner config
+fixture limitations remain. See [the SSE record](step-11-sse.md).

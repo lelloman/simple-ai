@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt as FuturesStreamExt};
 use serde::{Deserialize, Serialize};
-use simple_server::axum::response::sse::{Event, KeepAlive, Sse};
+use simple_server::web::sse::{Event, KeepAlive, Sse};
 use simple_server::web::ws::{Message, WebSocket, WebSocketUpgrade};
 use simple_server::web::{
     extract::{Path, Query, Request, State},
@@ -1414,9 +1414,9 @@ async fn runner_events(
         }
     });
 
-    Ok(simple_server::web::compat::response(
-        Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))),
-    ))
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+        .into_response())
 }
 
 /// Build the admin router.

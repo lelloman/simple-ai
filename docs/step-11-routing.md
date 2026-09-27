@@ -22,7 +22,8 @@ At this migration point, the explicit remaining boundaries were gateway
 WebSocket socket/message callbacks, admin SSE event/keepalive production through
 `web::compat::response`, and the tracing observer backend response callback.
 The later WebSocket and Step 03c follow-ups moved the first and third to owned
-contracts. Admin SSE remains the compatibility boundary. Multipart is fully
+contracts. The subsequent [owned SSE migration](step-11-sse.md) removes the
+admin SSE compatibility boundary. Multipart is fully
 shared. Ordinary routing has no backend conversion.
 
 ## Verification
