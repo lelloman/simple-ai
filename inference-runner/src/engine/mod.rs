@@ -6,6 +6,8 @@
 mod audio_embeddings;
 mod classification;
 mod extraction;
+mod decisions;
+pub use decisions::DecisionEngine;
 pub use extraction::ExtractionEngine;
 mod llama_cpp;
 mod ollama;
@@ -110,6 +112,15 @@ pub trait InferenceEngine: Send + Sync {
     /// Unload a model from memory (Phase 2).
     async fn unload_model(&self, model_id: &str) -> Result<()>;
 
+    /// Stop all resource users, including externally started processes that
+    /// have not become healthy enough to advertise a loaded model yet.
+    async fn quiesce(&self) -> Result<()> {
+        for model in self.health_check().await?.models_loaded {
+            self.unload_model(&model).await?;
+        }
+        Ok(())
+    }
+
     /// Perform chat completion inference.
     async fn chat_completion(
         &self,
@@ -156,6 +167,10 @@ pub trait InferenceEngine: Send + Sync {
             "Text extraction not supported by {} engine",
             self.engine_type()
         )))
+    }
+
+    async fn decide(&self, _model_id: &str, _request: &simple_ai_common::DecisionRequest) -> Result<simple_ai_common::DecisionResponse> {
+        Err(crate::error::Error::NotSupported("semantic decisions not supported by this engine".into()))
     }
 
     /// Generate one audio embedding for an uploaded audio file.

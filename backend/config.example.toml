@@ -58,6 +58,7 @@ port = 9
 [models]
 # Multilingual entities, records, relations and label classification.
 information_extraction = ["fastino/gliner2.5-multi-v1"]
+semantic_decisions = ["autotrust/JEV-9B"]
 # Model classification for routing and permissions.
 # Users with "model:specific" role can request exact models.
 # Users without it can only request classes, plus configured audio embedding and TTS models.

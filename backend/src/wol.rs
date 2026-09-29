@@ -381,6 +381,7 @@ impl WakeService {
                         ModelClass::EmbedLarge => self.models_config.embed_large.first(),
                         ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
                         ModelClass::Tts => self.models_config.tts.first(),
+                        ModelClass::SemanticDecisions => self.models_config.semantic_decisions.first(),
                         ModelClass::InformationExtraction => {
                             self.models_config.information_extraction.first()
                         }

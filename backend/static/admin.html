@@ -73,16 +73,17 @@
             <!-- Navigation -->
             <nav class="bg-gray-800">
                 <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div class="flex h-16 items-center justify-between">
-                        <div class="flex items-center">
+                    <div class="flex min-h-16 flex-wrap items-center justify-between gap-2 py-2">
+                        <div class="flex min-w-0 flex-1 items-center">
                             <div class="flex-shrink-0">
                                 <span class="text-white font-bold text-lg">SimpleAI</span>
                             </div>
-                            <div class="ml-10 flex items-baseline space-x-4">
+                            <div class="ml-4 flex min-w-0 items-baseline gap-1 overflow-x-auto sm:ml-10 sm:gap-3">
                                 <a href="#dashboard" onclick="showPage('dashboard')" id="nav-dashboard" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Dashboard</a>
                                 <a href="#runners" onclick="showPage('runners')" id="nav-runners" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Runners</a>
                                 <a href="#router" onclick="showPage('router')" id="nav-router" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Router</a>
                                 <a href="#models" onclick="showPage('models')" id="nav-models" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Models</a>
+                                <a href="#decisions" onclick="showPage('decisions')" id="nav-decisions" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Decisions</a>
                                 <a href="#chat" onclick="showPage('chat')" id="nav-chat" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Chat</a>
                                 <a href="#users" onclick="showPage('users')" id="nav-users" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Users</a>
                                 <a href="#requests" onclick="showPage('requests')" id="nav-requests" class="nav-link rounded-md px-3 py-2 text-sm font-medium">Requests</a>
@@ -238,6 +239,41 @@
                     <div id="page-models" class="page hidden">
                         <div id="models-list" class="overflow-hidden bg-white shadow sm:rounded-md">
                             <ul role="list" class="divide-y divide-gray-200" id="models-ul"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Decisions page -->
+                    <div id="page-decisions" class="page hidden">
+                        <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+                            <form id="decision-form" onsubmit="event.preventDefault(); runDecisions()" class="rounded-lg bg-white p-5 shadow">
+                                <fieldset id="decision-fields" class="space-y-5">
+                                    <div class="flex flex-wrap items-center justify-between gap-3">
+                                        <div><h2 class="font-semibold text-gray-900">Ask JEV-9B</h2><p class="text-sm text-gray-500">Evaluate one situation with several questions.</p></div>
+                                        <button type="button" onclick="loadDecisionExample()" class="rounded-md border px-3 py-2 text-sm">Load example</button>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center justify-between gap-3">
+                                            <label for="decision-state" class="text-sm font-medium text-gray-700">State to evaluate</label>
+                                            <select id="decision-format" aria-label="State format" class="rounded-md border p-2 text-sm"><option value="text">Text</option><option value="json">JSON</option></select>
+                                        </div>
+                                        <textarea id="decision-state" required rows="7" placeholder="Paste a message, document, or situation…" class="mt-2 block w-full rounded-md border p-3 text-sm"></textarea>
+                                    </div>
+                                    <div id="decision-questions" class="space-y-4"></div>
+                                    <div class="flex flex-wrap items-center justify-between gap-3">
+                                        <button id="decision-add" type="button" onclick="addDecisionQuestion()" class="rounded-md border px-3 py-2 text-sm">Add question</button>
+                                        <button id="decision-run" type="submit" class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Evaluate</button>
+                                    </div>
+                                    <p class="text-xs text-gray-500">Up to 128 questions. Choice questions accept 2–16 options; ratings use six levels from 0 to 5.</p>
+                                </fieldset>
+                                <p id="decision-status" role="status" aria-live="polite" class="mt-4 text-sm text-gray-600">Ready. Waking the server or loading the model can take a few minutes.</p>
+                                <p id="decision-error" role="alert" class="mt-3 whitespace-pre-wrap text-sm text-red-700"></p>
+                            </form>
+                            <section class="rounded-lg bg-white p-5 shadow" aria-label="Decision results">
+                                <div class="flex items-center justify-between gap-3"><h2 class="font-semibold text-gray-900">Results</h2><button id="decision-copy" type="button" onclick="copyTextToClipboard(JSON.stringify(decisionLastResponse, null, 2))" disabled class="rounded-md border px-3 py-2 text-sm disabled:opacity-50">Copy JSON</button></div>
+                                <p class="mt-2 text-xs text-gray-500">Probabilities are model estimates, not calibrated confidence guarantees.</p>
+                                <p id="decision-metadata" class="mt-3 text-xs text-gray-500"></p>
+                                <div id="decision-results" class="mt-4 space-y-4"><p class="text-sm text-gray-500">Answers and probabilities will appear here.</p></div>
+                            </section>
                         </div>
                     </div>
 
@@ -862,6 +898,13 @@
                     }
                     logout();
                     throw new Error('Unauthorized');
+                }
+                if (options.errorDetail) {
+                    const raw = await response.text();
+                    let detail = raw;
+                    try { const parsed = JSON.parse(raw); detail = parsed.error?.message || parsed.error || parsed.message || raw; } catch (_) {}
+                    const prefix = response.status === 429 ? 'Server busy. Try again shortly.' : `Request failed (${response.status}).`;
+                    throw new Error(`${prefix} ${String(detail).slice(0, 600)}`);
                 }
                 throw new Error(`API error: ${response.status}`);
             }
@@ -1518,6 +1561,7 @@
                 router: 'Router',
                 models: 'Models',
                 chat: 'Chat',
+                decisions: 'Decisions',
                 users: 'Users',
                 'user-detail': 'User Details',
                 requests: 'Requests'
@@ -1552,6 +1596,7 @@
             else if (currentPage === 'runners') renderRunners();
             else if (currentPage === 'router') renderRouter();
             else if (currentPage === 'models') renderModels();
+            else if (currentPage === 'decisions') renderDecisionsPage();
             else if (currentPage === 'chat') renderChatPage();
             else if (currentPage === 'users') loadUsers();
             else if (currentPage === 'requests') {
@@ -3135,10 +3180,198 @@
             }
         }
 
+        let decisionSequence = 0;
+        let decisionBusy = false;
+        let decisionLastResponse = null;
+
+        function decisionElement(tag, className, text) {
+            const element = document.createElement(tag);
+            element.className = className;
+            if (text !== undefined) element.textContent = text;
+            return element;
+        }
+
+        function decisionLabeledInput(parent, label, value = '', rows = 2) {
+            const wrapper = decisionElement('label', 'block text-sm text-gray-700', label);
+            const input = decisionElement('textarea', 'mt-1 block w-full rounded-md border p-2 text-sm');
+            input.rows = rows;
+            input.maxLength = 8192;
+            input.required = true;
+            input.value = value;
+            wrapper.append(input);
+            parent.append(wrapper);
+            return input;
+        }
+
+        function updateDecisionCount() {
+            const cards = document.querySelectorAll('#decision-questions > article');
+            document.getElementById('decision-add').disabled = cards.length >= 128;
+            cards.forEach((card, i) => {
+                card.querySelector('[data-heading]').textContent = `Question ${i + 1}`;
+                card.querySelector('[data-remove]').disabled = cards.length === 1;
+            });
+        }
+
+        function addDecisionQuestion(question = {}) {
+            const container = document.getElementById('decision-questions');
+            if (container.children.length >= 128 || decisionBusy) return;
+            const card = decisionElement('article', 'space-y-3 rounded-md border border-gray-200 p-3');
+            card.dataset.questionId = `question_${++decisionSequence}`;
+            const header = decisionElement('div', 'flex flex-wrap items-center gap-3');
+            const title = decisionElement('h3', 'mr-auto text-sm font-medium');
+            title.dataset.heading = '';
+            const type = decisionElement('select', 'rounded-md border p-2 text-sm');
+            type.setAttribute('aria-label', 'Question type');
+            type.dataset.type = '';
+            [['boolean', 'Yes / No'], ['choice', 'Choose an option'], ['rating', 'Rate 0–5']].forEach(([value, label]) => {
+                const option = decisionElement('option', '', label); option.value = value; type.append(option);
+            });
+            type.value = question.type || 'boolean';
+            const remove = decisionElement('button', 'rounded-md px-2 py-1 text-sm text-red-700 disabled:opacity-40', 'Remove');
+            remove.type = 'button'; remove.dataset.remove = '';
+            remove.onclick = () => { if (!decisionBusy) { card.remove(); updateDecisionCount(); } };
+            header.append(title, type, remove); card.append(header);
+            decisionLabeledInput(card, 'Question', question.instruction || '').dataset.instruction = '';
+            const extra = decisionElement('div', 'space-y-2'); card.append(extra);
+            const typeDrafts = {};
+            let previousType = type.value;
+            const renderOptions = (data = {}) => {
+                extra.replaceChildren();
+                extra.className = type.value === 'rating' ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : 'space-y-2';
+                if (type.value === 'choice') {
+                    const input = decisionLabeledInput(extra, 'Options — one per line (2–16)', data.options || '', 4);
+                    input.maxLength = 16 * 8193;
+                    input.dataset.options = '';
+                } else if (type.value === 'rating') {
+                    const levels = data.levels || ['No action needed', 'Very low', 'Low', 'Normal', 'High', 'Critical'];
+                    levels.forEach((level, i) => { decisionLabeledInput(extra, `Level ${i}`, level, 1).dataset.level = String(i); });
+                }
+            };
+            type.onchange = () => {
+                typeDrafts[previousType] = {
+                    options: extra.querySelector('[data-options]')?.value,
+                    levels: [...extra.querySelectorAll('[data-level]')].map(input => input.value)
+                };
+                renderOptions(typeDrafts[type.value]); previousType = type.value;
+            };
+            renderOptions({options: question.options?.map(option => option.description).join('\n'), levels: question.levels});
+            container.append(card); updateDecisionCount();
+        }
+
+        function renderDecisionsPage() {
+            // WebSocket updates must never replace an in-progress form or its results.
+            if (!document.getElementById('decision-questions').children.length) addDecisionQuestion();
+        }
+
+        function loadDecisionExample() {
+            if (decisionBusy) return;
+            document.getElementById('decision-format').value = 'text';
+            document.getElementById('decision-state').value = 'I was charged twice. Please refund the duplicate charge.';
+            document.getElementById('decision-questions').replaceChildren();
+            addDecisionQuestion({type: 'boolean', instruction: 'Does the customer request a refund?'});
+            addDecisionQuestion({type: 'choice', instruction: 'Which team should handle this?', options: [
+                {description: 'Billing — payments, charges, refunds'}, {description: 'Technical support — problems using the product'}
+            ]});
+            addDecisionQuestion({type: 'rating', instruction: 'Rate the urgency of this request.'});
+            document.getElementById('decision-error').textContent = '';
+        }
+
+        function buildDecisionRequest() {
+            const source = document.getElementById('decision-state').value;
+            let state = source;
+            if (document.getElementById('decision-format').value === 'json') {
+                try { state = JSON.parse(source); } catch (_) { throw new Error('State is not valid JSON. Fix it or choose Text.'); }
+            }
+            if (typeof state === 'string' ? !state.trim() : !state || typeof state !== 'object' || !Object.keys(state).length) {
+                throw new Error('Enter nonempty text, a JSON object, or a JSON array.');
+            }
+            const questions = [...document.querySelectorAll('#decision-questions > article')].map((card, index) => {
+                const type = card.querySelector('[data-type]').value;
+                const instruction = card.querySelector('[data-instruction]').value.trim();
+                if (!instruction || [...instruction].length > 8192) throw new Error(`Question ${index + 1} needs 1–8,192 characters.`);
+                const question = {id: card.dataset.questionId, type, instruction};
+                if (type === 'choice') {
+                    const options = card.querySelector('[data-options]').value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+                    if (options.length < 2 || options.length > 16 || options.some(value => [...value].length > 8192)) {
+                        throw new Error(`Question ${index + 1} needs 2–16 options, each at most 8,192 characters.`);
+                    }
+                    question.options = options.map((description, i) => ({id: `option_${i + 1}`, description}));
+                } else if (type === 'rating') {
+                    question.levels = [...card.querySelectorAll('[data-level]')].map(input => input.value.trim());
+                    if (question.levels.length !== 6 || question.levels.some(value => !value || [...value].length > 8192)) throw new Error(`Fill all six rating levels for question ${index + 1}.`);
+                }
+                return question;
+            });
+            if (!questions.length || questions.length > 128) throw new Error('Add 1–128 questions.');
+            const request = {model: 'class:semantic_decisions', state, questions};
+            if (new TextEncoder().encode(JSON.stringify(request)).length > 2 * 1024 * 1024) throw new Error('This request exceeds 2 MiB. Shorten the state or questions.');
+            return request;
+        }
+
+        function renderDecisionResults(response, request) {
+            const container = document.getElementById('decision-results'); container.replaceChildren();
+            response.answers.forEach(answer => {
+                const question = request.questions.find(question => question.id === answer.id);
+                if (!question) return;
+                const card = decisionElement('article', 'space-y-3 rounded-md border border-gray-200 p-4');
+                card.append(decisionElement('h3', 'whitespace-pre-wrap break-words font-medium text-gray-900', question.instruction));
+                const labels = answer.type === 'boolean' ? {false: 'No', true: 'Yes'} : answer.type === 'choice'
+                    ? Object.fromEntries(question.options.map(option => [option.id, option.description]))
+                    : Object.fromEntries(question.levels.map((level, i) => [String(i), `${i} — ${level}`]));
+                const value = answer.type === 'boolean' ? (answer.value ? 'Yes' : 'No') : answer.type === 'choice'
+                    ? labels[answer.selected] : `${Number(answer.value).toFixed(2)} / 5 (expected rating)`;
+                card.append(decisionElement('p', 'break-words text-lg font-semibold text-primary-700', value));
+                Object.entries(labels).forEach(([key, label]) => {
+                    const probability = Number(answer.probabilities[key]);
+                    if (!Number.isFinite(probability) || probability < 0 || probability > 1) return;
+                    const row = decisionElement('div', 'space-y-1');
+                    const heading = decisionElement('div', 'flex justify-between gap-3 text-sm');
+                    heading.append(decisionElement('span', 'min-w-0 break-words text-gray-700', label), decisionElement('span', 'shrink-0 tabular-nums text-gray-600', `${(probability * 100).toFixed(1)}%`));
+                    const track = decisionElement('div', 'h-2 overflow-hidden rounded bg-gray-100');
+                    track.setAttribute('aria-hidden', 'true');
+                    const bar = decisionElement('div', 'h-full rounded bg-primary-500'); bar.style.width = `${probability * 100}%`; track.append(bar);
+                    row.append(heading, track); card.append(row);
+                });
+                container.append(card);
+            });
+            const seconds = Number(response.timing?.total_ms) / 1000;
+            document.getElementById('decision-metadata').textContent = `${response.model} · ${Number.isFinite(seconds) ? seconds.toFixed(2) + ' s' : 'Complete'} · ${response.usage?.prompt_tokens ?? '—'} input tokens`;
+        }
+
+        async function runDecisions() {
+            if (decisionBusy) return;
+            const error = document.getElementById('decision-error'); error.textContent = '';
+            let request;
+            try { request = buildDecisionRequest(); } catch (exception) { error.textContent = exception.message; return; }
+            decisionBusy = true;
+            decisionLastResponse = null;
+            document.getElementById('decision-copy').disabled = true;
+            document.getElementById('decision-fields').disabled = true;
+            document.getElementById('decision-results').replaceChildren();
+            document.getElementById('decision-metadata').textContent = '';
+            const status = document.getElementById('decision-status');
+            const started = Date.now();
+            const update = () => { status.textContent = `Evaluating… ${Math.floor((Date.now() - started) / 1000)} s. Waking the server or loading JEV can take a few minutes.`; };
+            update(); const timer = setInterval(update, 1000);
+            try {
+                const response = await apiFetch('/v1/decisions', {method: 'POST', body: JSON.stringify(request), errorDetail: true});
+                renderDecisionResults(response, request);
+                decisionLastResponse = response;
+                document.getElementById('decision-copy').disabled = false;
+                status.textContent = `Complete — ${response.answers.length} questions evaluated.`;
+            } catch (exception) {
+                error.textContent = exception.message;
+                status.textContent = 'Could not evaluate. Your inputs are preserved; you can retry.';
+            } finally {
+                clearInterval(timer); decisionBusy = false;
+                document.getElementById('decision-fields').disabled = false;
+            }
+        }
+
         // Handle hash-based navigation
         function getPageFromHash() {
             const hash = window.location.hash.slice(1); // Remove the #
-            const validPages = ['dashboard', 'runners', 'router', 'models', 'chat', 'users', 'user-detail', 'requests'];
+            const validPages = ['dashboard', 'runners', 'router', 'models', 'chat', 'decisions', 'users', 'user-detail', 'requests'];
             return validPages.includes(hash) ? hash : 'dashboard';
         }
 

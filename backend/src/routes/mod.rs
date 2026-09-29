@@ -6,6 +6,7 @@ pub mod classifications;
 pub mod embeddings;
 pub mod extract;
 pub mod extractions;
+pub mod decisions;
 pub mod health;
 pub mod language;
 pub mod models;

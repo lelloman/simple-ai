@@ -579,11 +579,22 @@ impl InferenceEngine for VllmEngine {
         Ok(())
     }
 
+    async fn quiesce(&self) -> Result<()> {
+        let _guard = self.lifecycle.lock().await;
+        let mut stopped = std::collections::HashSet::new();
+        // Docker may restart chat at boot before /health is ready. Always stop
+        // configured services before another engine acquires this GPU.
+        for model in self.config.models.values() {
+            if stopped.insert(model.compose_service.clone()) {
+                self.stop_model(model).await?;
+            }
+        }
+        *self.loaded.write().await = None;
+        Ok(())
+    }
+
     async fn unload_model(&self, model_id: &str) -> Result<()> {
         let _guard = self.lifecycle.lock().await;
-        if self.adopt_running_model().await.as_deref() != Some(model_id) {
-            return Ok(());
-        }
         let model = self.model(model_id)?.clone();
         self.stop_model(&model).await?;
         *self.loaded.write().await = None;

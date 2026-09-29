@@ -257,6 +257,9 @@ deploy_host() {
         echo "[DRY-RUN] Would upload Chatterbox provider to $ssh_target:$deploy_dir/simple-ai-chatterbox-provider.py"
         echo "[DRY-RUN] Would upload extraction provider to $ssh_target:$deploy_dir/simple-ai-extraction-provider.py"
         echo "[DRY-RUN] Would upload classification provider to $ssh_target:$deploy_dir/simple-ai-classification-provider.py"
+        if rg -q '^\[engines.decisions\]' "$config_path"; then
+            echo "[DRY-RUN] Would upload JEV compose/provider files and verify prepared offline artifacts"
+        fi
         echo "[DRY-RUN] Would upload config from $config_path to $ssh_target:$deploy_dir/config.toml"
         echo "[DRY-RUN] Would install systemd service with deploy_dir=$deploy_dir"
         echo "[DRY-RUN] Would start and verify service"
@@ -305,6 +308,15 @@ deploy_host() {
     scp -q "$CLASSIFICATION_PROVIDER" "$ssh_target:$deploy_dir/simple-ai-classification-provider.py"
     scp -q "$EXTRACTION_PROVIDER" "$ssh_target:$deploy_dir/simple-ai-extraction-provider.py"
     ssh "$ssh_target" "chmod +x $deploy_dir/simple-ai-classification-provider.py"
+
+    # Deploy JEV runtime files with runners explicitly configured for decisions.
+    if rg -q '^\[engines.decisions\]' "$config_path"; then
+        local jev_dir="$deploy_dir/simple-ai-semantic"
+        ssh "$ssh_target" "mkdir -p '$jev_dir/deploy/semantic-rtx3090' '$jev_dir/scripts' '$jev_dir/tests/fixtures'"
+        scp -q "$PROJECT_DIR/deploy/semantic-rtx3090/compose.yaml" "$ssh_target:$jev_dir/deploy/semantic-rtx3090/compose.yaml"
+        scp -q "$PROJECT_DIR/scripts/simple_ai_semantic.py" "$ssh_target:$jev_dir/scripts/simple_ai_semantic.py"
+        ssh "$ssh_target" "cd '$jev_dir/deploy/semantic-rtx3090' && docker compose run --rm --no-deps --pull never provider --preflight"
+    fi
 
     # Upload config
     echo "  Uploading config..."

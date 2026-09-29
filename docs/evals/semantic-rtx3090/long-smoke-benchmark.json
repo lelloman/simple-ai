@@ -1,0 +1,1614 @@
+{
+  "created_at": "2026-09-20T19:35:58.780633+00:00",
+  "settings": {
+    "backend": "http://127.0.0.1:30000",
+    "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+    "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+    "context": 18432,
+    "concurrency": 8,
+    "lengths": [
+      16000
+    ],
+    "batches": [
+      1,
+      8
+    ],
+    "repetitions": 2,
+    "gpu": 0,
+    "output": "results/long-smoke-benchmark.json",
+    "exclusive_backend": true
+  },
+  "backend_info": {
+    "model_path": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+    "context_length": 18432,
+    "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+    "json_model_override_args": "{\"quantization_config\":{\"quant_method\":\"awq\",\"bits\":4,\"group_size\":128,\"zero_point\":true,\"version\":\"gemm\",\"modules_to_not_convert\":[\"lm_head\",\"visual.\",\"linear_attn.in_proj_a\",\"linear_attn.in_proj_b\",\"mlp.gate\",\"mlp.shared_expert_gate\"]}}",
+    "dtype": "bfloat16",
+    "quantization": "awq_marlin",
+    "mem_fraction_static": 0.9,
+    "max_running_requests": 8,
+    "max_total_tokens": 24576,
+    "chunked_prefill_size": 2048,
+    "disable_radix_cache": false,
+    "tp_size": 1,
+    "attention_backend": "triton",
+    "disable_cuda_graph": true,
+    "moe_runner_backend": "auto",
+    "mamba_radix_cache_strategy": "extra_buffer",
+    "version": "0.5.19"
+  },
+  "measurements": [
+    {
+      "state_tokens_target": 16000,
+      "state_tokens_actual": 16000,
+      "predicates": 1,
+      "mode": "shared",
+      "median_ms": 2770.5530159998943,
+      "p95_ms": 2776.053834999857,
+      "decisions_per_second": 0.3609387707887262,
+      "amortized_ms_per_decision": 2770.5530159998943,
+      "peak_device_memory_mib": 21940.0,
+      "samples": [
+        {
+          "wall_ms": 2765.0521969999318,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2765.0521969999318,
+          "decisions_per_second": 0.36165682553298456,
+          "amortized_ms_per_decision": 2765.0521969999318,
+          "peak_device_memory_mib": 21940.0,
+          "memory_samples": 42,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            16000
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9669140212537652,
+                    "False": 0.033085978746234736
+                  },
+                  "raw_logprobs": {
+                    "True": -0.0610506646335125,
+                    "False": -3.4360506534576416
+                  },
+                  "label_probability_mass": 0.9729671447922285,
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9669140212537652
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 1,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  16000
+                ],
+                "cached_tokens": 16000,
+                "prompt_tokens": 32122,
+                "completion_tokens": 2
+              },
+              "timing_ms": {
+                "prepare": 34.14941400001226,
+                "prefill": 2580.618473999948,
+                "branches": 150.10735900000327,
+                "total": 2764.8752469999636
+              }
+            }
+          ],
+          "max_absolute_score_delta_vs_independent": 0.014339890055631743
+        },
+        {
+          "wall_ms": 2776.053834999857,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2776.053834999857,
+          "decisions_per_second": 0.36022356173076575,
+          "amortized_ms_per_decision": 2776.053834999857,
+          "peak_device_memory_mib": 21940.0,
+          "memory_samples": 42,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            16000
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9669140206578809,
+                    "False": 0.03308597934211908
+                  },
+                  "raw_logprobs": {
+                    "True": -0.08365276455879211,
+                    "False": -3.4586527347564697
+                  },
+                  "label_probability_mass": 0.9512227054300655,
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9669140206578809
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 1,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  16000
+                ],
+                "cached_tokens": 16000,
+                "prompt_tokens": 32122,
+                "completion_tokens": 2
+              },
+              "timing_ms": {
+                "prepare": 33.77240300005724,
+                "prefill": 2591.932505999921,
+                "branches": 150.2174049999212,
+                "total": 2775.9223139998994
+              }
+            }
+          ],
+          "max_absolute_score_delta_vs_independent": 0.003773747742796596
+        }
+      ]
+    },
+    {
+      "state_tokens_target": 16000,
+      "state_tokens_actual": 16000,
+      "predicates": 1,
+      "mode": "independent",
+      "median_ms": 2624.943507499893,
+      "p95_ms": 2627.193228999886,
+      "decisions_per_second": 0.38096057958688884,
+      "amortized_ms_per_decision": 2624.943507499893,
+      "peak_device_memory_mib": 21938.0,
+      "samples": [
+        {
+          "wall_ms": 2622.6937859999,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2622.6937859999,
+          "decisions_per_second": 0.38128736390731593,
+          "amortized_ms_per_decision": 2622.6937859999,
+          "peak_device_memory_mib": 21938.0,
+          "memory_samples": 40,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9525741311981335,
+                    "False": 0.0474258688018665
+                  },
+                  "raw_logprobs": {
+                    "True": -0.09134569019079208,
+                    "False": -3.09134578704834
+                  },
+                  "label_probability_mass": 0.9581429038303901,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 34.011661000022286,
+                "prefill": 0.0004260000423528254,
+                "branches": 2588.5553559999153,
+                "total": 2622.56744299998
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 2627.193228999886,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2627.193228999886,
+          "decisions_per_second": 0.38063435493120457,
+          "amortized_ms_per_decision": 2627.193228999886,
+          "peak_device_memory_mib": 21938.0,
+          "memory_samples": 40,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9706877684006775,
+                    "False": 0.02931223159932252
+                  },
+                  "raw_logprobs": {
+                    "True": -0.08036115765571594,
+                    "False": -3.5803611278533936
+                  },
+                  "label_probability_mass": 0.9506486494286837,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.75932099993406,
+                "prefill": 0.00046000013753655367,
+                "branches": 2593.2537040000625,
+                "total": 2627.013485000134
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "state_tokens_target": 16000,
+      "state_tokens_actual": 16000,
+      "predicates": 8,
+      "mode": "shared",
+      "median_ms": 3823.3170480000354,
+      "p95_ms": 3898.61831799999,
+      "decisions_per_second": 2.0924239082355918,
+      "amortized_ms_per_decision": 477.9146310000044,
+      "peak_device_memory_mib": 21944.0,
+      "samples": [
+        {
+          "wall_ms": 3748.015778000081,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 3748.015778000081,
+          "decisions_per_second": 2.1344627327766355,
+          "amortized_ms_per_decision": 468.5019722500101,
+          "peak_device_memory_mib": 21942.0,
+          "memory_samples": 57,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            16000,
+            16000,
+            16000,
+            16000,
+            16000,
+            16000,
+            16000,
+            16000
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9525741338908721,
+                    "False": 0.04742586610912805
+                  },
+                  "raw_logprobs": {
+                    "True": -0.08035644143819809,
+                    "False": -3.0803565979003906
+                  },
+                  "label_probability_mass": 0.9687302386991442,
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9525741338908721
+                },
+                {
+                  "scores": {
+                    "True": 0.04208772461143651,
+                    "False": 0.9579122753885635
+                  },
+                  "raw_logprobs": {
+                    "True": -3.199122905731201,
+                    "False": -0.0741228237748146
+                  },
+                  "label_probability_mass": 0.9693556098403322,
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.04208772461143651
+                },
+                {
+                  "scores": {
+                    "True": 0.04208772431105632,
+                    "False": 0.9579122756889438
+                  },
+                  "raw_logprobs": {
+                    "True": -3.1955087184906006,
+                    "False": -0.07050862908363342
+                  },
+                  "label_probability_mass": 0.9728653881252771,
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.04208772431105632
+                },
+                {
+                  "scores": {
+                    "True": 0.2689414448079646,
+                    "False": 0.7310585551920353
+                  },
+                  "raw_logprobs": {
+                    "True": -1.3596633672714233,
+                    "False": -0.3596634864807129
+                  },
+                  "label_probability_mass": 0.9546583350096325,
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.2689414448079646
+                },
+                {
+                  "scores": {
+                    "True": 0.9525741308615412,
+                    "False": 0.04742586913845881
+                  },
+                  "raw_logprobs": {
+                    "True": -0.06704607605934143,
+                    "False": -3.0670461654663086
+                  },
+                  "label_probability_mass": 0.9817105902026709,
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9525741308615412
+                },
+                {
+                  "scores": {
+                    "True": 0.9465966728366375,
+                    "False": 0.0534033271633626
+                  },
+                  "raw_logprobs": {
+                    "True": -0.08719844371080399,
+                    "False": -2.962198495864868
+                  },
+                  "label_probability_mass": 0.9682003235130626,
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.9465966728366375
+                },
+                {
+                  "scores": {
+                    "True": 0.06008665017400762,
+                    "False": 0.9399133498259924
+                  },
+                  "raw_logprobs": {
+                    "True": -2.8319270610809326,
+                    "False": -0.08192706108093262
+                  },
+                  "label_probability_mass": 0.9802383995273976,
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.06008665017400762
+                },
+                {
+                  "scores": {
+                    "True": 0.029312229903390143,
+                    "False": 0.97068777009661
+                  },
+                  "raw_logprobs": {
+                    "True": -3.5545716285705566,
+                    "False": -0.05457159876823425
+                  },
+                  "label_probability_mass": 0.9754843312056551,
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.029312229903390143
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 1,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000
+                ],
+                "cached_tokens": 128000,
+                "prompt_tokens": 144681,
+                "completion_tokens": 9
+              },
+              "timing_ms": {
+                "prepare": 35.259890000133964,
+                "prefill": 2596.1499259999528,
+                "branches": 1116.30934599998,
+                "total": 3747.7191620000667
+              }
+            }
+          ],
+          "max_absolute_score_delta_vs_independent": 0.025273521166496837
+        },
+        {
+          "wall_ms": 3898.61831799999,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 3898.61831799999,
+          "decisions_per_second": 2.052009031780274,
+          "amortized_ms_per_decision": 487.3272897499987,
+          "peak_device_memory_mib": 21944.0,
+          "memory_samples": 59,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            16000,
+            16000,
+            16000,
+            16000,
+            16000,
+            16000,
+            16000,
+            16000
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.962673116671762,
+                    "False": 0.03732688332823794
+                  },
+                  "raw_logprobs": {
+                    "True": -0.07455170899629593,
+                    "False": -3.324551820755005
+                  },
+                  "label_probability_mass": 0.9641481231261224,
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.962673116671762
+                },
+                {
+                  "scores": {
+                    "True": 0.04208773242132242,
+                    "False": 0.9579122675786775
+                  },
+                  "raw_logprobs": {
+                    "True": -3.199730396270752,
+                    "False": -0.07473050802946091
+                  },
+                  "label_probability_mass": 0.9687667345431066,
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.04208773242132242
+                },
+                {
+                  "scores": {
+                    "True": 0.03308597719693549,
+                    "False": 0.9669140228030646
+                  },
+                  "raw_logprobs": {
+                    "True": -3.4454901218414307,
+                    "False": -0.07049008458852768
+                  },
+                  "label_probability_mass": 0.9638261086719426,
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.03308597719693549
+                },
+                {
+                  "scores": {
+                    "True": 0.294214996917099,
+                    "False": 0.7057850030829009
+                  },
+                  "raw_logprobs": {
+                    "True": -1.2910840511322021,
+                    "False": -0.4160841703414917
+                  },
+                  "label_probability_mass": 0.9345972844792838,
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.294214996917099
+                },
+                {
+                  "scores": {
+                    "True": 0.9740426418603167,
+                    "False": 0.02595735813968335
+                  },
+                  "raw_logprobs": {
+                    "True": -0.0423910990357399,
+                    "False": -3.667391061782837
+                  },
+                  "label_probability_mass": 0.9840378641117207,
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9740426418603167
+                },
+                {
+                  "scores": {
+                    "True": 0.9579122711832406,
+                    "False": 0.042087728816759526
+                  },
+                  "raw_logprobs": {
+                    "True": -0.07429840415716171,
+                    "False": -3.19929838180542
+                  },
+                  "label_probability_mass": 0.9691854292075404,
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.9579122711832406
+                },
+                {
+                  "scores": {
+                    "True": 0.06754669724011829,
+                    "False": 0.9324533027598818
+                  },
+                  "raw_logprobs": {
+                    "True": -2.720505714416504,
+                    "False": -0.09550581127405167
+                  },
+                  "label_probability_mass": 0.9747545287309524,
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.06754669724011829
+                },
+                {
+                  "scores": {
+                    "True": 0.03308598220236406,
+                    "False": 0.966914017797636
+                  },
+                  "raw_logprobs": {
+                    "True": -3.4448580741882324,
+                    "False": -0.06985819339752197
+                  },
+                  "label_probability_mass": 0.964435339354173,
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.03308598220236406
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 1,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000,
+                  16000
+                ],
+                "cached_tokens": 128000,
+                "prompt_tokens": 144681,
+                "completion_tokens": 9
+              },
+              "timing_ms": {
+                "prepare": 35.52183200008585,
+                "prefill": 2664.992934999873,
+                "branches": 1197.7641530002074,
+                "total": 3898.278920000166
+              }
+            }
+          ],
+          "max_absolute_score_delta_vs_independent": 0.03377045747224516
+        }
+      ]
+    },
+    {
+      "state_tokens_target": 16000,
+      "state_tokens_actual": 16000,
+      "predicates": 8,
+      "mode": "independent",
+      "median_ms": 21434.0323765,
+      "p95_ms": 21574.062743000013,
+      "decisions_per_second": 0.37323821572515203,
+      "amortized_ms_per_decision": 2679.2540470625,
+      "peak_device_memory_mib": 21940.0,
+      "samples": [
+        {
+          "wall_ms": 21294.002009999986,
+          "cache_reset_ms": 79.91587000014988,
+          "wall_excluding_cache_reset_ms": 21214.086139999836,
+          "decisions_per_second": 0.3756926479223153,
+          "amortized_ms_per_decision": 2661.750251249998,
+          "peak_device_memory_mib": 21940.0,
+          "memory_samples": 321,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9706877706265888,
+                    "False": 0.029312229373411294
+                  },
+                  "raw_logprobs": {
+                    "True": -0.05698079988360405,
+                    "False": -3.556980848312378
+                  },
+                  "label_probability_mass": 0.9731370214409483,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.70455699996455,
+                "prefill": 0.00040300005821336526,
+                "branches": 2599.6191639999324,
+                "total": 2633.324123999955
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.03308597338327612,
+                    "False": 0.9669140266167238
+                  },
+                  "raw_logprobs": {
+                    "True": -3.44856333732605,
+                    "False": -0.07356318086385727
+                  },
+                  "label_probability_mass": 0.9608687209477198,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16081,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 34.62265300004219,
+                "prefill": 0.00047999992602854036,
+                "branches": 2609.0472570001566,
+                "total": 2643.670390000125
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.037326884399142314,
+                    "False": 0.9626731156008578
+                  },
+                  "raw_logprobs": {
+                    "True": -3.3240084648132324,
+                    "False": -0.07400838285684586
+                  },
+                  "label_probability_mass": 0.9646721134124745,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16079,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 35.52571399995941,
+                "prefill": 0.00037299992072803434,
+                "branches": 2607.260670000187,
+                "total": 2642.786757000067
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.29421496597446145,
+                    "False": 0.7057850340255386
+                  },
+                  "raw_logprobs": {
+                    "True": -1.2884230613708496,
+                    "False": -0.4134230315685272
+                  },
+                  "label_probability_mass": 0.9370876486541512,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.3758060000946,
+                "prefill": 0.0004099999841855606,
+                "branches": 2609.9264729998595,
+                "total": 2643.3026889999383
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9399133586623888,
+                    "False": 0.060086641337611164
+                  },
+                  "raw_logprobs": {
+                    "True": -0.08511551469564438,
+                    "False": -2.835115671157837
+                  },
+                  "label_probability_mass": 0.977117923049203,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16083,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 34.20311600007153,
+                "prefill": 0.00034799995773937553,
+                "branches": 2620.0214099999357,
+                "total": 2654.224873999965
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.946596671330088,
+                    "False": 0.05340332866991209
+                  },
+                  "raw_logprobs": {
+                    "True": -0.08097884804010391,
+                    "False": -2.9559788703918457
+                  },
+                  "label_probability_mass": 0.9742409051143806,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 35.86446999997861,
+                "prefill": 0.000354000121660647,
+                "branches": 2627.445946999842,
+                "total": 2663.310770999942
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.07585818524437762,
+                    "False": 0.9241418147556224
+                  },
+                  "raw_logprobs": {
+                    "True": -2.6091601848602295,
+                    "False": -0.10916025936603546
+                  },
+                  "label_probability_mass": 0.9701830446898357,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16081,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.80260999983875,
+                "prefill": 0.00042100009522982873,
+                "branches": 2629.751140000053,
+                "total": 2663.554170999987
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.0293122296913986,
+                    "False": 0.9706877703086015
+                  },
+                  "raw_logprobs": {
+                    "True": -3.565864086151123,
+                    "False": -0.06586404889822006
+                  },
+                  "label_probability_mass": 0.9645306859773045,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16079,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.02376699980414,
+                "prefill": 0.0004340001851232955,
+                "branches": 2635.845130000007,
+                "total": 2668.8693309999962
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 21574.062743000013,
+          "cache_reset_ms": 80.99765600013598,
+          "wall_excluding_cache_reset_ms": 21493.06508699988,
+          "decisions_per_second": 0.3708156454025195,
+          "amortized_ms_per_decision": 2696.7578428750016,
+          "peak_device_memory_mib": 21940.0,
+          "memory_samples": 325,
+          "memory_error": null,
+          "branch_cached_tokens": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9579122699817195,
+                    "False": 0.04208773001828046
+                  },
+                  "raw_logprobs": {
+                    "True": -0.06971579045057297,
+                    "False": -3.194715738296509
+                  },
+                  "label_probability_mass": 0.9736370250397207,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.94347799985553,
+                "prefill": 0.0003890002062689746,
+                "branches": 2635.6954589998622,
+                "total": 2669.639325999924
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.03732688600549891,
+                    "False": 0.9626731139945011
+                  },
+                  "raw_logprobs": {
+                    "True": -3.3245999813079834,
+                    "False": -0.07459994405508041
+                  },
+                  "label_probability_mass": 0.9641016211875457,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16081,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 32.04702399989401,
+                "prefill": 0.000475999968330143,
+                "branches": 2645.214997000039,
+                "total": 2677.2624969999015
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.03732689055684297,
+                    "False": 0.9626731094431571
+                  },
+                  "raw_logprobs": {
+                    "True": -3.31646728515625,
+                    "False": -0.06646737456321716
+                  },
+                  "label_probability_mass": 0.9719742180259437,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16079,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 35.144375000072614,
+                "prefill": 0.00027700002647179645,
+                "branches": 2648.356670000112,
+                "total": 2683.501322000211
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.2942149597859341,
+                    "False": 0.7057850402140659
+                  },
+                  "raw_logprobs": {
+                    "True": -1.2723063230514526,
+                    "False": -0.39730626344680786
+                  },
+                  "label_probability_mass": 0.9523128254759299,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 32.92224400001942,
+                "prefill": 0.00042800002120202407,
+                "branches": 2649.8921889999565,
+                "total": 2682.814860999997
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9626731099786093,
+                    "False": 0.037326890021390696
+                  },
+                  "raw_logprobs": {
+                    "True": -0.07055909931659698,
+                    "False": -3.320559024810791
+                  },
+                  "label_probability_mass": 0.9680052919328311,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16083,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 34.039925000115545,
+                "prefill": 0.0006749999101884896,
+                "branches": 2665.0973450000492,
+                "total": 2699.137945000075
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.9241418137109955,
+                    "False": 0.07585818628900447
+                  },
+                  "raw_logprobs": {
+                    "True": -0.14584264159202576,
+                    "False": -2.6458425521850586
+                  },
+                  "label_probability_mass": 0.9352392495843689,
+                  "selected": "True"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16078,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 32.46703700006037,
+                "prefill": 0.0004159999207331566,
+                "branches": 2653.4601220000695,
+                "total": 2685.9275750000506
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.07585818524437762,
+                    "False": 0.9241418147556224
+                  },
+                  "raw_logprobs": {
+                    "True": -2.621161937713623,
+                    "False": -0.12116201221942902
+                  },
+                  "label_probability_mass": 0.9586087424542289,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16081,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 35.61672900013946,
+                "prefill": 0.00032399998417531606,
+                "branches": 2664.293325000017,
+                "total": 2699.9103780001406
+              }
+            },
+            {
+              "results": [
+                {
+                  "scores": {
+                    "True": 0.037326882525059696,
+                    "False": 0.9626731174749402
+                  },
+                  "raw_logprobs": {
+                    "True": -3.308948040008545,
+                    "False": -0.05894790589809418
+                  },
+                  "label_probability_mass": 0.9793104874181964,
+                  "selected": "False"
+                }
+              ],
+              "calibrated": false,
+              "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+              "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+              "usage": {
+                "prefix_tokens": 16044,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 16079,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 33.081162999906155,
+                "prefill": 0.0004010000793641666,
+                "branches": 2660.6341629999406,
+                "total": 2693.715726999926
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "state_tokens_actual": 16000,
+      "predicates": 1,
+      "speedup_wall": 0.9474438829868589,
+      "speedup_excluding_cache_reset": 0.9474438829868589,
+      "max_absolute_score_delta": 0.014339890055631743
+    },
+    {
+      "state_tokens_actual": 16000,
+      "predicates": 8,
+      "speedup_wall": 5.606135224310543,
+      "speedup_excluding_cache_reset": 5.58509151750045,
+      "max_absolute_score_delta": 0.03377045747224516
+    }
+  ],
+  "warmups": [
+    {
+      "state_tokens_actual": 16000,
+      "predicates": 1,
+      "shared": {
+        "wall_ms": 2826.1354579999534,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 2826.1354579999534,
+        "decisions_per_second": 0.353840081220911,
+        "amortized_ms_per_decision": 2826.1354579999534,
+        "peak_device_memory_mib": 21940.0,
+        "memory_samples": 43,
+        "memory_error": null,
+        "branch_cached_tokens": [
+          16000
+        ],
+        "cache_reuse_observed": true,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "True": 0.9626731102463355,
+                  "False": 0.03732688975366457
+                },
+                "raw_logprobs": {
+                  "True": -0.0709734633564949,
+                  "False": -3.3209733963012695
+                },
+                "label_probability_mass": 0.9676042681709208,
+                "selected": "True",
+                "predicate": "Decision 1: The failure is environmental.",
+                "score": 0.9626731102463355
+              }
+            ],
+            "calibrated": false,
+            "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+            "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+            "usage": {
+              "prefix_tokens": 16044,
+              "warmup_calls": 1,
+              "branch_calls": 1,
+              "branch_cached_tokens": [
+                16000
+              ],
+              "cached_tokens": 16000,
+              "prompt_tokens": 32122,
+              "completion_tokens": 2
+            },
+            "timing_ms": {
+              "prepare": 34.87901600010446,
+              "prefill": 2640.6389539999964,
+              "branches": 150.4520319999756,
+              "total": 2825.9700020000764
+            }
+          }
+        ]
+      },
+      "independent_single": {
+        "wall_ms": 2611.3130019998607,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 2611.3130019998607,
+        "decisions_per_second": 0.38294911381138724,
+        "amortized_ms_per_decision": 2611.3130019998607,
+        "peak_device_memory_mib": 21938.0,
+        "memory_samples": 40,
+        "memory_error": null,
+        "branch_cached_tokens": [
+          0
+        ],
+        "cache_reuse_observed": false,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "True": 0.9626731131913229,
+                  "False": 0.03732688680867724
+                },
+                "raw_logprobs": {
+                  "True": -0.07782576978206635,
+                  "False": -3.3278257846832275
+                },
+                "label_probability_mass": 0.9609966089842377,
+                "selected": "True"
+              }
+            ],
+            "calibrated": false,
+            "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+            "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+            "usage": {
+              "prefix_tokens": 16044,
+              "warmup_calls": 0,
+              "branch_calls": 1,
+              "branch_cached_tokens": [
+                0
+              ],
+              "cached_tokens": 0,
+              "prompt_tokens": 16078,
+              "completion_tokens": 1
+            },
+            "timing_ms": {
+              "prepare": 34.19333800002278,
+              "prefill": 0.0004129999524593586,
+              "branches": 2576.92090799992,
+              "total": 2611.1146589998953
+            }
+          }
+        ]
+      }
+    },
+    {
+      "state_tokens_actual": 16000,
+      "predicates": 8,
+      "shared": {
+        "wall_ms": 3745.5121590001,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 3745.5121590001,
+        "decisions_per_second": 2.1358894752955964,
+        "amortized_ms_per_decision": 468.1890198750125,
+        "peak_device_memory_mib": 21942.0,
+        "memory_samples": 57,
+        "memory_error": null,
+        "branch_cached_tokens": [
+          16000,
+          16000,
+          16000,
+          16000,
+          16000,
+          16000,
+          16000,
+          16000
+        ],
+        "cache_reuse_observed": true,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "True": 0.9706877713685592,
+                  "False": 0.02931222863144092
+                },
+                "raw_logprobs": {
+                  "True": -0.06984297931194305,
+                  "False": -3.569843053817749
+                },
+                "label_probability_mass": 0.9607005095008382,
+                "selected": "True",
+                "predicate": "Decision 1: The failure is environmental.",
+                "score": 0.9706877713685592
+              },
+              {
+                "scores": {
+                  "True": 0.05340333130637379,
+                  "False": 0.9465966686936261
+                },
+                "raw_logprobs": {
+                  "True": -2.960787296295166,
+                  "False": -0.0857873260974884
+                },
+                "label_probability_mass": 0.9695675367057816,
+                "selected": "False",
+                "predicate": "Decision 2: The source code contains a confirmed bug.",
+                "score": 0.05340333130637379
+              },
+              {
+                "scores": {
+                  "True": 0.037326887076403345,
+                  "False": 0.9626731129235966
+                },
+                "raw_logprobs": {
+                  "True": -3.324972629547119,
+                  "False": -0.07497262209653854
+                },
+                "label_probability_mass": 0.9637423896988901,
+                "selected": "False",
+                "predicate": "Decision 3: The test itself is broken.",
+                "score": 0.037326887076403345
+              },
+              {
+                "scores": {
+                  "True": 0.2942149845400438,
+                  "False": 0.7057850154599563
+                },
+                "raw_logprobs": {
+                  "True": -1.335453748703003,
+                  "False": -0.4604538083076477
+                },
+                "label_probability_mass": 0.8940360235998568,
+                "selected": "False",
+                "predicate": "Decision 4: More information is required.",
+                "score": 0.2942149845400438
+              },
+              {
+                "scores": {
+                  "True": 0.9465966619141527,
+                  "False": 0.05340333808584733
+                },
+                "raw_logprobs": {
+                  "True": -0.07678501307964325,
+                  "False": -2.95178484916687
+                },
+                "label_probability_mass": 0.9783353000005173,
+                "selected": "True",
+                "predicate": "Decision 5: The operation should be retried after network recovery.",
+                "score": 0.9465966619141527
+              },
+              {
+                "scores": {
+                  "True": 0.946596663044065,
+                  "False": 0.05340333695593501
+                },
+                "raw_logprobs": {
+                  "True": -0.10024895519018173,
+                  "False": -2.9752488136291504
+                },
+                "label_probability_mass": 0.9556469163892974,
+                "selected": "True",
+                "predicate": "Decision 6: The failure is environmental.",
+                "score": 0.946596663044065
+              },
+              {
+                "scores": {
+                  "True": 0.05340333431947304,
+                  "False": 0.9465966656805269
+                },
+                "raw_logprobs": {
+                  "True": -2.9585278034210205,
+                  "False": -0.08352789282798767
+                },
+                "label_probability_mass": 0.9717606896533044,
+                "selected": "False",
+                "predicate": "Decision 7: The source code contains a confirmed bug.",
+                "score": 0.05340333431947304
+              },
+              {
+                "scores": {
+                  "True": 0.03308597981882656,
+                  "False": 0.9669140201811735
+                },
+                "raw_logprobs": {
+                  "True": -3.4662516117095947,
+                  "False": -0.09125165641307831
+                },
+                "label_probability_mass": 0.9440218612971882,
+                "selected": "False",
+                "predicate": "Decision 8: The test itself is broken.",
+                "score": 0.03308597981882656
+              }
+            ],
+            "calibrated": false,
+            "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+            "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+            "usage": {
+              "prefix_tokens": 16044,
+              "warmup_calls": 1,
+              "branch_calls": 8,
+              "branch_cached_tokens": [
+                16000,
+                16000,
+                16000,
+                16000,
+                16000,
+                16000,
+                16000,
+                16000
+              ],
+              "cached_tokens": 128000,
+              "prompt_tokens": 144681,
+              "completion_tokens": 9
+            },
+            "timing_ms": {
+              "prepare": 34.82109200012928,
+              "prefill": 2592.061636999915,
+              "branches": 1118.3460820000164,
+              "total": 3745.228811000061
+            }
+          }
+        ]
+      },
+      "independent_single": {
+        "wall_ms": 2629.0144189999864,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 2629.0144189999864,
+        "decisions_per_second": 0.38037067913091777,
+        "amortized_ms_per_decision": 2629.0144189999864,
+        "peak_device_memory_mib": 21936.0,
+        "memory_samples": 40,
+        "memory_error": null,
+        "branch_cached_tokens": [
+          0
+        ],
+        "cache_reuse_observed": false,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "True": 0.9525741278322103,
+                  "False": 0.04742587216778976
+                },
+                "raw_logprobs": {
+                  "True": -0.07976792007684708,
+                  "False": -3.079767942428589
+                },
+                "label_probability_mass": 0.9693005310994075,
+                "selected": "True"
+              }
+            ],
+            "calibrated": false,
+            "model": "mattbucci/Qwen3.6-35B-A3B-AWQ",
+            "revision": "7525d0f423bd615da6cc3cf3ae6fdae42941ea05",
+            "usage": {
+              "prefix_tokens": 16044,
+              "warmup_calls": 0,
+              "branch_calls": 1,
+              "branch_cached_tokens": [
+                0
+              ],
+              "cached_tokens": 0,
+              "prompt_tokens": 16078,
+              "completion_tokens": 1
+            },
+            "timing_ms": {
+              "prepare": 33.89698499995575,
+              "prefill": 0.0004599999101628782,
+              "branches": 2594.9771150001197,
+              "total": 2628.8745599999856
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

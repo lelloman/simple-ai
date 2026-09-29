@@ -1092,12 +1092,12 @@ dependencies = [
  "config",
  "futures-util",
  "image",
+ "lelloman-simple-server",
  "nix",
  "reqwest",
  "serde",
  "serde_json",
  "simple-ai-common",
- "simple-server",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -1182,6 +1182,31 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
+name = "lelloman-simple-server"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3187c81c94701cd041df7ab17ce968b73c967db77c551170e3c24960b6c77a"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "cron",
+ "futures-util",
+ "http",
+ "http-body",
+ "pin-project-lite",
+ "rand 0.8.5",
+ "serde",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "libc"
@@ -2226,6 +2251,7 @@ dependencies = [
  "http",
  "ipnet",
  "jsonwebtoken",
+ "lelloman-simple-server",
  "mockall",
  "prometheus-client",
  "rand 0.8.5",
@@ -2236,7 +2262,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "simple-ai-common",
- "simple-server",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -2260,29 +2285,6 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
-]
-
-[[package]]
-name = "simple-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bytes",
- "chrono",
- "cron",
- "futures-util",
- "http",
- "http-body",
- "pin-project-lite",
- "rand 0.8.5",
- "serde",
- "tokio",
- "tower",
- "tower-http",
- "tower-layer",
- "tower-service",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

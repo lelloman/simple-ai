@@ -1,0 +1,2 @@
+# API/evaluation environment; vLLM and CUDA stay in the deployment container.
+transformers==5.15.0

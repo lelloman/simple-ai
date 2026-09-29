@@ -1,0 +1,196 @@
+{
+  "score0": {
+    "calibrated": false,
+    "model": "autotrust/JEV-9B",
+    "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+    "upstream_temperature_applied": true,
+    "usage": {
+      "prefix_tokens": 23,
+      "warmup_calls": 0,
+      "branch_calls": 1,
+      "branch_cached_tokens": [
+        null
+      ],
+      "cached_tokens": null,
+      "prompt_tokens": 40,
+      "completion_tokens": 1
+    },
+    "timing_ms": {
+      "prepare": 0.28786500001842796,
+      "prefill": 0,
+      "branches": 119.64866299990717,
+      "total": 119.9365279999256
+    },
+    "scores": {
+      "False": 0.02071859963578945,
+      "True": 0.9792814003642105
+    },
+    "raw_logprobs": {
+      "False": -3.8859758377075195,
+      "True": -0.02074146643280983
+    },
+    "selected": "True",
+    "predicate": "The customer requests a refund.",
+    "score": 0.9792814003642105
+  },
+  "score-many1": {
+    "results": [
+      {
+        "scores": {
+          "False": 0.28161181331301877,
+          "True": 0.7183881866869811
+        },
+        "raw_logprobs": {
+          "False": -1.2693620920181274,
+          "True": -0.32990893721580505
+        },
+        "selected": "True",
+        "predicate": "The network failed.",
+        "score": 0.7183881866869811
+      },
+      {
+        "scores": {
+          "False": 0.74400482261616,
+          "True": 0.25599517738384
+        },
+        "raw_logprobs": {
+          "False": -0.2953314781188965,
+          "True": -1.3636908531188965
+        },
+        "selected": "False",
+        "predicate": "The source code has a confirmed bug.",
+        "score": 0.25599517738384
+      }
+    ],
+    "calibrated": false,
+    "model": "autotrust/JEV-9B",
+    "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+    "upstream_temperature_applied": true,
+    "usage": {
+      "prefix_tokens": 29,
+      "warmup_calls": 0,
+      "branch_calls": 2,
+      "branch_cached_tokens": [
+        null,
+        null
+      ],
+      "cached_tokens": null,
+      "prompt_tokens": 92,
+      "completion_tokens": 2
+    },
+    "timing_ms": {
+      "prepare": 0.4640680000420616,
+      "prefill": 0,
+      "branches": 182.04435799998464,
+      "total": 182.5084260000267
+    }
+  },
+  "classify2": {
+    "calibrated": false,
+    "model": "autotrust/JEV-9B",
+    "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+    "upstream_temperature_applied": true,
+    "usage": {
+      "prefix_tokens": 22,
+      "warmup_calls": 0,
+      "branch_calls": 1,
+      "branch_cached_tokens": [
+        null
+      ],
+      "cached_tokens": null,
+      "prompt_tokens": 53,
+      "completion_tokens": 1
+    },
+    "timing_ms": {
+      "prepare": 0.31402199999774894,
+      "prefill": 0,
+      "branches": 93.00166100001661,
+      "total": 93.31568300001436
+    },
+    "scores": {
+      "billing": 0.007225808615510825,
+      "technical_support": 4.634881431328851e-05,
+      "returns": 0.992725779171681,
+      "security": 2.0633984948201852e-06
+    },
+    "raw_logprobs": {
+      "billing": -4.851653575897217,
+      "technical_support": -9.820403099060059,
+      "returns": -0.007903375662863255,
+      "security": -12.882903099060059
+    },
+    "selected": "returns"
+  },
+  "classify3": {
+    "calibrated": false,
+    "model": "autotrust/JEV-9B",
+    "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+    "upstream_temperature_applied": true,
+    "usage": {
+      "prefix_tokens": 16,
+      "warmup_calls": 0,
+      "branch_calls": 1,
+      "branch_cached_tokens": [
+        null
+      ],
+      "cached_tokens": null,
+      "prompt_tokens": 144,
+      "completion_tokens": 1
+    },
+    "timing_ms": {
+      "prepare": 0.4020689999606475,
+      "prefill": 0,
+      "branches": 575.8398269999816,
+      "total": 576.2418959999422
+    },
+    "scores": {
+      "sports": 0.9997605878579219,
+      "other category 0": 0.0001585892086198302,
+      "other category 1": 2.722078798704275e-05,
+      "other category 2": 1.1923039806337738e-05,
+      "other category 3": 2.062869470832076e-05,
+      "other category 4": 1.1716388293658693e-05,
+      "other category 5": 1.0470221887671346e-06,
+      "other category 6": 1.7093854234356286e-07,
+      "other category 7": 9.953833100679524e-08,
+      "other category 8": 1.2060870998229601e-06,
+      "other category 9": 1.2053485104525489e-06,
+      "other category 10": 8.774028978449429e-07,
+      "other category 11": 2.5448253134250983e-06,
+      "other category 12": 2.985173907614117e-07,
+      "other category 13": 6.38235123131642e-07,
+      "other category 14": 1.246107265422894e-06
+    },
+    "raw_logprobs": {
+      "sports": -0.0002791491860989481,
+      "other category 0": -8.609654426574707,
+      "other category 1": -10.344029426574707,
+      "other category 2": -11.156529426574707,
+      "other category 3": -10.617466926574707,
+      "other category 4": -11.172154426574707,
+      "other category 5": -13.547154426574707,
+      "other category 6": -15.328404426574707,
+      "other category 7": -15.859654426574707,
+      "other category 8": -13.406529426574707,
+      "other category 9": -13.406529426574707,
+      "other category 10": -13.719029426574707,
+      "other category 11": -12.672154426574707,
+      "other category 12": -14.781529426574707,
+      "other category 13": -14.031529426574707,
+      "other category 14": -13.375279426574707
+    },
+    "selected": "sports"
+  },
+  "too_many_options": {
+    "status": 400,
+    "body": {
+      "error": "options requires 2..16 strings"
+    }
+  },
+  "oversized_context": {
+    "status": 400,
+    "body": {
+      "error": "branch needs 100035 tokens; context limit is 18432; no truncation performed"
+    }
+  }
+}

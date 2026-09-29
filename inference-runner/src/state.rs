@@ -13,6 +13,8 @@ pub struct AppState {
     pub config: Config,
     pub engine_registry: Arc<EngineRegistry>,
     pub ocr_provider: Option<Arc<dyn OcrProvider>>,
+    pub decision_slots: Arc<tokio::sync::Semaphore>,
+    pub decision_queue: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
@@ -25,6 +27,8 @@ impl AppState {
             config,
             engine_registry,
             ocr_provider,
+            decision_slots: Arc::new(tokio::sync::Semaphore::new(1)),
+            decision_queue: Arc::new(tokio::sync::Semaphore::new(33)),
         }
     }
 }

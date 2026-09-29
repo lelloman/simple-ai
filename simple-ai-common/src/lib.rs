@@ -6,6 +6,8 @@ pub mod audio_embeddings;
 pub mod capability;
 pub mod chat;
 pub mod classification;
+pub mod decision;
+pub use decision::*;
 pub mod extraction;
 pub use extraction::*;
 pub mod ocr;

@@ -260,6 +260,31 @@ impl RequestScheduler {
         })
     }
 
+    pub async fn decision(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        request: &simple_ai_common::DecisionRequest,
+    ) -> Result<ScheduledResponse<simple_ai_common::DecisionResponse>, SchedulerError> {
+        let prepared = self
+            .prepare_for_request(request_id, model, model_request, None)
+            .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
+        let routed = self
+            .inference_router
+            .decision(&prepared.plan, request)
+            .await?;
+        Ok(ScheduledResponse {
+            response: routed.response,
+            runner_id: routed.runner_id,
+            resolved_model: routed.resolved_model,
+            wol_sent: prepared.wol_sent,
+        })
+    }
+
     pub async fn audio_embedding(
         &self,
         request_id: &str,

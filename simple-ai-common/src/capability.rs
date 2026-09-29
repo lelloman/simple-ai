@@ -27,11 +27,13 @@ pub enum Capability {
     TextClassification,
     /// Schema-driven multilingual information extraction
     InformationExtraction,
+    /// Typed boolean, choice, and rating decisions.
+    SemanticDecisions,
 }
 
 impl Capability {
     /// All capability variants for iteration.
-    pub const ALL: [Capability; 9] = [
+    pub const ALL: [Capability; 10] = [
         Capability::FastChat,
         Capability::LargeChat,
         Capability::Embeddings,
@@ -41,6 +43,7 @@ impl Capability {
         Capability::Tts,
         Capability::TextClassification,
         Capability::InformationExtraction,
+        Capability::SemanticDecisions,
     ];
 }
 
@@ -54,6 +57,7 @@ impl std::fmt::Display for Capability {
             Capability::Ocr => write!(f, "ocr"),
             Capability::AudioEmbeddings => write!(f, "audio_embeddings"),
             Capability::Tts => write!(f, "tts"),
+            Capability::SemanticDecisions => write!(f, "semantic_decisions"),
             Capability::InformationExtraction => write!(f, "information_extraction"),
             Capability::TextClassification => write!(f, "text_classification"),
         }

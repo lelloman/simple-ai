@@ -1,0 +1,39 @@
+{
+  "date": "2026-09-20",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 3090",
+    "memory_mib": 24576,
+    "driver": "580.173.02",
+    "power_limit_w": 350
+  },
+  "backend_packages": {
+    "python": "3.12.3",
+    "sglang": "0.5.19",
+    "torch": "2.13.0+cu130",
+    "transformers": "5.12.1",
+    "triton": "3.7.1",
+    "flashinfer-python": "0.6.18",
+    "jinja2": "3.1.6"
+  },
+  "provider_packages": {
+    "python": "3.12.3",
+    "transformers": "5.3.0",
+    "jinja2": "3.1.6"
+  },
+  "source_sha256": {
+    "scripts/simple_ai_semantic.py": "4670736e0b4836f890c3d2a8d25ef3d443fba5dfd3de85d04d299400356fbdab",
+    "scripts/benchmark-semantic.py": "c6d9cc34aedec36422c3524e44a77ae7df33393ab8d1f3e9b914778759d1c79d",
+    "scripts/evaluate-semantic.py": "e6ac2273611bd24e55ae956c440067f5e6b0f50e31f50ad6fbf1e15d620f78b1",
+    "scripts/check-semantic-tokenizer.py": "f109ba324f78b52aff758a408979a0697e6a8c047cd993b436b9591ccf616b11",
+    "scripts/semantic-requirements.txt": "cf8b6cb32bb892fdc0b487d428b50c3add404023b05405edf7947fdaa61cd129",
+    "tests/fixtures/semantic-quality.json": "f1d54c1c6169c9d1dc0181ccb762afdf76343963c008fdcda2c44213e7ecac5e",
+    "deploy/semantic-rtx3090/compose.yaml": "e5ed48bb41a4804dda9ec1f1fc609003921e7ec83aa8205e5c620981c1f94a1b"
+  },
+  "effective_max_running_requests": 2,
+  "effective_mamba_cache_slots": 10,
+  "notes": [
+    "Package versions read from the running container and provider venv with importlib.metadata.",
+    "Backend server_info reports requested concurrency eight; startup.log records effective concurrency two.",
+    "Synthetic public test inputs only. No calibration fitted."
+  ]
+}

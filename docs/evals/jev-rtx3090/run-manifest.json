@@ -1,0 +1,20 @@
+{
+  "model": "autotrust/JEV-9B",
+  "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+  "gpu": "NVIDIA GeForce RTX 3090 24GB",
+  "base_image": "sha256:4c0aa3f009b6ae7795bbdaf2b696bfcee7a6cea1e17f1f90b8ab72dea7aa55d8",
+  "jev_image": "sha256:02dce52200a74f62159d208b80429435bdbe8012b5d5170ed7912243d14a8688",
+  "vllm": "0.27.1",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.0",
+  "source_sha256": {
+    "scripts/simple_ai_semantic.py": "d81228d74ea36c7a1330cec50ba6dd6366f98a06e20043f27e6212266363c31b",
+    "scripts/benchmark-semantic.py": "bee31ab528db4811538460341c2e2da9f2fe4b5750dab3558bc742e841de58e2",
+    "scripts/evaluate-semantic.py": "e6ac2273611bd24e55ae956c440067f5e6b0f50e31f50ad6fbf1e15d620f78b1",
+    "scripts/check-semantic-tokenizer.py": "86f067c24d1f062bcf63e30802982283a2ca7c4cbe0ea1d27aa11aebdf6dcd29",
+    "deploy/semantic-rtx3090/compose.yaml": "c0dc97db02a78e7935801231ad975a22c7d1d90e04e6d94e33603a0a886784b1",
+    "deploy/semantic-rtx3090/Dockerfile": "25afb54a6b658f2fb9679856f52d82a98ba080c507730cd84832c0ee2f335c61",
+    "deploy/semantic-rtx3090/enable-head-lora.py": "3c5a7d342388376ba22b5c9a812a3fd7fd475a6fbb4793c8cb22ea6312c4d375",
+    "tests/fixtures/semantic-quality.json": "f1d54c1c6169c9d1dc0181ccb762afdf76343963c008fdcda2c44213e7ecac5e"
+  }
+}

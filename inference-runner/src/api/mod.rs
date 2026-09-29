@@ -5,6 +5,7 @@ pub mod chat;
 pub mod classifications;
 pub mod embeddings;
 pub mod extractions;
+pub mod decisions;
 pub mod health;
 pub mod models;
 pub mod ocr;
@@ -23,6 +24,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(chat::router())
         .merge(classifications::router())
         .merge(extractions::router())
+        .merge(decisions::router())
         .merge(embeddings::router())
         .merge(models::router())
         .merge(ocr::router())

@@ -11,8 +11,6 @@ services:
     build:
       context: ../../
       dockerfile: backend/Dockerfile
-      additional_contexts:
-        simple-server-source: ${SIMPLE_SERVER_CONTEXT:-../../../simple-server}
     working_dir: /app
     volumes:
       - ./backend-config.toml:/app/config.toml:ro

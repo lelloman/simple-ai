@@ -1,0 +1,344 @@
+{
+  "date": "2026-09-29",
+  "gateway_endpoint": "/v1/decisions",
+  "model": "autotrust/JEV-9B",
+  "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+  "gateway_image_digest": "sha256:e5d56112cf01084f72c1c3a1364d1046830724cd1cc6f0c222bd2678fba1517c",
+  "tests": {
+    "rust_passed": 473,
+    "python_passed": 17,
+    "live_validation_statuses": [
+      401,
+      400,
+      400,
+      400,
+      413
+    ],
+    "resource_gate_regressions": 7
+  },
+  "chat_to_decisions": {
+    "path": "/v1/decisions",
+    "elapsed_seconds": 116.59755386703182,
+    "response": {
+      "request_id": "e17d32a5-5844-48d7-8199-a5d4f88e994c",
+      "model": "autotrust/JEV-9B",
+      "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+      "answers": [
+        {
+          "type": "boolean",
+          "id": "refund",
+          "value": true,
+          "probabilities": {
+            "false": 0.004508418961748676,
+            "true": 0.9954915810382514
+          }
+        },
+        {
+          "type": "choice",
+          "id": "topic",
+          "selected": "billing",
+          "probabilities": {
+            "billing": 0.9999962596373552,
+            "technical": 3.740362644811109e-06
+          }
+        },
+        {
+          "type": "rating",
+          "id": "urgency",
+          "value": 2.7369747920173433,
+          "probabilities": {
+            "0": 0.004252559723978254,
+            "1": 0.042149072560606085,
+            "2": 0.3237216387820084,
+            "3": 0.4772240358354511,
+            "4": 0.14755313110341356,
+            "5": 0.005099561994542625
+          },
+          "levels": [
+            "No action needed",
+            "Very low",
+            "Low",
+            "Normal",
+            "High",
+            "Critical"
+          ]
+        }
+      ],
+      "usage": {
+        "question_count": 3,
+        "prompt_tokens": 182,
+        "completion_tokens": 3,
+        "cached_tokens": 0
+      },
+      "timing": {
+        "prepare_ms": 0.6131549999963681,
+        "inference_ms": 6586.800102999973,
+        "queue_ms": 0.301231,
+        "total_ms": 6591.162708
+      },
+      "calibrated": false,
+      "upstream_temperature_applied": true
+    }
+  },
+  "warm_decisions": {
+    "path": "/v1/decisions",
+    "elapsed_seconds": 0.4673156269127503,
+    "response": {
+      "request_id": "031a6075-af1b-40e3-815c-6926d038c772",
+      "model": "autotrust/JEV-9B",
+      "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+      "answers": [
+        {
+          "type": "boolean",
+          "id": "refund",
+          "value": true,
+          "probabilities": {
+            "false": 0.004508418961748676,
+            "true": 0.9954915810382514
+          }
+        },
+        {
+          "type": "choice",
+          "id": "topic",
+          "selected": "billing",
+          "probabilities": {
+            "billing": 0.99999643363611,
+            "technical": 3.566363890152131e-06
+          }
+        },
+        {
+          "type": "rating",
+          "id": "urgency",
+          "value": 2.739600597950961,
+          "probabilities": {
+            "0": 0.004097561078510615,
+            "1": 0.040927490792536186,
+            "2": 0.32419562959058146,
+            "3": 0.4779227837086771,
+            "4": 0.14776917729724337,
+            "5": 0.005087357532451313
+          },
+          "levels": [
+            "No action needed",
+            "Very low",
+            "Low",
+            "Normal",
+            "High",
+            "Critical"
+          ]
+        }
+      ],
+      "usage": {
+        "question_count": 3,
+        "prompt_tokens": 182,
+        "completion_tokens": 3,
+        "cached_tokens": 0
+      },
+      "timing": {
+        "prepare_ms": 2.389647999962108,
+        "inference_ms": 307.2800460000735,
+        "queue_ms": 1.6044379999999998,
+        "total_ms": 325.71411700000004
+      },
+      "calibrated": false,
+      "upstream_temperature_applied": true
+    }
+  },
+  "decisions_to_chat": {
+    "path": "/v1/chat/completions",
+    "elapsed_seconds": 84.84817082900554,
+    "response": {
+      "id": "chatcmpl-bc27c2aa136fb360",
+      "object": "chat.completion",
+      "created": 1790672673,
+      "model": "qwen38-base",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "READY",
+            "tool_calls": null,
+            "tool_call_id": null
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 16,
+        "completion_tokens": 2,
+        "total_tokens": 18
+      }
+    }
+  },
+  "wake_test": {
+    "path": "/v1/decisions",
+    "elapsed_seconds": 121.09421737398952,
+    "response": {
+      "request_id": "bf2f983f-64d7-4758-bb34-9e8dd9d9cea2",
+      "model": "autotrust/JEV-9B",
+      "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+      "answers": [
+        {
+          "type": "boolean",
+          "id": "refund",
+          "value": true,
+          "probabilities": {
+            "false": 0.004508418961748676,
+            "true": 0.9954915810382514
+          }
+        },
+        {
+          "type": "choice",
+          "id": "topic",
+          "selected": "billing",
+          "probabilities": {
+            "billing": 0.9999961694797328,
+            "technical": 3.830520267288374e-06
+          }
+        },
+        {
+          "type": "rating",
+          "id": "urgency",
+          "value": 2.7391830050727606,
+          "probabilities": {
+            "0": 0.00409601949515104,
+            "1": 0.04122909300046129,
+            "2": 0.32407366079542554,
+            "3": 0.4777429797237186,
+            "4": 0.14771358361592543,
+            "5": 0.005144663369318172
+          },
+          "levels": [
+            "No action needed",
+            "Very low",
+            "Low",
+            "Normal",
+            "High",
+            "Critical"
+          ]
+        }
+      ],
+      "usage": {
+        "question_count": 3,
+        "prompt_tokens": 182,
+        "completion_tokens": 3,
+        "cached_tokens": 0
+      },
+      "timing": {
+        "prepare_ms": 0.6157349999966755,
+        "inference_ms": 3657.4479610000026,
+        "queue_ms": 0.30699600000000005,
+        "total_ms": 121029.73135
+      },
+      "calibrated": false,
+      "upstream_temperature_applied": true
+    }
+  },
+  "wake_audit": {
+    "request_id": "bf2f983f-64d7-4758-bb34-9e8dd9d9cea2",
+    "status": 200,
+    "runner_id": "gpu-server-rtx",
+    "wol_sent": true,
+    "tokens_prompt": 182,
+    "tokens_completion": 3
+  },
+  "cold_chat_handoff": {
+    "path": "/v1/decisions",
+    "elapsed_seconds": 70.24981507402845,
+    "response": {
+      "request_id": "3763f45e-2aa3-4b30-aedc-b674e7acf0b9",
+      "model": "autotrust/JEV-9B",
+      "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+      "answers": [
+        {
+          "type": "boolean",
+          "id": "refund",
+          "value": true,
+          "probabilities": {
+            "false": 0.004456241774017792,
+            "true": 0.9955437582259824
+          }
+        },
+        {
+          "type": "choice",
+          "id": "topic",
+          "selected": "billing",
+          "probabilities": {
+            "billing": 0.9999963185601428,
+            "technical": 3.6814398572693295e-06
+          }
+        },
+        {
+          "type": "rating",
+          "id": "urgency",
+          "value": 2.7402491469361756,
+          "probabilities": {
+            "0": 0.004127725827924763,
+            "1": 0.041228774333472974,
+            "2": 0.32157945584476016,
+            "3": 0.4814410201416045,
+            "4": 0.14657671877281822,
+            "5": 0.005046305079419225
+          },
+          "levels": [
+            "No action needed",
+            "Very low",
+            "Low",
+            "Normal",
+            "High",
+            "Critical"
+          ]
+        }
+      ],
+      "usage": {
+        "question_count": 3,
+        "prompt_tokens": 182,
+        "completion_tokens": 3,
+        "cached_tokens": 0
+      },
+      "timing": {
+        "prepare_ms": 3.0908879999742567,
+        "inference_ms": 1097.3777870000276,
+        "queue_ms": 0.360066,
+        "total_ms": 70184.203987
+      },
+      "calibrated": false,
+      "upstream_temperature_applied": true
+    }
+  },
+  "lifecycle_fixes": [
+    "Quiesce configured vLLM services even when Docker has started them but /health is not ready.",
+    "Clear resource ownership before switching; failure cannot bypass cleanup through stale shared ownership.",
+    "Retain resource guards across caller cancellation and revalidate same-owner loading."
+  ],
+  "final_chat_restore": {
+    "path": "/v1/chat/completions",
+    "elapsed_seconds": 136.31679473107215,
+    "response": {
+      "id": "chatcmpl-b25b4dec435a61f6",
+      "object": "chat.completion",
+      "created": 1790675195,
+      "model": "qwen38-base",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "READY",
+            "tool_calls": null,
+            "tool_call_id": null
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 16,
+        "completion_tokens": 2,
+        "total_tokens": 18
+      }
+    }
+  },
+  "runner_binary_sha256": "798a3fe20e1cde876255ba180fe89b457b484ab7c7b1fa975b6551bcff1e03d4",
+  "status": "passed"
+}

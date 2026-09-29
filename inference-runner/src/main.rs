@@ -164,6 +164,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    if config.engines.decisions.enabled {
+        registry.register(Arc::new(engine::DecisionEngine::new(config.engines.decisions.clone())?)).await;
+        tracing::info!("Registered semantic decisions engine");
+    }
+
     if config.engines.extraction.enabled {
         let engine = Arc::new(ExtractionEngine::new(config.engines.extraction.clone())?);
         registry.register(engine).await;

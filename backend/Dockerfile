@@ -1,9 +1,5 @@
 FROM rust:1.91-bookworm AS builder
 
-COPY --from=simple-server-source Cargo.toml /simple-server/Cargo.toml
-COPY --from=simple-server-source src /simple-server/src
-COPY --from=simple-server-source examples /simple-server/examples
-
 WORKDIR /app
 
 # Copy workspace manifests and Cargo.lock
@@ -17,7 +13,7 @@ RUN mkdir -p simple-ai-common/src backend/src inference-runner/src && \
     echo "pub fn dummy() {}" > simple-ai-common/src/lib.rs && \
     echo "fn main() {}" > backend/src/main.rs && \
     echo "fn main() {}" > inference-runner/src/main.rs
-RUN cargo build --release -p simple-ai-backend
+RUN cargo build --locked --release -p simple-ai-backend
 RUN rm -rf simple-ai-common/src backend/src inference-runner/src
 
 # Copy actual source
@@ -27,7 +23,7 @@ COPY backend/static ./backend/static
 COPY backend/scripts ./backend/scripts
 
 # Build for release (touch both to ensure cargo rebuilds with actual sources)
-RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --release -p simple-ai-backend
+RUN touch simple-ai-common/src/lib.rs backend/src/main.rs && cargo build --locked --release -p simple-ai-backend
 
 # Runtime image
 FROM debian:bookworm-slim

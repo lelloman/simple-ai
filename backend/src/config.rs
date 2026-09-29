@@ -203,6 +203,8 @@ pub struct ModelsConfig {
     pub text_classification: Vec<String>,
     #[serde(default)]
     pub information_extraction: Vec<String>,
+    #[serde(default)]
+    pub semantic_decisions: Vec<String>,
 }
 
 impl Default for ModelsConfig {
@@ -216,6 +218,7 @@ impl Default for ModelsConfig {
             tts: vec![],
             text_classification: vec![],
             information_extraction: vec![],
+            semantic_decisions: vec![],
         }
     }
 }
@@ -268,6 +271,9 @@ impl ModelsConfig {
             if lower == id.to_lowercase() {
                 return Some("text_classification");
             }
+        }
+        for id in &self.semantic_decisions {
+            if lower == id.to_lowercase() { return Some("semantic_decisions"); }
         }
         for id in &self.information_extraction {
             if lower == id.to_lowercase() {

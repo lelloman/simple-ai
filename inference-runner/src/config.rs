@@ -105,6 +105,8 @@ pub struct EnginesConfig {
     pub classification: Option<ClassificationEngineConfig>,
     #[serde(default)]
     pub extraction: ExtractionEngineConfig,
+    #[serde(default)]
+    pub decisions: DecisionEngineConfig,
 }
 
 /// Process-backed Hugging Face NLI classification engine configuration.
@@ -981,5 +983,24 @@ impl Default for ExtractionEngineConfig {
             startup_timeout_secs: 600,
             request_timeout_secs: 180,
         }
+    }
+}
+
+
+/// Managed JEV runtime, disabled unless explicitly prepared on the runner.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DecisionEngineConfig {
+    pub enabled: bool,
+    pub compose_dir: String,
+    pub base_url: String,
+    pub startup_timeout_secs: u64,
+    pub request_timeout_secs: u64,
+    pub shutdown_timeout_secs: u64,
+}
+impl Default for DecisionEngineConfig {
+    fn default() -> Self {
+        Self { enabled: false, compose_dir: String::new(), base_url: "http://127.0.0.1:18040".into(),
+               startup_timeout_secs: 600, request_timeout_secs: 180, shutdown_timeout_secs: 60 }
     }
 }

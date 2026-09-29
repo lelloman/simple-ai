@@ -1,0 +1,8 @@
+[2026-09-20 19:26:48] Load weight end. elapsed=47.68 s, type=Qwen3_5MoeForConditionalGeneration, quant=awq, bits=4, avail mem=3.91 GB, mem usage=19.27 GB.
+[2026-09-20 19:26:59] max_running_requests is capped to 2 by the mamba state cache (max_mamba_cache_size=10, 5 state slots per request). To raise it: increase --mamba-full-memory-ratio or --max-mamba-cache-size, or halve the state size with --mamba-ssm-dtype bfloat16.
+[2026-09-20 19:26:59] Mamba Cache is allocated. max_mamba_cache_size: 10, conv_state size: 0.02GB, ssm_state size: 0.64GB 
+[2026-09-20 19:26:59] KV Cache is allocated. dtype: torch.bfloat16, #tokens: 24576, K size: 0.23 GB, V size: 0.23 GB
+[2026-09-20 19:26:59] Memory pool end. avail mem=2.84 GB
+[2026-09-20 19:26:59] max_total_num_tokens=24576, chunked_prefill_size=2048, max_prefill_tokens=16384, max_running_requests=2, context_len=18432, available_gpu_mem=2.82 GB
+[2026-09-20 19:27:00] Engine startup timings (s): load_weight=47.68, kv_cache_allocation=0.22, scheduler_e2e=73.30, cuda_graph={prefill=0.00, decode=0.00, target_verify=0.00, draft_prefill=0.00, draft_decode=0.00, draft_extend=0.00}, tokenizer_e2e=82.36
+[2026-09-20 19:34:24] The server is fired up and ready to roll!

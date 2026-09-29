@@ -27,6 +27,7 @@ pub enum ModelClass {
     /// NLI models exposed through `/v1/classifications`
     TextClassification,
     InformationExtraction,
+    SemanticDecisions,
 }
 
 impl ModelClass {
@@ -39,6 +40,7 @@ impl ModelClass {
             "embed_large" => Some(Self::EmbedLarge),
             "audio_embeddings" => Some(Self::AudioEmbeddings),
             "tts" => Some(Self::Tts),
+            "semantic_decisions" | "decisions" => Some(Self::SemanticDecisions),
             "information_extraction" | "extraction" => Some(Self::InformationExtraction),
             "text_classification" | "classification" => Some(Self::TextClassification),
             _ => None,
@@ -54,6 +56,7 @@ impl ModelClass {
             Self::EmbedLarge => "embed_large",
             Self::AudioEmbeddings => "audio_embeddings",
             Self::Tts => "tts",
+            Self::SemanticDecisions => "semantic_decisions",
             Self::InformationExtraction => "information_extraction",
             Self::TextClassification => "text_classification",
         }
@@ -77,6 +80,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
         Some("embed_large") => Some(ModelClass::EmbedLarge),
         Some("audio_embeddings") => Some(ModelClass::AudioEmbeddings),
         Some("tts") => Some(ModelClass::Tts),
+        Some("semantic_decisions") => Some(ModelClass::SemanticDecisions),
         Some("information_extraction") => Some(ModelClass::InformationExtraction),
         Some("text_classification") => Some(ModelClass::TextClassification),
         _ => None,

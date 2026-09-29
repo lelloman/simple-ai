@@ -1,8 +1,8 @@
 //! Engine registry for managing multiple inference engines.
 
 use std::collections::HashMap;
-use std::sync::RwLock as StdRwLock;
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 
 use super::InferenceEngine;
@@ -48,6 +48,10 @@ impl ResourceGate {
 
     fn set_owner(&self, owner_key: String) {
         *self.owner.write().expect("resource owner lock poisoned") = Some(owner_key);
+    }
+
+    fn clear_owner(&self) {
+        *self.owner.write().expect("resource owner lock poisoned") = None;
     }
 
     async fn acquire(&self, owner_key: &str) -> ResourceAccess {
@@ -207,35 +211,49 @@ impl EngineRegistry {
             None
         };
         let owner_key = format!("{}\0{}", target_type, engine_model);
-        let resource_guard = match gate {
-            Some(gate) => match gate.acquire(&owner_key).await {
-                ResourceAccess::Shared(guard) => Some(guard),
-                ResourceAccess::Exclusive(write_guard) => {
-                    if let Some(group) = group {
-                        let resources = self.engine_resources.read().await.clone();
-                        for engine in self.all().await {
-                            if engine.engine_type() == target_type
-                                || resources.get(engine.engine_type()) != Some(&group)
-                            {
-                                continue;
-                            }
-                            if let Ok(health) = engine.health_check().await {
-                                for loaded in health.models_loaded {
-                                    engine.unload_model(&loaded).await?;
+        let resources = self.engine_resources.read().await.clone();
+        let engines = self.all().await;
+        let owned_target = target.clone();
+        let owned_model = engine_model.clone();
+        // An abandoned HTTP/WebSocket task must not release the gate while an
+        // external process is still starting or stopping.
+        let resource_guard = tokio::spawn(async move {
+            let target = owned_target;
+            let engine_model = owned_model;
+            let guard = match gate {
+                Some(gate) => match gate.acquire(&owner_key).await {
+                    ResourceAccess::Shared(guard) => {
+                        target.load_model(&engine_model).await?;
+                        Some(guard)
+                    }
+                    ResourceAccess::Exclusive(write_guard) => {
+                        // A failed stop/start must not leave a stale shared-owner
+                        // shortcut that bypasses cleanup on the next request.
+                        gate.clear_owner();
+                        if let Some(group) = group {
+                            for engine in engines {
+                                if engine.engine_type() == target_type
+                                    || resources.get(engine.engine_type()) != Some(&group)
+                                {
+                                    continue;
                                 }
+                                engine.quiesce().await?;
                             }
                         }
+                        target.load_model(&engine_model).await?;
+                        gate.set_owner(owner_key);
+                        Some(OwnedRwLockWriteGuard::downgrade(write_guard))
                     }
+                },
+                None => {
                     target.load_model(&engine_model).await?;
-                    gate.set_owner(owner_key);
-                    Some(OwnedRwLockWriteGuard::downgrade(write_guard))
+                    None
                 }
-            },
-            None => {
-                target.load_model(&engine_model).await?;
-                None
-            }
-        };
+            };
+            Ok::<_, crate::error::Error>(guard)
+        })
+        .await
+        .map_err(|e| crate::error::Error::Internal(e.to_string()))??;
         Ok(ModelLease {
             engine: target,
             engine_model,
@@ -274,6 +292,167 @@ impl Default for EngineRegistry {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    struct SlowEngine {
+        kind: &'static str,
+        quiesced: Arc<std::sync::atomic::AtomicBool>,
+        started: Arc<tokio::sync::Notify>,
+        finish: Arc<tokio::sync::Notify>,
+        loaded: std::sync::atomic::AtomicBool,
+    }
+    #[async_trait::async_trait]
+    impl InferenceEngine for SlowEngine {
+        fn engine_type(&self) -> &'static str {
+            self.kind
+        }
+        async fn quiesce(&self) -> crate::error::Result<()> {
+            if self.kind == "failing" { return Err(crate::error::Error::EngineNotAvailable("cannot stop".into())); }
+            self.quiesced.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+        async fn health_check(&self) -> crate::error::Result<super::super::EngineHealth> {
+            Ok(super::super::EngineHealth {
+                is_healthy: true,
+                version: None,
+                models_loaded: vec![],
+            })
+        }
+        async fn list_models(&self) -> crate::error::Result<Vec<super::super::ModelInfo>> {
+            Ok(vec![])
+        }
+        async fn get_model(
+            &self,
+            _: &str,
+        ) -> crate::error::Result<Option<super::super::ModelInfo>> {
+            if self.kind != "slow" { return Ok(None); }
+            Ok(Some(super::super::ModelInfo {
+                id: "model".into(),
+                name: "model".into(),
+                size_bytes: None,
+                parameter_count: None,
+                context_length: None,
+                quantization: None,
+                modified_at: None,
+                reasoning: None,
+            }))
+        }
+        async fn load_model(&self, _: &str) -> crate::error::Result<()> {
+            if !self.loaded.load(std::sync::atomic::Ordering::SeqCst) {
+                self.started.notify_one();
+                self.finish.notified().await;
+                self.loaded.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            Ok(())
+        }
+        async fn unload_model(&self, _: &str) -> crate::error::Result<()> {
+            Ok(())
+        }
+        async fn chat_completion(
+            &self,
+            _: &str,
+            _: &simple_ai_common::ChatCompletionRequest,
+        ) -> crate::error::Result<simple_ai_common::ChatCompletionResponse> {
+            unimplemented!()
+        }
+        async fn chat_completion_stream(
+            &self,
+            _: &str,
+            _: &simple_ai_common::ChatCompletionRequest,
+        ) -> crate::error::Result<super::super::ChatCompletionStream> {
+            unimplemented!()
+        }
+    }
+    #[tokio::test]
+    async fn cancelled_load_retains_resource_until_external_startup_finishes() {
+        let registry = Arc::new(EngineRegistry::new());
+        let engine = Arc::new(SlowEngine {
+            kind: "slow", quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            started: Arc::new(tokio::sync::Notify::new()),
+            finish: Arc::new(tokio::sync::Notify::new()),
+            loaded: std::sync::atomic::AtomicBool::new(false),
+        });
+        registry.register(engine.clone()).await;
+        registry
+            .set_engine_resources(HashMap::from([("slow".into(), "gpu".into())]))
+            .await;
+        let r = registry.clone();
+        let caller = tokio::spawn(async move { r.acquire_model("model").await });
+        engine.started.notified().await;
+        caller.abort();
+        let gate = registry.resource_gates.read().await["gpu"].clone();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), gate.lock.clone().write_owned())
+                .await
+                .is_err()
+        );
+        engine.finish.notify_one();
+        let _guard = tokio::time::timeout(Duration::from_secs(1), gate.lock.clone().write_owned())
+            .await
+            .unwrap();
+        assert!(engine.loaded.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn same_owner_revalidates_after_backend_crash() {
+        let registry = Arc::new(EngineRegistry::new());
+        let engine = Arc::new(SlowEngine {
+            kind: "slow", quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            started: Arc::new(tokio::sync::Notify::new()),
+            finish: Arc::new(tokio::sync::Notify::new()),
+            loaded: std::sync::atomic::AtomicBool::new(true),
+        });
+        registry.register(engine.clone()).await;
+        registry
+            .set_engine_resources(HashMap::from([("slow".into(), "gpu".into())]))
+            .await;
+        drop(registry.acquire_model("model").await.unwrap());
+        engine
+            .loaded
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        let r = registry.clone();
+        let caller = tokio::spawn(async move { r.acquire_model("model").await });
+        tokio::time::timeout(Duration::from_secs(1), engine.started.notified())
+            .await
+            .expect("shared owner must revalidate backend");
+        engine.finish.notify_one();
+        let lease = caller.await.unwrap().unwrap();
+        assert!(engine.loaded.load(std::sync::atomic::Ordering::SeqCst));
+        drop(lease);
+    }
+
+    #[tokio::test]
+    async fn switching_quiesces_engines_without_healthy_loaded_models() {
+        let registry = EngineRegistry::new();
+        let quiesced = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        for kind in ["slow", "warming"] {
+            registry.register(Arc::new(SlowEngine {
+                kind, quiesced:quiesced.clone(),
+                started:Arc::new(tokio::sync::Notify::new()), finish:Arc::new(tokio::sync::Notify::new()),
+                loaded:std::sync::atomic::AtomicBool::new(true),
+            })).await;
+        }
+        registry.set_engine_resources(HashMap::from([("slow".into(),"gpu".into()),("warming".into(),"gpu".into())])).await;
+        let _lease = registry.acquire_model("model").await.unwrap();
+        assert!(quiesced.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn failed_switch_clears_owner_so_next_request_cannot_bypass_cleanup() {
+        let registry = EngineRegistry::new();
+        registry.set_engine_resources(HashMap::from([("slow".into(),"gpu".into()),("failing".into(),"gpu".into())])).await;
+        for kind in ["slow", "failing"] {
+            registry.register(Arc::new(SlowEngine {
+                kind, quiesced:Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                started:Arc::new(tokio::sync::Notify::new()), finish:Arc::new(tokio::sync::Notify::new()),
+                loaded:std::sync::atomic::AtomicBool::new(true),
+            })).await;
+            if kind == "slow" { drop(registry.acquire_model("model").await.unwrap()); }
+        }
+        assert!(registry.acquire_model("other").await.is_err());
+        let gate = registry.resource_gates.read().await["gpu"].clone();
+        assert!(!gate.is_owner("slow\0model"));
+        assert!(registry.acquire_model("model").await.is_err(), "must retry cleanup instead of using stale owner");
+    }
 
     fn route(engine_model: &str, aliases: &[&str]) -> ModelRouteConfig {
         ModelRouteConfig {
@@ -324,16 +503,14 @@ mod tests {
             ResourceAccess::Shared(_) => panic!("first owner must acquire exclusively"),
         };
 
-        let second = match tokio::time::timeout(
-            Duration::from_millis(50),
-            gate.acquire("llama_cpp\0gemma"),
-        )
-        .await
-        .expect("same-model lease should not block")
-        {
-            ResourceAccess::Shared(guard) => guard,
-            ResourceAccess::Exclusive(_) => panic!("same owner must share the resource"),
-        };
+        let second =
+            match tokio::time::timeout(Duration::from_millis(50), gate.acquire("llama_cpp\0gemma"))
+                .await
+                .expect("same-model lease should not block")
+            {
+                ResourceAccess::Shared(guard) => guard,
+                ResourceAccess::Exclusive(_) => panic!("same owner must share the resource"),
+            };
 
         let switching_gate = gate.clone();
         let mut switch = tokio::spawn(async move { switching_gate.acquire("vllm\0qwen").await });

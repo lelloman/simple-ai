@@ -41,30 +41,20 @@ job has been joined. Real GPU engines and fleet deployment were not exercised.
 
 ## Building
 
-The workspace uses `../simple-server` with the opt-in `lifecycle` feature.
-`simple-server.rev` records reviewed source revision
-`c5359079ff4fad0b4b0359e8c88880dbbbc4eeb5`. Run
-`bash scripts/checkout-simple-server.sh` to create or verify a clean checkout at
-that revision. The helper refuses to overwrite an existing checkout; coordinated
-local development can use the path dependency directly. The revision must be
-published to the configured remote before fresh remote/CI checkouts can fetch it.
-A Cargo lockfile does not pin the contents of a path dependency.
-
-All three CI jobs check out the reviewed dependency before Cargo commands.
-The backend Dockerfile uses a named source context, supplied by E2E Compose and
-the deployment build script. No deployment or push was performed.
+The workspace now uses the published `lelloman-simple-server` 0.1.0 package,
+aliased as `simple-server`, with the opt-in `lifecycle` feature. `Cargo.lock`
+pins the registry package and checksum. CI, native runner builds, E2E Compose,
+and Docker builds no longer need the sibling source checkout used during the
+original lifecycle migration.
 
 ```sh
 cargo test --locked --workspace --no-fail-fast
-docker build --build-context simple-server-source=../simple-server \
-  -f backend/Dockerfile -t simple-ai-backend .
+docker build -f backend/Dockerfile -t simple-ai-backend .
 COMPOSE_PROJECT_NAME=simpleai-step02 bash tests/e2e/run-tests.sh
 ```
 
-`SIMPLE_SERVER_CONTEXT` overrides the sibling source path in Compose and the
-server deployment script. E2E Compose grants 35 seconds before forced shutdown.
-Host runner builds also require the sibling checkout. The README documents the native runner build; there is no
-inference-runner Dockerfile in this repository.
+E2E Compose grants 35 seconds before forced shutdown. The README documents the
+native runner build; there is no inference-runner Dockerfile in this repository.
 
 ## Verification (2026-09-19)
 

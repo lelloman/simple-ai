@@ -256,6 +256,10 @@ For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-
 
 ### Zero-shot text classification
 
+For the separate JEV-9B semantic decision service, including batched predicates
+and categorical choices, see [local semantic scoring](docs/semantic-scoring.md).
+It replaces the Qwen/SGLang experiment; its [original RTX 3090 measurements](docs/evals/semantic-rtx3090/README.md) are retained as historical results.
+
 Classification is a first-class routed capability. A request supplies stable label IDs and
 natural-language hypotheses; the response returns independent entailment, neutral, and
 contradiction probabilities for every input/label pair.
@@ -354,15 +358,11 @@ cd android && ./gradlew test
 
 #### Backend
 
-Use the reviewed shared-library revision recorded in `simple-server.rev`
-(`96c542c2935606cbae48573e6d5ee634ed24970c`):
+The workspace uses `lelloman-simple-server` 0.1.0 from crates.io, pinned in
+`Cargo.lock`. Builds require no sibling source checkout or named Docker context.
 
 ```bash
-bash scripts/checkout-simple-server.sh
-```
-
-```bash
-docker build --build-context simple-server-source=../simple-server -f backend/Dockerfile -t simple-ai-backend .
+docker build -f backend/Dockerfile -t simple-ai-backend .
 docker run -p 8080:8080 \
   -e SIMPLEAI__OIDC__ISSUER=https://auth.example.com \
   -e SIMPLEAI__OIDC__AUDIENCE=simple-ai \
@@ -447,3 +447,5 @@ Contributions are welcome! Please:
 - **Android API**: See [android/README.md](android/README.md)
 
 Shared signal handling and shutdown scope: [Step 02 lifecycle](docs/step-02-lifecycle.md).
+
+Semantic decisions: [JEV-9B gateway API and deployment](docs/decisions.md).

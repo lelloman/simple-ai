@@ -220,6 +220,19 @@ impl StatusCollector {
             }
         }
 
+        for engine in engines.iter().filter(|engine| engine.engine_type == "decisions") {
+            for model in &engine.available_models {
+                capabilities.push(CapabilityInfo {
+                    capability: Capability::SemanticDecisions,
+                    status: if engine.loaded_models.contains(&model.id) && engine.is_healthy { CapabilityStatus::Loaded }
+                        else if !engine.is_healthy { CapabilityStatus::Error { message: "decision runtime unhealthy".into() } }
+                        else { CapabilityStatus::Unloaded },
+                    model_id: model.id.clone(), active_requests: 0, avg_latency_ms: None,
+                    metadata: Some(serde_json::json!({"types":["boolean","choice","rating"],"max_options":16,"max_questions":128,"context":18432,"revision":simple_ai_common::DECISION_REVISION})),
+                });
+            }
+        }
+
         for engine in engines
             .iter()
             .filter(|engine| engine.engine_type == "extraction")
