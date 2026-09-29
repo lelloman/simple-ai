@@ -1,0 +1,12 @@
+{
+  "rtx_labelled_accuracy": 1.0,
+  "halo_labelled_accuracy": 1.0,
+  "labelled_count": 24,
+  "matching_predictions": 28,
+  "total_cases": 28,
+  "max_labelled_probability_delta": 0.002893762569706859,
+  "ambiguous_high_confidence": {
+    "rtx": 0,
+    "halo": 0
+  }
+}

@@ -111,6 +111,7 @@ def main():
     parser.add_argument("--lengths", type=int, nargs="+", default=[500, 2000, 8000, 16000])
     parser.add_argument("--batches", type=int, nargs="+", default=[1, 2, 4, 8, 16, 32, 64, 128])
     parser.add_argument("--repetitions", type=int, default=20)
+    parser.add_argument("--modes", nargs="+", choices=["shared", "independent"], default=["shared", "independent"])
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--output", type=Path, default=Path("semantic-benchmark.json"))
     parser.add_argument("--exclusive-backend", action="store_true", help="acknowledge cache resets; use a dedicated vLLM instance")
@@ -143,9 +144,9 @@ def main():
                 "shared": trial(scorer, state, predicates, "shared", args.gpu),
                 "independent_single": trial(scorer, state, predicates[:1], "independent", args.gpu),
             })
-            trials = {"shared": [], "independent": []}
+            trials = {mode: [] for mode in dict.fromkeys(args.modes)}
             for repetition in range(args.repetitions):
-                order = ["shared", "independent"] if repetition % 2 == 0 else ["independent", "shared"]
+                order = list(trials) if repetition % 2 == 0 else list(reversed(trials))
                 for mode in order:
                     trials[mode].append(trial(scorer, state, predicates, mode, args.gpu))
             for mode, samples in trials.items():
@@ -160,18 +161,19 @@ def main():
                            "samples": samples}
                 report["measurements"].append(summary)
                 print(json.dumps({k: v for k, v in summary.items() if k != "samples"}), flush=True)
-            # Same prompts in both paths also expose cache-induced score drift.
-            for shared, independent in zip(trials["shared"], trials["independent"]):
-                shared_scores = [r["scores"]["True"] for r in shared["responses"][0]["results"]]
-                independent_scores = [r["results"][0]["scores"]["True"] for r in independent["responses"]]
-                shared["max_absolute_score_delta_vs_independent"] = max(abs(a-b) for a, b in zip(shared_scores, independent_scores))
-            shared_median = statistics.median(x["wall_ms"] for x in trials["shared"])
-            report["comparisons"].append({
-                "state_tokens_actual": actual, "predicates": count,
-                "speedup_wall": statistics.median(x["wall_ms"] for x in trials["independent"]) / shared_median,
-                "speedup_excluding_cache_reset": statistics.median(x["wall_excluding_cache_reset_ms"] for x in trials["independent"]) / shared_median,
-                "max_absolute_score_delta": max(x["max_absolute_score_delta_vs_independent"] for x in trials["shared"]),
-            })
+            if "shared" in trials and "independent" in trials:
+                # Same prompts in both paths also expose cache-induced score drift.
+                for shared, independent in zip(trials["shared"], trials["independent"]):
+                    shared_scores = [r["scores"]["True"] for r in shared["responses"][0]["results"]]
+                    independent_scores = [r["results"][0]["scores"]["True"] for r in independent["responses"]]
+                    shared["max_absolute_score_delta_vs_independent"] = max(abs(a-b) for a, b in zip(shared_scores, independent_scores))
+                shared_median = statistics.median(x["wall_ms"] for x in trials["shared"])
+                report["comparisons"].append({
+                    "state_tokens_actual": actual, "predicates": count,
+                    "speedup_wall": statistics.median(x["wall_ms"] for x in trials["independent"]) / shared_median,
+                    "speedup_excluding_cache_reset": statistics.median(x["wall_excluding_cache_reset_ms"] for x in trials["independent"]) / shared_median,
+                    "max_absolute_score_delta": max(x["max_absolute_score_delta_vs_independent"] for x in trials["shared"]),
+                })
             # Save after each pair so long experiments retain completed measurements.
             args.output.write_text(json.dumps(json_safe(report), indent=2, allow_nan=False) + "\n")
 

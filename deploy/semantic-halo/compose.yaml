@@ -1,0 +1,76 @@
+# JEV on Strix Halo, using the measured gfx1151 runtime.
+name: jev-halo
+x-runtime: &runtime
+  image: docker.io/rocm/vllm@sha256:394194d36edcf9b36bcb563e143b21b80e64e7d04f33a447b448c0c0c00c04a8
+  security_opt: ["label=disable"]
+  environment:
+    HF_HOME: /models/hf
+    HF_HUB_ENABLE_HF_TRANSFER: "0"
+    HF_HUB_OFFLINE: "1"
+    VLLM_NO_USAGE_STATS: "1"
+    OMP_NUM_THREADS: "8"
+  volumes:
+    - ../../models/hf:/models/hf:ro
+    - ./enable-text-model.py:/work/enable-text-model.py:ro
+    - ../../scripts:/work/scripts:ro
+    - ../../tests/fixtures:/work/tests/fixtures:ro
+services:
+  vllm:
+    <<: *runtime
+    devices: ["/dev/kfd", "/dev/dri"]
+    annotations:
+      run.oci.keep_original_groups: "1"
+    security_opt: ["label=disable"]
+    shm_size: 8gb
+    ports:
+      - "127.0.0.1:30000:30000"
+    entrypoint: ["sh", "-c", 'python /work/enable-text-model.py && exec vllm serve "$@"', "jev"]
+    command:
+      - /models/hf/hub/models--autotrust--JEV-9B/snapshots/4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35
+      - --served-model-name
+      - autotrust/JEV-9B
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30000"
+      - --dtype
+      - bfloat16
+      - --enable-lora
+      - --max-lora-rank
+      - "32"
+      - --lora-modules
+      - jev-decision=/models/hf/hub/models--autotrust--JEV-9B/snapshots/4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35/adapter_vllm
+      - --logprobs-mode
+      - processed_logprobs
+      - --max-model-len
+      - "18432"
+      - --kv-cache-memory-bytes
+      - "4241280204"
+      - --max-num-seqs
+      - "4"
+      - --max-num-batched-tokens
+      - "2048"
+      - --enable-prompt-tokens-details
+      - --enable-prefix-caching
+      - --mamba-cache-mode
+      - align
+      - --enforce-eager
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 120
+  provider:
+    <<: *runtime
+    depends_on:
+      vllm:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18040:18040"
+    entrypoint: ["/opt/python/bin/python", "/work/scripts/simple_ai_semantic.py"]
+    command: ["--backend", "http://vllm:30000", "--host", "0.0.0.0", "--context", "18432", "--concurrency", "2"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18040/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5

@@ -1,0 +1,21 @@
+{
+  "date": "2026-09-29",
+  "host": "halo2",
+  "previous_kernel": "6.17.1-300.fc43.x86_64",
+  "validated_kernel": "7.2.7-100.fc43.x86_64",
+  "gpu_tensor_check": "torch.ones(1, device='cuda').cpu() returned tensor([1.])",
+  "provider_decision": {
+    "request_id": "37c84c6a-463b-4089-8c49-65ecbddfb875",
+    "refund": true,
+    "probability_true": 0.9932794161896343,
+    "first_inference_ms": 6664.78184
+  },
+  "runner_deployment": "successful; decisions healthy and autotrust/JEV-9B loaded",
+  "gateway_smoke": {
+    "request_id": "aa4a1794-8caf-474b-89de-12f9ed342406",
+    "runner_id": "gpu-server-rtx",
+    "status": 200,
+    "latency_ms": 379,
+    "note": "RTX remained preferred; Halo 2 inference validated directly at its provider, not forced through the gateway."
+  }
+}

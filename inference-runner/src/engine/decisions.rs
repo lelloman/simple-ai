@@ -20,7 +20,9 @@ pub struct DecisionEngine {
 }
 impl DecisionEngine {
     pub fn new(config: DecisionEngineConfig) -> Result<Self> {
-        if config.compose_dir.is_empty()
+        if config.compose_command.is_empty()
+            || config.compose_command.iter().any(|arg| arg.is_empty())
+            || config.compose_dir.is_empty()
             || config.startup_timeout_secs == 0
             || config.request_timeout_secs == 0
             || config.shutdown_timeout_secs == 0
@@ -43,8 +45,9 @@ impl DecisionEngine {
             } else {
                 self.config.shutdown_timeout_secs
             }),
-            Command::new("docker")
-                .args(["compose", "-f", "compose.yaml"])
+            Command::new(&self.config.compose_command[0])
+                .args(&self.config.compose_command[1..])
+                .args(["-f", "compose.yaml"])
                 .args(args)
                 .current_dir(&self.config.compose_dir)
                 .kill_on_drop(true)
@@ -133,10 +136,11 @@ impl InferenceEngine for DecisionEngine {
     }
     async fn health_check(&self) -> Result<EngineHealth> {
         let running = self.running().await?;
+        let ready = running && self.ready().await;
         Ok(EngineHealth {
-            is_healthy: !running || self.ready().await,
+            is_healthy: !running || ready,
             version: Some(DECISION_REVISION.into()),
-            models_loaded: if running {
+            models_loaded: if ready {
                 vec![DECISION_MODEL.into()]
             } else {
                 vec![]

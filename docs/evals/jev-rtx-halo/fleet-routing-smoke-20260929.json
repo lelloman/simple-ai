@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-29",
+  "gateway_image_digest": "sha256:87b8738bddff9d450d97fa9e473e67f985dae7c0f3a55957d99c03e084f2f8a1",
+  "scenario": "RTX initially ready; stop RTX runner; gateway starts cold Halo 1 JEV while awaiting RTX; Halo 1 responds; restart RTX runner; next request prefers ready RTX.",
+  "limitations": [
+    "RTX host remained powered on; this validates runner availability, model readiness and preference, not a physical cold-boot race.",
+    "Halo 2 JEV disabled pending kernel update and ROCm retest.",
+    "Single smoke requests, not latency benchmarks."
+  ],
+  "checks": [
+    "All requests HTTP 200",
+    "Refund=true; topic=billing; six rating probabilities",
+    "Halo 1 selected with RTX unavailable",
+    "RTX selected after returning even with Halo 1 still ready"
+  ],
+  "audit": [
+    {
+      "request_id": "60717942-941a-4192-8fa9-81e0be72a3f0",
+      "runner_id": "gpu-server-rtx",
+      "status": 200,
+      "latency_ms": 1473,
+      "wol_sent": 0
+    },
+    {
+      "request_id": "60c9951a-b597-4b1f-b423-1905faa245ca",
+      "runner_id": "gpu-server-rtx",
+      "status": 200,
+      "latency_ms": 470,
+      "wol_sent": 0
+    },
+    {
+      "request_id": "95381124-258c-4b17-a52d-b2eb806868d0",
+      "runner_id": "strix-halo-01",
+      "status": 200,
+      "latency_ms": 40264,
+      "wol_sent": 1
+    },
+    {
+      "request_id": "1d4c1526-2267-404e-9f22-845990720497",
+      "runner_id": "gpu-server-rtx",
+      "status": 200,
+      "latency_ms": 511,
+      "wol_sent": 0
+    }
+  ]
+}

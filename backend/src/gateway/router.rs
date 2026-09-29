@@ -571,6 +571,49 @@ impl InferenceRouter {
         })
     }
 
+    /// Pin a decision plan to a live, compatible runner. Used by the readiness
+    /// race so preparation and dispatch cannot silently select different hosts.
+    pub(crate) async fn decision_plan_on(
+        &self, selector: &str, runner_id: &str, ready_only: bool,
+    ) -> Result<RoutePlan, RouterError> {
+        let request = ModelRequest::parse(selector);
+        let resolved_model = match &request {
+            ModelRequest::Specific(id) => id.clone(),
+            ModelRequest::Class(ModelClass::SemanticDecisions) => self.models_config
+                .semantic_decisions.first().cloned().ok_or(RouterError::NoRunners)?,
+            _ => return Err(RouterError::NoRunners),
+        };
+        let runner = self.registry.get(runner_id).await.ok_or(RouterError::NoRunners)?;
+        let runner = self.filter_available(vec![runner]).into_iter().next()
+            .filter(|r| r.is_operational() && r.has_available_model_or_alias(&resolved_model))
+            .ok_or(RouterError::NoRunners)?;
+        let local_model = runner.resolve_model_alias(&resolved_model);
+        let is_loaded = runner.status.engines.iter().any(|engine| engine.is_healthy
+            && engine.loaded_models.iter().any(|id| id == &resolved_model || id == &local_model));
+        if ready_only && !is_loaded { return Err(RouterError::NoRunners); }
+        Ok(RoutePlan {
+            runner, resolved_model, is_loaded, requested_selector: selector.into(),
+            class_hint: Some(ModelClass::SemanticDecisions), affinity: None,
+            affinity_decision: AffinityDecision::Unkeyed, observed_binding: None,
+        })
+    }
+
+    pub(crate) async fn ready_decision_plan(&self, selector: &str) -> Option<RoutePlan> {
+        let mut ready = Vec::new();
+        for runner in self.registry.all().await {
+            if let Ok(plan) = self.decision_plan_on(selector, &runner.id, true).await {
+                ready.push(plan);
+            }
+        }
+        let preferences = self.routing_config.class_preferences.get("semantic_decisions");
+        ready.sort_by_key(|plan| {
+            let rank = preferences.and_then(|p| p.iter().position(|t|
+                Some(t.as_str()) == plan.runner.machine_type.as_deref())).unwrap_or(usize::MAX);
+            (rank, plan.runner.active_requests.load(Ordering::SeqCst), plan.runner.id.clone())
+        });
+        ready.into_iter().next()
+    }
+
     /// Build an affinity-aware authoritative plan for a chat request.
     pub async fn plan_chat_request(
         &self,

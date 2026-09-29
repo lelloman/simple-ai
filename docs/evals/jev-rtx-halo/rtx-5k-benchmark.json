@@ -1,0 +1,1500 @@
+{
+  "created_at": "2026-09-29T17:18:48.119564+00:00",
+  "settings": {
+    "backend": "http://vllm:30000",
+    "model": "autotrust/JEV-9B",
+    "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+    "context": 18432,
+    "concurrency": 2,
+    "lengths": [
+      5000
+    ],
+    "batches": [
+      1,
+      8
+    ],
+    "repetitions": 5,
+    "modes": [
+      "shared"
+    ],
+    "gpu": 0,
+    "output": "/tmp/rtx-5k-benchmark.json",
+    "exclusive_backend": true
+  },
+  "backend_info": {
+    "object": "list",
+    "data": [
+      {
+        "id": "autotrust/JEV-9B",
+        "object": "model",
+        "created": 1790702328,
+        "owned_by": "vllm",
+        "root": "/models/hf/hub/models--autotrust--JEV-9B/snapshots/4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+        "parent": null,
+        "max_model_len": 18432,
+        "permission": [
+          {
+            "id": "modelperm-8f35b6c0e17c2119",
+            "object": "model_permission",
+            "created": 1790702328,
+            "allow_create_engine": false,
+            "allow_sampling": true,
+            "allow_logprobs": true,
+            "allow_search_indices": false,
+            "allow_view": true,
+            "allow_fine_tuning": false,
+            "organization": "*",
+            "group": null,
+            "is_blocking": false
+          }
+        ]
+      },
+      {
+        "id": "jev-decision",
+        "object": "model",
+        "created": 1790702328,
+        "owned_by": "vllm",
+        "root": "/models/hf/hub/models--autotrust--JEV-9B/snapshots/4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35/adapter_vllm",
+        "parent": "autotrust/JEV-9B",
+        "max_model_len": null,
+        "permission": [
+          {
+            "id": "modelperm-a6b271f8957aa00a",
+            "object": "model_permission",
+            "created": 1790702328,
+            "allow_create_engine": false,
+            "allow_sampling": true,
+            "allow_logprobs": true,
+            "allow_search_indices": false,
+            "allow_view": true,
+            "allow_fine_tuning": false,
+            "organization": "*",
+            "group": null,
+            "is_blocking": false
+          }
+        ]
+      }
+    ]
+  },
+  "measurements": [
+    {
+      "state_tokens_target": 5000,
+      "state_tokens_actual": 5000,
+      "predicates": 1,
+      "mode": "shared",
+      "median_ms": 1434.2983290000575,
+      "p95_ms": 1437.6673530000517,
+      "decisions_per_second": 0.6972050233769462,
+      "amortized_ms_per_decision": 1434.2983290000575,
+      "peak_device_memory_mib": null,
+      "samples": [
+        {
+          "wall_ms": 1428.3384799998657,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 1428.3384799998657,
+          "decisions_per_second": 0.7001141634160091,
+          "amortized_ms_per_decision": 1428.3384799998657,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08317030143677967,
+                    "True": 0.9168296985632203
+                  },
+                  "raw_logprobs": {
+                    "False": -2.492567777633667,
+                    "True": -0.08631781488656998
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9168296985632203
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 5033,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 13.402994999978546,
+                "prefill": 0,
+                "branches": 1414.8321689999648,
+                "total": 1428.2351639999433
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 1434.2983290000575,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 1434.2983290000575,
+          "decisions_per_second": 0.6972050233769462,
+          "amortized_ms_per_decision": 1434.2983290000575,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08246715182290383,
+                    "True": 0.9175328481770962
+                  },
+                  "raw_logprobs": {
+                    "False": -2.5010812282562256,
+                    "True": -0.08555381745100021
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9175328481770962
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 5033,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 16.08146500007024,
+                "prefill": 0,
+                "branches": 1418.1239459999233,
+                "total": 1434.2054109999935
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 1435.3755370000272,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 1435.3755370000272,
+          "decisions_per_second": 0.6966817910872485,
+          "amortized_ms_per_decision": 1435.3755370000272,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08565532025464558,
+                    "True": 0.9143446797453544
+                  },
+                  "raw_logprobs": {
+                    "False": -2.463046073913574,
+                    "True": -0.08902256190776825
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9143446797453544
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 5033,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 13.200665000113077,
+                "prefill": 0,
+                "branches": 1422.0808439999928,
+                "total": 1435.2815090001059
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 1431.561965000128,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 1431.561965000128,
+          "decisions_per_second": 0.698537698296497,
+          "amortized_ms_per_decision": 1431.561965000128,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08191586390302183,
+                    "True": 0.9180841360969781
+                  },
+                  "raw_logprobs": {
+                    "False": -2.5078070163726807,
+                    "True": -0.0849553570151329
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9180841360969781
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 5033,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 12.99822500004666,
+                "prefill": 0,
+                "branches": 1418.4662249999747,
+                "total": 1431.4644500000213
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 1437.6673530000517,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 1437.6673530000517,
+          "decisions_per_second": 0.6955711958773012,
+          "amortized_ms_per_decision": 1437.6673530000517,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0
+          ],
+          "cache_reuse_observed": false,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08257782071669766,
+                    "True": 0.9174221792833023
+                  },
+                  "raw_logprobs": {
+                    "False": -2.4997365474700928,
+                    "True": -0.08567407727241516
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9174221792833023
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 1,
+                "branch_cached_tokens": [
+                  0
+                ],
+                "cached_tokens": 0,
+                "prompt_tokens": 5033,
+                "completion_tokens": 1
+              },
+              "timing_ms": {
+                "prepare": 15.275655999857918,
+                "prefill": 0,
+                "branches": 1422.2982200001297,
+                "total": 1437.5738759999876
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "state_tokens_target": 5000,
+      "state_tokens_actual": 5000,
+      "predicates": 8,
+      "mode": "shared",
+      "median_ms": 2304.076443999975,
+      "p95_ms": 2306.9178539999484,
+      "decisions_per_second": 3.4721070218102916,
+      "amortized_ms_per_decision": 288.00955549999685,
+      "peak_device_memory_mib": null,
+      "samples": [
+        {
+          "wall_ms": 2282.4906339999416,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2282.4906339999416,
+          "decisions_per_second": 3.5049431883014703,
+          "amortized_ms_per_decision": 285.3113292499927,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08421644548598375,
+                    "True": 0.9157835545140162
+                  },
+                  "raw_logprobs": {
+                    "False": -2.4800336360931396,
+                    "True": -0.08745551109313965
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9157835545140162
+                },
+                {
+                  "scores": {
+                    "False": 0.9682959736085809,
+                    "True": 0.03170402639141918
+                  },
+                  "raw_logprobs": {
+                    "False": -0.0320061631500721,
+                    "True": -3.45778751373291
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.03170402639141918
+                },
+                {
+                  "scores": {
+                    "False": 0.9729795177954373,
+                    "True": 0.027020482204562615
+                  },
+                  "raw_logprobs": {
+                    "False": -0.027202369645237923,
+                    "True": -3.6180226802825928
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.027020482204562615
+                },
+                {
+                  "scores": {
+                    "False": 0.5983150828738482,
+                    "True": 0.4016849171261519
+                  },
+                  "raw_logprobs": {
+                    "False": -0.5136426091194153,
+                    "True": -0.9120801091194153
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.4016849171261519
+                },
+                {
+                  "scores": {
+                    "False": 0.06602117887100423,
+                    "True": 0.9339788211289958
+                  },
+                  "raw_logprobs": {
+                    "False": -2.7241058349609375,
+                    "True": -0.06785587221384048
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9339788211289958
+                },
+                {
+                  "scores": {
+                    "False": 0.09443117719339704,
+                    "True": 0.905568822806603
+                  },
+                  "raw_logprobs": {
+                    "False": -2.36523699760437,
+                    "True": -0.0986354798078537
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.905568822806603
+                },
+                {
+                  "scores": {
+                    "False": 0.9588381469958933,
+                    "True": 0.04116185300410671
+                  },
+                  "raw_logprobs": {
+                    "False": -0.04178314283490181,
+                    "True": -3.196079969406128
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.04116185300410671
+                },
+                {
+                  "scores": {
+                    "False": 0.968415402255887,
+                    "True": 0.03158459774411302
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03188331425189972,
+                    "True": -3.4615707397460938
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.03158459774411302
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  0,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752
+                ],
+                "cached_tokens": 33264,
+                "prompt_tokens": 40277,
+                "completion_tokens": 8
+              },
+              "timing_ms": {
+                "prepare": 58.25009099999079,
+                "prefill": 0,
+                "branches": 2223.9051039998685,
+                "total": 2282.1551949998593
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 2287.3076200000924,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2287.3076200000924,
+          "decisions_per_second": 3.497561906430267,
+          "amortized_ms_per_decision": 285.91345250001154,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.0832074640369397,
+                    "True": 0.9167925359630603
+                  },
+                  "raw_logprobs": {
+                    "False": -2.492119789123535,
+                    "True": -0.08635816723108292
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9167925359630603
+                },
+                {
+                  "scores": {
+                    "False": 0.9694708971171322,
+                    "True": 0.030529102882867715
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03079870715737343,
+                    "True": -3.4956424236297607
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.030529102882867715
+                },
+                {
+                  "scores": {
+                    "False": 0.9749788525267464,
+                    "True": 0.025021147473253617
+                  },
+                  "raw_logprobs": {
+                    "False": -0.025159316137433052,
+                    "True": -3.6950812339782715
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.025021147473253617
+                },
+                {
+                  "scores": {
+                    "False": 0.6260662820770061,
+                    "True": 0.37393371792299385
+                  },
+                  "raw_logprobs": {
+                    "False": -0.468206524848938,
+                    "True": -0.983831524848938
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.37393371792299385
+                },
+                {
+                  "scores": {
+                    "False": 0.06542287313665175,
+                    "True": 0.9345771268633482
+                  },
+                  "raw_logprobs": {
+                    "False": -2.733233690261841,
+                    "True": -0.06721808016300201
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9345771268633482
+                },
+                {
+                  "scores": {
+                    "False": 0.08970784492276475,
+                    "True": 0.9102921550772353
+                  },
+                  "raw_logprobs": {
+                    "False": -2.416692018508911,
+                    "True": -0.09344977885484695
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.9102921550772353
+                },
+                {
+                  "scores": {
+                    "False": 0.9584518478585817,
+                    "True": 0.041548152141418354
+                  },
+                  "raw_logprobs": {
+                    "False": -0.04218470677733421,
+                    "True": -3.186715841293335
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.041548152141418354
+                },
+                {
+                  "scores": {
+                    "False": 0.968415402255887,
+                    "True": 0.03158459774411302
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03188331425189972,
+                    "True": -3.4615707397460938
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.03158459774411302
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  0,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752
+                ],
+                "cached_tokens": 33264,
+                "prompt_tokens": 40277,
+                "completion_tokens": 8
+              },
+              "timing_ms": {
+                "prepare": 58.53234699998211,
+                "prefill": 0,
+                "branches": 2228.397348000044,
+                "total": 2286.929695000026
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 2306.9178539999484,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2306.9178539999484,
+          "decisions_per_second": 3.4678304587780864,
+          "amortized_ms_per_decision": 288.36473174999355,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08451752522046144,
+                    "True": 0.9154824747795385
+                  },
+                  "raw_logprobs": {
+                    "False": -2.4764552116394043,
+                    "True": -0.08778324723243713
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9154824747795385
+                },
+                {
+                  "scores": {
+                    "False": 0.967813848773327,
+                    "True": 0.03218615122667308
+                  },
+                  "raw_logprobs": {
+                    "False": -0.032502032816410065,
+                    "True": -3.4426581859588623
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.03218615122667308
+                },
+                {
+                  "scores": {
+                    "False": 0.974084111721209,
+                    "True": 0.025915888278790978
+                  },
+                  "raw_logprobs": {
+                    "False": -0.026073068380355835,
+                    "True": -3.6598620414733887
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.025915888278790978
+                },
+                {
+                  "scores": {
+                    "False": 0.6423399334384573,
+                    "True": 0.3576600665615427
+                  },
+                  "raw_logprobs": {
+                    "False": -0.44249361753463745,
+                    "True": -1.0284311771392822
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.3576600665615427
+                },
+                {
+                  "scores": {
+                    "False": 0.06602117887100423,
+                    "True": 0.9339788211289958
+                  },
+                  "raw_logprobs": {
+                    "False": -2.7241058349609375,
+                    "True": -0.06785587221384048
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9339788211289958
+                },
+                {
+                  "scores": {
+                    "False": 0.09318869106557964,
+                    "True": 0.9068113089344204
+                  },
+                  "raw_logprobs": {
+                    "False": -2.378518581390381,
+                    "True": -0.09726862609386444
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.9068113089344204
+                },
+                {
+                  "scores": {
+                    "False": 0.9590682710128788,
+                    "True": 0.04093172898712122
+                  },
+                  "raw_logprobs": {
+                    "False": -0.04154404625296593,
+                    "True": -3.201700210571289
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.04093172898712122
+                },
+                {
+                  "scores": {
+                    "False": 0.9687120879635751,
+                    "True": 0.03128791203642504
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03157831355929375,
+                    "True": -3.471031427383423
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.03128791203642504
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  0,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752
+                ],
+                "cached_tokens": 33264,
+                "prompt_tokens": 40277,
+                "completion_tokens": 8
+              },
+              "timing_ms": {
+                "prepare": 58.18805700005214,
+                "prefill": 0,
+                "branches": 2248.3695400001125,
+                "total": 2306.5575970001646
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 2304.9666320000597,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2304.9666320000597,
+          "decisions_per_second": 3.4707660791853896,
+          "amortized_ms_per_decision": 288.12082900000746,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.0843668611235995,
+                    "True": 0.9156331388764004
+                  },
+                  "raw_logprobs": {
+                    "False": -2.4782443046569824,
+                    "True": -0.08761923015117645
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9156331388764004
+                },
+                {
+                  "scores": {
+                    "False": 0.9685344003942098,
+                    "True": 0.0314655996057902
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03176102414727211,
+                    "True": -3.4653546810150146
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.0314655996057902
+                },
+                {
+                  "scores": {
+                    "False": 0.9737125756133793,
+                    "True": 0.026287424386620687
+                  },
+                  "raw_logprobs": {
+                    "False": -0.02645277790725231,
+                    "True": -3.6455934047698975
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.026287424386620687
+                },
+                {
+                  "scores": {
+                    "False": 0.6205755973561182,
+                    "True": 0.37942440264388183
+                  },
+                  "raw_logprobs": {
+                    "False": -0.47703373432159424,
+                    "True": -0.9692212343215942
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.37942440264388183
+                },
+                {
+                  "scores": {
+                    "False": 0.06797007324993169,
+                    "True": 0.9320299267500683
+                  },
+                  "raw_logprobs": {
+                    "False": -2.6949362754821777,
+                    "True": -0.06993623077869415
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9320299267500683
+                },
+                {
+                  "scores": {
+                    "False": 0.09401536499553177,
+                    "True": 0.9059846350044681
+                  },
+                  "raw_logprobs": {
+                    "False": -2.369662284851074,
+                    "True": -0.09817783534526825
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.9059846350044681
+                },
+                {
+                  "scores": {
+                    "False": 0.9587611669308524,
+                    "True": 0.04123883306914757
+                  },
+                  "raw_logprobs": {
+                    "False": -0.04186316952109337,
+                    "True": -3.194206953048706
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.04123883306914757
+                },
+                {
+                  "scores": {
+                    "False": 0.9681761016859922,
+                    "True": 0.03182389831400774
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03212946280837059,
+                    "True": -3.4540045261383057
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.03182389831400774
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  0,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752
+                ],
+                "cached_tokens": 33264,
+                "prompt_tokens": 40277,
+                "completion_tokens": 8
+              },
+              "timing_ms": {
+                "prepare": 58.89042499984498,
+                "prefill": 0,
+                "branches": 2245.7439639999848,
+                "total": 2304.6343889998298
+              }
+            }
+          ]
+        },
+        {
+          "wall_ms": 2304.076443999975,
+          "cache_reset_ms": 0.0,
+          "wall_excluding_cache_reset_ms": 2304.076443999975,
+          "decisions_per_second": 3.4721070218102916,
+          "amortized_ms_per_decision": 288.00955549999685,
+          "peak_device_memory_mib": null,
+          "memory_samples": 0,
+          "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+          "branch_cached_tokens": [
+            0,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752,
+            4752
+          ],
+          "cache_reuse_observed": true,
+          "responses": [
+            {
+              "results": [
+                {
+                  "scores": {
+                    "False": 0.08474398102752241,
+                    "True": 0.9152560189724777
+                  },
+                  "raw_logprobs": {
+                    "False": -2.4737720489501953,
+                    "True": -0.08802977204322815
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 1: The failure is environmental.",
+                  "score": 0.9152560189724777
+                },
+                {
+                  "scores": {
+                    "False": 0.968652968996438,
+                    "True": 0.031347031003562
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03163906931877136,
+                    "True": -3.4691390991210938
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 2: The source code contains a confirmed bug.",
+                  "score": 0.031347031003562
+                },
+                {
+                  "scores": {
+                    "False": 0.9739608369447955,
+                    "True": 0.026039163055204515
+                  },
+                  "raw_logprobs": {
+                    "False": -0.02619895711541176,
+                    "True": -3.6551051139831543
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 3: The test itself is broken.",
+                  "score": 0.026039163055204515
+                },
+                {
+                  "scores": {
+                    "False": 0.6113560746911216,
+                    "True": 0.38864392530887826
+                  },
+                  "raw_logprobs": {
+                    "False": -0.49203336238861084,
+                    "True": -0.9451583623886108
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 4: More information is required.",
+                  "score": 0.38864392530887826
+                },
+                {
+                  "scores": {
+                    "False": 0.06554212829842011,
+                    "True": 0.9344578717015799
+                  },
+                  "raw_logprobs": {
+                    "False": -2.731407642364502,
+                    "True": -0.06734514236450195
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 5: The operation should be retried after network recovery.",
+                  "score": 0.9344578717015799
+                },
+                {
+                  "scores": {
+                    "False": 0.09066728862595495,
+                    "True": 0.9093327113740451
+                  },
+                  "raw_logprobs": {
+                    "False": -2.406024217605591,
+                    "True": -0.09450087696313858
+                  },
+                  "selected": "True",
+                  "predicate": "Decision 6: The failure is environmental.",
+                  "score": 0.9093327113740451
+                },
+                {
+                  "scores": {
+                    "False": 0.9595248380116164,
+                    "True": 0.04047516198838352
+                  },
+                  "raw_logprobs": {
+                    "False": -0.041069917380809784,
+                    "True": -3.212944984436035
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 7: The source code contains a confirmed bug.",
+                  "score": 0.04047516198838352
+                },
+                {
+                  "scores": {
+                    "False": 0.968652968996438,
+                    "True": 0.031347031003562
+                  },
+                  "raw_logprobs": {
+                    "False": -0.03163906931877136,
+                    "True": -3.4691390991210938
+                  },
+                  "selected": "False",
+                  "predicate": "Decision 8: The test itself is broken.",
+                  "score": 0.031347031003562
+                }
+              ],
+              "calibrated": false,
+              "model": "autotrust/JEV-9B",
+              "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+              "upstream_temperature_applied": true,
+              "usage": {
+                "prefix_tokens": 5013,
+                "warmup_calls": 0,
+                "branch_calls": 8,
+                "branch_cached_tokens": [
+                  0,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752,
+                  4752
+                ],
+                "cached_tokens": 33264,
+                "prompt_tokens": 40277,
+                "completion_tokens": 8
+              },
+              "timing_ms": {
+                "prepare": 57.47980000001007,
+                "prefill": 0,
+                "branches": 2246.2348100000327,
+                "total": 2303.7146100000427
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comparisons": [],
+  "warmups": [
+    {
+      "state_tokens_actual": 5000,
+      "predicates": 1,
+      "shared": {
+        "wall_ms": 3468.3821640001042,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 3468.3821640001042,
+        "decisions_per_second": 0.2883188624308616,
+        "amortized_ms_per_decision": 3468.3821640001042,
+        "peak_device_memory_mib": null,
+        "memory_samples": 0,
+        "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+        "branch_cached_tokens": [
+          0
+        ],
+        "cache_reuse_observed": false,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "False": 0.08417887190633518,
+                  "True": 0.9158211280936648
+                },
+                "raw_logprobs": {
+                  "False": -2.4804811477661133,
+                  "True": -0.08741465955972672
+                },
+                "selected": "True",
+                "predicate": "Decision 1: The failure is environmental.",
+                "score": 0.9158211280936648
+              }
+            ],
+            "calibrated": false,
+            "model": "autotrust/JEV-9B",
+            "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+            "upstream_temperature_applied": true,
+            "usage": {
+              "prefix_tokens": 5013,
+              "warmup_calls": 0,
+              "branch_calls": 1,
+              "branch_cached_tokens": [
+                0
+              ],
+              "cached_tokens": 0,
+              "prompt_tokens": 5033,
+              "completion_tokens": 1
+            },
+            "timing_ms": {
+              "prepare": 13.117202999865185,
+              "prefill": 0,
+              "branches": 3455.1632090001476,
+              "total": 3468.280412000013
+            }
+          }
+        ]
+      },
+      "independent_single": {
+        "wall_ms": 1423.2038299999203,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 1423.2038299999203,
+        "decisions_per_second": 0.7026400427829483,
+        "amortized_ms_per_decision": 1423.2038299999203,
+        "peak_device_memory_mib": null,
+        "memory_samples": 0,
+        "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+        "branch_cached_tokens": [
+          0
+        ],
+        "cache_reuse_observed": false,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "False": 0.08387888632142532,
+                  "True": 0.9161211136785746
+                },
+                "raw_logprobs": {
+                  "False": -2.4840610027313232,
+                  "True": -0.08708833158016205
+                },
+                "selected": "True"
+              }
+            ],
+            "calibrated": false,
+            "model": "autotrust/JEV-9B",
+            "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+            "upstream_temperature_applied": true,
+            "usage": {
+              "prefix_tokens": 5013,
+              "warmup_calls": 0,
+              "branch_calls": 1,
+              "branch_cached_tokens": [
+                0
+              ],
+              "cached_tokens": 0,
+              "prompt_tokens": 5033,
+              "completion_tokens": 1
+            },
+            "timing_ms": {
+              "prepare": 13.365761999921233,
+              "prefill": 0,
+              "branches": 1409.7496570000203,
+              "total": 1423.1154189999415
+            }
+          }
+        ]
+      }
+    },
+    {
+      "state_tokens_actual": 5000,
+      "predicates": 8,
+      "shared": {
+        "wall_ms": 2426.5154430001985,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 2426.5154430001985,
+        "decisions_per_second": 3.296908751633008,
+        "amortized_ms_per_decision": 303.3144303750248,
+        "peak_device_memory_mib": null,
+        "memory_samples": 0,
+        "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+        "branch_cached_tokens": [
+          0,
+          4752,
+          4752,
+          4752,
+          4752,
+          4752,
+          4752,
+          4752
+        ],
+        "cache_reuse_observed": true,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "False": 0.08384145698080851,
+                  "True": 0.9161585430191914
+                },
+                "raw_logprobs": {
+                  "False": -2.484508514404297,
+                  "True": -0.08704757690429688
+                },
+                "selected": "True",
+                "predicate": "Decision 1: The failure is environmental.",
+                "score": 0.9161585430191914
+              },
+              {
+                "scores": {
+                  "False": 0.9690645499452852,
+                  "True": 0.030935450054714732
+                },
+                "raw_logprobs": {
+                  "False": -0.031216144561767578,
+                  "True": -3.4823880195617676
+                },
+                "selected": "False",
+                "predicate": "Decision 2: The source code contains a confirmed bug.",
+                "score": 0.030935450054714732
+              },
+              {
+                "scores": {
+                  "False": 0.9750026115955935,
+                  "True": 0.024997388404406434
+                },
+                "raw_logprobs": {
+                  "False": -0.025135019794106483,
+                  "True": -3.696033477783203
+                },
+                "selected": "False",
+                "predicate": "Decision 3: The test itself is broken.",
+                "score": 0.024997388404406434
+              },
+              {
+                "scores": {
+                  "False": 0.6132066069438555,
+                  "True": 0.3867933930561444
+                },
+                "raw_logprobs": {
+                  "False": -0.4890044629573822,
+                  "True": -0.9499419927597046
+                },
+                "selected": "False",
+                "predicate": "Decision 4: More information is required.",
+                "score": 0.3867933930561444
+              },
+              {
+                "scores": {
+                  "False": 0.06686734818674954,
+                  "True": 0.9331326518132504
+                },
+                "raw_logprobs": {
+                  "False": -2.711336612701416,
+                  "True": -0.06875849515199661
+                },
+                "selected": "True",
+                "predicate": "Decision 5: The operation should be retried after network recovery.",
+                "score": 0.9331326518132504
+              },
+              {
+                "scores": {
+                  "False": 0.09066728862595495,
+                  "True": 0.9093327113740451
+                },
+                "raw_logprobs": {
+                  "False": -2.406024217605591,
+                  "True": -0.09450087696313858
+                },
+                "selected": "True",
+                "predicate": "Decision 6: The failure is environmental.",
+                "score": 0.9093327113740451
+              },
+              {
+                "scores": {
+                  "False": 0.9598264946479459,
+                  "True": 0.04017350535205415
+                },
+                "raw_logprobs": {
+                  "False": -0.040756721049547195,
+                  "True": -3.2204442024230957
+                },
+                "selected": "False",
+                "predicate": "Decision 7: The source code contains a confirmed bug.",
+                "score": 0.04017350535205415
+              },
+              {
+                "scores": {
+                  "False": 0.9688887992011515,
+                  "True": 0.03111120079884863
+                },
+                "raw_logprobs": {
+                  "False": -0.03139672800898552,
+                  "True": -3.4767091274261475
+                },
+                "selected": "False",
+                "predicate": "Decision 8: The test itself is broken.",
+                "score": 0.03111120079884863
+              }
+            ],
+            "calibrated": false,
+            "model": "autotrust/JEV-9B",
+            "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+            "upstream_temperature_applied": true,
+            "usage": {
+              "prefix_tokens": 5013,
+              "warmup_calls": 0,
+              "branch_calls": 8,
+              "branch_cached_tokens": [
+                0,
+                4752,
+                4752,
+                4752,
+                4752,
+                4752,
+                4752,
+                4752
+              ],
+              "cached_tokens": 33264,
+              "prompt_tokens": 40277,
+              "completion_tokens": 8
+            },
+            "timing_ms": {
+              "prepare": 57.76636699988558,
+              "prefill": 0,
+              "branches": 2368.3948220000275,
+              "total": 2426.161188999913
+            }
+          }
+        ]
+      },
+      "independent_single": {
+        "wall_ms": 1438.150682000014,
+        "cache_reset_ms": 0.0,
+        "wall_excluding_cache_reset_ms": 1438.150682000014,
+        "decisions_per_second": 0.6953374305739057,
+        "amortized_ms_per_decision": 1438.150682000014,
+        "peak_device_memory_mib": null,
+        "memory_samples": 0,
+        "memory_error": "[Errno 2] No such file or directory: 'nvidia-smi'",
+        "branch_cached_tokens": [
+          0
+        ],
+        "cache_reuse_observed": false,
+        "responses": [
+          {
+            "results": [
+              {
+                "scores": {
+                  "False": 0.08361719088444484,
+                  "True": 0.9163828091155551
+                },
+                "raw_logprobs": {
+                  "False": -2.487194299697876,
+                  "True": -0.08680365234613419
+                },
+                "selected": "True"
+              }
+            ],
+            "calibrated": false,
+            "model": "autotrust/JEV-9B",
+            "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+            "upstream_temperature_applied": true,
+            "usage": {
+              "prefix_tokens": 5013,
+              "warmup_calls": 0,
+              "branch_calls": 1,
+              "branch_cached_tokens": [
+                0
+              ],
+              "cached_tokens": 0,
+              "prompt_tokens": 5033,
+              "completion_tokens": 1
+            },
+            "timing_ms": {
+              "prepare": 13.329242000054364,
+              "prefill": 0,
+              "branches": 1424.7337990000233,
+              "total": 1438.0630410000776
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

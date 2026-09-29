@@ -520,10 +520,48 @@ impl WakeService {
             .collect())
     }
 
+    pub(crate) fn wake_timeout(&self) -> Duration {
+        Duration::from_secs(self.gateway_config.wake_timeout_secs)
+    }
+
+    /// One runner per configured machine type, including connected runners.
+    /// Reuse a loaded/connected Halo before considering another powered-off one.
+    pub(crate) async fn decision_race_targets(
+        &self, request: &ModelRequest,
+    ) -> Result<Vec<RunnerRecord>, WakeError> {
+        let live = self.registry.all().await;
+        let mut records = self.audit_logger.get_all_runners()
+            .map_err(|e| WakeError::DatabaseError(e.to_string()))?;
+        records.retain(|r| self.runner_matches_request(r, request)
+            && (live.iter().any(|l| l.id == r.id) || (self.is_enabled() && r.mac_address.is_some())));
+        records.sort_by_key(|record| {
+            let rank = match live.iter().find(|l| l.id == record.id) {
+                Some(r) if r.has_model_or_alias(simple_ai_common::DECISION_MODEL) => 0,
+                Some(r) if !r.has_resource_conflict_for_model(simple_ai_common::DECISION_MODEL) => 1,
+                Some(_) => 2,
+                None => 3,
+            };
+            (rank, live.iter().find(|r| r.id == record.id)
+                .map(|r| r.active_requests.load(std::sync::atomic::Ordering::SeqCst)).unwrap_or(0), record.id.clone())
+        });
+        let types = self.routing_config.speculative_wake_targets.get("semantic_decisions")
+            .or_else(|| self.routing_config.class_preferences.get("semantic_decisions"));
+        let Some(types) = types else { return Ok(Vec::new()); };
+        let mut selected = Vec::new();
+        for machine in types {
+            if let Some(record) = records.iter().find(|r| r.machine_type.as_ref() == Some(machine)) {
+                if !selected.iter().any(|r: &RunnerRecord| r.id == record.id) {
+                    selected.push(record.clone());
+                }
+            }
+        }
+        Ok(selected)
+    }
+
     /// Wake a single runner by MAC address.
     ///
     /// Tries idle-manager first (if configured), falls back to direct WOL.
-    async fn wake_runner(&self, runner: &RunnerRecord) -> Result<(), WakeError> {
+    pub(crate) async fn wake_runner(&self, runner: &RunnerRecord) -> Result<(), WakeError> {
         let mac = runner
             .mac_address
             .as_ref()

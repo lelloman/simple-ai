@@ -117,6 +117,8 @@ prompt_cache_affinity_max_extra_wait_ms = 2000
 # speculative_wake_enabled: Wake multiple machines in parallel for faster response.
 # When enabled, the system wakes all configured targets and uses the first to connect.
 speculative_wake_enabled = false
+# JEV: prepare RTX and one Halo in parallel, then prefer the ready RTX.
+decision_ready_race = true
 # When listed here, a class resolves to the first configured model even when
 # its preferred runner must be woken instead of using a lower-priority online model.
 wake_preferred_classes = [] # e.g. ["big"]
@@ -125,6 +127,7 @@ wake_preferred_classes = [] # e.g. ["big"]
 # First machine type in the list is most preferred.
 # Runners with machine types not in the list are deprioritized.
 [routing.class_preferences]
+semantic_decisions = ["gpu-server", "halo"]
 information_extraction = ["halo"] # GLiNER is served only by Halo runners
 fast = ["gpu-server", "halo"]   # Prefer gpu-server for fast models
 big = ["halo", "gpu-server"]    # Prefer halo for big models
@@ -137,6 +140,7 @@ ocr = ["gpu-server"]              # Prefer machines with OCR dependencies instal
 # When speculative_wake_enabled=true and no runners are available,
 # wake ALL machines in this list for the requested class.
 [routing.speculative_wake_targets]
+semantic_decisions = ["gpu-server", "halo"] # decision_ready_race chooses ONE per type
 information_extraction = ["halo"]
 fast = ["halo", "gpu-server"]   # Wake both; use whichever boots first
 big = ["halo"]                  # Only halos can run big models

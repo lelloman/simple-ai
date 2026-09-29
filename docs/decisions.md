@@ -7,7 +7,8 @@ JSON** copies the full response. Your existing login is used.
 
 For API use, call the normal simple-ai gateway with your API key. JEV supports boolean decisions,
 choices among 2–16 named options, and ratings on an explicit six-level scale.
-The gateway wakes the RTX runner if needed. The runner unloads its other GPU model,
+The gateway prepares RTX and one available Halo when needed. The first JEV
+model ready serves the request; subsequent requests prefer RTX once ready. The runner unloads its other GPU model,
 starts JEV, and shares the GPU through the normal resource allocator. The first
 request can take several minutes; warm requests are much faster.
 
@@ -59,11 +60,18 @@ There is no need to start or stop Docker containers manually.
 
 Deploy the gateway first, then the RTX runner. Set
 `models.semantic_decisions = ["autotrust/JEV-9B"]` in gateway configuration and
-prefer `gpu-server` for that class. The RTX configuration in
+set `routing.decision_ready_race = true`. Configure both
+`routing.class_preferences.semantic_decisions` and
+`routing.speculative_wake_targets.semantic_decisions` as `["gpu-server", "halo"]`,
+and allow at least 600 seconds for `routing.model_prepare_timeout_secs`. The RTX configuration in
 `scripts/configs/rtx.toml` enables `[engines.decisions]` and places it in the same
-`cuda:0` resource group as the other GPU engines. Other runners leave it disabled.
+`cuda:0` resource group as the other GPU engines. Halo 1 and Halo 2 use
+`deploy/semantic-halo` through Podman Compose and share `gpu:0` with llama.cpp.
 
-The runtime must first be prepared using `deploy/semantic-rtx3090/prepare.sh`.
+Prepare RTX using `deploy/semantic-rtx3090/prepare.sh`; prepare each Halo
+following `deploy/semantic-halo/README.md`.
+As of 2026-09-29, RTX, Halo 1 and Halo 2 are deployed. Halo 2 required a kernel
+update to 7.2.7-100.fc43 before its ROCm runtime passed GPU inference validation.
 The fleet deployer uploads the compose file and provider and runs an offline
 preflight against the existing model volume. It does not download another copy
 of the weights. Startup verifies the provider protocol, model revision, and
@@ -72,3 +80,19 @@ vLLM base/adapter identity. Both provider and vLLM ports remain loopback-only.
 For rollback, disable `[engines.decisions]`, stop its compose services after
 active requests drain, and remove the gateway class mapping. Keep the shared
 model volume unless you explicitly intend to remove the downloaded weights.
+
+## First-ready scheduling
+
+For JEV, the readiness race chooses one runner per configured machine type.
+An already-loaded/connected Halo is preferred over waking another Halo, with
+active-request count breaking ties. If RTX is already ready, requests go
+straight to it. Otherwise RTX and the selected Halo are prepared in parallel;
+the gateway dispatches inference only once, to the first ready model. RTX
+preparation continues after a Halo wins so subsequent requests can use RTX.
+Concurrent requests share the same preparation task. Both class and concrete
+JEV selectors use this policy. A failed preparation does not block a ready
+runner, and preparation has bounded wake/load deadlines with idle-manager
+keepalives. The other Halo remains available for future selection.
+
+This is separate from batching independent contexts: the API still accepts
+one state and up to 128 questions per request.

@@ -1,0 +1,128 @@
+[
+  {
+    "state_tokens": 32,
+    "questions": 1,
+    "rtx_median_ms": 93.20827800002007,
+    "halo_median_ms": 169.83475400002135,
+    "rtx_decisions_per_second": 10.728660817012248,
+    "halo_decisions_per_second": 5.888076359211344,
+    "rtx_speedup": 1.822099470606943
+  },
+  {
+    "state_tokens": 32,
+    "questions": 8,
+    "rtx_median_ms": 684.108002999892,
+    "halo_median_ms": 1328.7492110000017,
+    "rtx_decisions_per_second": 11.694059950942076,
+    "halo_decisions_per_second": 6.020699718029778,
+    "rtx_speedup": 1.9423091166501254
+  },
+  {
+    "state_tokens": 100,
+    "questions": 1,
+    "rtx_median_ms": 92.513069000006,
+    "halo_median_ms": 204.9788660000047,
+    "rtx_decisions_per_second": 10.809283605108108,
+    "halo_decisions_per_second": 4.878551723473663,
+    "rtx_speedup": 2.2156746956475026
+  },
+  {
+    "state_tokens": 100,
+    "questions": 8,
+    "rtx_median_ms": 671.401995999986,
+    "halo_median_ms": 1496.5179300000102,
+    "rtx_decisions_per_second": 11.915365232247787,
+    "halo_decisions_per_second": 5.3457428338329,
+    "rtx_speedup": 2.2289447140696934
+  },
+  {
+    "state_tokens": 250,
+    "questions": 1,
+    "rtx_median_ms": 120.25795499994274,
+    "halo_median_ms": 268.7049429999888,
+    "rtx_decisions_per_second": 8.315458216468725,
+    "halo_decisions_per_second": 3.7215541658273166,
+    "rtx_speedup": 2.2344047260750175
+  },
+  {
+    "state_tokens": 250,
+    "questions": 8,
+    "rtx_median_ms": 957.2811470000033,
+    "halo_median_ms": 1958.8083369999936,
+    "rtx_decisions_per_second": 8.357001519429247,
+    "halo_decisions_per_second": 4.084115760019877,
+    "rtx_speedup": 2.0462205310724526
+  },
+  {
+    "state_tokens": 500,
+    "questions": 1,
+    "rtx_median_ms": 252.35974499992153,
+    "halo_median_ms": 467.1352179993846,
+    "rtx_decisions_per_second": 3.9625971249904017,
+    "halo_decisions_per_second": 2.1407077896689803,
+    "rtx_speedup": 1.8510686718261262
+  },
+  {
+    "state_tokens": 500,
+    "questions": 8,
+    "rtx_median_ms": 1664.8972970001523,
+    "halo_median_ms": 3485.4367420002745,
+    "rtx_decisions_per_second": 4.805101200184883,
+    "halo_decisions_per_second": 2.2952647235275427,
+    "rtx_speedup": 2.093484534019251
+  },
+  {
+    "state_tokens": 2000,
+    "questions": 1,
+    "rtx_median_ms": 590.0407520002773,
+    "halo_median_ms": 1538.6155530004544,
+    "rtx_decisions_per_second": 1.6947981925145572,
+    "halo_decisions_per_second": 0.6499349353708923,
+    "rtx_speedup": 2.607642858199956
+  },
+  {
+    "state_tokens": 2000,
+    "questions": 8,
+    "rtx_median_ms": 1688.779299000089,
+    "halo_median_ms": 3927.7217740000196,
+    "rtx_decisions_per_second": 4.737149492972071,
+    "halo_decisions_per_second": 2.0368041476249332,
+    "rtx_speedup": 2.3257756512799443
+  },
+  {
+    "state_tokens": 5000,
+    "questions": 1,
+    "rtx_median_ms": 1434.2983290000575,
+    "halo_median_ms": 4097.6779109998915,
+    "rtx_decisions_per_second": 0.6972050233769462,
+    "halo_decisions_per_second": 0.24404065466335928,
+    "rtx_speedup": 2.8569216237298756
+  },
+  {
+    "state_tokens": 5000,
+    "questions": 8,
+    "rtx_median_ms": 2304.076443999975,
+    "halo_median_ms": 6196.610332000091,
+    "rtx_decisions_per_second": 3.4721070218102916,
+    "halo_decisions_per_second": 1.2910284125317633,
+    "rtx_speedup": 2.689411780644965
+  },
+  {
+    "state_tokens": 16000,
+    "questions": 1,
+    "rtx_median_ms": 4781.383036000079,
+    "halo_median_ms": 15921.143636000124,
+    "rtx_decisions_per_second": 0.2091445074512502,
+    "halo_decisions_per_second": 0.06280955833718177,
+    "rtx_speedup": 3.329819743811853
+  },
+  {
+    "state_tokens": 16000,
+    "questions": 8,
+    "rtx_median_ms": 5709.074365999641,
+    "halo_median_ms": 18493.660598999668,
+    "rtx_decisions_per_second": 1.4012779457987015,
+    "halo_decisions_per_second": 0.4325806649892085,
+    "rtx_speedup": 3.2393448418080797
+  }
+]

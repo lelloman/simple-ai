@@ -312,10 +312,20 @@ deploy_host() {
     # Deploy JEV runtime files with runners explicitly configured for decisions.
     if rg -q '^\[engines.decisions\]' "$config_path"; then
         local jev_dir="$deploy_dir/simple-ai-semantic"
-        ssh "$ssh_target" "mkdir -p '$jev_dir/deploy/semantic-rtx3090' '$jev_dir/scripts' '$jev_dir/tests/fixtures'"
-        scp -q "$PROJECT_DIR/deploy/semantic-rtx3090/compose.yaml" "$ssh_target:$jev_dir/deploy/semantic-rtx3090/compose.yaml"
+        local jev_platform="semantic-rtx3090"
+        local jev_cli="docker"
+        if rg -q '^compose_command = \["podman", "compose"\]' "$config_path"; then
+            jev_platform="semantic-halo"
+            jev_cli="podman"
+            ssh "$ssh_target" "systemctl --user start podman.socket"
+        fi
+        ssh "$ssh_target" "mkdir -p '$jev_dir/deploy/$jev_platform' '$jev_dir/scripts' '$jev_dir/tests/fixtures'"
+        scp -q "$PROJECT_DIR/deploy/$jev_platform/compose.yaml" "$ssh_target:$jev_dir/deploy/$jev_platform/compose.yaml"
+        if [[ "$jev_platform" == "semantic-halo" ]]; then
+            scp -q "$PROJECT_DIR/deploy/semantic-halo/enable-text-model.py" "$ssh_target:$jev_dir/deploy/$jev_platform/enable-text-model.py"
+        fi
         scp -q "$PROJECT_DIR/scripts/simple_ai_semantic.py" "$ssh_target:$jev_dir/scripts/simple_ai_semantic.py"
-        ssh "$ssh_target" "cd '$jev_dir/deploy/semantic-rtx3090' && docker compose run --rm --no-deps --pull never provider --preflight"
+        ssh "$ssh_target" "cd '$jev_dir/deploy/$jev_platform' && $jev_cli compose run --rm --no-deps --pull never provider --preflight"
     fi
 
     # Upload config

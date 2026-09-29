@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-29",
+  "model": "autotrust/JEV-9B",
+  "revision": "4ab5dfb9331c4eb3a212742e1a1aa5446c1fda35",
+  "rtx": {
+    "device": "NVIDIA GeForce RTX 3090",
+    "vram_mib": 24576,
+    "driver": "580.173.02",
+    "power_limit_w": 350,
+    "image": "simple-ai-jev:20260929",
+    "image_id": "sha256:02dce52200a74f62159d208b80429435bdbe8012b5d5170ed7912243d14a8688",
+    "vllm": "0.27.1",
+    "torch": "2.13.0+cu130",
+    "transformers": "5.15.0"
+  },
+  "halo": {
+    "host": "halo1",
+    "device": "AMD Ryzen AI Max+ 395 / Radeon 8060S (gfx1151)",
+    "unified_memory_gb": 128,
+    "image": "docker.io/rocm/vllm:rocm7.13.0_gfx1151_ubuntu24.04_py3.13_pytorch_2.10.0_vllm_0.19.1",
+    "image_id": "sha256:45e8eef0d94551e509fcb0a14d26fc22cc821a7acc014c3f15b5f5c097aff943",
+    "image_digest": "sha256:394194d36edcf9b36bcb563e143b21b80e64e7d04f33a447b448c0c0c00c04a8",
+    "vllm": "0.19.1+rocm7.13.0rc2",
+    "torch": "2.10.0+rocm7.13.0rc2",
+    "transformers": "5.8.1"
+  },
+  "source_sha256": {
+    "scripts/simple_ai_semantic.py": "ef34b510855c6a67009e77587b194445eb3bf12bc337e35c29851ba464a3af83",
+    "scripts/benchmark-semantic.py": "9d8c7b4d861652ca91b957b213b9512f9e795195d3f56c76b99ea28c76a71dec",
+    "scripts/evaluate-semantic.py": "e6ac2273611bd24e55ae956c440067f5e6b0f50e31f50ad6fbf1e15d620f78b1",
+    "tests/fixtures/semantic-quality.json": "f1d54c1c6169c9d1dc0181ccb762afdf76343963c008fdcda2c44213e7ecac5e",
+    "docs/evals/jev-rtx-halo/enable-halo-head-lora.py": "0854d3ad3836c59fb98c69d71d4969f3b7a27ec426fa2ea3d5ec7cfc10cc4b2c",
+    "docs/evals/jev-rtx-halo/start-halo.sh": "b4a1157e2c4af014ecb7b3cad9f1abe6e409557e7a884ace688d98385f52affc"
+  }
+}

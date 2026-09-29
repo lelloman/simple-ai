@@ -294,6 +294,9 @@ impl ModelsConfig {
 /// - Speculative wake (wake multiple machines for faster response)
 #[derive(Debug, Clone, Deserialize)]
 pub struct RoutingConfig {
+    /// Prepare JEV on the preferred machine and one fallback, then use first ready.
+    #[serde(default)]
+    pub decision_ready_race: bool,
     /// Machine preferences by model class.
     /// Key is the class name (e.g., "fast", "big"), value is ordered list of machine types.
     /// First machine type in the list is most preferred.
@@ -379,6 +382,7 @@ fn default_min_batch_size() -> u32 {
 impl Default for RoutingConfig {
     fn default() -> Self {
         Self {
+            decision_ready_race: false,
             class_preferences: HashMap::new(),
             wake_preferred_classes: Vec::new(),
             queue_weight: default_queue_weight(),

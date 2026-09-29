@@ -992,6 +992,8 @@ impl Default for ExtractionEngineConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct DecisionEngineConfig {
     pub enabled: bool,
+    /// Compose CLI, e.g. ["docker", "compose"] or ["podman", "compose"].
+    pub compose_command: Vec<String>,
     pub compose_dir: String,
     pub base_url: String,
     pub startup_timeout_secs: u64,
@@ -1000,7 +1002,7 @@ pub struct DecisionEngineConfig {
 }
 impl Default for DecisionEngineConfig {
     fn default() -> Self {
-        Self { enabled: false, compose_dir: String::new(), base_url: "http://127.0.0.1:18040".into(),
+        Self { enabled: false, compose_command: vec!["docker".into(), "compose".into()], compose_dir: String::new(), base_url: "http://127.0.0.1:18040".into(),
                startup_timeout_secs: 600, request_timeout_secs: 180, shutdown_timeout_secs: 60 }
     }
 }
