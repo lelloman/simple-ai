@@ -39,33 +39,10 @@ impl AuditLogger {
         let conn = Connection::open(path).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         // Create users table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                email TEXT,
-                created_at TEXT NOT NULL,
-                last_seen_at TEXT NOT NULL,
-                is_enabled INTEGER NOT NULL DEFAULT 1
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "users")?;
 
         // Create requests table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS requests (
-                id TEXT PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                request_path TEXT NOT NULL,
-                request_body TEXT,
-                model TEXT,
-                client_ip TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "requests")?;
 
         let _ = conn.execute("ALTER TABLE requests ADD COLUMN source_app TEXT", []);
 
@@ -73,21 +50,7 @@ impl AuditLogger {
         let _ = conn.execute("ALTER TABLE requests ADD COLUMN client_ip TEXT", []);
 
         // Create responses table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS responses (
-                id TEXT PRIMARY KEY,
-                request_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                status INTEGER NOT NULL,
-                response_body TEXT,
-                latency_ms INTEGER NOT NULL,
-                tokens_prompt INTEGER,
-                tokens_completion INTEGER,
-                FOREIGN KEY (request_id) REFERENCES requests(id)
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "responses")?;
 
         // Migration: add runner_id and wol_sent columns to responses
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN runner_id TEXT", []);
@@ -104,22 +67,7 @@ impl AuditLogger {
         );
 
         // Create API keys table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS api_keys (
-                id TEXT PRIMARY KEY,
-                key_hash TEXT NOT NULL UNIQUE,
-                plaintext_key TEXT,
-                user_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                roles TEXT NOT NULL DEFAULT '[]',
-                created_at TEXT NOT NULL,
-                last_used_at TEXT,
-                revoked INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "api_keys")?;
 
         // Migration: store retrievable API key secrets for keys created after this migration.
         let _ = conn.execute("ALTER TABLE api_keys ADD COLUMN plaintext_key TEXT", []);
@@ -131,37 +79,14 @@ impl AuditLogger {
         );
 
         // Create indexes
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_index(&conn, "requests", "idx_requests_timestamp", "timestamp")?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_requests_user_id ON requests(user_id)",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_index(&conn, "requests", "idx_requests_user_id", "user_id")?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_responses_request_id ON responses(request_id)",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_index(&conn, "responses", "idx_responses_request_id", "request_id")?;
 
         // Create runners table for persistent runner tracking
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS runners (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                mac_address TEXT,
-                machine_type TEXT,
-                last_seen_at TEXT NOT NULL,
-                available_models TEXT
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "runners")?;
 
         // Migration: add available_models column if it doesn't exist
         let _ = conn.execute("ALTER TABLE runners ADD COLUMN available_models TEXT", []); // Ignore error if column already exists
@@ -170,66 +95,11 @@ impl AuditLogger {
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN model_class TEXT", []);
 
         // Create runner_metrics table for tracking boot time and inference latency
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS runner_metrics (
-                runner_id TEXT NOT NULL,
-                model_class TEXT NOT NULL,
-                sample_count INTEGER NOT NULL DEFAULT 0,
-                total_ms INTEGER NOT NULL DEFAULT 0,
-                min_ms INTEGER,
-                max_ms INTEGER,
-                last_updated_at TEXT NOT NULL,
-                PRIMARY KEY (runner_id, model_class)
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "runner_metrics")?;
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS response_inference_metrics (
-                response_id TEXT PRIMARY KEY,
-                request_id TEXT NOT NULL,
-                runner_id TEXT,
-                model_class TEXT,
-                requested_model TEXT,
-                resolved_model TEXT,
-                engine_type TEXT,
-                context_window INTEGER,
-                prompt_tokens INTEGER,
-                completion_tokens INTEGER,
-                prompt_eval_ms INTEGER,
-                completion_eval_ms INTEGER,
-                total_inference_ms INTEGER,
-                prompt_tokens_per_sec REAL,
-                completion_tokens_per_sec REAL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (response_id) REFERENCES responses(id),
-                FOREIGN KEY (request_id) REFERENCES requests(id)
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "response_inference_metrics")?;
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS model_context_metrics (
-                resolved_model TEXT NOT NULL,
-                runner_id TEXT NOT NULL,
-                context_window INTEGER NOT NULL,
-                sample_count INTEGER NOT NULL DEFAULT 0,
-                prompt_tokens_total INTEGER NOT NULL DEFAULT 0,
-                completion_tokens_total INTEGER NOT NULL DEFAULT 0,
-                prompt_weighted_tps_total REAL NOT NULL DEFAULT 0,
-                completion_weighted_tps_total REAL NOT NULL DEFAULT 0,
-                prompt_tps_min REAL,
-                prompt_tps_max REAL,
-                completion_tps_min REAL,
-                completion_tps_max REAL,
-                last_updated_at TEXT NOT NULL,
-                PRIMARY KEY (resolved_model, runner_id, context_window)
-            )",
-            [],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        super::schema::create_table(&conn, "model_context_metrics")?;
 
         tracing::info!("Audit logger initialized with database: {}", path);
 
@@ -1772,7 +1642,10 @@ mod tests {
         request.source_app = Some("org.example.personal".into());
         logger.log_request(&request).unwrap();
         let (requests, _) = logger.get_requests_paginated(None, None, 1, 10).unwrap();
-        assert_eq!(requests[0].source_app.as_deref(), Some("org.example.personal"));
+        assert_eq!(
+            requests[0].source_app.as_deref(),
+            Some("org.example.personal")
+        );
     }
 
     #[test]
