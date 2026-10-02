@@ -189,6 +189,20 @@ base_url = "http://localhost:11434"
 # dim = 44
 # dtype = "float32"
 # description = "Compact AST-derived instrument axes"
+#
+# v2 namespaces score evenly spaced windows across the whole track instead of
+# one 10 s clip; tune with the provider's --ast-windows / --ast-window-seconds.
+# [[engines.audio_embeddings.models.namespaces]]
+# namespace = "ast.audioset.v2"
+# dim = 527
+# dtype = "float32"
+# description = "AST AudioSet probabilities averaged over windows"
+#
+# [[engines.audio_embeddings.models.namespaces]]
+# namespace = "ast.instruments.v2"
+# dim = 44
+# dtype = "float32"
+# description = "Compact AST-derived instrument axes averaged over windows"
 
 # Text-to-speech engine. Disabled by default. Models are loaded on demand,
 # like LLM and audio embedding models: when the gateway sends LoadModel, the
