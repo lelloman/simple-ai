@@ -466,7 +466,11 @@ class Handler(BaseHTTPRequestHandler):
     provider: Provider
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        sys.stderr.write("%s - %s\n" % (self.log_date_time_string(), fmt % args))
+        # The runner pipes this process's stdout/stderr without reading them, so a log
+        # line per request fills the pipe after ~1000 requests and blocks every handler
+        # thread on the stderr lock. Request logging is opt-in until the runner drains it.
+        if os.environ.get("SIMPLE_AI_PROVIDER_LOG_REQUESTS"):
+            sys.stderr.write("%s - %s\n" % (self.log_date_time_string(), fmt % args))
 
     def send_json(self, status: HTTPStatus, body: dict[str, Any]) -> None:
         raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
