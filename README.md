@@ -83,7 +83,7 @@ Rust-based API gateway that provides OpenAI-compatible endpoints with authentica
 - Multi-runner orchestration via WebSocket
 - Prometheus metrics endpoint
 
-**Tech Stack:** Rust, Axum, Tokio, Reqwest, SQLite
+**Tech Stack:** Rust, simple-server, Tokio, Reqwest, SQLite
 
 See [backend/README.md](backend/README.md) for details.
 
@@ -102,7 +102,7 @@ Standalone LLM runner that abstracts local inference engines and connects to the
 - Dynamic model loading/unloading via gateway commands
 - Health reporting and capability discovery
 
-**Tech Stack:** Rust, Axum, Tokio, WebSocket
+**Tech Stack:** Rust, simple-server, Tokio, WebSocket
 
 See [inference-runner/PHASE4.md](inference-runner/PHASE4.md) for architecture details.
 

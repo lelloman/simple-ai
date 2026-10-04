@@ -115,3 +115,43 @@ after: 376 pass, same ignore. New real-HTTP JWT/event tests and paused-time
 heartbeat/lag tests pass before/after. Locked workspace build and non-strict
 Clippy pass; existing strict-Clippy, formatting and missing runner config
 fixture limitations remain. See [the SSE record](step-11-sse.md).
+
+## Current owned backend boundaries — 2026-10-04
+
+Both Rust servers already consume owned `simple_server::web` routing, extractors,
+responses, serving and HTTP fixtures. Gateway/admin WebSocket socket and message
+APIs and admin SSE use the owned facade. No direct Axum, Tower HTTP, Hyper,
+Tower Cookies or compatibility imports/dependencies remain in production Rust.
+Tower helpers are development-only test adapters. The runner's outbound gateway
+WebSocket client remains tokio-tungstenite; Reqwest remains an outbound HTTP
+client. These clients do not expose the server backend.
+
+The workspace now uses published `lelloman-simple-server =0.1.6`, source
+`58e9b7504176c82b538dca0cd3041468fb4a1ccd`, SHA256
+`4f37d395af4d6ca8495ad190b8cecc5ab078ddfc92b8e9b3a41bc9eee80d3fce`.
+Existing production capability installation is preserved; the dependency bump
+does not claim adoption of new Unix transport or other unused modules.
+
+Python audio, classification, extraction, Chatterbox and XTTS providers use
+Python's standard-library `ThreadingHTTPServer`. They are independent model
+processes with loopback HTTP contracts, spawned/managed by Rust runner engines.
+They cannot import the Rust HTTP module. Replacing that transport would require
+a distinct cross-language bridge or provider redesign, not an Axum cleanup.
+No provider protocol, model process or ML dependency was changed. Their presence
+is an explicit scope boundary and is not pending Rust server migration work.
+
+The isolated baseline passes 482 Rust tests with one existing ignored Wake-on-LAN
+doctest. Existing tests require an ignored local RTX deployment configuration;
+the unchanged original fixture was materialized only in this owned worktree and
+will be removed during cleanup. No production provider/GPU or remote deployment
+is exercised by these host checks. Verification and local branch integration
+are recorded in the central migration trackers.
+
+Final verification on public 0.1.6: workspace tests still pass **482 tests with
+one existing ignored doctest**; locked workspace build, capped all-target Clippy
+and diff checks pass. Strict Clippy reproduces the same four findings in unchanged
+`simple-ai-common` source as the original master. Broad formatting debt remains
+in unchanged source; no Rust source was rewritten. Dependency metadata confirms
+no direct normal Axum/Tower HTTP/Hyper server dependencies in any workspace crate.
+Real HTTP/WebSocket/SSE and local fake-engine process tests are part of the suite.
+Live GPU/model-provider deployment tests were not run.
