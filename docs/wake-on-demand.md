@@ -11,6 +11,21 @@ it does not guarantee success if the host never wakes. Existing installations
 with an explicit shorter value must update that override. The configuration is
 loaded at backend startup, so restart after changing it.
 
+## Fast-class speculative preparation
+
+With auto-wake enabled and nonempty speculative wake targets for `fast`, a
+`class:fast` request also wakes offline matching targets when another runner is
+already online. The online runner serves immediately while each target boots
+and loads its fast model in the background. Concurrent requests share that
+preparation. Once ready, the target participates in normal smart routing,
+including machine preferences, queue load, and latency scoring.
+
+When all targets are asleep, they wake and prepare concurrently; the first
+ready model can serve without waiting for the other targets. Background failure
+does not fail a request being served by an online runner. Wake and model-load
+stages retain their separate configured deadlines. Disabling auto-wake or
+speculative wake preserves ordinary online routing.
+
 ## Homelab incident and rollout, 2026-09-25
 
 A `code:smart` request at 17:00:14 UTC returned HTTP 500 after 120 seconds while

@@ -47,6 +47,7 @@ pub struct RequestScheduler {
             std::collections::HashMap<String, tokio::sync::watch::Receiver<Option<String>>>,
         >,
     >,
+    speculative_preparations: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     inference_router: Arc<InferenceRouter>,
     runner_registry: Arc<RunnerRegistry>,
     wake_service: Arc<WakeService>,
@@ -66,6 +67,7 @@ impl RequestScheduler {
     ) -> Self {
         Self {
             decision_races: Default::default(),
+            speculative_preparations: Default::default(),
             inference_router,
             runner_registry,
             wake_service,
@@ -402,7 +404,7 @@ impl RequestScheduler {
                     let request_id = request_id.clone();
                     async move {
                         let result = scheduler
-                            .prepare_decision_target(&request_id, &selector, &target)
+                            .prepare_speculative_target(&request_id, &selector, &target)
                             .await;
                         if let Err(ref e) = result {
                             tracing::warn!(runner=%target.id, error=%e, "JEV preparation failed");
@@ -451,7 +453,7 @@ impl RequestScheduler {
         .map_err(|_| RouterError::ConnectionFailed("Timed out preparing JEV runners".into()))?
     }
 
-    async fn prepare_decision_target(
+    async fn prepare_speculative_target(
         &self,
         request_id: &str,
         selector: &str,
@@ -471,7 +473,7 @@ impl RequestScheduler {
             loop {
                 if let Ok(plan) = self
                     .inference_router
-                    .decision_plan_on(selector, &target.id, false)
+                    .speculative_plan_on(selector, &target.id, false)
                     .await
                 {
                     return plan;
@@ -481,7 +483,7 @@ impl RequestScheduler {
         })
         .await
         .map_err(|_| {
-            RouterError::ConnectionFailed(format!("JEV runner {} did not connect", target.id))
+            RouterError::ConnectionFailed(format!("Runner {} did not connect", target.id))
         });
         let result = match plan {
             Ok(plan) => self.prepare_runner_model(request_id, &plan).await,
@@ -512,6 +514,40 @@ impl RequestScheduler {
             .await;
     }
 
+    // Keep serving the ready runner while the other fast-class targets boot and
+    // load. Coalesce concurrent requests until each target is ready or times out.
+    async fn prepare_fast_targets(&self, request_id: &str, request: &ModelRequest) {
+        if !matches!(request, ModelRequest::Class(super::ModelClass::Fast))
+            || !self.wake_service.is_enabled()
+            || !self.routing_config.speculative_wake_enabled
+            || !self.routing_config.speculative_wake_targets.get("fast").is_some_and(|t| !t.is_empty())
+        {
+            return;
+        }
+        let targets = match self.wake_service.planned_wake_targets(request).await {
+            Ok(targets) => targets,
+            Err(error) => {
+                tracing::warn!(%error, "Could not plan background fast-class wake");
+                return;
+            }
+        };
+        for target in targets {
+            if !self.speculative_preparations.lock().await.insert(target.id.clone()) {
+                continue;
+            }
+            let scheduler = self.clone();
+            let request_id = request_id.to_string();
+            tokio::spawn(async move {
+                if let Err(error) = scheduler
+                    .prepare_speculative_target(&request_id, "class:fast", &target).await
+                {
+                    tracing::warn!(runner_id = %target.id, %error, "Background fast-class preparation failed");
+                }
+                scheduler.speculative_preparations.lock().await.remove(&target.id);
+            });
+        }
+    }
+
     async fn prepare_for_request(
         &self,
         request_id: &str,
@@ -529,8 +565,32 @@ impl RequestScheduler {
             )
             .await;
 
-        match self.plan_chat_request(model, affinity.clone()).await {
+        let mut initial_plan = self.plan_chat_request(model, affinity.clone()).await;
+        let mut woke_fast_targets = false;
+        if matches!(model_request, ModelRequest::Class(super::ModelClass::Fast))
+            && self.wake_service.is_enabled()
+            && self.routing_config.speculative_wake_enabled
+            && self.routing_config.speculative_wake_targets.get("fast").is_some_and(|t| !t.is_empty())
+            && matches!(&initial_plan,
+                Err(RouterError::NoRunners) | Err(RouterError::NoModelsOfClass(_)))
+            && !self.wake_service.find_wakeable_runners(Some(model_request)).await?.is_empty()
+        {
+            self.prepare_fast_targets(request_id, model_request).await;
+            timeout(self.wake_service.wake_timeout() + Duration::from_secs(self.routing_config.model_prepare_timeout_secs), async {
+                loop {
+                    if self.plan_chat_request(model, affinity.clone()).await.is_ok_and(|p| p.is_loaded) {
+                        break;
+                    }
+                    sleep(Duration::from_millis(100)).await;
+                }
+            }).await.map_err(|_| RouterError::ConnectionFailed("Timed out preparing fast-class runners".into()))?;
+            woke_fast_targets = true;
+            initial_plan = self.plan_chat_request(model, affinity.clone()).await;
+        }
+
+        match initial_plan {
             Ok(plan) => {
+                self.prepare_fast_targets(request_id, model_request).await;
                 self.router_telemetry
                     .emit(
                         "scheduler_planned",
@@ -550,7 +610,7 @@ impl RequestScheduler {
                 }
                 Ok(PreparedRequest {
                     plan,
-                    wol_sent: false,
+                    wol_sent: woke_fast_targets,
                 })
             }
             Err(RouterError::NoRunners) | Err(RouterError::NoModelsOfClass(_)) => {
@@ -846,16 +906,24 @@ mod decision_race_tests {
     }
 
     fn setup() -> (RequestScheduler, Arc<AuditLogger>) {
+        setup_with_fast(false)
+    }
+
+    fn setup_with_fast(fast: bool) -> (RequestScheduler, Arc<AuditLogger>) {
         let registry = Arc::new(RunnerRegistry::new());
         let audit = Arc::new(AuditLogger::new(":memory:").unwrap());
         let models = ModelsConfig {
             semantic_decisions: vec![DECISION_MODEL.into()],
+            fast: if fast { vec![DECISION_MODEL.into()] } else { vec![] },
             ..Default::default()
         };
         let routing = RoutingConfig {
             decision_ready_race: true,
             model_prepare_timeout_secs: 2,
             class_preferences: std::collections::HashMap::from([(
+                "fast".into(),
+                vec!["gpu-server".into(), "halo".into()],
+            ), (
                 "semantic_decisions".into(),
                 vec!["gpu-server".into(), "halo".into()],
             )]),
@@ -945,6 +1013,71 @@ mod decision_race_tests {
             }
         });
         count
+    }
+
+    #[tokio::test]
+    async fn fast_serves_halo_while_waking_and_preparing_rtx_once() {
+        fast_wake_scenario(true).await;
+    }
+
+    #[tokio::test]
+    async fn fast_cold_start_serves_first_ready_and_prepares_rtx() {
+        fast_wake_scenario(false).await;
+    }
+
+    async fn fast_wake_scenario(halo_online: bool) {
+        let (mut s, audit) = setup_with_fast(true);
+        s.routing_config.speculative_wake_enabled = true;
+        s.routing_config.speculative_wake_targets.insert("fast".into(), vec!["gpu-server".into(), "halo".into()]);
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        s.wake_service = Arc::new(WakeService::new(
+            s.runner_registry.clone(), audit.clone(),
+            GatewayConfig { auto_wake_enabled: true, wake_timeout_secs: 2, ..Default::default() },
+            WolConfig { broadcast_address: "127.0.0.1".into(), port: socket.local_addr().unwrap().port(), ..Default::default() },
+            ModelsConfig { fast: vec![DECISION_MODEL.into()], ..Default::default() },
+            s.routing_config.clone(),
+        ));
+        if halo_online {
+            runner(&s, &audit, "halo", "halo", true, Duration::ZERO, false).await;
+        } else {
+            audit.upsert_runner("halo", "halo", Some("00:11:22:33:44:66"), Some("halo"), Some(&[DECISION_MODEL.into()])).unwrap();
+        }
+        audit.upsert_runner("rtx", "rtx", Some("00:11:22:33:44:55"), Some("gpu-server"), Some(&[DECISION_MODEL.into()])).unwrap();
+        let request = ModelRequest::Class(super::super::ModelClass::Fast);
+        let mut packet = [0; 1024];
+        if !halo_online {
+            let scheduler = s.clone();
+            let pending = tokio::spawn(async move {
+                scheduler.prepare_for_request("cold", "class:fast", &ModelRequest::parse("class:fast"), None).await
+            });
+            for _ in 0..2 {
+                timeout(Duration::from_secs(1), socket.recv(&mut packet)).await.unwrap().unwrap();
+            }
+            runner(&s, &audit, "halo", "halo", true, Duration::ZERO, false).await;
+            let result = timeout(Duration::from_secs(1), pending).await.unwrap().unwrap().unwrap();
+            assert_eq!(result.plan.runner.id, "halo");
+            assert!(result.wol_sent);
+        } else {
+            s.routing_config.speculative_wake_enabled = false;
+            assert_eq!(s.prepare_for_request("disabled", "class:fast", &request, None).await.unwrap().plan.runner.id, "halo");
+            assert!(timeout(Duration::from_millis(100), socket.recv(&mut packet)).await.is_err());
+            s.routing_config.speculative_wake_enabled = true;
+        }
+        for _ in 0..3 {
+            let plan = timeout(Duration::from_millis(200), s.prepare_for_request("test", "class:fast", &request, None)).await.unwrap().unwrap();
+            assert_eq!(plan.plan.runner.id, "halo");
+        }
+        if halo_online {
+            timeout(Duration::from_secs(1), socket.recv(&mut packet)).await.unwrap().unwrap();
+        }
+        assert!(timeout(Duration::from_millis(100), socket.recv(&mut packet)).await.is_err());
+        let loads = runner(&s, &audit, "rtx", "gpu-server", false, Duration::from_millis(50), false).await;
+        timeout(Duration::from_secs(1), async {
+            while !s.speculative_preparations.lock().await.is_empty() { sleep(Duration::from_millis(10)).await; }
+        }).await.unwrap();
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
+        assert!(s.runner_registry.get("rtx").await.unwrap().has_model_or_alias(DECISION_MODEL));
+        assert_eq!(s.prepare_for_request("next", "class:fast", &request, None).await.unwrap().plan.runner.id, "rtx");
     }
 
     #[tokio::test]

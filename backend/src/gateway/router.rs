@@ -571,19 +571,22 @@ impl InferenceRouter {
         })
     }
 
-    /// Pin a decision plan to a live, compatible runner. Used by the readiness
+    /// Pin a speculative plan to a live, compatible runner. Used by the readiness
     /// race so preparation and dispatch cannot silently select different hosts.
-    pub(crate) async fn decision_plan_on(
+    pub(crate) async fn speculative_plan_on(
         &self, selector: &str, runner_id: &str, ready_only: bool,
     ) -> Result<RoutePlan, RouterError> {
         let request = ModelRequest::parse(selector);
+        let runner = self.registry.get(runner_id).await.ok_or(RouterError::NoRunners)?;
         let resolved_model = match &request {
             ModelRequest::Specific(id) => id.clone(),
             ModelRequest::Class(ModelClass::SemanticDecisions) => self.models_config
                 .semantic_decisions.first().cloned().ok_or(RouterError::NoRunners)?,
+            ModelRequest::Class(ModelClass::Fast) => self.models_config
+                .fast.iter().find(|id| runner.has_available_model_or_alias(id))
+                .cloned().ok_or(RouterError::NoRunners)?,
             _ => return Err(RouterError::NoRunners),
         };
-        let runner = self.registry.get(runner_id).await.ok_or(RouterError::NoRunners)?;
         let runner = self.filter_available(vec![runner]).into_iter().next()
             .filter(|r| r.is_operational() && r.has_available_model_or_alias(&resolved_model))
             .ok_or(RouterError::NoRunners)?;
@@ -593,7 +596,7 @@ impl InferenceRouter {
         if ready_only && !is_loaded { return Err(RouterError::NoRunners); }
         Ok(RoutePlan {
             runner, resolved_model, is_loaded, requested_selector: selector.into(),
-            class_hint: Some(ModelClass::SemanticDecisions), affinity: None,
+            class_hint: match request { ModelRequest::Class(c) => Some(c), _ => Some(ModelClass::SemanticDecisions) }, affinity: None,
             affinity_decision: AffinityDecision::Unkeyed, observed_binding: None,
         })
     }
@@ -601,7 +604,7 @@ impl InferenceRouter {
     pub(crate) async fn ready_decision_plan(&self, selector: &str) -> Option<RoutePlan> {
         let mut ready = Vec::new();
         for runner in self.registry.all().await {
-            if let Ok(plan) = self.decision_plan_on(selector, &runner.id, true).await {
+            if let Ok(plan) = self.speculative_plan_on(selector, &runner.id, true).await {
                 ready.push(plan);
             }
         }
