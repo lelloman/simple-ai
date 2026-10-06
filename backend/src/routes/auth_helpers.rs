@@ -7,6 +7,52 @@ use crate::auth::AuthUser;
 use crate::models::user::User;
 use crate::AppState;
 
+/// Attach verified identity and bounded, informational client metadata.
+pub fn attribute_request(
+    request: &mut crate::models::request::Request,
+    user: &AuthUser,
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    trusted_proxies: &[ipnet::IpNet],
+) {
+    request.auth_method = Some(user.auth_method.to_string());
+    request.api_key_id = user.api_key_id.clone();
+    request.api_key_name = user.api_key_name.clone();
+    request.peer_ip = peer.map(|p| p.ip().to_string());
+    request.proxy_request_id = peer.filter(|p| trusted_proxies.iter().any(|net| net.contains(&p.ip())))
+        .and_then(|_| headers.get("x-request-id"))
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+        .map(|id| id.to_string());
+    request.client_ip = verified_client_ip(headers, peer, trusted_proxies);
+    request.user_agent = headers.get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| v.len() <= 1024 && !v.chars().any(char::is_control))
+        .map(str::to_owned);
+}
+
+/// Walk from the actual socket peer toward the client, trusting only configured hops.
+fn verified_client_ip(
+    headers: &HeaderMap,
+    peer: Option<SocketAddr>,
+    trusted_proxies: &[ipnet::IpNet],
+) -> Option<String> {
+    let mut current = peer?.ip();
+    let trusted = |ip: &std::net::IpAddr| trusted_proxies.iter().any(|net| net.contains(ip));
+    if !trusted(&current) { return Some(current.to_string()); }
+    let hops: Result<Vec<std::net::IpAddr>, _> = headers.get_all("x-forwarded-for")
+        .iter().flat_map(|v| v.to_str().unwrap_or("").split(','))
+        .map(|v| v.trim().parse()).collect();
+    // Malformed chains cannot assert a client identity.
+    if let Ok(hops) = hops {
+        for hop in hops.into_iter().rev() {
+            if !trusted(&current) { break; }
+            current = hop;
+        }
+    }
+    Some(current.to_string())
+}
+
 /// Extract client IP from headers (X-Forwarded-For, X-Real-IP) or connection info.
 pub fn extract_client_ip(headers: &HeaderMap, addr: Option<SocketAddr>) -> Option<String> {
     if let Some(forwarded) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
@@ -74,11 +120,12 @@ async fn authenticate_with_context(
                     .audit_logger
                     .find_or_create_user("lan-local", None)
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                let auth_user = AuthUser::new(
+                let mut auth_user = AuthUser::new(
                     user.id.clone(),
                     None,
                     vec![crate::gateway::model_class::roles::MODEL_SPECIFIC.to_string()],
                 );
+                auth_user.auth_method = "lan_local";
                 return Ok((auth_user, user));
             }
 
@@ -93,13 +140,17 @@ async fn authenticate_with_context(
             if let Ok(credential) = bearer {
                 let token = credential.expose();
                 if token.starts_with("sk-") {
-                    return match state.audit_logger.validate_api_key(token) {
-                        Ok(Some((user_id, email, roles))) => {
+                    return match state.audit_logger.validate_api_key_with_identity(token) {
+                        Ok(Some(identity)) => {
+                            let crate::audit::ValidatedApiKey { user_id, email, roles, key_id, key_name } = identity;
                             let user = state
                                 .audit_logger
                                 .find_or_create_user(&user_id, email.as_deref())
                                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                            let auth_user = AuthUser::new(user_id, email, roles);
+                            let mut auth_user = AuthUser::new(user_id, email, roles);
+                            auth_user.auth_method = "api_key";
+                            auth_user.api_key_id = Some(key_id);
+                            auth_user.api_key_name = Some(key_name);
                             Ok((auth_user, user))
                         }
                         Ok(None) => Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string())),
@@ -143,6 +194,36 @@ pub fn authorize_admin(user: &AuthUser) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn origin_metadata_requires_a_trusted_socket_peer() {
+        let trusted = vec!["172.20.0.19/32".parse().unwrap(), "10.77.0.1/32".parse().unwrap()];
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "1.2.3.4, 203.0.113.8, 10.77.0.1".parse().unwrap());
+        assert_eq!(verified_client_ip(&headers, Some("172.20.0.19:4444".parse().unwrap()), &trusted).as_deref(), Some("203.0.113.8"));
+        assert_eq!(verified_client_ip(&headers, Some("192.168.1.21:4444".parse().unwrap()), &trusted).as_deref(), Some("192.168.1.21"));
+        assert_eq!(verified_client_ip(&headers, None, &trusted), None);
+        headers.insert("x-forwarded-for", "bogus, 203.0.113.8".parse().unwrap());
+        assert_eq!(verified_client_ip(&headers, Some("172.20.0.19:4444".parse().unwrap()), &trusted).as_deref(), Some("172.20.0.19"));
+    }
+
+    #[test]
+    fn attribution_uses_verified_credential_not_claimed_headers() {
+        let mut user = AuthUser::new("owner".into(), None, vec![]);
+        user.auth_method = "api_key";
+        user.api_key_id = Some("verified-id".into());
+        user.api_key_name = Some("qwencode".into());
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer SECRET-NOT-LOGGED".parse().unwrap());
+        headers.insert("x-api-key-name", "forged".parse().unwrap());
+        headers.insert("user-agent", "probe-client/1".parse().unwrap());
+        let mut request = crate::models::request::Request::new("owner".into(), "/v1/chat/completions".into());
+        attribute_request(&mut request, &user, &headers, Some("192.168.1.21:8888".parse().unwrap()), &[]);
+        assert_eq!(request.api_key_name.as_deref(), Some("qwencode"));
+        assert_eq!(request.api_key_id.as_deref(), Some("verified-id"));
+        assert_eq!(request.user_agent.as_deref(), Some("probe-client/1"));
+        assert!(!serde_json::to_string(&request).unwrap().contains("SECRET-NOT-LOGGED"));
+    }
 
     #[test]
     fn admin_access_accepts_role_or_configured_user_only() {

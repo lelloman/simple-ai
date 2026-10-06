@@ -16,6 +16,10 @@ pub struct AuthUser {
     pub email: Option<String>,
     /// Per-app roles from the OIDC provider.
     pub roles: Vec<String>,
+    /// Verified credential metadata; never a token or token hash.
+    pub auth_method: &'static str,
+    pub api_key_id: Option<String>,
+    pub api_key_name: Option<String>,
     /// The configured admin role name.
     admin_role: String,
     /// Explicit list of admin user IDs.
@@ -36,6 +40,9 @@ impl AuthUser {
             sub,
             email,
             roles,
+            auth_method: "jwt",
+            api_key_id: None,
+            api_key_name: None,
             admin_role,
             admin_users,
         }
@@ -49,6 +56,9 @@ impl AuthUser {
             sub,
             email,
             roles,
+            auth_method: "jwt",
+            api_key_id: None,
+            api_key_name: None,
             admin_role: "admin".to_string(),
             admin_users: vec![],
         }
@@ -284,6 +294,9 @@ impl JwksClient {
             sub: token_data.claims.sub,
             email: token_data.claims.email,
             roles,
+            auth_method: "jwt",
+            api_key_id: None,
+            api_key_name: None,
             admin_role: self.admin_role.clone(),
             admin_users: self.admin_users.clone(),
         })

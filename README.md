@@ -473,3 +473,26 @@ Contributions are welcome! Please:
 Shared signal handling and shutdown scope: [Step 02 lifecycle](docs/step-02-lifecycle.md).
 
 Semantic decisions: [JEV-9B gateway API and deployment](docs/decisions.md).
+
+## Request attribution
+
+New inference audit records include the verified authentication method, API-key
+ID and name (when applicable), socket peer, client IP, user agent, and a proxy
+request ID. Tokens, token hashes, cookies and authorization headers are not added
+to attribution. Historical records keep null attribution; they cannot be
+retroactively assigned to a credential. The admin request list exposes the new
+fields. User agents remain caller-supplied information, not authenticated app
+identities.
+
+Configure top-level `trusted_proxies` with exact proxy IPs/CIDRs, default `[]`.
+Only those socket peers may supply forwarded client addresses. The backend walks
+forwarded chains from right to left and ignores claimed addresses from direct
+untrusted peers. In production the VPS proxy overwrites request IDs, home Caddy
+trusts only the VPS relay and canonicalizes X-Forwarded-For, and the backend trusts
+only home Caddy. Update that exact address if the Caddy container IP changes.
+
+The 2026-10-06 attribution image is built from deployed revision `9d29333` plus
+the attribution patch, excluding pending routing/runner changes. Audit/database
+and proxy configuration backups were retained before deployment. The homelab
+monitoring repository contains the credential-origin and host-security alert
+collectors; alerts use the existing Alertmanager Telegram route.

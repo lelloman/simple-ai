@@ -1,3 +1,7 @@
+# Exact reverse-proxy IPs/CIDRs allowed to provide X-Forwarded-For.
+# Leave empty for direct connections; never trust the whole LAN by default.
+trusted_proxies = []
+
 # SimpleAI Backend Configuration
 # Copy to config.toml and adjust values.
 # Environment variables override these settings (SIMPLEAI__SECTION__KEY format).

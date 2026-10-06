@@ -13,6 +13,12 @@ pub struct Request {
     pub model: Option<String>,
     pub client_ip: Option<String>,
     pub source_app: Option<String>,
+    pub auth_method: Option<String>,
+    pub api_key_id: Option<String>,
+    pub api_key_name: Option<String>,
+    pub user_agent: Option<String>,
+    pub peer_ip: Option<String>,
+    pub proxy_request_id: Option<String>,
 }
 
 impl Request {
@@ -26,6 +32,12 @@ impl Request {
             model: None,
             client_ip: None,
             source_app: None,
+            auth_method: None,
+            api_key_id: None,
+            api_key_name: None,
+            user_agent: None,
+            peer_ip: None,
+            proxy_request_id: None,
         }
     }
 }

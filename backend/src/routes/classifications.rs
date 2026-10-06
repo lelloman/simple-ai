@@ -12,7 +12,7 @@ use simple_server::web::{
 };
 use simple_ai_common::{ClassificationRequest, ClassificationResponse};
 
-use super::auth_helpers::{authenticate_inference_request, extract_client_ip};
+use super::auth_helpers::{authenticate_inference_request};
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
@@ -108,7 +108,8 @@ async fn create_classifications(
 
     let mut req_log = Request::new(user.id.clone(), "/v1/classifications".to_string());
     req_log.model = Some(model.clone());
-    req_log.client_ip = extract_client_ip(&headers, connect_info.as_ref().ok().map(|info| info.0));
+    super::auth_helpers::attribute_request(&mut req_log, &auth_user, &headers,
+        connect_info.as_ref().ok().map(|info| info.0), &state.config.trusted_proxies);
     let request_id = state
         .audit_logger
         .log_request(&req_log)

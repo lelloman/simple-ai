@@ -101,6 +101,8 @@ impl AuditLogger {
 
         super::schema::create_table(&conn, "model_context_metrics")?;
 
+        super::schema::migrate_request_attribution(&conn)?;
+
         tracing::info!("Audit logger initialized with database: {}", path);
 
         Ok(Self {
@@ -191,8 +193,8 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         conn.execute(
-            "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model, client_ip, source_app)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model, client_ip, source_app, auth_method, api_key_id, api_key_name, user_agent, peer_ip, proxy_request_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 request.id,
                 request.timestamp.to_rfc3339(),
@@ -202,6 +204,13 @@ impl AuditLogger {
                 request.model,
                 request.client_ip,
                 request.source_app,
+                request.auth_method,
+                request.api_key_id,
+                request.api_key_name,
+                request.user_agent,
+                request.peer_ip,
+                request.proxy_request_id,
+
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
@@ -597,7 +606,8 @@ impl AuditLogger {
         let query_sql = format!(
             "SELECT r.id, r.timestamp, r.user_id, u.email, r.request_path, r.model, r.client_ip,
                     resp.status, resp.latency_ms, resp.tokens_prompt, resp.tokens_completion,
-                    resp.runner_id, COALESCE(resp.wol_sent, 0), r.source_app
+                    resp.runner_id, COALESCE(resp.wol_sent, 0), r.source_app,
+                    r.auth_method, r.api_key_id, r.api_key_name, r.user_agent, r.peer_ip, r.proxy_request_id
              FROM requests r
              LEFT JOIN users u ON u.id = r.user_id
              LEFT JOIN responses resp ON resp.request_id = r.id
@@ -633,6 +643,12 @@ impl AuditLogger {
                     runner_id: row.get(11)?,
                     wol_sent: row.get::<_, i32>(12)? != 0,
                     source_app: row.get(13)?,
+                    auth_method: row.get(14)?,
+                    api_key_id: row.get(15)?,
+                    api_key_name: row.get(16)?,
+                    user_agent: row.get(17)?,
+                    peer_ip: row.get(18)?,
+                    proxy_request_id: row.get(19)?,
                 })
             })
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
@@ -745,6 +761,16 @@ impl AuditLogger {
         &self,
         plaintext_key: &str,
     ) -> Result<Option<(String, Option<String>, Vec<String>)>, AuditError> {
+        Ok(self
+            .validate_api_key_with_identity(plaintext_key)?
+            .map(|key| (key.user_id, key.email, key.roles)))
+    }
+
+    /// Validate and capture the key identity from the same authenticated record.
+    pub fn validate_api_key_with_identity(
+        &self,
+        plaintext_key: &str,
+    ) -> Result<Option<ValidatedApiKey>, AuditError> {
         use sha2::{Digest, Sha256};
 
         if !plaintext_key.starts_with("sk-") {
@@ -762,17 +788,25 @@ impl AuditLogger {
         let key_hash = hex::encode(hasher.finalize());
 
         // Look up the key
-        let result: Result<(String, String, Option<String>, String), _> = conn.query_row(
-            "SELECT ak.id, ak.user_id, u.email, ak.roles
+        let result: Result<(String, String, Option<String>, String, String), _> = conn.query_row(
+            "SELECT ak.id, ak.user_id, u.email, ak.roles, ak.name
              FROM api_keys ak
              LEFT JOIN users u ON u.id = ak.user_id
              WHERE ak.key_hash = ?1 AND ak.revoked = 0",
             params![key_hash],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         );
 
         match result {
-            Ok((key_id, user_id, email, roles_json)) => {
+            Ok((key_id, user_id, email, roles_json, key_name)) => {
                 let roles = serde_json::from_str(&roles_json)
                     .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
                 // Update last_used_at
@@ -781,7 +815,13 @@ impl AuditLogger {
                     "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2",
                     params![now, key_id],
                 );
-                Ok(Some((user_id, email, roles)))
+                Ok(Some(ValidatedApiKey {
+                    user_id,
+                    email,
+                    roles,
+                    key_id,
+                    key_name,
+                }))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AuditError::DatabaseError(e.to_string())),
@@ -933,12 +973,29 @@ pub struct RequestWithResponse {
     pub model: Option<String>,
     pub client_ip: Option<String>,
     pub source_app: Option<String>,
+    pub auth_method: Option<String>,
+    pub api_key_id: Option<String>,
+    pub api_key_name: Option<String>,
+    pub user_agent: Option<String>,
+    pub peer_ip: Option<String>,
+    pub proxy_request_id: Option<String>,
+
     pub status: Option<i32>,
     pub latency_ms: Option<i64>,
     pub tokens_prompt: Option<i64>,
     pub tokens_completion: Option<i64>,
     pub runner_id: Option<String>,
     pub wol_sent: bool,
+}
+
+/// Identity from a successfully validated API key, never credential material.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ValidatedApiKey {
+    pub user_id: String,
+    pub email: Option<String>,
+    pub roles: Vec<String>,
+    pub key_id: String,
+    pub key_name: String,
 }
 
 /// API key for programmatic access.
@@ -1635,6 +1692,68 @@ mod tests {
     }
 
     #[test]
+    fn request_attribution_round_trips_without_credentials() {
+        let logger = AuditLogger::new(":memory:").unwrap();
+        logger.find_or_create_user("user123", None).unwrap();
+        let mut request = Request::new("user123".into(), "/v1/chat/completions".into());
+        request.auth_method = Some("api_key".into());
+        request.api_key_id = Some("key-record-id".into());
+        request.api_key_name = Some("qwen".into());
+        request.user_agent = Some("QwenCode/test".into());
+        request.peer_ip = Some("10.77.0.1".into());
+        request.proxy_request_id = Some("edge-request-uuid".into());
+        request.client_ip = Some("192.0.2.1".into());
+        logger.log_request(&request).unwrap();
+        let (requests, _) = logger.get_requests_paginated(None, None, 1, 10).unwrap();
+        let json = serde_json::to_value(&requests[0]).unwrap();
+        for (field, expected) in [
+            ("auth_method", "api_key"),
+            ("api_key_id", "key-record-id"),
+            ("api_key_name", "qwen"),
+            ("user_agent", "QwenCode/test"),
+            ("peer_ip", "10.77.0.1"),
+            ("proxy_request_id", "edge-request-uuid"),
+            ("client_ip", "192.0.2.1"),
+        ] {
+            assert_eq!(json[field], expected);
+        }
+        assert!(json.get("key_hash").is_none());
+        assert!(json.get("plaintext_key").is_none());
+    }
+
+    #[test]
+    fn legacy_request_attribution_remains_null_after_repeated_migration() {
+        let path =
+            std::env::temp_dir().join(format!("audit-attribution-{}.sqlite", uuid::Uuid::new_v4()));
+        let conn = Connection::open(&path).unwrap();
+        crate::audit::legacy_bootstrap_tests::bootstrap(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO users(id,created_at,last_seen_at) VALUES('u','now','now')",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO requests(id,timestamp,user_id,request_path,request_body) VALUES('old','now','u','/v1/models','{}')", []).unwrap();
+        drop(conn);
+        for _ in 0..2 {
+            let logger = AuditLogger::new(path.to_str().unwrap()).unwrap();
+            let (requests, _) = logger.get_requests_paginated(None, None, 1, 10).unwrap();
+            assert_eq!(requests[0].id, "old");
+            let json = serde_json::to_value(&requests[0]).unwrap();
+            for field in [
+                "auth_method",
+                "api_key_id",
+                "api_key_name",
+                "user_agent",
+                "peer_ip",
+                "proxy_request_id",
+            ] {
+                assert!(json[field].is_null(), "{field}");
+            }
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn source_app_is_persisted_as_attribution() {
         let logger = AuditLogger::new(":memory:").unwrap();
         logger.find_or_create_user("user123", None).unwrap();
@@ -1776,6 +1895,13 @@ mod tests {
             model: Some("llama2".to_string()),
             client_ip: Some("192.168.1.100".to_string()),
             source_app: Some("org.example.personal".to_string()),
+            auth_method: None,
+            api_key_id: None,
+            api_key_name: None,
+            user_agent: None,
+            peer_ip: None,
+            proxy_request_id: None,
+
             status: Some(200),
             latency_ms: Some(150),
             tokens_prompt: Some(10),
@@ -2112,6 +2238,33 @@ mod tests {
         // Validate after revocation - should fail
         let result = logger.validate_api_key(&secret).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn validated_api_key_identity_matches_authenticated_record_without_secret() {
+        let logger = AuditLogger::new(":memory:").unwrap();
+        logger
+            .find_or_create_user("u", Some("u@example.com"))
+            .unwrap();
+        let roles = vec!["model:specific".to_string()];
+        let (key, secret) = logger.create_api_key("u", "Qwen Code", &roles).unwrap();
+        let identity = logger
+            .validate_api_key_with_identity(&secret)
+            .unwrap()
+            .unwrap();
+        assert_eq!(identity.key_id, key.id);
+        assert_eq!(identity.key_name, "Qwen Code");
+        assert_eq!(identity.user_id, "u");
+        assert_eq!(identity.email.as_deref(), Some("u@example.com"));
+        assert_eq!(identity.roles, roles);
+        let serialized = serde_json::to_string(&identity).unwrap();
+        assert!(!serialized.contains(&secret));
+        assert!(!serialized.contains(&key.key_hash));
+        logger.revoke_api_key(&key.id).unwrap();
+        assert!(logger
+            .validate_api_key_with_identity(&secret)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

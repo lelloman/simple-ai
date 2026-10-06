@@ -33,6 +33,9 @@ pub struct Config {
     /// Smart routing configuration.
     #[serde(default)]
     pub routing: RoutingConfig,
+    /// Proxy addresses allowed to supply request-origin metadata.
+    #[serde(default)]
+    pub trusted_proxies: Vec<ipnet::IpNet>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

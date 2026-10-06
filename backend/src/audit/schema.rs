@@ -1,6 +1,38 @@
 //! Shared descriptions of the existing ordinary bootstrap tables.
 //! Driver execution, idempotence and legacy ALTER statements remain local.
 use simple_server::database::sqlite::schema::*;
+/// Add attribution without changing existing request values or storing credentials.
+pub(super) fn migrate_request_attribution(
+    conn: &rusqlite::Connection,
+) -> Result<(), super::sqlite::AuditError> {
+    let map_err = |e: rusqlite::Error| super::sqlite::AuditError::DatabaseError(e.to_string());
+    let mut statement = conn
+        .prepare("PRAGMA table_info(requests)")
+        .map_err(map_err)?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(map_err)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(map_err)?;
+    for column in [
+        "auth_method",
+        "api_key_id",
+        "api_key_name",
+        "user_agent",
+        "peer_ip",
+        "proxy_request_id",
+    ] {
+        if !columns.iter().any(|existing| existing == column) {
+            conn.execute(
+                &format!("ALTER TABLE requests ADD COLUMN {column} TEXT"),
+                [],
+            )
+            .map_err(map_err)?;
+        }
+    }
+    Ok(())
+}
+
 fn id(s: &'static str) -> Result<Identifier<'static>, DefinitionError> {
     Identifier::new(s)
 }
@@ -281,6 +313,7 @@ mod tests {
     fn shared_bootstrap_matches_legacy_metadata_and_defaults() {
         let legacy = Connection::open_in_memory().unwrap();
         crate::audit::legacy_bootstrap_tests::bootstrap(&legacy).unwrap();
+        super::migrate_request_attribution(&legacy).unwrap();
         let path =
             std::env::temp_dir().join(format!("simple-ai-07e-{}.sqlite", uuid::Uuid::new_v4()));
         let logger = AuditLogger::new(path.to_str().unwrap()).unwrap();
@@ -326,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_file_reopens_without_changing_records_or_shape() {
+    fn legacy_file_reopens_without_changing_records_with_nullable_attribution() {
         let path = std::env::temp_dir().join(format!(
             "simple-ai-07e-legacy-{}.sqlite",
             uuid::Uuid::new_v4()
@@ -338,6 +371,7 @@ mod tests {
             [],
         )
         .unwrap();
+        super::migrate_request_attribution(&conn).unwrap();
         let before = metadata(&conn);
         drop(conn);
         let logger = AuditLogger::new(path.to_str().unwrap()).unwrap();

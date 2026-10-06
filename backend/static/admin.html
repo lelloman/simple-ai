@@ -2870,6 +2870,14 @@
                             ${req.client_ip ? `<span class="text-gray-400">from</span> ${escapeHtml(req.client_ip)}` : ''}
                             <span class="text-gray-400">at</span> ${new Date(req.timestamp).toLocaleString()}
                         </p>
+                        <p class="text-xs text-gray-500">
+                            ${req.auth_method ? `Auth: ${escapeHtml(req.auth_method)}` : ''}
+                            ${req.api_key_name ? ` · Key: ${escapeHtml(req.api_key_name)}` : ''}
+                            ${req.api_key_id ? ` (${escapeHtml(req.api_key_id)})` : ''}
+                            ${req.proxy_request_id ? ` · Proxy request: ${escapeHtml(req.proxy_request_id)}` : ''}
+                            ${req.peer_ip ? ` · Peer: ${escapeHtml(req.peer_ip)}` : ''}
+                            ${req.user_agent ? ` · Client: ${escapeHtml(req.user_agent)}` : ''}
+                        </p>
                         <p class="text-xs text-gray-400">
                             ${req.model ? `Model: ${escapeHtml(req.model)}` : ''}
                             ${req.runner_id ? ` <span class="text-gray-400">on</span> ${escapeHtml(req.runner_id)}` : ''}

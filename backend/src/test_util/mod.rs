@@ -50,6 +50,7 @@ pub fn test_config() -> Config {
         wol: WolConfig::default(),
         models: ModelsConfig::default(),
         routing: RoutingConfig::default(),
+        trusted_proxies: vec![],
     }
 }
 
