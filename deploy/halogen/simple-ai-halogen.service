@@ -1,0 +1,31 @@
+[Unit]
+Description=Simple AI Halogen - Qwen3.8 Flash Next Uncensored
+After=network-online.target
+
+[Service]
+Type=exec
+# Started/stopped by the runner's GPU resource lease. Do not enable at boot.
+# The image's supervisor returns 1 even after a requested clean stop.
+# Always recover unexpected exits; an explicit systemctl stop never restarts.
+SuccessExitStatus=1
+Restart=always
+RestartSec=5
+TimeoutStartSec=300
+TimeoutStopSec=55
+# 46.56612873 GiB is 50 GB (decimal). Prune incompatible caches at startup
+# so old engine/configuration namespaces do not accumulate outside that budget.
+ExecStart=/usr/bin/podman run --rm --replace --pull=never --name simple-ai-halogen \
+  -p 127.0.0.1:8731:8731 --device /dev/kfd --device /dev/dri \
+  --group-add keep-groups --ipc=host --ulimit memlock=-1:-1 --security-opt label=disable \
+  -v %h/halogen-benchmark/models:/models:ro \
+  -v %h/.cache/simple-ai/halogen:/cache:rw \
+  -e HALOGEN_CHECKPOINT=/models/Qwen3.8-Flash-Next-Uncensored.IQ4_XS.gguf \
+  -e HALOGEN_TOKENIZER=/models/tokenizer \
+  -e HALOGEN_MTP_HEAD=/models/qwen38-flash-next-mtp.hgn \
+  -e HALOGEN_KV_SLOTS=4 -e HALOGEN_CTX=262144 \
+  -e HALOGEN_KV_POOL_POSITIONS=262144 -e HALOGEN_MAX_TOK=16384 \
+  -e HALOGEN_PROMPT_CACHE=2 \
+  -e HALOGEN_CACHE_DIR=/cache -e HALOGEN_CACHE_DISK_GIB=46.56612873 \
+  -e HALOGEN_CACHE_PRUNE_OLD=1 \
+  localhost/simple-ai-halogen:kv-admission-v1
+ExecStop=/usr/bin/podman stop --time 45 simple-ai-halogen

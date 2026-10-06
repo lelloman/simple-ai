@@ -115,6 +115,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Register enabled engines
+    if let Some(halogen) = config.engines.halogen.as_ref().filter(|c| c.enabled) {
+        registry.register(Arc::new(engine::HalogenEngine::new(halogen.clone())?)).await;
+        tracing::info!("Registered Halogen engine at {} ({} slots)", halogen.base_url, halogen.batch_size);
+    }
     if let Some(ref ollama_config) = config.engines.ollama {
         if ollama_config.enabled {
             let engine = Arc::new(OllamaEngine::with_batch_size(

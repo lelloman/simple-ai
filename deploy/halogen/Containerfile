@@ -1,0 +1,6 @@
+FROM ghcr.io/peonist-ai/halogen-flash-server@sha256:0c61bf84ac22308a53f5d1ca6b86806702d7039e5ebc51cae4c66621b92fe04a
+COPY kv_admission.py patch_api.py /halogen/tools/
+RUN python3 /halogen/tools/patch_api.py /halogen/tools/serve_api.py
+COPY test_kv_admission.py check_api_integration.py /halogen/checks/
+RUN PYTHONPATH=/halogen/tools python3 -m unittest discover -s /halogen/checks -p 'test_*.py' -v \
+    && python3 /halogen/checks/check_api_integration.py -v

@@ -260,6 +260,9 @@ deploy_host() {
         if rg -q '^\[engines.decisions\]' "$config_path"; then
             echo "[DRY-RUN] Would upload JEV compose/provider files and verify prepared offline artifacts"
         fi
+        if rg -q '^\[engines.halogen\]' "$config_path"; then
+            echo "[DRY-RUN] Would install the on-demand Halogen user service (weights/image must be staged)"
+        fi
         echo "[DRY-RUN] Would upload config from $config_path to $ssh_target:$deploy_dir/config.toml"
         echo "[DRY-RUN] Would install systemd service with deploy_dir=$deploy_dir"
         echo "[DRY-RUN] Would start and verify service"
@@ -329,6 +332,15 @@ deploy_host() {
     fi
 
     # Upload config
+    if rg -q '^\[engines.halogen\]' "$config_path"; then
+        ssh "$ssh_target" "mkdir -p ~/.config/systemd/user"
+        ssh "$ssh_target" "install -d -m 700 ~/.cache/simple-ai/halogen"
+        ssh "$ssh_target" "mkdir -p '$deploy_dir/halogen-admission'"
+        scp -q "$PROJECT_DIR/deploy/halogen/Containerfile" "$PROJECT_DIR/deploy/halogen/kv_admission.py" "$PROJECT_DIR/deploy/halogen/patch_api.py" "$PROJECT_DIR/deploy/halogen/test_kv_admission.py" "$PROJECT_DIR/deploy/halogen/check_api_integration.py" "$ssh_target:$deploy_dir/halogen-admission/"
+        ssh "$ssh_target" "cd '$deploy_dir/halogen-admission' && python3 -m unittest -v test_kv_admission && podman build --pull=never -t localhost/simple-ai-halogen:kv-admission-v1 ."
+        scp -q "$PROJECT_DIR/deploy/halogen/simple-ai-halogen.service" "$ssh_target:~/.config/systemd/user/simple-ai-halogen.service"
+    fi
+
     echo "  Uploading config..."
     scp -q "$config_path" "$ssh_target:$deploy_dir/config.toml"
 

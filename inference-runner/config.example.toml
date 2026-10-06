@@ -335,3 +335,29 @@ base_url = "http://127.0.0.1:18040"
 startup_timeout_secs = 600
 request_timeout_secs = 180
 shutdown_timeout_secs = 60
+
+# Optional dedicated Halogen checkpoint (systemd user unit; loopback-only API).
+# Install deploy/halogen/simple-ai-halogen.service and stage its weights first.
+# [engines.halogen]
+# enabled = true
+# base_url = "http://127.0.0.1:8731"
+# service = "simple-ai-halogen.service"
+# model_id = "qwen3.8-flash-next-uncensored-iq4xs"
+# served_model = "halogen-qwen3.8-flash-next"
+# context_length = 262144
+# quantization = "IQ4_XS"
+# batch_size = 4
+# startup_timeout_secs = 180
+# shutdown_timeout_secs = 90
+#
+# Merge these into existing tables rather than defining a second table:
+# [engine_resources]
+# halogen = "gpu:0"
+# llama_cpp = "gpu:0"
+# decisions = "gpu:0"
+# [aliases.mappings]
+# "code:smart" = "qwen3.8-flash-next-uncensored-iq4xs"
+# "qwen3.8-flash-next" = "qwen3.8-flash-next-uncensored-iq4xs"
+# [model_routes."qwen3.8-flash-next-uncensored-iq4xs"]
+# engine = "halogen"
+# engine_model = "qwen3.8-flash-next-uncensored-iq4xs"

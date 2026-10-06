@@ -180,7 +180,7 @@ impl StatusCollector {
         if capabilities.is_empty() {
             // Report all loaded models as capable of large_chat by default
             for engine in engines.iter().filter(|engine| {
-                matches!(engine.engine_type.as_str(), "ollama" | "llama_cpp" | "vllm")
+                matches!(engine.engine_type.as_str(), "ollama" | "llama_cpp" | "vllm" | "halogen")
             }) {
                 for model in &engine.loaded_models {
                     capabilities.push(CapabilityInfo {
@@ -397,6 +397,19 @@ mod tests {
         mappings.insert("qwen2.5:72b".to_string(), vec![Capability::LargeChat]);
         config.capabilities.mappings = mappings;
         config
+    }
+
+    #[tokio::test]
+    async fn halogen_only_runner_advertises_loaded_chat_capability() {
+        let collector = StatusCollector::new(test_config(), Arc::new(EngineRegistry::new()), false);
+        let engines = vec![EngineStatus {
+            engine_type: "halogen".into(), resource_group: Some("gpu:0".into()),
+            is_healthy: true, version: None, loaded_models: vec!["uncensored".into()],
+            available_models: vec![], error: None, batch_size: 4, prompt_cache: None,
+        }];
+        let capabilities = collector.collect_capabilities(&engines).await;
+        assert!(capabilities.iter().any(|c| c.model_id == "uncensored"
+            && c.capability == Capability::LargeChat && c.status == CapabilityStatus::Loaded));
     }
 
     #[tokio::test]

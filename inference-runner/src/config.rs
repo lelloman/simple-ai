@@ -92,6 +92,8 @@ pub struct GatewayConfig {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[allow(dead_code)]
 pub struct EnginesConfig {
+    /// Dedicated, on-demand Halogen service for one configured checkpoint.
+    pub halogen: Option<HalogenEngineConfig>,
     pub ollama: Option<OllamaEngineConfig>,
     /// llama.cpp engine configuration (Phase 3)
     pub llama_cpp: Option<LlamaCppEngineConfig>,
@@ -108,6 +110,28 @@ pub struct EnginesConfig {
     #[serde(default)]
     pub decisions: DecisionEngineConfig,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HalogenEngineConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    pub base_url: String,
+    /// systemd user unit managed by the runner, never enabled at boot independently.
+    pub service: String,
+    pub model_id: String,
+    pub served_model: String,
+    pub context_length: u32,
+    pub quantization: String,
+    #[serde(default = "default_halogen_slots")]
+    pub batch_size: u32,
+    #[serde(default = "default_startup_timeout")]
+    pub startup_timeout_secs: u64,
+    #[serde(default = "default_vllm_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
+}
+
+fn default_halogen_slots() -> u32 { 4 }
 
 /// Process-backed Hugging Face NLI classification engine configuration.
 #[derive(Debug, Clone, Deserialize)]

@@ -14,6 +14,8 @@ mod ollama;
 mod registry;
 mod tts;
 mod vllm;
+mod halogen;
+pub use halogen::HalogenEngine;
 
 pub use audio_embeddings::AudioEmbeddingEngine;
 pub use classification::ClassificationEngine;
