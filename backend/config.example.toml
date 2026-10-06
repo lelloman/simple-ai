@@ -68,14 +68,7 @@ semantic_decisions = ["autotrust/JEV-9B"]
 # Users without it can only request classes, plus configured audio embedding and TTS models.
 # Models not in either list are not available for class-based requests.
 big = [
-    "llama3:70b",
-    "qwen2:72b",
-    "deepseek:67b",
-    # Candidate local coding models for 24GB-class GPUs. Configure matching
-    # runner aliases in inference-runner/config.toml if GGUF names differ.
-    # "qwen3.8-27b",
-    # "qwen3.6-27b",
-    # "glm-4.5v", # Vision-capable GLM-4.5V Q4_K_M on the Halo runners
+    "code:smart", # The runner resolves its dedicated smart-model route.
 ]
 fast = [
     "llama3:8b",
@@ -125,7 +118,7 @@ speculative_wake_enabled = false
 decision_ready_race = true
 # When listed here, a class resolves to the first configured model even when
 # its preferred runner must be woken instead of using a lower-priority online model.
-wake_preferred_classes = [] # e.g. ["big"]
+wake_preferred_classes = ["big"] # class:big uses the same selector as code:smart.
 
 # Machine type preferences by model class.
 # First machine type in the list is most preferred.
