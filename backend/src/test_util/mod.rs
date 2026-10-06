@@ -54,7 +54,10 @@ pub fn test_config() -> Config {
 }
 
 pub async fn create_test_state() -> AppState {
-    let config = test_config();
+    create_test_state_with_config(test_config()).await
+}
+
+pub async fn create_test_state_with_config(config: Config) -> AppState {
     let jwks_client = JwksClient::new(&config.oidc).await.unwrap();
     let ollama_client = OllamaClient::new(&config.ollama.base_url, &config.ollama.model);
     let audit_logger = Arc::new(AuditLogger::new(&config.database.url).unwrap());

@@ -1518,7 +1518,6 @@ impl InferenceRouter {
         let response = self
             .streaming_http_client
             .post(&url)
-            .timeout(std::time::Duration::from_secs(if path == "/v1/decisions" { 960 } else { 300 }))
             .json(&request)
             .send()
             .await
@@ -2279,6 +2278,64 @@ mod tests {
         assert_eq!(rebound.affinity_decision, AffinityDecision::RebindInvalid);
         assert_ne!(rebound.runner.id, affine_runner);
         drop(router.reserve_plan(rebound).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn streaming_proxy_survives_five_minutes_and_cancels_on_drop() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 4096];
+            socket.read(&mut request).await.unwrap();
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n3\r\none\r\n").await.unwrap();
+            released.await.unwrap();
+            socket.write_all(b"3\r\ntwo\r\n").await.unwrap();
+            // An unfinished upstream body must be cancelled when downstream drops it.
+            loop {
+                match socket.read(&mut request).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => continue,
+                }
+            }
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _) = mpsc::channel(4);
+        registry
+            .register(
+                "stream-runner".into(),
+                "Stream runner".into(),
+                None,
+                create_test_status(vec!["model-a".into()]),
+                Some(format!("http://{address}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = create_test_router(registry.clone());
+        let runner = registry.get("stream-runner").await.unwrap();
+        let mut response = router
+            .proxy_request_raw_value(
+                &runner,
+                "/v1/chat/completions",
+                serde_json::json!({"stream": true}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.chunk().await.unwrap().unwrap(), "one");
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_secs(301)).await;
+        tokio::time::resume();
+        release.send(()).unwrap();
+        assert_eq!(response.chunk().await.unwrap().unwrap(), "two");
+        drop(response);
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     #[tokio::test]

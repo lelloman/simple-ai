@@ -252,6 +252,14 @@ For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-
 
 ### Load-driven runner wake-up
 
+Streaming chat proxy requests have a 30-second connection timeout and no total
+generation deadline; long streams can exceed five minutes. Non-streaming chat
+requests retain a 300-second total timeout. Clients may impose their own limits.
+For streams whose HTTP headers have already been sent, audit status 502 records
+an upstream transport failure, 504 an upstream timeout, and 499 a downstream
+body closed before completion. The caller sees a broken stream for transport
+failures; the audit status cannot replace the HTTP headers already sent.
+
 With `gateway.auto_wake_enabled = true`, the scheduler monitors active work for
 each requested model, including aliases such as `code:smart` and streaming
 requests. When all runners serving that model are at their advertised batch

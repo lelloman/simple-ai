@@ -58,10 +58,28 @@ impl Drop for GatewayStreamState {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum StreamOutcome {
     Completed,
     Interrupted,
+    UpstreamFailed { timeout: bool, message: String },
+}
+
+impl StreamOutcome {
+    fn audit_details(&self) -> (u16, String, &'static str, &'static str) {
+        match self {
+            Self::Completed => (200, "[stream]".into(), "request_completed", "completed"),
+            Self::Interrupted => (
+                499, "[downstream stream closed before completion]".into(),
+                "request_cancelled", "cancelled",
+            ),
+            Self::UpstreamFailed { timeout, message } => (
+                if *timeout { 504 } else { 502 },
+                format!("[upstream stream {}] {message}", if *timeout { "timeout" } else { "error" }),
+                "request_failed", "failed",
+            ),
+        }
+    }
 }
 
 fn filter_gateway_stream(routed: RoutedStream, log_context: StreamLogContext) -> Body {
@@ -80,12 +98,27 @@ fn filter_gateway_stream(routed: RoutedStream, log_context: StreamLogContext) ->
                 return Ok::<_, std::io::Error>(Some((item, state)));
             }
 
-            let Some(chunk) = state
-                .response
-                .chunk()
-                .await
-                .map_err(|e| std::io::Error::other(e.to_string()))?
-            else {
+            let chunk = match state.response.chunk().await {
+                Ok(chunk) => chunk,
+                Err(error) => {
+                    // Headers are already sent, so this is an audit status;
+                    // terminate the HTTP body with an error for the caller.
+                    // Take the context before awaiting so Drop cannot relabel
+                    // an upstream failure as a downstream cancellation.
+                    if let Some(log_context) = state.log_context.take() {
+                        finalize_stream_response(
+                            log_context,
+                            state.metrics.clone(),
+                            StreamOutcome::UpstreamFailed {
+                                timeout: error.is_timeout(),
+                                message: error.to_string(),
+                            },
+                        ).await;
+                    }
+                    return Err(std::io::Error::other(error.to_string()));
+                }
+            };
+            let Some(chunk) = chunk else {
                 if !state.buffer.is_empty() {
                     let trailing = Bytes::from(std::mem::take(&mut state.buffer));
                     return Ok(Some((trailing, state)));
@@ -158,15 +191,7 @@ async fn finalize_stream_response(
     metrics: Option<InferenceMetrics>,
     outcome: StreamOutcome,
 ) {
-    let (status, response_body, event_name, event_description) = match outcome {
-        StreamOutcome::Completed => (200, "[stream]", "request_completed", "completed"),
-        StreamOutcome::Interrupted => (
-            499,
-            "[stream interrupted]",
-            "request_cancelled",
-            "interrupted",
-        ),
-    };
+    let (status, response_body, event_name, event_description) = outcome.audit_details();
     let mut resp_log = AuditResponse::new(log_context.request_id, status);
     resp_log.response_body = response_body.to_string();
     resp_log.latency_ms = log_context.start.elapsed().as_millis() as u64;
@@ -659,6 +684,79 @@ mod tests {
     use crate::models::chat::{ChatCompletionRequest, ChatMessage};
     use bytes::Bytes;
     use std::collections::VecDeque;
+
+    #[tokio::test]
+    async fn gateway_stream_audit_distinguishes_timeout_upstream_error_and_downstream_drop() {
+        use super::*;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use std::time::Duration;
+
+        for (expected_status, client_timeout, drop_body) in [
+            (502, None, false),
+            (504, Some(Duration::from_millis(100)), false),
+            (499, None, true),
+        ] {
+            let oidc = wiremock::MockServer::start().await;
+            wiremock::Mock::given(wiremock::matchers::path("/.well-known/openid-configuration"))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"jwks_uri":format!("{}/jwks", oidc.uri())})))
+                .mount(&oidc).await;
+            wiremock::Mock::given(wiremock::matchers::path("/jwks"))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                    serde_json::from_str::<serde_json::Value>(include_str!("../../tests/fixtures/test-oidc-jwks.json")).unwrap()))
+                .mount(&oidc).await;
+            let mut config = crate::test_util::test_config();
+            config.oidc.issuer = oidc.uri();
+            let state = Arc::new(crate::test_util::create_test_state_with_config(config).await);
+            let mut events = state.request_events.subscribe();
+            let (tx, _rx) = tokio::sync::mpsc::channel(1);
+            let status = serde_json::from_value(serde_json::json!({
+                "health":"healthy", "capabilities":[], "engines":[]
+            })).unwrap();
+            state.runner_registry.register("test".into(), "test".into(), None,
+                status, None, tx, None).await;
+            let runner = state.runner_registry.get("test").await.unwrap();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let (release, released) = tokio::sync::oneshot::channel::<()>();
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0; 2048];
+                socket.read(&mut request).await.unwrap();
+                socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 999\r\n\r\ndata: {}\n\n").await.unwrap();
+                let _ = released.await;
+                // Truncate the declared body to simulate an upstream failure.
+            });
+            let mut builder = reqwest::Client::builder();
+            if let Some(timeout) = client_timeout { builder = builder.timeout(timeout); }
+            let response = builder.build().unwrap().get(format!("http://{address}"))
+                .send().await.unwrap();
+            let req_log = Request::new("test-user".into(), "/v1/chat/completions".into());
+            let context = StreamLogContext {
+                state: state.clone(), request_id: req_log.id.clone(), req_log,
+                user_email: None, start: Instant::now(), runner_id: Some("test".into()),
+                wol_sent: false, model_class: None,
+            };
+            let body = filter_gateway_stream(RoutedStream {
+                response, runner_id: "test".into(), resolved_model: "model".into(),
+                reservation: state.runner_registry.reserve(&runner),
+            }, context);
+            let mut release = Some(release);
+            if drop_body {
+                drop(body);
+            } else {
+                if client_timeout.is_none() { release.take().unwrap().send(()).unwrap(); }
+                assert!(simple_server::web::body::to_bytes(body, usize::MAX).await.is_err());
+            }
+            let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await.unwrap().unwrap();
+            assert_eq!(event.status, Some(expected_status));
+            assert!(events.try_recv().is_err(), "must finalize the audit exactly once");
+            assert_eq!(state.runner_registry.get_active_requests("test").await, 0);
+            drop(release);
+            server.await.unwrap();
+        }
+    }
 
     fn create_test_request() -> ChatCompletionRequest {
         ChatCompletionRequest {
