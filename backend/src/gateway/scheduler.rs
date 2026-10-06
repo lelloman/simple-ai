@@ -48,6 +48,9 @@ pub struct RequestScheduler {
         >,
     >,
     speculative_preparations: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    capacity_monitors: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    capacity_wake_attempts:
+        Arc<tokio::sync::Mutex<std::collections::HashMap<String, tokio::time::Instant>>>,
     inference_router: Arc<InferenceRouter>,
     runner_registry: Arc<RunnerRegistry>,
     wake_service: Arc<WakeService>,
@@ -68,6 +71,8 @@ impl RequestScheduler {
         Self {
             decision_races: Default::default(),
             speculative_preparations: Default::default(),
+            capacity_monitors: Default::default(),
+            capacity_wake_attempts: Default::default(),
             inference_router,
             runner_registry,
             wake_service,
@@ -555,6 +560,144 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         affinity: Option<AffinityContext>,
     ) -> Result<PreparedRequest, SchedulerError> {
+        let prepared = self
+            .prepare_for_request_inner(request_id, model, model_request, affinity)
+            .await?;
+        self.monitor_capacity(request_id, &prepared.plan.resolved_model)
+            .await;
+        Ok(prepared)
+    }
+
+    /// Watch active work, including streams and requests already dispatched to
+    /// an engine's queue. Waiting only on the gateway batch queue misses these.
+    async fn monitor_capacity(&self, request_id: &str, model: &str) {
+        if !self.wake_service.is_enabled()
+            || !self
+                .capacity_monitors
+                .lock()
+                .await
+                .insert(model.to_string())
+        {
+            return;
+        }
+        let scheduler = self.clone();
+        let model = model.to_string();
+        let request_id = request_id.to_string();
+        tokio::spawn(async move {
+            scheduler.expand_capacity(&request_id, &model).await;
+            scheduler.capacity_monitors.lock().await.remove(&model);
+        });
+    }
+
+    async fn expand_capacity(&self, request_id: &str, model: &str) {
+        let mut saturated_samples = 0;
+        loop {
+            // Three consecutive samples avoid waking machines for short bursts.
+            // The initial delay also lets the triggering request reserve capacity.
+            sleep(Duration::from_secs(1)).await;
+            let runners = self.runner_registry.with_model(model).await;
+            let active: Vec<_> = runners
+                .iter()
+                .map(|runner| {
+                    runner
+                        .active_requests
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                })
+                .collect();
+            if active.iter().all(|count| *count == 0) {
+                return;
+            }
+            let saturated = runners.iter().zip(&active).all(|(runner, count)| {
+                *count >= runner.batch_size_for_model(model).max(1) as usize
+            });
+            saturated_samples = if saturated { saturated_samples + 1 } else { 0 };
+            if saturated_samples < 3 {
+                continue;
+            }
+            let request = ModelRequest::Specific(model.to_string());
+            let target = match self.wake_service.find_best_runner_to_wake(&request).await {
+                Ok(Some(target)) => target,
+                Ok(None) => return,
+                Err(error) => {
+                    tracing::warn!(%model, %error, "Could not plan capacity wake");
+                    return;
+                }
+            };
+            // Share target coalescing with speculative preparation, and retain a
+            // cooldown across monitor lifetimes if a machine fails to come up.
+            let mut preparations = self.speculative_preparations.lock().await;
+            let mut attempts = self.capacity_wake_attempts.lock().await;
+            if preparations.contains(&target.id)
+                || attempts
+                    .get(&target.id)
+                    .is_some_and(|last| last.elapsed() < Duration::from_secs(60))
+            {
+                continue;
+            }
+            preparations.insert(target.id.clone());
+            attempts.insert(target.id.clone(), tokio::time::Instant::now());
+            drop(attempts);
+            drop(preparations);
+            self.router_telemetry
+                .emit(
+                    "capacity_wake_started",
+                    format!(
+                        "Waking {} after sustained saturation for {}",
+                        target.id, model
+                    ),
+                    Some(request_id.to_string()),
+                    Some(target.id.clone()),
+                    Some(model.to_string()),
+                )
+                .await;
+            let result = self
+                .prepare_speculative_target(request_id, model, &target)
+                .await;
+            let (event, message) = match result {
+                Ok(()) => (
+                    "capacity_wake_ready",
+                    format!("Runner {} ready for {}", target.id, model),
+                ),
+                Err(error) => {
+                    tracing::warn!(runner_id = %target.id, %model, %error, "Capacity preparation failed");
+                    (
+                        "capacity_wake_failed",
+                        format!(
+                            "Runner {} failed to prepare {}: {}",
+                            target.id, model, error
+                        ),
+                    )
+                }
+            };
+            self.router_telemetry
+                .emit(
+                    event,
+                    message,
+                    Some(request_id.to_string()),
+                    Some(target.id.clone()),
+                    Some(model.to_string()),
+                )
+                .await;
+            self.capacity_wake_attempts
+                .lock()
+                .await
+                .insert(target.id.clone(), tokio::time::Instant::now());
+            self.speculative_preparations
+                .lock()
+                .await
+                .remove(&target.id);
+            // Add one machine at a time and reassess after it is ready.
+            saturated_samples = 0;
+        }
+    }
+
+    async fn prepare_for_request_inner(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        affinity: Option<AffinityContext>,
+    ) -> Result<PreparedRequest, SchedulerError> {
         self.router_telemetry
             .emit(
                 "request_received",
@@ -1013,6 +1156,185 @@ mod decision_race_tests {
             }
         });
         count
+    }
+
+    #[tokio::test]
+    async fn capacity_wake_coalesces_alias_requests_and_loads_one_extra_runner() {
+        let (mut s, audit) = setup();
+        let socket = capacity_wake_setup(&mut s, &audit).await;
+        runner(&s, &audit, "halo2", "halo", true, Duration::ZERO, false).await;
+        let mut alias_status = status(true);
+        alias_status
+            .model_aliases
+            .insert("code:smart".into(), DECISION_MODEL.into());
+        s.runner_registry
+            .update_status("halo2", alias_status.clone())
+            .await;
+        s.runner_registry
+            .get("halo2")
+            .await
+            .unwrap()
+            .active_requests
+            .store(2, Ordering::SeqCst);
+        audit
+            .upsert_runner(
+                "halo1",
+                "halo1",
+                Some("00:11:22:33:44:55"),
+                Some("halo"),
+                Some(&["code:smart".into()]),
+            )
+            .unwrap();
+        for _ in 0..4 {
+            let prepared = timeout(
+                Duration::from_millis(200),
+                s.prepare_for_request(
+                    "busy",
+                    "code:smart",
+                    &ModelRequest::parse("code:smart"),
+                    None,
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(prepared.plan.runner.id, "halo2");
+        }
+        let mut packet = [0; 1024];
+        timeout(Duration::from_secs(5), socket.recv(&mut packet))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.capacity_monitors.lock().await.len(), 1);
+        assert!(
+            timeout(Duration::from_millis(100), socket.recv(&mut packet))
+                .await
+                .is_err()
+        );
+        // Connect unloaded and acknowledge the exact alias requested by the scaler.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let mut unloaded = alias_status.clone();
+        unloaded.engines[0].loaded_models.clear();
+        s.runner_registry
+            .register(
+                "halo1".into(),
+                "halo1".into(),
+                Some("halo".into()),
+                unloaded,
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let command = timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(command, GatewayMessage::LoadModel { model_id, .. } if model_id == "code:smart")
+        );
+        s.runner_registry.update_status("halo1", alias_status).await;
+        timeout(Duration::from_secs(1), async {
+            while !s.speculative_preparations.lock().await.is_empty() {
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        s.runner_registry
+            .get("halo2")
+            .await
+            .unwrap()
+            .active_requests
+            .store(0, Ordering::SeqCst);
+        timeout(Duration::from_secs(2), async {
+            while !s.capacity_monitors.lock().await.is_empty() {
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn capacity_wake_setup(
+        s: &mut RequestScheduler,
+        audit: &Arc<AuditLogger>,
+    ) -> tokio::net::UdpSocket {
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        s.wake_service = Arc::new(WakeService::new(
+            s.runner_registry.clone(),
+            audit.clone(),
+            GatewayConfig {
+                auto_wake_enabled: true,
+                wake_timeout_secs: 1,
+                ..Default::default()
+            },
+            WolConfig {
+                broadcast_address: "127.0.0.1".into(),
+                port: socket.local_addr().unwrap().port(),
+                ..Default::default()
+            },
+            ModelsConfig::default(),
+            s.routing_config.clone(),
+        ));
+        audit
+            .upsert_runner(
+                "offline",
+                "offline",
+                Some("00:11:22:33:44:66"),
+                Some("halo"),
+                Some(&[DECISION_MODEL.into()]),
+            )
+            .unwrap();
+        socket
+    }
+
+    #[tokio::test]
+    async fn capacity_wake_ignores_spare_capacity_and_short_bursts() {
+        let (mut s, audit) = setup();
+        let socket = capacity_wake_setup(&mut s, &audit).await;
+        runner(&s, &audit, "busy", "halo", true, Duration::ZERO, false).await;
+        runner(&s, &audit, "spare", "halo", true, Duration::ZERO, false).await;
+        let busy = s.runner_registry.get("busy").await.unwrap();
+        busy.active_requests.store(2, Ordering::SeqCst);
+        s.monitor_capacity("spare", DECISION_MODEL).await;
+        let mut packet = [0; 1024];
+        assert!(timeout(Duration::from_secs(4), socket.recv(&mut packet))
+            .await
+            .is_err());
+        // A short saturation burst must not cause a delayed wake after it ends.
+        let spare = s.runner_registry.get("spare").await.unwrap();
+        spare.active_requests.store(1, Ordering::SeqCst);
+        sleep(Duration::from_millis(1200)).await;
+        busy.active_requests.store(0, Ordering::SeqCst);
+        spare.active_requests.store(0, Ordering::SeqCst);
+        assert!(timeout(Duration::from_secs(2), socket.recv(&mut packet))
+            .await
+            .is_err());
+        assert!(s.capacity_monitors.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn capacity_wake_respects_disabled_auto_wake_and_failure_cooldown() {
+        let (mut s, audit) = setup();
+        runner(&s, &audit, "busy", "halo", true, Duration::ZERO, false).await;
+        let busy = s.runner_registry.get("busy").await.unwrap();
+        busy.active_requests.store(2, Ordering::SeqCst);
+        s.monitor_capacity("disabled", DECISION_MODEL).await;
+        assert!(s.capacity_monitors.lock().await.is_empty());
+        let socket = capacity_wake_setup(&mut s, &audit).await;
+        s.monitor_capacity("failed", DECISION_MODEL).await;
+        let mut packet = [0; 1024];
+        timeout(Duration::from_secs(5), socket.recv(&mut packet))
+            .await
+            .unwrap()
+            .unwrap();
+        // The target never connects. Sustained load must not send another WOL.
+        assert!(timeout(Duration::from_secs(5), socket.recv(&mut packet))
+            .await
+            .is_err());
+        assert!(s.speculative_preparations.lock().await.is_empty());
+        busy.active_requests.store(0, Ordering::SeqCst);
     }
 
     #[tokio::test]

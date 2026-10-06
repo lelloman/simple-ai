@@ -250,6 +250,22 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-eval.md](docs/qwen36-local-eval.md).
 
+### Load-driven runner wake-up
+
+With `gateway.auto_wake_enabled = true`, the scheduler monitors active work for
+each requested model, including aliases such as `code:smart` and streaming
+requests. When all runners serving that model are at their advertised batch
+capacity for three consecutive one-second checks, it wakes one compatible
+offline runner and loads the model in the background. Existing requests continue
+without waiting for the extra machine. It reassesses demand after preparation
+before waking another runner.
+
+Concurrent requests share preparation for the same target. A failed preparation
+has a 60-second retry cooldown. Short bursts and spare serving capacity do not
+trigger a wake. Router telemetry reports `capacity_wake_started`,
+`capacity_wake_ready`, and `capacity_wake_failed`. Capacity uses the gateway's
+runner-wide active request count and the serving model's batch capacity.
+
 ### Multilingual information extraction
 
 `POST /v1/extractions` provides GLiNER2.5 entities, classification, relations, and records via `class:information_extraction`. See [API and runner setup](docs/information-extraction.md) and [CPU/CUDA measurements](docs/evals/gliner25/README.md).
