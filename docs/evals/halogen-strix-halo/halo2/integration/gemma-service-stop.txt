@@ -1,0 +1,1 @@
+{"id":"chatcmpl-449ed580-3833-42e9-9708-d27248294605","object":"chat.completion","created":1791295303,"model":"gemma-3-4b-it-Q4_K_M","choices":[{"index":0,"message":{"role":"assistant","content":"4\n","tool_calls":null,"tool_call_id":null},"finish_reason":"stop"}],"usage":{"prompt_tokens":22,"completion_tokens":3,"total_tokens":25}}

@@ -1,0 +1,2179 @@
+{
+  "name": "concurrent-0",
+  "request_sha256": "7b9110f8c65e61e46beb7da7bf5a27d624e2833a1c2b1a6abbc8bb8553bbc155",
+  "request": {
+    "model": "halogen-qwen3.8-flash-next",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Benchmark case halo-comparison-v1-concurrent-0. Review this synthetic Python module.\ndef item_0(value):\n    return (value + 0) % 251\ndef item_1(value):\n    return (value + 1) % 251\ndef item_2(value):\n    return (value + 2) % 251\ndef item_3(value):\n    return (value + 3) % 251\ndef item_4(value):\n    return (value + 4) % 251\ndef item_5(value):\n    return (value + 5) % 251\ndef item_6(value):\n    return (value + 6) % 251\ndef item_7(value):\n    return (value + 7) % 251\ndef item_8(value):\n    return (value + 8) % 251\ndef item_9(value):\n    return (value + 9) % 251\ndef item_10(value):\n    return (value + 10) % 251\ndef item_11(value):\n    return (value + 11) % 251\ndef item_12(value):\n    return (value + 12) % 251\ndef item_13(value):\n    return (value + 13) % 251\ndef item_14(value):\n    return (value + 14) % 251\ndef item_15(value):\n    return (value + 15) % 251\ndef item_16(value):\n    return (value + 16) % 251\ndef item_17(value):\n    return (value + 17) % 251\ndef item_18(value):\n    return (value + 18) % 251\ndef item_19(value):\n    return (value + 19) % 251\ndef item_20(value):\n    return (value + 20) % 251\ndef item_21(value):\n    return (value + 21) % 251\ndef item_22(value):\n    return (value + 22) % 251\ndef item_23(value):\n    return (value + 23) % 251\ndef item_24(value):\n    return (value + 24) % 251\ndef item_25(value):\n    return (value + 25) % 251\ndef item_26(value):\n    return (value + 26) % 251\ndef item_27(value):\n    return (value + 27) % 251\ndef item_28(value):\n    return (value + 28) % 251\ndef item_29(value):\n    return (value + 29) % 251\ndef item_30(value):\n    return (value + 30) % 251\ndef item_31(value):\n    return (value + 31) % 251\ndef item_32(value):\n    return (value + 32) % 251\ndef item_33(value):\n    return (value + 33) % 251\ndef item_34(value):\n    return (value + 34) % 251\ndef item_35(value):\n    return (value + 35) % 251\ndef item_36(value):\n    return (value + 36) % 251\ndef item_37(value):\n    return (value + 37) % 251\ndef item_38(value):\n    return (value + 38) % 251\ndef item_39(value):\n    return (value + 39) % 251\ndef item_40(value):\n    return (value + 40) % 251\ndef item_41(value):\n    return (value + 41) % 251\ndef item_42(value):\n    return (value + 42) % 251\ndef item_43(value):\n    return (value + 43) % 251\ndef item_44(value):\n    return (value + 44) % 251\ndef item_45(value):\n    return (value + 45) % 251\ndef item_46(value):\n    return (value + 46) % 251\ndef item_47(value):\n    return (value + 47) % 251\ndef item_48(value):\n    return (value + 48) % 251\ndef item_49(value):\n    return (value + 49) % 251\ndef item_50(value):\n    return (value + 50) % 251\ndef item_51(value):\n    return (value + 51) % 251\ndef item_52(value):\n    return (value + 52) % 251\ndef item_53(value):\n    return (value + 53) % 251\ndef item_54(value):\n    return (value + 54) % 251\ndef item_55(value):\n    return (value + 55) % 251\ndef item_56(value):\n    return (value + 56) % 251\ndef item_57(value):\n    return (value + 57) % 251\ndef item_58(value):\n    return (value + 58) % 251\ndef item_59(value):\n    return (value + 59) % 251\ndef item_60(value):\n    return (value + 60) % 251\ndef item_61(value):\n    return (value + 61) % 251\ndef item_62(value):\n    return (value + 62) % 251\ndef item_63(value):\n    return (value + 63) % 251\ndef item_64(value):\n    return (value + 64) % 251\ndef item_65(value):\n    return (value + 65) % 251\ndef item_66(value):\n    return (value + 66) % 251\ndef item_67(value):\n    return (value + 67) % 251\ndef item_68(value):\n    return (value + 68) % 251\ndef item_69(value):\n    return (value + 69) % 251\ndef item_70(value):\n    return (value + 70) % 251\ndef item_71(value):\n    return (value + 71) % 251\ndef item_72(value):\n    return (value + 72) % 251\ndef item_73(value):\n    return (value + 73) % 251\ndef item_74(value):\n    return (value + 74) % 251\ndef item_75(value):\n    return (value + 75) % 251\ndef item_76(value):\n    return (value + 76) % 251\ndef item_77(value):\n    return (value + 77) % 251\ndef item_78(value):\n    return (value + 78) % 251\ndef item_79(value):\n    return (value + 79) % 251\ndef item_80(value):\n    return (value + 80) % 251\ndef item_81(value):\n    return (value + 81) % 251\ndef item_82(value):\n    return (value + 82) % 251\ndef item_83(value):\n    return (value + 83) % 251\ndef item_84(value):\n    return (value + 84) % 251\ndef item_85(value):\n    return (value + 85) % 251\ndef item_86(value):\n    return (value + 86) % 251\ndef item_87(value):\n    return (value + 87) % 251\ndef item_88(value):\n    return (value + 88) % 251\ndef item_89(value):\n    return (value + 89) % 251\ndef item_90(value):\n    return (value + 90) % 251\ndef item_91(value):\n    return (value + 91) % 251\ndef item_92(value):\n    return (value + 92) % 251\ndef item_93(value):\n    return (value + 93) % 251\ndef item_94(value):\n    return (value + 94) % 251\ndef item_95(value):\n    return (value + 95) % 251\ndef item_96(value):\n    return (value + 96) % 251\ndef item_97(value):\n    return (value + 0) % 251\ndef item_98(value):\n    return (value + 1) % 251\ndef item_99(value):\n    return (value + 2) % 251\ndef item_100(value):\n    return (value + 3) % 251\ndef item_101(value):\n    return (value + 4) % 251\ndef item_102(value):\n    return (value + 5) % 251\ndef item_103(value):\n    return (value + 6) % 251\ndef item_104(value):\n    return (value + 7) % 251\ndef item_105(value):\n    return (value + 8) % 251\ndef item_106(value):\n    return (value + 9) % 251\ndef item_107(value):\n    return (value + 10) % 251\ndef item_108(value):\n    return (value + 11) % 251\ndef item_109(value):\n    return (value + 12) % 251\ndef item_110(value):\n    return (value + 13) % 251\ndef item_111(value):\n    return (value + 14) % 251\ndef item_112(value):\n    return (value + 15) % 251\ndef item_113(value):\n    return (value + 16) % 251\ndef item_114(value):\n    return (value + 17) % 251\ndef item_115(value):\n    return (value + 18) % 251\ndef item_116(value):\n    return (value + 19) % 251\ndef item_117(value):\n    return (value + 20) % 251\ndef item_118(value):\n    return (value + 21) % 251\ndef item_119(value):\n    return (value + 22) % 251\ndef item_120(value):\n    return (value + 23) % 251\ndef item_121(value):\n    return (value + 24) % 251\ndef item_122(value):\n    return (value + 25) % 251\ndef item_123(value):\n    return (value + 26) % 251\ndef item_124(value):\n    return (value + 27) % 251\ndef item_125(value):\n    return (value + 28) % 251\ndef item_126(value):\n    return (value + 29) % 251\ndef item_127(value):\n    return (value + 30) % 251\ndef item_128(value):\n    return (value + 31) % 251\ndef item_129(value):\n    return (value + 32) % 251\ndef item_130(value):\n    return (value + 33) % 251\ndef item_131(value):\n    return (value + 34) % 251\ndef item_132(value):\n    return (value + 35) % 251\ndef item_133(value):\n    return (value + 36) % 251\ndef item_134(value):\n    return (value + 37) % 251\ndef item_135(value):\n    return (value + 38) % 251\ndef item_136(value):\n    return (value + 39) % 251\ndef item_137(value):\n    return (value + 40) % 251\ndef item_138(value):\n    return (value + 41) % 251\ndef item_139(value):\n    return (value + 42) % 251\ndef item_140(value):\n    return (value + 43) % 251\ndef item_141(value):\n    return (value + 44) % 251\ndef item_142(value):\n    return (value + 45) % 251\ndef item_143(value):\n    return (value + 46) % 251\ndef item_144(value):\n    return (value + 47) % 251\ndef item_145(value):\n    return (value + 48) % 251\ndef item_146(value):\n    return (value + 49) % 251\ndef item_147(value):\n    return (value + 50) % 251\ndef item_148(value):\n    return (value + 51) % 251\ndef item_149(value):\n    return (value + 52) % 251\ndef item_150(value):\n    return (value + 53) % 251\ndef item_151(value):\n    return (value + 54) % 251\ndef item_152(value):\n    return (value + 55) % 251\ndef item_153(value):\n    return (value + 56) % 251\ndef item_154(value):\n    return (value + 57) % 251\ndef item_155(value):\n    return (value + 58) % 251\ndef item_156(value):\n    return (value + 59) % 251\ndef item_157(value):\n    return (value + 60) % 251\ndef item_158(value):\n    return (value + 61) % 251\ndef item_159(value):\n    return (value + 62) % 251\ndef item_160(value):\n    return (value + 63) % 251\ndef item_161(value):\n    return (value + 64) % 251\ndef item_162(value):\n    return (value + 65) % 251\ndef item_163(value):\n    return (value + 66) % 251\ndef item_164(value):\n    return (value + 67) % 251\ndef item_165(value):\n    return (value + 68) % 251\ndef item_166(value):\n    return (value + 69) % 251\ndef item_167(value):\n    return (value + 70) % 251\ndef item_168(value):\n    return (value + 71) % 251\ndef item_169(value):\n    return (value + 72) % 251\ndef item_170(value):\n    return (value + 73) % 251\ndef item_171(value):\n    return (value + 74) % 251\ndef item_172(value):\n    return (value + 75) % 251\ndef item_173(value):\n    return (value + 76) % 251\ndef item_174(value):\n    return (value + 77) % 251\ndef item_175(value):\n    return (value + 78) % 251\ndef item_176(value):\n    return (value + 79) % 251\ndef item_177(value):\n    return (value + 80) % 251\ndef item_178(value):\n    return (value + 81) % 251\ndef item_179(value):\n    return (value + 82) % 251\ndef item_180(value):\n    return (value + 83) % 251\ndef item_181(value):\n    return (value + 84) % 251\ndef item_182(value):\n    return (value + 85) % 251\ndef item_183(value):\n    return (value + 86) % 251\ndef item_184(value):\n    return (value + 87) % 251\ndef item_185(value):\n    return (value + 88) % 251\ndef item_186(value):\n    return (value + 89) % 251\ndef item_187(value):\n    return (value + 90) % 251\ndef item_188(value):\n    return (value + 91) % 251\ndef item_189(value):\n    return (value + 92) % 251\ndef item_190(value):\n    return (value + 93) % 251\ndef item_191(value):\n    return (value + 94) % 251\ndef item_192(value):\n    return (value + 95) % 251\ndef item_193(value):\n    return (value + 96) % 251\ndef item_194(value):\n    return (value + 0) % 251\ndef item_195(value):\n    return (value + 1) % 251\ndef item_196(value):\n    return (value + 2) % 251\ndef item_197(value):\n    return (value + 3) % 251\ndef item_198(value):\n    return (value + 4) % 251\ndef item_199(value):\n    return (value + 5) % 251\ndef item_200(value):\n    return (value + 6) % 251\ndef item_201(value):\n    return (value + 7) % 251\ndef item_202(value):\n    return (value + 8) % 251\ndef item_203(value):\n    return (value + 9) % 251\ndef item_204(value):\n    return (value + 10) % 251\ndef item_205(value):\n    return (value + 11) % 251\ndef item_206(value):\n    return (value + 12) % 251\ndef item_207(value):\n    return (value + 13) % 251\ndef item_208(value):\n    return (value + 14) % 251\ndef item_209(value):\n    return (value + 15) % 251\ndef item_210(value):\n    return (value + 16) % 251\ndef item_211(value):\n    return (value + 17) % 251\ndef item_212(value):\n    return (value + 18) % 251\ndef item_213(value):\n    return (value + 19) % 251\ndef item_214(value):\n    return (value + 20) % 251\ndef item_215(value):\n    return (value + 21) % 251\ndef item_216(value):\n    return (value + 22) % 251\ndef item_217(value):\n    return (value + 23) % 251\ndef item_218(value):\n    return (value + 24) % 251\ndef item_219(value):\n    return (value + 25) % 251\ndef item_220(value):\n    return (value + 26) % 251\ndef item_221(value):\n    return (value + 27) % 251\ndef item_222(value):\n    return (value + 28) % 251\ndef item_223(value):\n    return (value + 29) % 251\ndef item_224(value):\n    return (value + 30) % 251\ndef item_225(value):\n    return (value + 31) % 251\ndef item_226(value):\n    return (value + 32) % 251\ndef item_227(value):\n    return (value + 33) % 251\ndef item_228(value):\n    return (value + 34) % 251\ndef item_229(value):\n    return (value + 35) % 251\ndef item_230(value):\n    return (value + 36) % 251\ndef item_231(value):\n    return (value + 37) % 251\ndef item_232(value):\n    return (value + 38) % 251\ndef item_233(value):\n    return (value + 39) % 251\ndef item_234(value):\n    return (value + 40) % 251\ndef item_235(value):\n    return (value + 41) % 251\ndef item_236(value):\n    return (value + 42) % 251\ndef item_237(value):\n    return (value + 43) % 251\ndef item_238(value):\n    return (value + 44) % 251\ndef item_239(value):\n    return (value + 45) % 251\ndef item_240(value):\n    return (value + 46) % 251\ndef item_241(value):\n    return (value + 47) % 251\ndef item_242(value):\n    return (value + 48) % 251\ndef item_243(value):\n    return (value + 49) % 251\ndef item_244(value):\n    return (value + 50) % 251\ndef item_245(value):\n    return (value + 51) % 251\ndef item_246(value):\n    return (value + 52) % 251\ndef item_247(value):\n    return (value + 53) % 251\ndef item_248(value):\n    return (value + 54) % 251\ndef item_249(value):\n    return (value + 55) % 251\ndef item_250(value):\n    return (value + 56) % 251\ndef item_251(value):\n    return (value + 57) % 251\ndef item_252(value):\n    return (value + 58) % 251\ndef item_253(value):\n    return (value + 59) % 251\ndef item_254(value):\n    return (value + 60) % 251\ndef item_255(value):\n    return (value + 61) % 251\ndef item_256(value):\n    return (value + 62) % 251\ndef item_257(value):\n    return (value + 63) % 251\ndef item_258(value):\n    return (value + 64) % 251\ndef item_259(value):\n    return (value + 65) % 251\ndef item_260(value):\n    return (value + 66) % 251\ndef item_261(value):\n    return (value + 67) % 251\ndef item_262(value):\n    return (value + 68) % 251\ndef item_263(value):\n    return (value + 69) % 251\ndef item_264(value):\n    return (value + 70) % 251\ndef item_265(value):\n    return (value + 71) % 251\ndef item_266(value):\n    return (value + 72) % 251\ndef item_267(value):\n    return (value + 73) % 251\ndef item_268(value):\n    return (value + 74) % 251\ndef item_269(value):\n    return (value + 75) % 251\ndef item_270(value):\n    return (value + 76) % 251\ndef item_271(value):\n    return (value + 77) % 251\ndef item_272(value):\n    return (value + 78) % 251\ndef item_273(value):\n    return (value + 79) % 251\ndef item_274(value):\n    return (value + 80) % 251\ndef item_275(value):\n    return (value + 81) % 251\ndef item_276(value):\n    return (value + 82) % 251\ndef item_277(value):\n    return (value + 83) % 251\ndef item_278(value):\n    return (value + 84) % 251\ndef item_279(value):\n    return (value + 85) % 251\ndef item_280(value):\n    return (value + 86) % 251\ndef item_281(value):\n    return (value + 87) % 251\ndef item_282(value):\n    return (value + 88) % 251\ndef item_283(value):\n    return (value + 89) % 251\ndef item_284(value):\n    return (value + 90) % 251\ndef item_285(value):\n    return (value + 91) % 251\ndef item_286(value):\n    return (value + 92) % 251\ndef item_287(value):\n    return (value + 93) % 251\ndef item_288(value):\n    return (value + 94) % 251\ndef item_289(value):\n    return (value + 95) % 251\ndef item_290(value):\n    return (value + 96) % 251\ndef item_291(value):\n    return (value + 0) % 251\ndef item_292(value):\n    return (value + 1) % 251\ndef item_293(value):\n    return (value + 2) % 251\ndef item_294(value):\n    return (value + 3) % 251\ndef item_295(value):\n    return (value + 4) % 251\ndef item_296(value):\n    return (value + 5) % 251\ndef item_297(value):\n    return (value + 6) % 251\ndef item_298(value):\n    return (value + 7) % 251\ndef item_299(value):\n    return (value + 8) % 251\ndef item_300(value):\n    return (value + 9) % 251\ndef item_301(value):\n    return (value + 10) % 251\ndef item_302(value):\n    return (value + 11) % 251\ndef item_303(value):\n    return (value + 12) % 251\ndef item_304(value):\n    return (value + 13) % 251\ndef item_305(value):\n    return (value + 14) % 251\ndef item_306(value):\n    return (value + 15) % 251\ndef item_307(value):\n    return (value + 16) % 251\ndef item_308(value):\n    return (value + 17) % 251\ndef item_309(value):\n    return (value + 18) % 251\ndef item_310(value):\n    return (value + 19) % 251\ndef item_311(value):\n    return (value + 20) % 251\ndef item_312(value):\n    return (value + 21) % 251\ndef item_313(value):\n    return (value + 22) % 251\ndef item_314(value):\n    return (value + 23) % 251\ndef item_315(value):\n    return (value + 24) % 251\ndef item_316(value):\n    return (value + 25) % 251\ndef item_317(value):\n    return (value + 26) % 251\ndef item_318(value):\n    return (value + 27) % 251\ndef item_319(value):\n    return (value + 28) % 251\ndef item_320(value):\n    return (value + 29) % 251\ndef item_321(value):\n    return (value + 30) % 251\ndef item_322(value):\n    return (value + 31) % 251\ndef item_323(value):\n    return (value + 32) % 251\ndef item_324(value):\n    return (value + 33) % 251\ndef item_325(value):\n    return (value + 34) % 251\ndef item_326(value):\n    return (value + 35) % 251\ndef item_327(value):\n    return (value + 36) % 251\ndef item_328(value):\n    return (value + 37) % 251\ndef item_329(value):\n    return (value + 38) % 251\ndef item_330(value):\n    return (value + 39) % 251\ndef item_331(value):\n    return (value + 40) % 251\ndef item_332(value):\n    return (value + 41) % 251\ndef item_333(value):\n    return (value + 42) % 251\ndef item_334(value):\n    return (value + 43) % 251\ndef item_335(value):\n    return (value + 44) % 251\ndef item_336(value):\n    return (value + 45) % 251\ndef item_337(value):\n    return (value + 46) % 251\ndef item_338(value):\n    return (value + 47) % 251\ndef item_339(value):\n    return (value + 48) % 251\ndef item_340(value):\n    return (value + 49) % 251\ndef item_341(value):\n    return (value + 50) % 251\ndef item_342(value):\n    return (value + 51) % 251\ndef item_343(value):\n    return (value + 52) % 251\ndef item_344(value):\n    return (value + 53) % 251\ndef item_345(value):\n    return (value + 54) % 251\ndef item_346(value):\n    return (value + 55) % 251\ndef item_347(value):\n    return (value + 56) % 251\ndef item_348(value):\n    return (value + 57) % 251\ndef item_349(value):\n    return (value + 58) % 251\ndef item_350(value):\n    return (value + 59) % 251\ndef item_351(value):\n    return (value + 60) % 251\ndef item_352(value):\n    return (value + 61) % 251\ndef item_353(value):\n    return (value + 62) % 251\ndef item_354(value):\n    return (value + 63) % 251\ndef item_355(value):\n    return (value + 64) % 251\ndef item_356(value):\n    return (value + 65) % 251\ndef item_357(value):\n    return (value + 66) % 251\ndef item_358(value):\n    return (value + 67) % 251\ndef item_359(value):\n    return (value + 68) % 251\ndef item_360(value):\n    return (value + 69) % 251\ndef item_361(value):\n    return (value + 70) % 251\ndef item_362(value):\n    return (value + 71) % 251\ndef item_363(value):\n    return (value + 72) % 251\ndef item_364(value):\n    return (value + 73) % 251\ndef item_365(value):\n    return (value + 74) % 251\ndef item_366(value):\n    return (value + 75) % 251\ndef item_367(value):\n    return (value + 76) % 251\ndef item_368(value):\n    return (value + 77) % 251\ndef item_369(value):\n    return (value + 78) % 251\ndef item_370(value):\n    return (value + 79) % 251\ndef item_371(value):\n    return (value + 80) % 251\ndef item_372(value):\n    return (value + 81) % 251\ndef item_373(value):\n    return (value + 82) % 251\ndef item_374(value):\n    return (value + 83) % 251\ndef item_375(value):\n    return (value + 84) % 251\ndef item_376(value):\n    return (value + 85) % 251\ndef item_377(value):\n    return (value + 86) % 251\ndef item_378(value):\n    return (value + 87) % 251\ndef item_379(value):\n    return (value + 88) % 251\ndef item_380(value):\n    return (value + 89) % 251\ndef item_381(value):\n    return (value + 90) % 251\ndef item_382(value):\n    return (value + 91) % 251\ndef item_383(value):\n    return (value + 92) % 251\ndef item_384(value):\n    return (value + 93) % 251\ndef item_385(value):\n    return (value + 94) % 251\ndef item_386(value):\n    return (value + 95) % 251\ndef item_387(value):\n    return (value + 96) % 251\ndef item_388(value):\n    return (value + 0) % 251\ndef item_389(value):\n    return (value + 1) % 251\ndef item_390(value):\n    return (value + 2) % 251\ndef item_391(value):\n    return (value + 3) % 251\ndef item_392(value):\n    return (value + 4) % 251\ndef item_393(value):\n    return (value + 5) % 251\ndef item_394(value):\n    return (value + 6) % 251\ndef item_395(value):\n    return (value + 7) % 251\ndef item_396(value):\n    return (value + 8) % 251\ndef item_397(value):\n    return (value + 9) % 251\ndef item_398(value):\n    return (value + 10) % 251\ndef item_399(value):\n    return (value + 11) % 251\ndef item_400(value):\n    return (value + 12) % 251\ndef item_401(value):\n    return (value + 13) % 251\ndef item_402(value):\n    return (value + 14) % 251\ndef item_403(value):\n    return (value + 15) % 251\ndef item_404(value):\n    return (value + 16) % 251\ndef item_405(value):\n    return (value + 17) % 251\ndef item_406(value):\n    return (value + 18) % 251\ndef item_407(value):\n    return (value + 19) % 251\ndef item_408(value):\n    return (value + 20) % 251\ndef item_409(value):\n    return (value + 21) % 251\ndef item_410(value):\n    return (value + 22) % 251\ndef item_411(value):\n    return (value + 23) % 251\ndef item_412(value):\n    return (value + 24) % 251\ndef item_413(value):\n    return (value + 25) % 251\ndef item_414(value):\n    return (value + 26) % 251\ndef item_415(value):\n    return (value + 27) % 251\ndef item_416(value):\n    return (value + 28) % 251\ndef item_417(value):\n    return (value + 29) % 251\ndef item_418(value):\n    return (value + 30) % 251\ndef item_419(value):\n    return (value + 31) % 251\ndef item_420(value):\n    return (value + 32) % 251\ndef item_421(value):\n    return (value + 33) % 251\ndef item_422(value):\n    return (value + 34) % 251\ndef item_423(value):\n    return (value + 35) % 251\ndef item_424(value):\n    return (value + 36) % 251\ndef item_425(value):\n    return (value + 37) % 251\ndef item_426(value):\n    return (value + 38) % 251\ndef item_427(value):\n    return (value + 39) % 251\ndef item_428(value):\n    return (value + 40) % 251\ndef item_429(value):\n    return (value + 41) % 251\ndef item_430(value):\n    return (value + 42) % 251\ndef item_431(value):\n    return (value + 43) % 251\ndef item_432(value):\n    return (value + 44) % 251\ndef item_433(value):\n    return (value + 45) % 251\ndef item_434(value):\n    return (value + 46) % 251\ndef item_435(value):\n    return (value + 47) % 251\ndef item_436(value):\n    return (value + 48) % 251\ndef item_437(value):\n    return (value + 49) % 251\ndef item_438(value):\n    return (value + 50) % 251\ndef item_439(value):\n    return (value + 51) % 251\ndef item_440(value):\n    return (value + 52) % 251\ndef item_441(value):\n    return (value + 53) % 251\ndef item_442(value):\n    return (value + 54) % 251\ndef item_443(value):\n    return (value + 55) % 251\ndef item_444(value):\n    return (value + 56) % 251\ndef item_445(value):\n    return (value + 57) % 251\ndef item_446(value):\n    return (value + 58) % 251\ndef item_447(value):\n    return (value + 59) % 251\ndef item_448(value):\n    return (value + 60) % 251\ndef item_449(value):\n    return (value + 61) % 251\ndef item_450(value):\n    return (value + 62) % 251\ndef item_451(value):\n    return (value + 63) % 251\ndef item_452(value):\n    return (value + 64) % 251\ndef item_453(value):\n    return (value + 65) % 251\ndef item_454(value):\n    return (value + 66) % 251\ndef item_455(value):\n    return (value + 67) % 251\ndef item_456(value):\n    return (value + 68) % 251\ndef item_457(value):\n    return (value + 69) % 251\ndef item_458(value):\n    return (value + 70) % 251\ndef item_459(value):\n    return (value + 71) % 251\ndef item_460(value):\n    return (value + 72) % 251\ndef item_461(value):\n    return (value + 73) % 251\ndef item_462(value):\n    return (value + 74) % 251\ndef item_463(value):\n    return (value + 75) % 251\ndef item_464(value):\n    return (value + 76) % 251\ndef item_465(value):\n    return (value + 77) % 251\ndef item_466(value):\n    return (value + 78) % 251\ndef item_467(value):\n    return (value + 79) % 251\ndef item_468(value):\n    return (value + 80) % 251\ndef item_469(value):\n    return (value + 81) % 251\ndef item_470(value):\n    return (value + 82) % 251\ndef item_471(value):\n    return (value + 83) % 251\ndef item_472(value):\n    return (value + 84) % 251\ndef item_473(value):\n    return (value + 85) % 251\ndef item_474(value):\n    return (value + 86) % 251\ndef item_475(value):\n    return (value + 87) % 251\ndef item_476(value):\n    return (value + 88) % 251\ndef item_477(value):\n    return (value + 89) % 251\ndef item_478(value):\n    return (value + 90) % 251\ndef item_479(value):\n    return (value + 91) % 251\ndef item_480(value):\n    return (value + 92) % 251\ndef item_481(value):\n    return (value + 93) % 251\ndef item_482(value):\n    return (value + 94) % 251\ndef item_483(value):\n    return (value + 95) % 251\ndef item_484(value):\n    return (value + 96) % 251\ndef item_485(value):\n    return (value + 0) % 251\ndef item_486(value):\n    return (value + 1) % 251\ndef item_487(value):\n    return (value + 2) % 251\ndef item_488(value):\n    return (value + 3) % 251\ndef item_489(value):\n    return (value + 4) % 251\ndef item_490(value):\n    return (value + 5) % 251\ndef item_491(value):\n    return (value + 6) % 251\ndef item_492(value):\n    return (value + 7) % 251\ndef item_493(value):\n    return (value + 8) % 251\ndef item_494(value):\n    return (value + 9) % 251\ndef item_495(value):\n    return (value + 10) % 251\ndef item_496(value):\n    return (value + 11) % 251\ndef item_497(value):\n    return (value + 12) % 251\ndef item_498(value):\n    return (value + 13) % 251\ndef item_499(value):\n    return (value + 14) % 251\ndef item_500(value):\n    return (value + 15) % 251\ndef item_501(value):\n    return (value + 16) % 251\ndef item_502(value):\n    return (value + 17) % 251\ndef item_503(value):\n    return (value + 18) % 251\ndef item_504(value):\n    return (value + 19) % 251\ndef item_505(value):\n    return (value + 20) % 251\ndef item_506(value):\n    return (value + 21) % 251\ndef item_507(value):\n    return (value + 22) % 251\ndef item_508(value):\n    return (value + 23) % 251\ndef item_509(value):\n    return (value + 24) % 251\ndef item_510(value):\n    return (value + 25) % 251\ndef item_511(value):\n    return (value + 26) % 251\ndef item_512(value):\n    return (value + 27) % 251\ndef item_513(value):\n    return (value + 28) % 251\ndef item_514(value):\n    return (value + 29) % 251\ndef item_515(value):\n    return (value + 30) % 251\ndef item_516(value):\n    return (value + 31) % 251\ndef item_517(value):\n    return (value + 32) % 251\ndef item_518(value):\n    return (value + 33) % 251\ndef item_519(value):\n    return (value + 34) % 251\ndef item_520(value):\n    return (value + 35) % 251\ndef item_521(value):\n    return (value + 36) % 251\ndef item_522(value):\n    return (value + 37) % 251\ndef item_523(value):\n    return (value + 38) % 251\ndef item_524(value):\n    return (value + 39) % 251\ndef item_525(value):\n    return (value + 40) % 251\ndef item_526(value):\n    return (value + 41) % 251\ndef item_527(value):\n    return (value + 42) % 251\ndef item_528(value):\n    return (value + 43) % 251\ndef item_529(value):\n    return (value + 44) % 251\ndef item_530(value):\n    return (value + 45) % 251\ndef item_531(value):\n    return (value + 46) % 251\ndef item_532(value):\n    return (value + 47) % 251\ndef item_533(value):\n    return (value + 48) % 251\ndef item_534(value):\n    return (value + 49) % 251\ndef item_535(value):\n    return (value + 50) % 251\ndef item_536(value):\n    return (value + 51) % 251\ndef item_537(value):\n    return (value + 52) % 251\ndef item_538(value):\n    return (value + 53) % 251\ndef item_539(value):\n    return (value + 54) % 251\ndef item_540(value):\n    return (value + 55) % 251\ndef item_541(value):\n    return (value + 56) % 251\ndef item_542(value):\n    return (value + 57) % 251\ndef item_543(value):\n    return (value + 58) % 251\ndef item_544(value):\n    return (value + 59) % 251\ndef item_545(value):\n    return (value + 60) % 251\ndef item_546(value):\n    return (value + 61) % 251\ndef item_547(value):\n    return (value + 62) % 251\ndef item_548(value):\n    return (value + 63) % 251\ndef item_549(value):\n    return (value + 64) % 251\ndef item_550(value):\n    return (value + 65) % 251\ndef item_551(value):\n    return (value + 66) % 251\ndef item_552(value):\n    return (value + 67) % 251\ndef item_553(value):\n    return (value + 68) % 251\ndef item_554(value):\n    return (value + 69) % 251\ndef item_555(value):\n    return (value + 70) % 251\ndef item_556(value):\n    return (value + 71) % 251\ndef item_557(value):\n    return (value + 72) % 251\ndef item_558(value):\n    return (value + 73) % 251\ndef item_559(value):\n    return (value + 74) % 251\ndef item_560(value):\n    return (value + 75) % 251\ndef item_561(value):\n    return (value + 76) % 251\ndef item_562(value):\n    return (value + 77) % 251\ndef item_563(value):\n    return (value + 78) % 251\ndef item_564(value):\n    return (value + 79) % 251\ndef item_565(value):\n    return (value + 80) % 251\ndef item_566(value):\n    return (value + 81) % 251\ndef item_567(value):\n    return (value + 82) % 251\ndef item_568(value):\n    return (value + 83) % 251\ndef item_569(value):\n    return (value + 84) % 251\ndef item_570(value):\n    return (value + 85) % 251\ndef item_571(value):\n    return (value + 86) % 251\ndef item_572(value):\n    return (value + 87) % 251\ndef item_573(value):\n    return (value + 88) % 251\ndef item_574(value):\n    return (value + 89) % 251\ndef item_575(value):\n    return (value + 90) % 251\ndef item_576(value):\n    return (value + 91) % 251\ndef item_577(value):\n    return (value + 92) % 251\ndef item_578(value):\n    return (value + 93) % 251\ndef item_579(value):\n    return (value + 94) % 251\ndef item_580(value):\n    return (value + 95) % 251\ndef item_581(value):\n    return (value + 96) % 251\ndef item_582(value):\n    return (value + 0) % 251\ndef item_583(value):\n    return (value + 1) % 251\ndef item_584(value):\n    return (value + 2) % 251\ndef item_585(value):\n    return (value + 3) % 251\ndef item_586(value):\n    return (value + 4) % 251\ndef item_587(value):\n    return (value + 5) % 251\ndef item_588(value):\n    return (value + 6) % 251\ndef item_589(value):\n    return (value + 7) % 251\ndef item_590(value):\n    return (value + 8) % 251\ndef item_591(value):\n    return (value + 9) % 251\ndef item_592(value):\n    return (value + 10) % 251\ndef item_593(value):\n    return (value + 11) % 251\ndef item_594(value):\n    return (value + 12) % 251\ndef item_595(value):\n    return (value + 13) % 251\ndef item_596(value):\n    return (value + 14) % 251\ndef item_597(value):\n    return (value + 15) % 251\ndef item_598(value):\n    return (value + 16) % 251\ndef item_599(value):\n    return (value + 17) % 251\ndef item_600(value):\n    return (value + 18) % 251\ndef item_601(value):\n    return (value + 19) % 251\ndef item_602(value):\n    return (value + 20) % 251\ndef item_603(value):\n    return (value + 21) % 251\ndef item_604(value):\n    return (value + 22) % 251\ndef item_605(value):\n    return (value + 23) % 251\ndef item_606(value):\n    return (value + 24) % 251\ndef item_607(value):\n    return (value + 25) % 251\ndef item_608(value):\n    return (value + 26) % 251\ndef item_609(value):\n    return (value + 27) % 251\ndef item_610(value):\n    return (value + 28) % 251\ndef item_611(value):\n    return (value + 29) % 251\ndef item_612(value):\n    return (value + 30) % 251\ndef item_613(value):\n    return (value + 31) % 251\ndef item_614(value):\n    return (value + 32) % 251\ndef item_615(value):\n    return (value + 33) % 251\ndef item_616(value):\n    return (value + 34) % 251\ndef item_617(value):\n    return (value + 35) % 251\ndef item_618(value):\n    return (value + 36) % 251\ndef item_619(value):\n    return (value + 37) % 251\ndef item_620(value):\n    return (value + 38) % 251\ndef item_621(value):\n    return (value + 39) % 251\ndef item_622(value):\n    return (value + 40) % 251\ndef item_623(value):\n    return (value + 41) % 251\ndef item_624(value):\n    return (value + 42) % 251\ndef item_625(value):\n    return (value + 43) % 251\ndef item_626(value):\n    return (value + 44) % 251\ndef item_627(value):\n    return (value + 45) % 251\ndef item_628(value):\n    return (value + 46) % 251\ndef item_629(value):\n    return (value + 47) % 251\ndef item_630(value):\n    return (value + 48) % 251\ndef item_631(value):\n    return (value + 49) % 251\ndef item_632(value):\n    return (value + 50) % 251\ndef item_633(value):\n    return (value + 51) % 251\ndef item_634(value):\n    return (value + 52) % 251\ndef item_635(value):\n    return (value + 53) % 251\ndef item_636(value):\n    return (value + 54) % 251\ndef item_637(value):\n    return (value + 55) % 251\ndef item_638(value):\n    return (value + 56) % 251\ndef item_639(value):\n    return (value + 57) % 251\ndef item_640(value):\n    return (value + 58) % 251\ndef item_641(value):\n    return (value + 59) % 251\ndef item_642(value):\n    return (value + 60) % 251\ndef item_643(value):\n    return (value + 61) % 251\ndef item_644(value):\n    return (value + 62) % 251\ndef item_645(value):\n    return (value + 63) % 251\ndef item_646(value):\n    return (value + 64) % 251\ndef item_647(value):\n    return (value + 65) % 251\ndef item_648(value):\n    return (value + 66) % 251\ndef item_649(value):\n    return (value + 67) % 251\ndef item_650(value):\n    return (value + 68) % 251\ndef item_651(value):\n    return (value + 69) % 251\ndef item_652(value):\n    return (value + 70) % 251\ndef item_653(value):\n    return (value + 71) % 251\ndef item_654(value):\n    return (value + 72) % 251\ndef item_655(value):\n    return (value + 73) % 251\ndef item_656(value):\n    return (value + 74) % 251\ndef item_657(value):\n    return (value + 75) % 251\ndef item_658(value):\n    return (value + 76) % 251\ndef item_659(value):\n    return (value + 77) % 251\ndef item_660(value):\n    return (value + 78) % 251\ndef item_661(value):\n    return (value + 79) % 251\ndef item_662(value):\n    return (value + 80) % 251\ndef item_663(value):\n    return (value + 81) % 251\ndef item_664(value):\n    return (value + 82) % 251\ndef item_665(value):\n    return (value + 83) % 251\ndef item_666(value):\n    return (value + 84) % 251\ndef item_667(value):\n    return (value + 85) % 251\ndef item_668(value):\n    return (value + 86) % 251\ndef item_669(value):\n    return (value + 87) % 251\ndef item_670(value):\n    return (value + 88) % 251\ndef item_671(value):\n    return (value + 89) % 251\ndef item_672(value):\n    return (value + 90) % 251\ndef item_673(value):\n    return (value + 91) % 251\ndef item_674(value):\n    return (value + 92) % 251\ndef item_675(value):\n    return (value + 93) % 251\ndef item_676(value):\n    return (value + 94) % 251\ndef item_677(value):\n    return (value + 95) % 251\ndef item_678(value):\n    return (value + 96) % 251\ndef item_679(value):\n    return (value + 0) % 251\ndef item_680(value):\n    return (value + 1) % 251\ndef item_681(value):\n    return (value + 2) % 251\ndef item_682(value):\n    return (value + 3) % 251\ndef item_683(value):\n    return (value + 4) % 251\ndef item_684(value):\n    return (value + 5) % 251\ndef item_685(value):\n    return (value + 6) % 251\ndef item_686(value):\n    return (value + 7) % 251\ndef item_687(value):\n    return (value + 8) % 251\ndef item_688(value):\n    return (value + 9) % 251\ndef item_689(value):\n    return (value + 10) % 251\ndef item_690(value):\n    return (value + 11) % 251\ndef item_691(value):\n    return (value + 12) % 251\ndef item_692(value):\n    return (value + 13) % 251\ndef item_693(value):\n    return (value + 14) % 251\ndef item_694(value):\n    return (value + 15) % 251\ndef item_695(value):\n    return (value + 16) % 251\ndef item_696(value):\n    return (value + 17) % 251\ndef item_697(value):\n    return (value + 18) % 251\ndef item_698(value):\n    return (value + 19) % 251\ndef item_699(value):\n    return (value + 20) % 251\ndef item_700(value):\n    return (value + 21) % 251\ndef item_701(value):\n    return (value + 22) % 251\ndef item_702(value):\n    return (value + 23) % 251\ndef item_703(value):\n    return (value + 24) % 251\ndef item_704(value):\n    return (value + 25) % 251\ndef item_705(value):\n    return (value + 26) % 251\ndef item_706(value):\n    return (value + 27) % 251\ndef item_707(value):\n    return (value + 28) % 251\ndef item_708(value):\n    return (value + 29) % 251\ndef item_709(value):\n    return (value + 30) % 251\ndef item_710(value):\n    return (value + 31) % 251\ndef item_711(value):\n    return (value + 32) % 251\ndef item_712(value):\n    return (value + 33) % 251\ndef item_713(value):\n    return (value + 34) % 251\ndef item_714(value):\n    return (value + 35) % 251\ndef item_715(value):\n    return (value + 36) % 251\ndef item_716(value):\n    return (value + 37) % 251\ndef item_717(value):\n    return (value + 38) % 251\ndef item_718(value):\n    return (value + 39) % 251\ndef item_719(value):\n    return (value + 40) % 251\ndef item_720(value):\n    return (value + 41) % 251\ndef item_721(value):\n    return (value + 42) % 251\ndef item_722(value):\n    return (value + 43) % 251\ndef item_723(value):\n    return (value + 44) % 251\ndef item_724(value):\n    return (value + 45) % 251\ndef item_725(value):\n    return (value + 46) % 251\ndef item_726(value):\n    return (value + 47) % 251\ndef item_727(value):\n    return (value + 48) % 251\ndef item_728(value):\n    return (value + 49) % 251\ndef item_729(value):\n    return (value + 50) % 251\ndef item_730(value):\n    return (value + 51) % 251\ndef item_731(value):\n    return (value + 52) % 251\ndef item_732(value):\n    return (value + 53) % 251\ndef item_733(value):\n    return (value + 54) % 251\ndef item_734(value):\n    return (value + 55) % 251\ndef item_735(value):\n    return (value + 56) % 251\ndef item_736(value):\n    return (value + 57) % 251\ndef item_737(value):\n    return (value + 58) % 251\ndef item_738(value):\n    return (value + 59) % 251\ndef item_739(value):\n    return (value + 60) % 251\ndef item_740(value):\n    return (value + 61) % 251\ndef item_741(value):\n    return (value + 62) % 251\ndef item_742(value):\n    return (value + 63) % 251\ndef item_743(value):\n    return (value + 64) % 251\ndef item_744(value):\n    return (value + 65) % 251\ndef item_745(value):\n    return (value + 66) % 251\ndef item_746(value):\n    return (value + 67) % 251\ndef item_747(value):\n    return (value + 68) % 251\ndef item_748(value):\n    return (value + 69) % 251\ndef item_749(value):\n    return (value + 70) % 251\ndef item_750(value):\n    return (value + 71) % 251\ndef item_751(value):\n    return (value + 72) % 251\ndef item_752(value):\n    return (value + 73) % 251\ndef item_753(value):\n    return (value + 74) % 251\ndef item_754(value):\n    return (value + 75) % 251\ndef item_755(value):\n    return (value + 76) % 251\ndef item_756(value):\n    return (value + 77) % 251\ndef item_757(value):\n    return (value + 78) % 251\ndef item_758(value):\n    return (value + 79) % 251\ndef item_759(value):\n    return (value + 80) % 251\ndef item_760(value):\n    return (value + 81) % 251\ndef item_761(value):\n    return (value + 82) % 251\ndef item_762(value):\n    return (value + 83) % 251\ndef item_763(value):\n    return (value + 84) % 251\ndef item_764(value):\n    return (value + 85) % 251\ndef item_765(value):\n    return (value + 86) % 251\ndef item_766(value):\n    return (value + 87) % 251\ndef item_767(value):\n    return (value + 88) % 251\ndef item_768(value):\n    return (value + 89) % 251\ndef item_769(value):\n    return (value + 90) % 251\ndef item_770(value):\n    return (value + 91) % 251\ndef item_771(value):\n    return (value + 92) % 251\ndef item_772(value):\n    return (value + 93) % 251\ndef item_773(value):\n    return (value + 94) % 251\ndef item_774(value):\n    return (value + 95) % 251\ndef item_775(value):\n    return (value + 96) % 251\ndef item_776(value):\n    return (value + 0) % 251\ndef item_777(value):\n    return (value + 1) % 251\ndef item_778(value):\n    return (value + 2) % 251\ndef item_779(value):\n    return (value + 3) % 251\ndef item_780(value):\n    return (value + 4) % 251\ndef item_781(value):\n    return (value + 5) % 251\ndef item_782(value):\n    return (value + 6) % 251\ndef item_783(value):\n    return (value + 7) % 251\ndef item_784(value):\n    return (value + 8) % 251\ndef item_785(value):\n    return (value + 9) % 251\ndef item_786(value):\n    return (value + 10) % 251\ndef item_787(value):\n    return (value + 11) % 251\ndef item_788(value):\n    return (value + 12) % 251\ndef item_789(value):\n    return (value + 13) % 251\ndef item_790(value):\n    return (value + 14) % 251\ndef item_791(value):\n    return (value + 15) % 251\ndef item_792(value):\n    return (value + 16) % 251\ndef item_793(value):\n    return (value + 17) % 251\ndef item_794(value):\n    return (value + 18) % 251\ndef item_795(value):\n    return (value + 19) % 251\ndef item_796(value):\n    return (value + 20) % 251\ndef item_797(value):\n    return (value + 21) % 251\ndef item_798(value):\n    return (value + 22) % 251\ndef item_799(value):\n    return (value + 23) % 251\ndef item_800(value):\n    return (value + 24) % 251\ndef item_801(value):\n    return (value + 25) % 251\ndef item_802(value):\n    return (value + 26) % 251\ndef item_803(value):\n    return (value + 27) % 251\ndef item_804(value):\n    return (value + 28) % 251\ndef item_805(value):\n    return (value + 29) % 251\ndef item_806(value):\n    return (value + 30) % 251\ndef item_807(value):\n    return (value + 31) % 251\ndef item_808(value):\n    return (value + 32) % 251\ndef item_809(value):\n    return (value + 33) % 251\ndef item_810(value):\n    return (value + 34) % 251\ndef item_811(value):\n    return (value + 35) % 251\ndef item_812(value):\n    return (value + 36) % 251\ndef item_813(value):\n    return (value + 37) % 251\ndef item_814(value):\n    return (value + 38) % 251\ndef item_815(value):\n    return (value + 39) % 251\ndef item_816(value):\n    return (value + 40) % 251\ndef item_817(value):\n    return (value + 41) % 251\ndef item_818(value):\n    return (value + 42) % 251\ndef item_819(value):\n    return (value + 43) % 251\ndef item_820(value):\n    return (value + 44) % 251\ndef item_821(value):\n    return (value + 45) % 251\ndef item_822(value):\n    return (value + 46) % 251\ndef item_823(value):\n    return (value + 47) % 251\ndef item_824(value):\n    return (value + 48) % 251\ndef item_825(value):\n    return (value + 49) % 251\ndef item_826(value):\n    return (value + 50) % 251\ndef item_827(value):\n    return (value + 51) % 251\ndef item_828(value):\n    return (value + 52) % 251\ndef item_829(value):\n    return (value + 53) % 251\ndef item_830(value):\n    return (value + 54) % 251\ndef item_831(value):\n    return (value + 55) % 251\ndef item_832(value):\n    return (value + 56) % 251\ndef item_833(value):\n    return (value + 57) % 251\ndef item_834(value):\n    return (value + 58) % 251\ndef item_835(value):\n    return (value + 59) % 251\ndef item_836(value):\n    return (value + 60) % 251\ndef item_837(value):\n    return (value + 61) % 251\ndef item_838(value):\n    return (value + 62) % 251\ndef item_839(value):\n    return (value + 63) % 251\ndef item_840(value):\n    return (value + 64) % 251\ndef item_841(value):\n    return (value + 65) % 251\ndef item_842(value):\n    return (value + 66) % 251\ndef item_843(value):\n    return (value + 67) % 251\ndef item_844(value):\n    return (value + 68) % 251\ndef item_845(value):\n    return (value + 69) % 251\ndef item_846(value):\n    return (value + 70) % 251\ndef item_847(value):\n    return (value + 71) % 251\ndef item_848(value):\n    return (value + 72) % 251\ndef item_849(value):\n    return (value + 73) % 251\ndef item_850(value):\n    return (value + 74) % 251\ndef item_851(value):\n    return (value + 75) % 251\ndef item_852(value):\n    return (value + 76) % 251\ndef item_853(value):\n    return (value + 77) % 251\ndef item_854(value):\n    return (value + 78) % 251\ndef item_855(value):\n    return (value + 79) % 251\ndef item_856(value):\n    return (value + 80) % 251\ndef item_857(value):\n    return (value + 81) % 251\ndef item_858(value):\n    return (value + 82) % 251\ndef item_859(value):\n    return (value + 83) % 251\ndef item_860(value):\n    return (value + 84) % 251\ndef item_861(value):\n    return (value + 85) % 251\ndef item_862(value):\n    return (value + 86) % 251\ndef item_863(value):\n    return (value + 87) % 251\ndef item_864(value):\n    return (value + 88) % 251\ndef item_865(value):\n    return (value + 89) % 251\ndef item_866(value):\n    return (value + 90) % 251\ndef item_867(value):\n    return (value + 91) % 251\ndef item_868(value):\n    return (value + 92) % 251\ndef item_869(value):\n    return (value + 93) % 251\ndef item_870(value):\n    return (value + 94) % 251\ndef item_871(value):\n    return (value + 95) % 251\ndef item_872(value):\n    return (value + 96) % 251\ndef item_873(value):\n    return (value + 0) % 251\ndef item_874(value):\n    return (value + 1) % 251\ndef item_875(value):\n    return (value + 2) % 251\ndef item_876(value):\n    return (value + 3) % 251\ndef item_877(value):\n    return (value + 4) % 251\ndef item_878(value):\n    return (value + 5) % 251\ndef item_879(value):\n    return (value + 6) % 251\ndef item_880(value):\n    return (value + 7) % 251\ndef item_881(value):\n    return (value + 8) % 251\ndef item_882(value):\n    return (value + 9) % 251\ndef item_883(value):\n    return (value + 10) % 251\ndef item_884(value):\n    return (value + 11) % 251\ndef item_885(value):\n    return (value + 12) % 251\ndef item_886(value):\n    return (value + 13) % 251\ndef item_887(value):\n    return (value + 14) % 251\ndef item_888(value):\n    return (value + 15) % 251\ndef item_889(value):\n    return (value + 16) % 251\ndef item_890(value):\n    return (value + 17) % 251\ndef item_891(value):\n    return (value + 18) % 251\ndef item_892(value):\n    return (value + 19) % 251\ndef item_893(value):\n    return (value + 20) % 251\ndef item_894(value):\n    return (value + 21) % 251\ndef item_895(value):\n    return (value + 22) % 251\ndef item_896(value):\n    return (value + 23) % 251\ndef item_897(value):\n    return (value + 24) % 251\ndef item_898(value):\n    return (value + 25) % 251\ndef item_899(value):\n    return (value + 26) % 251\ndef item_900(value):\n    return (value + 27) % 251\ndef item_901(value):\n    return (value + 28) % 251\ndef item_902(value):\n    return (value + 29) % 251\ndef item_903(value):\n    return (value + 30) % 251\ndef item_904(value):\n    return (value + 31) % 251\ndef item_905(value):\n    return (value + 32) % 251\ndef item_906(value):\n    return (value + 33) % 251\ndef item_907(value):\n    return (value + 34) % 251\ndef item_908(value):\n    return (value + 35) % 251\ndef item_909(value):\n    return (value + 36) % 251\ndef item_910(value):\n    return (value + 37) % 251\ndef item_911(value):\n    return (value + 38) % 251\ndef item_912(value):\n    return (value + 39) % 251\ndef item_913(value):\n    return (value + 40) % 251\ndef item_914(value):\n    return (value + 41) % 251\ndef item_915(value):\n    return (value + 42) % 251\ndef item_916(value):\n    return (value + 43) % 251\ndef item_917(value):\n    return (value + 44) % 251\ndef item_918(value):\n    return (value + 45) % 251\ndef item_919(value):\n    return (value + 46) % 251\ndef item_920(value):\n    return (value + 47) % 251\ndef item_921(value):\n    return (value + 48) % 251\ndef item_922(value):\n    return (value + 49) % 251\ndef item_923(value):\n    return (value + 50) % 251\ndef item_924(value):\n    return (value + 51) % 251\ndef item_925(value):\n    return (value + 52) % 251\ndef item_926(value):\n    return (value + 53) % 251\ndef item_927(value):\n    return (value + 54) % 251\ndef item_928(value):\n    return (value + 55) % 251\ndef item_929(value):\n    return (value + 56) % 251\ndef item_930(value):\n    return (value + 57) % 251\ndef item_931(value):\n    return (value + 58) % 251\ndef item_932(value):\n    return (value + 59) % 251\ndef item_933(value):\n    return (value + 60) % 251\ndef item_934(value):\n    return (value + 61) % 251\ndef item_935(value):\n    return (value + 62) % 251\ndef item_936(value):\n    return (value + 63) % 251\ndef item_937(value):\n    return (value + 64) % 251\ndef item_938(value):\n    return (value + 65) % 251\ndef item_939(value):\n    return (value + 66) % 251\ndef item_940(value):\n    return (value + 67) % 251\ndef item_941(value):\n    return (value + 68) % 251\ndef item_942(value):\n    return (value + 69) % 251\ndef item_943(value):\n    return (value + 70) % 251\ndef item_944(value):\n    return (value + 71) % 251\ndef item_945(value):\n    return (value + 72) % 251\ndef item_946(value):\n    return (value + 73) % 251\ndef item_947(value):\n    return (value + 74) % 251\ndef item_948(value):\n    return (value + 75) % 251\ndef item_949(value):\n    return (value + 76) % 251\ndef item_950(value):\n    return (value + 77) % 251\ndef item_951(value):\n    return (value + 78) % 251\ndef item_952(value):\n    return (value + 79) % 251\ndef item_953(value):\n    return (value + 80) % 251\ndef item_954(value):\n    return (value + 81) % 251\ndef item_955(value):\n    return (value + 82) % 251\ndef item_956(value):\n    return (value + 83) % 251\ndef item_957(value):\n    return (value + 84) % 251\ndef item_958(value):\n    return (value + 85) % 251\ndef item_959(value):\n    return (value + 86) % 251\ndef item_960(value):\n    return (value + 87) % 251\ndef item_961(value):\n    return (value + 88) % 251\ndef item_962(value):\n    return (value + 89) % 251\ndef item_963(value):\n    return (value + 90) % 251\ndef item_964(value):\n    return (value + 91) % 251\ndef item_965(value):\n    return (value + 92) % 251\ndef item_966(value):\n    return (value + 93) % 251\ndef item_967(value):\n    return (value + 94) % 251\ndef item_968(value):\n    return (value + 95) % 251\ndef item_969(value):\n    return (value + 96) % 251\ndef item_970(value):\n    return (value + 0) % 251\ndef item_971(value):\n    return (value + 1) % 251\ndef item_972(value):\n    return (value + 2) % 251\ndef item_973(value):\n    return (value + 3) % 251\ndef item_974(value):\n    return (value + 4) % 251\ndef item_975(value):\n    return (value + 5) % 251\ndef item_976(value):\n    return (value + 6) % 251\ndef item_977(value):\n    return (value + 7) % 251\ndef item_978(value):\n    return (value + 8) % 251\ndef item_979(value):\n    return (value + 9) % 251\ndef item_980(value):\n    return (value + 10) % 251\ndef item_981(value):\n    return (value + 11) % 251\ndef item_982(value):\n    return (value + 12) % 251\ndef item_983(value):\n    return (value + 13) % 251\ndef item_984(value):\n    return (value + 14) % 251\ndef item_985(value):\n    return (value + 15) % 251\ndef item_986(value):\n    return (value + 16) % 251\ndef item_987(value):\n    return (value + 17) % 251\ndef item_988(value):\n    return (value + 18) % 251\ndef item_989(value):\n    return (value + 19) % 251\ndef item_990(value):\n    return (value + 20) % 251\ndef item_991(value):\n    return (value + 21) % 251\ndef item_992(value):\n    return (value + 22) % 251\ndef item_993(value):\n    return (value + 23) % 251\ndef item_994(value):\n    return (value + 24) % 251\ndef item_995(value):\n    return (value + 25) % 251\ndef item_996(value):\n    return (value + 26) % 251\ndef item_997(value):\n    return (value + 27) % 251\ndef item_998(value):\n    return (value + 28) % 251\ndef item_999(value):\n    return (value + 29) % 251\ndef item_1000(value):\n    return (value + 30) % 251\ndef item_1001(value):\n    return (value + 31) % 251\ndef item_1002(value):\n    return (value + 32) % 251\ndef item_1003(value):\n    return (value + 33) % 251\ndef item_1004(value):\n    return (value + 34) % 251\ndef item_1005(value):\n    return (value + 35) % 251\ndef item_1006(value):\n    return (value + 36) % 251\ndef item_1007(value):\n    return (value + 37) % 251\ndef item_1008(value):\n    return (value + 38) % 251\ndef item_1009(value):\n    return (value + 39) % 251\ndef item_1010(value):\n    return (value + 40) % 251\ndef item_1011(value):\n    return (value + 41) % 251\ndef item_1012(value):\n    return (value + 42) % 251\ndef item_1013(value):\n    return (value + 43) % 251\ndef item_1014(value):\n    return (value + 44) % 251\ndef item_1015(value):\n    return (value + 45) % 251\ndef item_1016(value):\n    return (value + 46) % 251\ndef item_1017(value):\n    return (value + 47) % 251\ndef item_1018(value):\n    return (value + 48) % 251\ndef item_1019(value):\n    return (value + 49) % 251\ndef item_1020(value):\n    return (value + 50) % 251\ndef item_1021(value):\n    return (value + 51) % 251\ndef item_1022(value):\n    return (value + 52) % 251\ndef item_1023(value):\n    return (value + 53) % 251\n"
+      },
+      {
+        "role": "user",
+        "content": "Explain the module's behavior, identify edge cases, and write a detailed test plan with Python test examples."
+      }
+    ],
+    "temperature": 0,
+    "max_tokens": 128,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    }
+  },
+  "chunks": [
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "role": "assistant",
+            "content": ""
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "###"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Module"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Behavior"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Analysis"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "The"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " provided"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Python"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " module"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " defines"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " series"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " of"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " functions"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " (`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "item"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "_"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "0"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " through"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "item"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "_"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "0"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "2"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "3"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`)"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " that"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " all"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " perform"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " similar"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " mathematical"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " operation"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": ":"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " **"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "mod"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "ular"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " addition"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "**."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "####"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Core"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Logic"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "Each"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " function"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " takes"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " single"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " integer"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " argument"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "value"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " and"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " returns"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " result"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " of"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": ":"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "$$"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " ("
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "value"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " +"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " offset"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": ")"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " \\"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "p"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "mod"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "{"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "2"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "5"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "}"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " $$"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "Where"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "offset"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " is"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " constant"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " specific"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " to"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " each"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " function"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "####"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " The"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Offset"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Pattern"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "The"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "offset"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " values"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " follow"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " specific"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " repeating"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " pattern"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " based"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " on"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " function"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " index"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "i"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`:"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " **"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "Base"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Offset"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "**:"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " The"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " offset"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " starts"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " at"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "length",
+          "delta": {}
+        }
+      ],
+      "usage": null,
+      "timings": {
+        "prompt_n": 24437,
+        "predicted_n": 128,
+        "prompt_ms": 15026.6,
+        "predicted_ms": 8039.0,
+        "prompt_per_second": 1626.249,
+        "predicted_per_second": 15.922,
+        "cache_n": 0,
+        "disk_restore_n": 0,
+        "disk_restore_ms": 0.0,
+        "prefix_n": 10,
+        "draft_n": 1,
+        "draft_n_accepted": 1
+      }
+    },
+    {
+      "id": "chatcmpl-85ee99c034314bccaac6706f",
+      "created": 1791291967,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 24437,
+        "completion_tokens": 128,
+        "total_tokens": 24565,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "timings": {
+        "prompt_n": 24437,
+        "predicted_n": 128,
+        "prompt_ms": 15026.6,
+        "predicted_ms": 8039.0,
+        "prompt_per_second": 1626.249,
+        "predicted_per_second": 15.922,
+        "cache_n": 0,
+        "disk_restore_n": 0,
+        "disk_restore_ms": 0.0,
+        "prefix_n": 10,
+        "draft_n": 1,
+        "draft_n_accepted": 1
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 24437,
+    "completion_tokens": 128,
+    "total_tokens": 24565,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "timings": {
+    "prompt_n": 24437,
+    "predicted_n": 128,
+    "prompt_ms": 15026.6,
+    "predicted_ms": 8039.0,
+    "prompt_per_second": 1626.249,
+    "predicted_per_second": 15.922,
+    "cache_n": 0,
+    "disk_restore_n": 0,
+    "disk_restore_ms": 0.0,
+    "prefix_n": 10,
+    "draft_n": 1,
+    "draft_n_accepted": 1
+  },
+  "answer": "### Module Behavior Analysis\n\nThe provided Python module defines a series of functions (`item_0` through `item_1023`) that all perform a similar mathematical operation: **modular addition**.\n\n#### Core Logic\nEach function takes a single integer argument `value` and returns the result of:\n$$ (value + offset) \\pmod{251} $$\n\nWhere `offset` is a constant specific to each function.\n\n#### The Offset Pattern\nThe `offset` values follow a specific repeating pattern based on the function index `i`:\n1.  **Base Offset**: The offset starts at `",
+  "reasoning": "",
+  "finish_reason": "length",
+  "headers_s": 0.08274171599987312,
+  "elapsed_s": 68.58078354600002,
+  "ttft_s": 60.541804388999935,
+  "observed_decode_tps": 15.799382520022927
+}

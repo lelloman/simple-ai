@@ -1,0 +1,1163 @@
+{
+  "name": "warm-8-0",
+  "request_sha256": "e9ad03362d63a86f998348af6bb6d13e62c5da620ed229f02916edec87bec8f5",
+  "request": {
+    "model": "halogen-qwen3.8-flash-next",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Benchmark case halo-comparison-v1-cold-8-0. Review this synthetic Python module.\ndef item_0(value):\n    return (value + 0) % 251\ndef item_1(value):\n    return (value + 1) % 251\ndef item_2(value):\n    return (value + 2) % 251\ndef item_3(value):\n    return (value + 3) % 251\ndef item_4(value):\n    return (value + 4) % 251\ndef item_5(value):\n    return (value + 5) % 251\ndef item_6(value):\n    return (value + 6) % 251\ndef item_7(value):\n    return (value + 7) % 251\n"
+      },
+      {
+        "role": "user",
+        "content": "Explain the module's behavior, identify edge cases, and write a detailed test plan with Python test examples."
+      },
+      {
+        "role": "assistant",
+        "content": "# Module Analysis: `halo-comparison-v1-cold-8-0`\n\n## 1. Behavior Explanation\n\nThis module defines **8 independent functions** (`item_0` through `item_7`), each of which:\n\n1. Takes a single integer `value` as input.\n"
+      },
+      {
+        "role": "user",
+        "content": "Now write additional tests for negative integers and explain their expected results."
+      }
+    ],
+    "temperature": 0,
+    "max_tokens": 64,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    }
+  },
+  "chunks": [
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "role": "assistant",
+            "content": ""
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "##"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Additional"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Tests"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " for"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Negative"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Int"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "egers"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "###"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Key"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Insight"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": ":"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Python"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "'s"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Mod"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "ulo"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Behavior"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " with"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Negative"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Numbers"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "In"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Python"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": ","
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `%"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " operator"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " always"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " returns"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " result"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " with"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " **"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "same"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " sign"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " as"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " divisor"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "**"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " ("
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " modulus"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": ")."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Since"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " modulus"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " here"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " is"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "2"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "5"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " ("
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "positive"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "),"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " result"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " is"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " always"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " in"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "length",
+          "delta": {}
+        }
+      ],
+      "usage": null,
+      "timings": {
+        "prompt_n": 317,
+        "predicted_n": 64,
+        "prompt_ms": 533.4,
+        "predicted_ms": 1324.2,
+        "prompt_per_second": 594.301,
+        "predicted_per_second": 48.331,
+        "cache_n": 0,
+        "disk_restore_n": 0,
+        "disk_restore_ms": 0.0,
+        "prefix_n": 290,
+        "draft_n": 46,
+        "draft_n_accepted": 39
+      }
+    },
+    {
+      "id": "chatcmpl-920699e9e8664f09abec33fb",
+      "created": 1791291866,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 317,
+        "completion_tokens": 64,
+        "total_tokens": 381,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "timings": {
+        "prompt_n": 317,
+        "predicted_n": 64,
+        "prompt_ms": 533.4,
+        "predicted_ms": 1324.2,
+        "prompt_per_second": 594.301,
+        "predicted_per_second": 48.331,
+        "cache_n": 0,
+        "disk_restore_n": 0,
+        "disk_restore_ms": 0.0,
+        "prefix_n": 290,
+        "draft_n": 46,
+        "draft_n_accepted": 39
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 317,
+    "completion_tokens": 64,
+    "total_tokens": 381,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "timings": {
+    "prompt_n": 317,
+    "predicted_n": 64,
+    "prompt_ms": 533.4,
+    "predicted_ms": 1324.2,
+    "prompt_per_second": 594.301,
+    "predicted_per_second": 48.331,
+    "cache_n": 0,
+    "disk_restore_n": 0,
+    "disk_restore_ms": 0.0,
+    "prefix_n": 290,
+    "draft_n": 46,
+    "draft_n_accepted": 39
+  },
+  "answer": "## Additional Tests for Negative Integers\n\n### Key Insight: Python's Modulo Behavior with Negative Numbers\n\nIn Python, the `%` operator always returns a result with the **same sign as the divisor** (the modulus). Since the modulus here is `251` (positive), the result is always in the",
+  "reasoning": "",
+  "finish_reason": "length",
+  "headers_s": 0.003113854000048377,
+  "elapsed_s": 1.8628289860000677,
+  "ttft_s": 0.5384025070000007,
+  "observed_decode_tps": 47.58239187787749
+}

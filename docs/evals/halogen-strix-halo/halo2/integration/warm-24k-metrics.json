@@ -1,0 +1,16 @@
+{
+  "elapsed_s": 5.196682024999973,
+  "metrics": {
+    "resolved_model": "qwen3.8-flash-next-uncensored-iq4xs",
+    "engine_type": "halogen",
+    "context_window": 262144,
+    "prompt_tokens": 24597,
+    "completion_tokens": 128,
+    "prompt_eval_ms": 601,
+    "completion_eval_ms": 3560,
+    "total_inference_ms": 4161,
+    "prompt_tokens_per_sec": 258.075,
+    "completion_tokens_per_sec": 35.957,
+    "cached_prompt_tokens": 24442
+  }
+}

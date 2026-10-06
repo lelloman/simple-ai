@@ -1,0 +1,2179 @@
+{
+  "name": "cold-2048-0",
+  "request_sha256": "ff6e5ab5f6484b7d034202eacc553a693bbf267d94f21c38efd7cbb2f57abaae",
+  "request": {
+    "model": "halogen-qwen3.8-flash-next",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Benchmark case halo-comparison-v1-cold-2048-0. Review this synthetic Python module.\ndef item_0(value):\n    return (value + 0) % 251\ndef item_1(value):\n    return (value + 1) % 251\ndef item_2(value):\n    return (value + 2) % 251\ndef item_3(value):\n    return (value + 3) % 251\ndef item_4(value):\n    return (value + 4) % 251\ndef item_5(value):\n    return (value + 5) % 251\ndef item_6(value):\n    return (value + 6) % 251\ndef item_7(value):\n    return (value + 7) % 251\ndef item_8(value):\n    return (value + 8) % 251\ndef item_9(value):\n    return (value + 9) % 251\ndef item_10(value):\n    return (value + 10) % 251\ndef item_11(value):\n    return (value + 11) % 251\ndef item_12(value):\n    return (value + 12) % 251\ndef item_13(value):\n    return (value + 13) % 251\ndef item_14(value):\n    return (value + 14) % 251\ndef item_15(value):\n    return (value + 15) % 251\ndef item_16(value):\n    return (value + 16) % 251\ndef item_17(value):\n    return (value + 17) % 251\ndef item_18(value):\n    return (value + 18) % 251\ndef item_19(value):\n    return (value + 19) % 251\ndef item_20(value):\n    return (value + 20) % 251\ndef item_21(value):\n    return (value + 21) % 251\ndef item_22(value):\n    return (value + 22) % 251\ndef item_23(value):\n    return (value + 23) % 251\ndef item_24(value):\n    return (value + 24) % 251\ndef item_25(value):\n    return (value + 25) % 251\ndef item_26(value):\n    return (value + 26) % 251\ndef item_27(value):\n    return (value + 27) % 251\ndef item_28(value):\n    return (value + 28) % 251\ndef item_29(value):\n    return (value + 29) % 251\ndef item_30(value):\n    return (value + 30) % 251\ndef item_31(value):\n    return (value + 31) % 251\ndef item_32(value):\n    return (value + 32) % 251\ndef item_33(value):\n    return (value + 33) % 251\ndef item_34(value):\n    return (value + 34) % 251\ndef item_35(value):\n    return (value + 35) % 251\ndef item_36(value):\n    return (value + 36) % 251\ndef item_37(value):\n    return (value + 37) % 251\ndef item_38(value):\n    return (value + 38) % 251\ndef item_39(value):\n    return (value + 39) % 251\ndef item_40(value):\n    return (value + 40) % 251\ndef item_41(value):\n    return (value + 41) % 251\ndef item_42(value):\n    return (value + 42) % 251\ndef item_43(value):\n    return (value + 43) % 251\ndef item_44(value):\n    return (value + 44) % 251\ndef item_45(value):\n    return (value + 45) % 251\ndef item_46(value):\n    return (value + 46) % 251\ndef item_47(value):\n    return (value + 47) % 251\ndef item_48(value):\n    return (value + 48) % 251\ndef item_49(value):\n    return (value + 49) % 251\ndef item_50(value):\n    return (value + 50) % 251\ndef item_51(value):\n    return (value + 51) % 251\ndef item_52(value):\n    return (value + 52) % 251\ndef item_53(value):\n    return (value + 53) % 251\ndef item_54(value):\n    return (value + 54) % 251\ndef item_55(value):\n    return (value + 55) % 251\ndef item_56(value):\n    return (value + 56) % 251\ndef item_57(value):\n    return (value + 57) % 251\ndef item_58(value):\n    return (value + 58) % 251\ndef item_59(value):\n    return (value + 59) % 251\ndef item_60(value):\n    return (value + 60) % 251\ndef item_61(value):\n    return (value + 61) % 251\ndef item_62(value):\n    return (value + 62) % 251\ndef item_63(value):\n    return (value + 63) % 251\ndef item_64(value):\n    return (value + 64) % 251\ndef item_65(value):\n    return (value + 65) % 251\ndef item_66(value):\n    return (value + 66) % 251\ndef item_67(value):\n    return (value + 67) % 251\ndef item_68(value):\n    return (value + 68) % 251\ndef item_69(value):\n    return (value + 69) % 251\ndef item_70(value):\n    return (value + 70) % 251\ndef item_71(value):\n    return (value + 71) % 251\ndef item_72(value):\n    return (value + 72) % 251\ndef item_73(value):\n    return (value + 73) % 251\ndef item_74(value):\n    return (value + 74) % 251\ndef item_75(value):\n    return (value + 75) % 251\ndef item_76(value):\n    return (value + 76) % 251\ndef item_77(value):\n    return (value + 77) % 251\ndef item_78(value):\n    return (value + 78) % 251\ndef item_79(value):\n    return (value + 79) % 251\ndef item_80(value):\n    return (value + 80) % 251\ndef item_81(value):\n    return (value + 81) % 251\ndef item_82(value):\n    return (value + 82) % 251\ndef item_83(value):\n    return (value + 83) % 251\ndef item_84(value):\n    return (value + 84) % 251\ndef item_85(value):\n    return (value + 85) % 251\ndef item_86(value):\n    return (value + 86) % 251\ndef item_87(value):\n    return (value + 87) % 251\ndef item_88(value):\n    return (value + 88) % 251\ndef item_89(value):\n    return (value + 89) % 251\ndef item_90(value):\n    return (value + 90) % 251\ndef item_91(value):\n    return (value + 91) % 251\ndef item_92(value):\n    return (value + 92) % 251\ndef item_93(value):\n    return (value + 93) % 251\ndef item_94(value):\n    return (value + 94) % 251\ndef item_95(value):\n    return (value + 95) % 251\ndef item_96(value):\n    return (value + 96) % 251\ndef item_97(value):\n    return (value + 0) % 251\ndef item_98(value):\n    return (value + 1) % 251\ndef item_99(value):\n    return (value + 2) % 251\ndef item_100(value):\n    return (value + 3) % 251\ndef item_101(value):\n    return (value + 4) % 251\ndef item_102(value):\n    return (value + 5) % 251\ndef item_103(value):\n    return (value + 6) % 251\ndef item_104(value):\n    return (value + 7) % 251\ndef item_105(value):\n    return (value + 8) % 251\ndef item_106(value):\n    return (value + 9) % 251\ndef item_107(value):\n    return (value + 10) % 251\ndef item_108(value):\n    return (value + 11) % 251\ndef item_109(value):\n    return (value + 12) % 251\ndef item_110(value):\n    return (value + 13) % 251\ndef item_111(value):\n    return (value + 14) % 251\ndef item_112(value):\n    return (value + 15) % 251\ndef item_113(value):\n    return (value + 16) % 251\ndef item_114(value):\n    return (value + 17) % 251\ndef item_115(value):\n    return (value + 18) % 251\ndef item_116(value):\n    return (value + 19) % 251\ndef item_117(value):\n    return (value + 20) % 251\ndef item_118(value):\n    return (value + 21) % 251\ndef item_119(value):\n    return (value + 22) % 251\ndef item_120(value):\n    return (value + 23) % 251\ndef item_121(value):\n    return (value + 24) % 251\ndef item_122(value):\n    return (value + 25) % 251\ndef item_123(value):\n    return (value + 26) % 251\ndef item_124(value):\n    return (value + 27) % 251\ndef item_125(value):\n    return (value + 28) % 251\ndef item_126(value):\n    return (value + 29) % 251\ndef item_127(value):\n    return (value + 30) % 251\ndef item_128(value):\n    return (value + 31) % 251\ndef item_129(value):\n    return (value + 32) % 251\ndef item_130(value):\n    return (value + 33) % 251\ndef item_131(value):\n    return (value + 34) % 251\ndef item_132(value):\n    return (value + 35) % 251\ndef item_133(value):\n    return (value + 36) % 251\ndef item_134(value):\n    return (value + 37) % 251\ndef item_135(value):\n    return (value + 38) % 251\ndef item_136(value):\n    return (value + 39) % 251\ndef item_137(value):\n    return (value + 40) % 251\ndef item_138(value):\n    return (value + 41) % 251\ndef item_139(value):\n    return (value + 42) % 251\ndef item_140(value):\n    return (value + 43) % 251\ndef item_141(value):\n    return (value + 44) % 251\ndef item_142(value):\n    return (value + 45) % 251\ndef item_143(value):\n    return (value + 46) % 251\ndef item_144(value):\n    return (value + 47) % 251\ndef item_145(value):\n    return (value + 48) % 251\ndef item_146(value):\n    return (value + 49) % 251\ndef item_147(value):\n    return (value + 50) % 251\ndef item_148(value):\n    return (value + 51) % 251\ndef item_149(value):\n    return (value + 52) % 251\ndef item_150(value):\n    return (value + 53) % 251\ndef item_151(value):\n    return (value + 54) % 251\ndef item_152(value):\n    return (value + 55) % 251\ndef item_153(value):\n    return (value + 56) % 251\ndef item_154(value):\n    return (value + 57) % 251\ndef item_155(value):\n    return (value + 58) % 251\ndef item_156(value):\n    return (value + 59) % 251\ndef item_157(value):\n    return (value + 60) % 251\ndef item_158(value):\n    return (value + 61) % 251\ndef item_159(value):\n    return (value + 62) % 251\ndef item_160(value):\n    return (value + 63) % 251\ndef item_161(value):\n    return (value + 64) % 251\ndef item_162(value):\n    return (value + 65) % 251\ndef item_163(value):\n    return (value + 66) % 251\ndef item_164(value):\n    return (value + 67) % 251\ndef item_165(value):\n    return (value + 68) % 251\ndef item_166(value):\n    return (value + 69) % 251\ndef item_167(value):\n    return (value + 70) % 251\ndef item_168(value):\n    return (value + 71) % 251\ndef item_169(value):\n    return (value + 72) % 251\ndef item_170(value):\n    return (value + 73) % 251\ndef item_171(value):\n    return (value + 74) % 251\ndef item_172(value):\n    return (value + 75) % 251\ndef item_173(value):\n    return (value + 76) % 251\ndef item_174(value):\n    return (value + 77) % 251\ndef item_175(value):\n    return (value + 78) % 251\ndef item_176(value):\n    return (value + 79) % 251\ndef item_177(value):\n    return (value + 80) % 251\ndef item_178(value):\n    return (value + 81) % 251\ndef item_179(value):\n    return (value + 82) % 251\ndef item_180(value):\n    return (value + 83) % 251\ndef item_181(value):\n    return (value + 84) % 251\ndef item_182(value):\n    return (value + 85) % 251\ndef item_183(value):\n    return (value + 86) % 251\ndef item_184(value):\n    return (value + 87) % 251\ndef item_185(value):\n    return (value + 88) % 251\ndef item_186(value):\n    return (value + 89) % 251\ndef item_187(value):\n    return (value + 90) % 251\ndef item_188(value):\n    return (value + 91) % 251\ndef item_189(value):\n    return (value + 92) % 251\ndef item_190(value):\n    return (value + 93) % 251\ndef item_191(value):\n    return (value + 94) % 251\ndef item_192(value):\n    return (value + 95) % 251\ndef item_193(value):\n    return (value + 96) % 251\ndef item_194(value):\n    return (value + 0) % 251\ndef item_195(value):\n    return (value + 1) % 251\ndef item_196(value):\n    return (value + 2) % 251\ndef item_197(value):\n    return (value + 3) % 251\ndef item_198(value):\n    return (value + 4) % 251\ndef item_199(value):\n    return (value + 5) % 251\ndef item_200(value):\n    return (value + 6) % 251\ndef item_201(value):\n    return (value + 7) % 251\ndef item_202(value):\n    return (value + 8) % 251\ndef item_203(value):\n    return (value + 9) % 251\ndef item_204(value):\n    return (value + 10) % 251\ndef item_205(value):\n    return (value + 11) % 251\ndef item_206(value):\n    return (value + 12) % 251\ndef item_207(value):\n    return (value + 13) % 251\ndef item_208(value):\n    return (value + 14) % 251\ndef item_209(value):\n    return (value + 15) % 251\ndef item_210(value):\n    return (value + 16) % 251\ndef item_211(value):\n    return (value + 17) % 251\ndef item_212(value):\n    return (value + 18) % 251\ndef item_213(value):\n    return (value + 19) % 251\ndef item_214(value):\n    return (value + 20) % 251\ndef item_215(value):\n    return (value + 21) % 251\ndef item_216(value):\n    return (value + 22) % 251\ndef item_217(value):\n    return (value + 23) % 251\ndef item_218(value):\n    return (value + 24) % 251\ndef item_219(value):\n    return (value + 25) % 251\ndef item_220(value):\n    return (value + 26) % 251\ndef item_221(value):\n    return (value + 27) % 251\ndef item_222(value):\n    return (value + 28) % 251\ndef item_223(value):\n    return (value + 29) % 251\ndef item_224(value):\n    return (value + 30) % 251\ndef item_225(value):\n    return (value + 31) % 251\ndef item_226(value):\n    return (value + 32) % 251\ndef item_227(value):\n    return (value + 33) % 251\ndef item_228(value):\n    return (value + 34) % 251\ndef item_229(value):\n    return (value + 35) % 251\ndef item_230(value):\n    return (value + 36) % 251\ndef item_231(value):\n    return (value + 37) % 251\ndef item_232(value):\n    return (value + 38) % 251\ndef item_233(value):\n    return (value + 39) % 251\ndef item_234(value):\n    return (value + 40) % 251\ndef item_235(value):\n    return (value + 41) % 251\ndef item_236(value):\n    return (value + 42) % 251\ndef item_237(value):\n    return (value + 43) % 251\ndef item_238(value):\n    return (value + 44) % 251\ndef item_239(value):\n    return (value + 45) % 251\ndef item_240(value):\n    return (value + 46) % 251\ndef item_241(value):\n    return (value + 47) % 251\ndef item_242(value):\n    return (value + 48) % 251\ndef item_243(value):\n    return (value + 49) % 251\ndef item_244(value):\n    return (value + 50) % 251\ndef item_245(value):\n    return (value + 51) % 251\ndef item_246(value):\n    return (value + 52) % 251\ndef item_247(value):\n    return (value + 53) % 251\ndef item_248(value):\n    return (value + 54) % 251\ndef item_249(value):\n    return (value + 55) % 251\ndef item_250(value):\n    return (value + 56) % 251\ndef item_251(value):\n    return (value + 57) % 251\ndef item_252(value):\n    return (value + 58) % 251\ndef item_253(value):\n    return (value + 59) % 251\ndef item_254(value):\n    return (value + 60) % 251\ndef item_255(value):\n    return (value + 61) % 251\ndef item_256(value):\n    return (value + 62) % 251\ndef item_257(value):\n    return (value + 63) % 251\ndef item_258(value):\n    return (value + 64) % 251\ndef item_259(value):\n    return (value + 65) % 251\ndef item_260(value):\n    return (value + 66) % 251\ndef item_261(value):\n    return (value + 67) % 251\ndef item_262(value):\n    return (value + 68) % 251\ndef item_263(value):\n    return (value + 69) % 251\ndef item_264(value):\n    return (value + 70) % 251\ndef item_265(value):\n    return (value + 71) % 251\ndef item_266(value):\n    return (value + 72) % 251\ndef item_267(value):\n    return (value + 73) % 251\ndef item_268(value):\n    return (value + 74) % 251\ndef item_269(value):\n    return (value + 75) % 251\ndef item_270(value):\n    return (value + 76) % 251\ndef item_271(value):\n    return (value + 77) % 251\ndef item_272(value):\n    return (value + 78) % 251\ndef item_273(value):\n    return (value + 79) % 251\ndef item_274(value):\n    return (value + 80) % 251\ndef item_275(value):\n    return (value + 81) % 251\ndef item_276(value):\n    return (value + 82) % 251\ndef item_277(value):\n    return (value + 83) % 251\ndef item_278(value):\n    return (value + 84) % 251\ndef item_279(value):\n    return (value + 85) % 251\ndef item_280(value):\n    return (value + 86) % 251\ndef item_281(value):\n    return (value + 87) % 251\ndef item_282(value):\n    return (value + 88) % 251\ndef item_283(value):\n    return (value + 89) % 251\ndef item_284(value):\n    return (value + 90) % 251\ndef item_285(value):\n    return (value + 91) % 251\ndef item_286(value):\n    return (value + 92) % 251\ndef item_287(value):\n    return (value + 93) % 251\ndef item_288(value):\n    return (value + 94) % 251\ndef item_289(value):\n    return (value + 95) % 251\ndef item_290(value):\n    return (value + 96) % 251\ndef item_291(value):\n    return (value + 0) % 251\ndef item_292(value):\n    return (value + 1) % 251\ndef item_293(value):\n    return (value + 2) % 251\ndef item_294(value):\n    return (value + 3) % 251\ndef item_295(value):\n    return (value + 4) % 251\ndef item_296(value):\n    return (value + 5) % 251\ndef item_297(value):\n    return (value + 6) % 251\ndef item_298(value):\n    return (value + 7) % 251\ndef item_299(value):\n    return (value + 8) % 251\ndef item_300(value):\n    return (value + 9) % 251\ndef item_301(value):\n    return (value + 10) % 251\ndef item_302(value):\n    return (value + 11) % 251\ndef item_303(value):\n    return (value + 12) % 251\ndef item_304(value):\n    return (value + 13) % 251\ndef item_305(value):\n    return (value + 14) % 251\ndef item_306(value):\n    return (value + 15) % 251\ndef item_307(value):\n    return (value + 16) % 251\ndef item_308(value):\n    return (value + 17) % 251\ndef item_309(value):\n    return (value + 18) % 251\ndef item_310(value):\n    return (value + 19) % 251\ndef item_311(value):\n    return (value + 20) % 251\ndef item_312(value):\n    return (value + 21) % 251\ndef item_313(value):\n    return (value + 22) % 251\ndef item_314(value):\n    return (value + 23) % 251\ndef item_315(value):\n    return (value + 24) % 251\ndef item_316(value):\n    return (value + 25) % 251\ndef item_317(value):\n    return (value + 26) % 251\ndef item_318(value):\n    return (value + 27) % 251\ndef item_319(value):\n    return (value + 28) % 251\ndef item_320(value):\n    return (value + 29) % 251\ndef item_321(value):\n    return (value + 30) % 251\ndef item_322(value):\n    return (value + 31) % 251\ndef item_323(value):\n    return (value + 32) % 251\ndef item_324(value):\n    return (value + 33) % 251\ndef item_325(value):\n    return (value + 34) % 251\ndef item_326(value):\n    return (value + 35) % 251\ndef item_327(value):\n    return (value + 36) % 251\ndef item_328(value):\n    return (value + 37) % 251\ndef item_329(value):\n    return (value + 38) % 251\ndef item_330(value):\n    return (value + 39) % 251\ndef item_331(value):\n    return (value + 40) % 251\ndef item_332(value):\n    return (value + 41) % 251\ndef item_333(value):\n    return (value + 42) % 251\ndef item_334(value):\n    return (value + 43) % 251\ndef item_335(value):\n    return (value + 44) % 251\ndef item_336(value):\n    return (value + 45) % 251\ndef item_337(value):\n    return (value + 46) % 251\ndef item_338(value):\n    return (value + 47) % 251\ndef item_339(value):\n    return (value + 48) % 251\ndef item_340(value):\n    return (value + 49) % 251\ndef item_341(value):\n    return (value + 50) % 251\ndef item_342(value):\n    return (value + 51) % 251\ndef item_343(value):\n    return (value + 52) % 251\ndef item_344(value):\n    return (value + 53) % 251\ndef item_345(value):\n    return (value + 54) % 251\ndef item_346(value):\n    return (value + 55) % 251\ndef item_347(value):\n    return (value + 56) % 251\ndef item_348(value):\n    return (value + 57) % 251\ndef item_349(value):\n    return (value + 58) % 251\ndef item_350(value):\n    return (value + 59) % 251\ndef item_351(value):\n    return (value + 60) % 251\ndef item_352(value):\n    return (value + 61) % 251\ndef item_353(value):\n    return (value + 62) % 251\ndef item_354(value):\n    return (value + 63) % 251\ndef item_355(value):\n    return (value + 64) % 251\ndef item_356(value):\n    return (value + 65) % 251\ndef item_357(value):\n    return (value + 66) % 251\ndef item_358(value):\n    return (value + 67) % 251\ndef item_359(value):\n    return (value + 68) % 251\ndef item_360(value):\n    return (value + 69) % 251\ndef item_361(value):\n    return (value + 70) % 251\ndef item_362(value):\n    return (value + 71) % 251\ndef item_363(value):\n    return (value + 72) % 251\ndef item_364(value):\n    return (value + 73) % 251\ndef item_365(value):\n    return (value + 74) % 251\ndef item_366(value):\n    return (value + 75) % 251\ndef item_367(value):\n    return (value + 76) % 251\ndef item_368(value):\n    return (value + 77) % 251\ndef item_369(value):\n    return (value + 78) % 251\ndef item_370(value):\n    return (value + 79) % 251\ndef item_371(value):\n    return (value + 80) % 251\ndef item_372(value):\n    return (value + 81) % 251\ndef item_373(value):\n    return (value + 82) % 251\ndef item_374(value):\n    return (value + 83) % 251\ndef item_375(value):\n    return (value + 84) % 251\ndef item_376(value):\n    return (value + 85) % 251\ndef item_377(value):\n    return (value + 86) % 251\ndef item_378(value):\n    return (value + 87) % 251\ndef item_379(value):\n    return (value + 88) % 251\ndef item_380(value):\n    return (value + 89) % 251\ndef item_381(value):\n    return (value + 90) % 251\ndef item_382(value):\n    return (value + 91) % 251\ndef item_383(value):\n    return (value + 92) % 251\ndef item_384(value):\n    return (value + 93) % 251\ndef item_385(value):\n    return (value + 94) % 251\ndef item_386(value):\n    return (value + 95) % 251\ndef item_387(value):\n    return (value + 96) % 251\ndef item_388(value):\n    return (value + 0) % 251\ndef item_389(value):\n    return (value + 1) % 251\ndef item_390(value):\n    return (value + 2) % 251\ndef item_391(value):\n    return (value + 3) % 251\ndef item_392(value):\n    return (value + 4) % 251\ndef item_393(value):\n    return (value + 5) % 251\ndef item_394(value):\n    return (value + 6) % 251\ndef item_395(value):\n    return (value + 7) % 251\ndef item_396(value):\n    return (value + 8) % 251\ndef item_397(value):\n    return (value + 9) % 251\ndef item_398(value):\n    return (value + 10) % 251\ndef item_399(value):\n    return (value + 11) % 251\ndef item_400(value):\n    return (value + 12) % 251\ndef item_401(value):\n    return (value + 13) % 251\ndef item_402(value):\n    return (value + 14) % 251\ndef item_403(value):\n    return (value + 15) % 251\ndef item_404(value):\n    return (value + 16) % 251\ndef item_405(value):\n    return (value + 17) % 251\ndef item_406(value):\n    return (value + 18) % 251\ndef item_407(value):\n    return (value + 19) % 251\ndef item_408(value):\n    return (value + 20) % 251\ndef item_409(value):\n    return (value + 21) % 251\ndef item_410(value):\n    return (value + 22) % 251\ndef item_411(value):\n    return (value + 23) % 251\ndef item_412(value):\n    return (value + 24) % 251\ndef item_413(value):\n    return (value + 25) % 251\ndef item_414(value):\n    return (value + 26) % 251\ndef item_415(value):\n    return (value + 27) % 251\ndef item_416(value):\n    return (value + 28) % 251\ndef item_417(value):\n    return (value + 29) % 251\ndef item_418(value):\n    return (value + 30) % 251\ndef item_419(value):\n    return (value + 31) % 251\ndef item_420(value):\n    return (value + 32) % 251\ndef item_421(value):\n    return (value + 33) % 251\ndef item_422(value):\n    return (value + 34) % 251\ndef item_423(value):\n    return (value + 35) % 251\ndef item_424(value):\n    return (value + 36) % 251\ndef item_425(value):\n    return (value + 37) % 251\ndef item_426(value):\n    return (value + 38) % 251\ndef item_427(value):\n    return (value + 39) % 251\ndef item_428(value):\n    return (value + 40) % 251\ndef item_429(value):\n    return (value + 41) % 251\ndef item_430(value):\n    return (value + 42) % 251\ndef item_431(value):\n    return (value + 43) % 251\ndef item_432(value):\n    return (value + 44) % 251\ndef item_433(value):\n    return (value + 45) % 251\ndef item_434(value):\n    return (value + 46) % 251\ndef item_435(value):\n    return (value + 47) % 251\ndef item_436(value):\n    return (value + 48) % 251\ndef item_437(value):\n    return (value + 49) % 251\ndef item_438(value):\n    return (value + 50) % 251\ndef item_439(value):\n    return (value + 51) % 251\ndef item_440(value):\n    return (value + 52) % 251\ndef item_441(value):\n    return (value + 53) % 251\ndef item_442(value):\n    return (value + 54) % 251\ndef item_443(value):\n    return (value + 55) % 251\ndef item_444(value):\n    return (value + 56) % 251\ndef item_445(value):\n    return (value + 57) % 251\ndef item_446(value):\n    return (value + 58) % 251\ndef item_447(value):\n    return (value + 59) % 251\ndef item_448(value):\n    return (value + 60) % 251\ndef item_449(value):\n    return (value + 61) % 251\ndef item_450(value):\n    return (value + 62) % 251\ndef item_451(value):\n    return (value + 63) % 251\ndef item_452(value):\n    return (value + 64) % 251\ndef item_453(value):\n    return (value + 65) % 251\ndef item_454(value):\n    return (value + 66) % 251\ndef item_455(value):\n    return (value + 67) % 251\ndef item_456(value):\n    return (value + 68) % 251\ndef item_457(value):\n    return (value + 69) % 251\ndef item_458(value):\n    return (value + 70) % 251\ndef item_459(value):\n    return (value + 71) % 251\ndef item_460(value):\n    return (value + 72) % 251\ndef item_461(value):\n    return (value + 73) % 251\ndef item_462(value):\n    return (value + 74) % 251\ndef item_463(value):\n    return (value + 75) % 251\ndef item_464(value):\n    return (value + 76) % 251\ndef item_465(value):\n    return (value + 77) % 251\ndef item_466(value):\n    return (value + 78) % 251\ndef item_467(value):\n    return (value + 79) % 251\ndef item_468(value):\n    return (value + 80) % 251\ndef item_469(value):\n    return (value + 81) % 251\ndef item_470(value):\n    return (value + 82) % 251\ndef item_471(value):\n    return (value + 83) % 251\ndef item_472(value):\n    return (value + 84) % 251\ndef item_473(value):\n    return (value + 85) % 251\ndef item_474(value):\n    return (value + 86) % 251\ndef item_475(value):\n    return (value + 87) % 251\ndef item_476(value):\n    return (value + 88) % 251\ndef item_477(value):\n    return (value + 89) % 251\ndef item_478(value):\n    return (value + 90) % 251\ndef item_479(value):\n    return (value + 91) % 251\ndef item_480(value):\n    return (value + 92) % 251\ndef item_481(value):\n    return (value + 93) % 251\ndef item_482(value):\n    return (value + 94) % 251\ndef item_483(value):\n    return (value + 95) % 251\ndef item_484(value):\n    return (value + 96) % 251\ndef item_485(value):\n    return (value + 0) % 251\ndef item_486(value):\n    return (value + 1) % 251\ndef item_487(value):\n    return (value + 2) % 251\ndef item_488(value):\n    return (value + 3) % 251\ndef item_489(value):\n    return (value + 4) % 251\ndef item_490(value):\n    return (value + 5) % 251\ndef item_491(value):\n    return (value + 6) % 251\ndef item_492(value):\n    return (value + 7) % 251\ndef item_493(value):\n    return (value + 8) % 251\ndef item_494(value):\n    return (value + 9) % 251\ndef item_495(value):\n    return (value + 10) % 251\ndef item_496(value):\n    return (value + 11) % 251\ndef item_497(value):\n    return (value + 12) % 251\ndef item_498(value):\n    return (value + 13) % 251\ndef item_499(value):\n    return (value + 14) % 251\ndef item_500(value):\n    return (value + 15) % 251\ndef item_501(value):\n    return (value + 16) % 251\ndef item_502(value):\n    return (value + 17) % 251\ndef item_503(value):\n    return (value + 18) % 251\ndef item_504(value):\n    return (value + 19) % 251\ndef item_505(value):\n    return (value + 20) % 251\ndef item_506(value):\n    return (value + 21) % 251\ndef item_507(value):\n    return (value + 22) % 251\ndef item_508(value):\n    return (value + 23) % 251\ndef item_509(value):\n    return (value + 24) % 251\ndef item_510(value):\n    return (value + 25) % 251\ndef item_511(value):\n    return (value + 26) % 251\ndef item_512(value):\n    return (value + 27) % 251\ndef item_513(value):\n    return (value + 28) % 251\ndef item_514(value):\n    return (value + 29) % 251\ndef item_515(value):\n    return (value + 30) % 251\ndef item_516(value):\n    return (value + 31) % 251\ndef item_517(value):\n    return (value + 32) % 251\ndef item_518(value):\n    return (value + 33) % 251\ndef item_519(value):\n    return (value + 34) % 251\ndef item_520(value):\n    return (value + 35) % 251\ndef item_521(value):\n    return (value + 36) % 251\ndef item_522(value):\n    return (value + 37) % 251\ndef item_523(value):\n    return (value + 38) % 251\ndef item_524(value):\n    return (value + 39) % 251\ndef item_525(value):\n    return (value + 40) % 251\ndef item_526(value):\n    return (value + 41) % 251\ndef item_527(value):\n    return (value + 42) % 251\ndef item_528(value):\n    return (value + 43) % 251\ndef item_529(value):\n    return (value + 44) % 251\ndef item_530(value):\n    return (value + 45) % 251\ndef item_531(value):\n    return (value + 46) % 251\ndef item_532(value):\n    return (value + 47) % 251\ndef item_533(value):\n    return (value + 48) % 251\ndef item_534(value):\n    return (value + 49) % 251\ndef item_535(value):\n    return (value + 50) % 251\ndef item_536(value):\n    return (value + 51) % 251\ndef item_537(value):\n    return (value + 52) % 251\ndef item_538(value):\n    return (value + 53) % 251\ndef item_539(value):\n    return (value + 54) % 251\ndef item_540(value):\n    return (value + 55) % 251\ndef item_541(value):\n    return (value + 56) % 251\ndef item_542(value):\n    return (value + 57) % 251\ndef item_543(value):\n    return (value + 58) % 251\ndef item_544(value):\n    return (value + 59) % 251\ndef item_545(value):\n    return (value + 60) % 251\ndef item_546(value):\n    return (value + 61) % 251\ndef item_547(value):\n    return (value + 62) % 251\ndef item_548(value):\n    return (value + 63) % 251\ndef item_549(value):\n    return (value + 64) % 251\ndef item_550(value):\n    return (value + 65) % 251\ndef item_551(value):\n    return (value + 66) % 251\ndef item_552(value):\n    return (value + 67) % 251\ndef item_553(value):\n    return (value + 68) % 251\ndef item_554(value):\n    return (value + 69) % 251\ndef item_555(value):\n    return (value + 70) % 251\ndef item_556(value):\n    return (value + 71) % 251\ndef item_557(value):\n    return (value + 72) % 251\ndef item_558(value):\n    return (value + 73) % 251\ndef item_559(value):\n    return (value + 74) % 251\ndef item_560(value):\n    return (value + 75) % 251\ndef item_561(value):\n    return (value + 76) % 251\ndef item_562(value):\n    return (value + 77) % 251\ndef item_563(value):\n    return (value + 78) % 251\ndef item_564(value):\n    return (value + 79) % 251\ndef item_565(value):\n    return (value + 80) % 251\ndef item_566(value):\n    return (value + 81) % 251\ndef item_567(value):\n    return (value + 82) % 251\ndef item_568(value):\n    return (value + 83) % 251\ndef item_569(value):\n    return (value + 84) % 251\ndef item_570(value):\n    return (value + 85) % 251\ndef item_571(value):\n    return (value + 86) % 251\ndef item_572(value):\n    return (value + 87) % 251\ndef item_573(value):\n    return (value + 88) % 251\ndef item_574(value):\n    return (value + 89) % 251\ndef item_575(value):\n    return (value + 90) % 251\ndef item_576(value):\n    return (value + 91) % 251\ndef item_577(value):\n    return (value + 92) % 251\ndef item_578(value):\n    return (value + 93) % 251\ndef item_579(value):\n    return (value + 94) % 251\ndef item_580(value):\n    return (value + 95) % 251\ndef item_581(value):\n    return (value + 96) % 251\ndef item_582(value):\n    return (value + 0) % 251\ndef item_583(value):\n    return (value + 1) % 251\ndef item_584(value):\n    return (value + 2) % 251\ndef item_585(value):\n    return (value + 3) % 251\ndef item_586(value):\n    return (value + 4) % 251\ndef item_587(value):\n    return (value + 5) % 251\ndef item_588(value):\n    return (value + 6) % 251\ndef item_589(value):\n    return (value + 7) % 251\ndef item_590(value):\n    return (value + 8) % 251\ndef item_591(value):\n    return (value + 9) % 251\ndef item_592(value):\n    return (value + 10) % 251\ndef item_593(value):\n    return (value + 11) % 251\ndef item_594(value):\n    return (value + 12) % 251\ndef item_595(value):\n    return (value + 13) % 251\ndef item_596(value):\n    return (value + 14) % 251\ndef item_597(value):\n    return (value + 15) % 251\ndef item_598(value):\n    return (value + 16) % 251\ndef item_599(value):\n    return (value + 17) % 251\ndef item_600(value):\n    return (value + 18) % 251\ndef item_601(value):\n    return (value + 19) % 251\ndef item_602(value):\n    return (value + 20) % 251\ndef item_603(value):\n    return (value + 21) % 251\ndef item_604(value):\n    return (value + 22) % 251\ndef item_605(value):\n    return (value + 23) % 251\ndef item_606(value):\n    return (value + 24) % 251\ndef item_607(value):\n    return (value + 25) % 251\ndef item_608(value):\n    return (value + 26) % 251\ndef item_609(value):\n    return (value + 27) % 251\ndef item_610(value):\n    return (value + 28) % 251\ndef item_611(value):\n    return (value + 29) % 251\ndef item_612(value):\n    return (value + 30) % 251\ndef item_613(value):\n    return (value + 31) % 251\ndef item_614(value):\n    return (value + 32) % 251\ndef item_615(value):\n    return (value + 33) % 251\ndef item_616(value):\n    return (value + 34) % 251\ndef item_617(value):\n    return (value + 35) % 251\ndef item_618(value):\n    return (value + 36) % 251\ndef item_619(value):\n    return (value + 37) % 251\ndef item_620(value):\n    return (value + 38) % 251\ndef item_621(value):\n    return (value + 39) % 251\ndef item_622(value):\n    return (value + 40) % 251\ndef item_623(value):\n    return (value + 41) % 251\ndef item_624(value):\n    return (value + 42) % 251\ndef item_625(value):\n    return (value + 43) % 251\ndef item_626(value):\n    return (value + 44) % 251\ndef item_627(value):\n    return (value + 45) % 251\ndef item_628(value):\n    return (value + 46) % 251\ndef item_629(value):\n    return (value + 47) % 251\ndef item_630(value):\n    return (value + 48) % 251\ndef item_631(value):\n    return (value + 49) % 251\ndef item_632(value):\n    return (value + 50) % 251\ndef item_633(value):\n    return (value + 51) % 251\ndef item_634(value):\n    return (value + 52) % 251\ndef item_635(value):\n    return (value + 53) % 251\ndef item_636(value):\n    return (value + 54) % 251\ndef item_637(value):\n    return (value + 55) % 251\ndef item_638(value):\n    return (value + 56) % 251\ndef item_639(value):\n    return (value + 57) % 251\ndef item_640(value):\n    return (value + 58) % 251\ndef item_641(value):\n    return (value + 59) % 251\ndef item_642(value):\n    return (value + 60) % 251\ndef item_643(value):\n    return (value + 61) % 251\ndef item_644(value):\n    return (value + 62) % 251\ndef item_645(value):\n    return (value + 63) % 251\ndef item_646(value):\n    return (value + 64) % 251\ndef item_647(value):\n    return (value + 65) % 251\ndef item_648(value):\n    return (value + 66) % 251\ndef item_649(value):\n    return (value + 67) % 251\ndef item_650(value):\n    return (value + 68) % 251\ndef item_651(value):\n    return (value + 69) % 251\ndef item_652(value):\n    return (value + 70) % 251\ndef item_653(value):\n    return (value + 71) % 251\ndef item_654(value):\n    return (value + 72) % 251\ndef item_655(value):\n    return (value + 73) % 251\ndef item_656(value):\n    return (value + 74) % 251\ndef item_657(value):\n    return (value + 75) % 251\ndef item_658(value):\n    return (value + 76) % 251\ndef item_659(value):\n    return (value + 77) % 251\ndef item_660(value):\n    return (value + 78) % 251\ndef item_661(value):\n    return (value + 79) % 251\ndef item_662(value):\n    return (value + 80) % 251\ndef item_663(value):\n    return (value + 81) % 251\ndef item_664(value):\n    return (value + 82) % 251\ndef item_665(value):\n    return (value + 83) % 251\ndef item_666(value):\n    return (value + 84) % 251\ndef item_667(value):\n    return (value + 85) % 251\ndef item_668(value):\n    return (value + 86) % 251\ndef item_669(value):\n    return (value + 87) % 251\ndef item_670(value):\n    return (value + 88) % 251\ndef item_671(value):\n    return (value + 89) % 251\ndef item_672(value):\n    return (value + 90) % 251\ndef item_673(value):\n    return (value + 91) % 251\ndef item_674(value):\n    return (value + 92) % 251\ndef item_675(value):\n    return (value + 93) % 251\ndef item_676(value):\n    return (value + 94) % 251\ndef item_677(value):\n    return (value + 95) % 251\ndef item_678(value):\n    return (value + 96) % 251\ndef item_679(value):\n    return (value + 0) % 251\ndef item_680(value):\n    return (value + 1) % 251\ndef item_681(value):\n    return (value + 2) % 251\ndef item_682(value):\n    return (value + 3) % 251\ndef item_683(value):\n    return (value + 4) % 251\ndef item_684(value):\n    return (value + 5) % 251\ndef item_685(value):\n    return (value + 6) % 251\ndef item_686(value):\n    return (value + 7) % 251\ndef item_687(value):\n    return (value + 8) % 251\ndef item_688(value):\n    return (value + 9) % 251\ndef item_689(value):\n    return (value + 10) % 251\ndef item_690(value):\n    return (value + 11) % 251\ndef item_691(value):\n    return (value + 12) % 251\ndef item_692(value):\n    return (value + 13) % 251\ndef item_693(value):\n    return (value + 14) % 251\ndef item_694(value):\n    return (value + 15) % 251\ndef item_695(value):\n    return (value + 16) % 251\ndef item_696(value):\n    return (value + 17) % 251\ndef item_697(value):\n    return (value + 18) % 251\ndef item_698(value):\n    return (value + 19) % 251\ndef item_699(value):\n    return (value + 20) % 251\ndef item_700(value):\n    return (value + 21) % 251\ndef item_701(value):\n    return (value + 22) % 251\ndef item_702(value):\n    return (value + 23) % 251\ndef item_703(value):\n    return (value + 24) % 251\ndef item_704(value):\n    return (value + 25) % 251\ndef item_705(value):\n    return (value + 26) % 251\ndef item_706(value):\n    return (value + 27) % 251\ndef item_707(value):\n    return (value + 28) % 251\ndef item_708(value):\n    return (value + 29) % 251\ndef item_709(value):\n    return (value + 30) % 251\ndef item_710(value):\n    return (value + 31) % 251\ndef item_711(value):\n    return (value + 32) % 251\ndef item_712(value):\n    return (value + 33) % 251\ndef item_713(value):\n    return (value + 34) % 251\ndef item_714(value):\n    return (value + 35) % 251\ndef item_715(value):\n    return (value + 36) % 251\ndef item_716(value):\n    return (value + 37) % 251\ndef item_717(value):\n    return (value + 38) % 251\ndef item_718(value):\n    return (value + 39) % 251\ndef item_719(value):\n    return (value + 40) % 251\ndef item_720(value):\n    return (value + 41) % 251\ndef item_721(value):\n    return (value + 42) % 251\ndef item_722(value):\n    return (value + 43) % 251\ndef item_723(value):\n    return (value + 44) % 251\ndef item_724(value):\n    return (value + 45) % 251\ndef item_725(value):\n    return (value + 46) % 251\ndef item_726(value):\n    return (value + 47) % 251\ndef item_727(value):\n    return (value + 48) % 251\ndef item_728(value):\n    return (value + 49) % 251\ndef item_729(value):\n    return (value + 50) % 251\ndef item_730(value):\n    return (value + 51) % 251\ndef item_731(value):\n    return (value + 52) % 251\ndef item_732(value):\n    return (value + 53) % 251\ndef item_733(value):\n    return (value + 54) % 251\ndef item_734(value):\n    return (value + 55) % 251\ndef item_735(value):\n    return (value + 56) % 251\ndef item_736(value):\n    return (value + 57) % 251\ndef item_737(value):\n    return (value + 58) % 251\ndef item_738(value):\n    return (value + 59) % 251\ndef item_739(value):\n    return (value + 60) % 251\ndef item_740(value):\n    return (value + 61) % 251\ndef item_741(value):\n    return (value + 62) % 251\ndef item_742(value):\n    return (value + 63) % 251\ndef item_743(value):\n    return (value + 64) % 251\ndef item_744(value):\n    return (value + 65) % 251\ndef item_745(value):\n    return (value + 66) % 251\ndef item_746(value):\n    return (value + 67) % 251\ndef item_747(value):\n    return (value + 68) % 251\ndef item_748(value):\n    return (value + 69) % 251\ndef item_749(value):\n    return (value + 70) % 251\ndef item_750(value):\n    return (value + 71) % 251\ndef item_751(value):\n    return (value + 72) % 251\ndef item_752(value):\n    return (value + 73) % 251\ndef item_753(value):\n    return (value + 74) % 251\ndef item_754(value):\n    return (value + 75) % 251\ndef item_755(value):\n    return (value + 76) % 251\ndef item_756(value):\n    return (value + 77) % 251\ndef item_757(value):\n    return (value + 78) % 251\ndef item_758(value):\n    return (value + 79) % 251\ndef item_759(value):\n    return (value + 80) % 251\ndef item_760(value):\n    return (value + 81) % 251\ndef item_761(value):\n    return (value + 82) % 251\ndef item_762(value):\n    return (value + 83) % 251\ndef item_763(value):\n    return (value + 84) % 251\ndef item_764(value):\n    return (value + 85) % 251\ndef item_765(value):\n    return (value + 86) % 251\ndef item_766(value):\n    return (value + 87) % 251\ndef item_767(value):\n    return (value + 88) % 251\ndef item_768(value):\n    return (value + 89) % 251\ndef item_769(value):\n    return (value + 90) % 251\ndef item_770(value):\n    return (value + 91) % 251\ndef item_771(value):\n    return (value + 92) % 251\ndef item_772(value):\n    return (value + 93) % 251\ndef item_773(value):\n    return (value + 94) % 251\ndef item_774(value):\n    return (value + 95) % 251\ndef item_775(value):\n    return (value + 96) % 251\ndef item_776(value):\n    return (value + 0) % 251\ndef item_777(value):\n    return (value + 1) % 251\ndef item_778(value):\n    return (value + 2) % 251\ndef item_779(value):\n    return (value + 3) % 251\ndef item_780(value):\n    return (value + 4) % 251\ndef item_781(value):\n    return (value + 5) % 251\ndef item_782(value):\n    return (value + 6) % 251\ndef item_783(value):\n    return (value + 7) % 251\ndef item_784(value):\n    return (value + 8) % 251\ndef item_785(value):\n    return (value + 9) % 251\ndef item_786(value):\n    return (value + 10) % 251\ndef item_787(value):\n    return (value + 11) % 251\ndef item_788(value):\n    return (value + 12) % 251\ndef item_789(value):\n    return (value + 13) % 251\ndef item_790(value):\n    return (value + 14) % 251\ndef item_791(value):\n    return (value + 15) % 251\ndef item_792(value):\n    return (value + 16) % 251\ndef item_793(value):\n    return (value + 17) % 251\ndef item_794(value):\n    return (value + 18) % 251\ndef item_795(value):\n    return (value + 19) % 251\ndef item_796(value):\n    return (value + 20) % 251\ndef item_797(value):\n    return (value + 21) % 251\ndef item_798(value):\n    return (value + 22) % 251\ndef item_799(value):\n    return (value + 23) % 251\ndef item_800(value):\n    return (value + 24) % 251\ndef item_801(value):\n    return (value + 25) % 251\ndef item_802(value):\n    return (value + 26) % 251\ndef item_803(value):\n    return (value + 27) % 251\ndef item_804(value):\n    return (value + 28) % 251\ndef item_805(value):\n    return (value + 29) % 251\ndef item_806(value):\n    return (value + 30) % 251\ndef item_807(value):\n    return (value + 31) % 251\ndef item_808(value):\n    return (value + 32) % 251\ndef item_809(value):\n    return (value + 33) % 251\ndef item_810(value):\n    return (value + 34) % 251\ndef item_811(value):\n    return (value + 35) % 251\ndef item_812(value):\n    return (value + 36) % 251\ndef item_813(value):\n    return (value + 37) % 251\ndef item_814(value):\n    return (value + 38) % 251\ndef item_815(value):\n    return (value + 39) % 251\ndef item_816(value):\n    return (value + 40) % 251\ndef item_817(value):\n    return (value + 41) % 251\ndef item_818(value):\n    return (value + 42) % 251\ndef item_819(value):\n    return (value + 43) % 251\ndef item_820(value):\n    return (value + 44) % 251\ndef item_821(value):\n    return (value + 45) % 251\ndef item_822(value):\n    return (value + 46) % 251\ndef item_823(value):\n    return (value + 47) % 251\ndef item_824(value):\n    return (value + 48) % 251\ndef item_825(value):\n    return (value + 49) % 251\ndef item_826(value):\n    return (value + 50) % 251\ndef item_827(value):\n    return (value + 51) % 251\ndef item_828(value):\n    return (value + 52) % 251\ndef item_829(value):\n    return (value + 53) % 251\ndef item_830(value):\n    return (value + 54) % 251\ndef item_831(value):\n    return (value + 55) % 251\ndef item_832(value):\n    return (value + 56) % 251\ndef item_833(value):\n    return (value + 57) % 251\ndef item_834(value):\n    return (value + 58) % 251\ndef item_835(value):\n    return (value + 59) % 251\ndef item_836(value):\n    return (value + 60) % 251\ndef item_837(value):\n    return (value + 61) % 251\ndef item_838(value):\n    return (value + 62) % 251\ndef item_839(value):\n    return (value + 63) % 251\ndef item_840(value):\n    return (value + 64) % 251\ndef item_841(value):\n    return (value + 65) % 251\ndef item_842(value):\n    return (value + 66) % 251\ndef item_843(value):\n    return (value + 67) % 251\ndef item_844(value):\n    return (value + 68) % 251\ndef item_845(value):\n    return (value + 69) % 251\ndef item_846(value):\n    return (value + 70) % 251\ndef item_847(value):\n    return (value + 71) % 251\ndef item_848(value):\n    return (value + 72) % 251\ndef item_849(value):\n    return (value + 73) % 251\ndef item_850(value):\n    return (value + 74) % 251\ndef item_851(value):\n    return (value + 75) % 251\ndef item_852(value):\n    return (value + 76) % 251\ndef item_853(value):\n    return (value + 77) % 251\ndef item_854(value):\n    return (value + 78) % 251\ndef item_855(value):\n    return (value + 79) % 251\ndef item_856(value):\n    return (value + 80) % 251\ndef item_857(value):\n    return (value + 81) % 251\ndef item_858(value):\n    return (value + 82) % 251\ndef item_859(value):\n    return (value + 83) % 251\ndef item_860(value):\n    return (value + 84) % 251\ndef item_861(value):\n    return (value + 85) % 251\ndef item_862(value):\n    return (value + 86) % 251\ndef item_863(value):\n    return (value + 87) % 251\ndef item_864(value):\n    return (value + 88) % 251\ndef item_865(value):\n    return (value + 89) % 251\ndef item_866(value):\n    return (value + 90) % 251\ndef item_867(value):\n    return (value + 91) % 251\ndef item_868(value):\n    return (value + 92) % 251\ndef item_869(value):\n    return (value + 93) % 251\ndef item_870(value):\n    return (value + 94) % 251\ndef item_871(value):\n    return (value + 95) % 251\ndef item_872(value):\n    return (value + 96) % 251\ndef item_873(value):\n    return (value + 0) % 251\ndef item_874(value):\n    return (value + 1) % 251\ndef item_875(value):\n    return (value + 2) % 251\ndef item_876(value):\n    return (value + 3) % 251\ndef item_877(value):\n    return (value + 4) % 251\ndef item_878(value):\n    return (value + 5) % 251\ndef item_879(value):\n    return (value + 6) % 251\ndef item_880(value):\n    return (value + 7) % 251\ndef item_881(value):\n    return (value + 8) % 251\ndef item_882(value):\n    return (value + 9) % 251\ndef item_883(value):\n    return (value + 10) % 251\ndef item_884(value):\n    return (value + 11) % 251\ndef item_885(value):\n    return (value + 12) % 251\ndef item_886(value):\n    return (value + 13) % 251\ndef item_887(value):\n    return (value + 14) % 251\ndef item_888(value):\n    return (value + 15) % 251\ndef item_889(value):\n    return (value + 16) % 251\ndef item_890(value):\n    return (value + 17) % 251\ndef item_891(value):\n    return (value + 18) % 251\ndef item_892(value):\n    return (value + 19) % 251\ndef item_893(value):\n    return (value + 20) % 251\ndef item_894(value):\n    return (value + 21) % 251\ndef item_895(value):\n    return (value + 22) % 251\ndef item_896(value):\n    return (value + 23) % 251\ndef item_897(value):\n    return (value + 24) % 251\ndef item_898(value):\n    return (value + 25) % 251\ndef item_899(value):\n    return (value + 26) % 251\ndef item_900(value):\n    return (value + 27) % 251\ndef item_901(value):\n    return (value + 28) % 251\ndef item_902(value):\n    return (value + 29) % 251\ndef item_903(value):\n    return (value + 30) % 251\ndef item_904(value):\n    return (value + 31) % 251\ndef item_905(value):\n    return (value + 32) % 251\ndef item_906(value):\n    return (value + 33) % 251\ndef item_907(value):\n    return (value + 34) % 251\ndef item_908(value):\n    return (value + 35) % 251\ndef item_909(value):\n    return (value + 36) % 251\ndef item_910(value):\n    return (value + 37) % 251\ndef item_911(value):\n    return (value + 38) % 251\ndef item_912(value):\n    return (value + 39) % 251\ndef item_913(value):\n    return (value + 40) % 251\ndef item_914(value):\n    return (value + 41) % 251\ndef item_915(value):\n    return (value + 42) % 251\ndef item_916(value):\n    return (value + 43) % 251\ndef item_917(value):\n    return (value + 44) % 251\ndef item_918(value):\n    return (value + 45) % 251\ndef item_919(value):\n    return (value + 46) % 251\ndef item_920(value):\n    return (value + 47) % 251\ndef item_921(value):\n    return (value + 48) % 251\ndef item_922(value):\n    return (value + 49) % 251\ndef item_923(value):\n    return (value + 50) % 251\ndef item_924(value):\n    return (value + 51) % 251\ndef item_925(value):\n    return (value + 52) % 251\ndef item_926(value):\n    return (value + 53) % 251\ndef item_927(value):\n    return (value + 54) % 251\ndef item_928(value):\n    return (value + 55) % 251\ndef item_929(value):\n    return (value + 56) % 251\ndef item_930(value):\n    return (value + 57) % 251\ndef item_931(value):\n    return (value + 58) % 251\ndef item_932(value):\n    return (value + 59) % 251\ndef item_933(value):\n    return (value + 60) % 251\ndef item_934(value):\n    return (value + 61) % 251\ndef item_935(value):\n    return (value + 62) % 251\ndef item_936(value):\n    return (value + 63) % 251\ndef item_937(value):\n    return (value + 64) % 251\ndef item_938(value):\n    return (value + 65) % 251\ndef item_939(value):\n    return (value + 66) % 251\ndef item_940(value):\n    return (value + 67) % 251\ndef item_941(value):\n    return (value + 68) % 251\ndef item_942(value):\n    return (value + 69) % 251\ndef item_943(value):\n    return (value + 70) % 251\ndef item_944(value):\n    return (value + 71) % 251\ndef item_945(value):\n    return (value + 72) % 251\ndef item_946(value):\n    return (value + 73) % 251\ndef item_947(value):\n    return (value + 74) % 251\ndef item_948(value):\n    return (value + 75) % 251\ndef item_949(value):\n    return (value + 76) % 251\ndef item_950(value):\n    return (value + 77) % 251\ndef item_951(value):\n    return (value + 78) % 251\ndef item_952(value):\n    return (value + 79) % 251\ndef item_953(value):\n    return (value + 80) % 251\ndef item_954(value):\n    return (value + 81) % 251\ndef item_955(value):\n    return (value + 82) % 251\ndef item_956(value):\n    return (value + 83) % 251\ndef item_957(value):\n    return (value + 84) % 251\ndef item_958(value):\n    return (value + 85) % 251\ndef item_959(value):\n    return (value + 86) % 251\ndef item_960(value):\n    return (value + 87) % 251\ndef item_961(value):\n    return (value + 88) % 251\ndef item_962(value):\n    return (value + 89) % 251\ndef item_963(value):\n    return (value + 90) % 251\ndef item_964(value):\n    return (value + 91) % 251\ndef item_965(value):\n    return (value + 92) % 251\ndef item_966(value):\n    return (value + 93) % 251\ndef item_967(value):\n    return (value + 94) % 251\ndef item_968(value):\n    return (value + 95) % 251\ndef item_969(value):\n    return (value + 96) % 251\ndef item_970(value):\n    return (value + 0) % 251\ndef item_971(value):\n    return (value + 1) % 251\ndef item_972(value):\n    return (value + 2) % 251\ndef item_973(value):\n    return (value + 3) % 251\ndef item_974(value):\n    return (value + 4) % 251\ndef item_975(value):\n    return (value + 5) % 251\ndef item_976(value):\n    return (value + 6) % 251\ndef item_977(value):\n    return (value + 7) % 251\ndef item_978(value):\n    return (value + 8) % 251\ndef item_979(value):\n    return (value + 9) % 251\ndef item_980(value):\n    return (value + 10) % 251\ndef item_981(value):\n    return (value + 11) % 251\ndef item_982(value):\n    return (value + 12) % 251\ndef item_983(value):\n    return (value + 13) % 251\ndef item_984(value):\n    return (value + 14) % 251\ndef item_985(value):\n    return (value + 15) % 251\ndef item_986(value):\n    return (value + 16) % 251\ndef item_987(value):\n    return (value + 17) % 251\ndef item_988(value):\n    return (value + 18) % 251\ndef item_989(value):\n    return (value + 19) % 251\ndef item_990(value):\n    return (value + 20) % 251\ndef item_991(value):\n    return (value + 21) % 251\ndef item_992(value):\n    return (value + 22) % 251\ndef item_993(value):\n    return (value + 23) % 251\ndef item_994(value):\n    return (value + 24) % 251\ndef item_995(value):\n    return (value + 25) % 251\ndef item_996(value):\n    return (value + 26) % 251\ndef item_997(value):\n    return (value + 27) % 251\ndef item_998(value):\n    return (value + 28) % 251\ndef item_999(value):\n    return (value + 29) % 251\ndef item_1000(value):\n    return (value + 30) % 251\ndef item_1001(value):\n    return (value + 31) % 251\ndef item_1002(value):\n    return (value + 32) % 251\ndef item_1003(value):\n    return (value + 33) % 251\ndef item_1004(value):\n    return (value + 34) % 251\ndef item_1005(value):\n    return (value + 35) % 251\ndef item_1006(value):\n    return (value + 36) % 251\ndef item_1007(value):\n    return (value + 37) % 251\ndef item_1008(value):\n    return (value + 38) % 251\ndef item_1009(value):\n    return (value + 39) % 251\ndef item_1010(value):\n    return (value + 40) % 251\ndef item_1011(value):\n    return (value + 41) % 251\ndef item_1012(value):\n    return (value + 42) % 251\ndef item_1013(value):\n    return (value + 43) % 251\ndef item_1014(value):\n    return (value + 44) % 251\ndef item_1015(value):\n    return (value + 45) % 251\ndef item_1016(value):\n    return (value + 46) % 251\ndef item_1017(value):\n    return (value + 47) % 251\ndef item_1018(value):\n    return (value + 48) % 251\ndef item_1019(value):\n    return (value + 49) % 251\ndef item_1020(value):\n    return (value + 50) % 251\ndef item_1021(value):\n    return (value + 51) % 251\ndef item_1022(value):\n    return (value + 52) % 251\ndef item_1023(value):\n    return (value + 53) % 251\ndef item_1024(value):\n    return (value + 54) % 251\ndef item_1025(value):\n    return (value + 55) % 251\ndef item_1026(value):\n    return (value + 56) % 251\ndef item_1027(value):\n    return (value + 57) % 251\ndef item_1028(value):\n    return (value + 58) % 251\ndef item_1029(value):\n    return (value + 59) % 251\ndef item_1030(value):\n    return (value + 60) % 251\ndef item_1031(value):\n    return (value + 61) % 251\ndef item_1032(value):\n    return (value + 62) % 251\ndef item_1033(value):\n    return (value + 63) % 251\ndef item_1034(value):\n    return (value + 64) % 251\ndef item_1035(value):\n    return (value + 65) % 251\ndef item_1036(value):\n    return (value + 66) % 251\ndef item_1037(value):\n    return (value + 67) % 251\ndef item_1038(value):\n    return (value + 68) % 251\ndef item_1039(value):\n    return (value + 69) % 251\ndef item_1040(value):\n    return (value + 70) % 251\ndef item_1041(value):\n    return (value + 71) % 251\ndef item_1042(value):\n    return (value + 72) % 251\ndef item_1043(value):\n    return (value + 73) % 251\ndef item_1044(value):\n    return (value + 74) % 251\ndef item_1045(value):\n    return (value + 75) % 251\ndef item_1046(value):\n    return (value + 76) % 251\ndef item_1047(value):\n    return (value + 77) % 251\ndef item_1048(value):\n    return (value + 78) % 251\ndef item_1049(value):\n    return (value + 79) % 251\ndef item_1050(value):\n    return (value + 80) % 251\ndef item_1051(value):\n    return (value + 81) % 251\ndef item_1052(value):\n    return (value + 82) % 251\ndef item_1053(value):\n    return (value + 83) % 251\ndef item_1054(value):\n    return (value + 84) % 251\ndef item_1055(value):\n    return (value + 85) % 251\ndef item_1056(value):\n    return (value + 86) % 251\ndef item_1057(value):\n    return (value + 87) % 251\ndef item_1058(value):\n    return (value + 88) % 251\ndef item_1059(value):\n    return (value + 89) % 251\ndef item_1060(value):\n    return (value + 90) % 251\ndef item_1061(value):\n    return (value + 91) % 251\ndef item_1062(value):\n    return (value + 92) % 251\ndef item_1063(value):\n    return (value + 93) % 251\ndef item_1064(value):\n    return (value + 94) % 251\ndef item_1065(value):\n    return (value + 95) % 251\ndef item_1066(value):\n    return (value + 96) % 251\ndef item_1067(value):\n    return (value + 0) % 251\ndef item_1068(value):\n    return (value + 1) % 251\ndef item_1069(value):\n    return (value + 2) % 251\ndef item_1070(value):\n    return (value + 3) % 251\ndef item_1071(value):\n    return (value + 4) % 251\ndef item_1072(value):\n    return (value + 5) % 251\ndef item_1073(value):\n    return (value + 6) % 251\ndef item_1074(value):\n    return (value + 7) % 251\ndef item_1075(value):\n    return (value + 8) % 251\ndef item_1076(value):\n    return (value + 9) % 251\ndef item_1077(value):\n    return (value + 10) % 251\ndef item_1078(value):\n    return (value + 11) % 251\ndef item_1079(value):\n    return (value + 12) % 251\ndef item_1080(value):\n    return (value + 13) % 251\ndef item_1081(value):\n    return (value + 14) % 251\ndef item_1082(value):\n    return (value + 15) % 251\ndef item_1083(value):\n    return (value + 16) % 251\ndef item_1084(value):\n    return (value + 17) % 251\ndef item_1085(value):\n    return (value + 18) % 251\ndef item_1086(value):\n    return (value + 19) % 251\ndef item_1087(value):\n    return (value + 20) % 251\ndef item_1088(value):\n    return (value + 21) % 251\ndef item_1089(value):\n    return (value + 22) % 251\ndef item_1090(value):\n    return (value + 23) % 251\ndef item_1091(value):\n    return (value + 24) % 251\ndef item_1092(value):\n    return (value + 25) % 251\ndef item_1093(value):\n    return (value + 26) % 251\ndef item_1094(value):\n    return (value + 27) % 251\ndef item_1095(value):\n    return (value + 28) % 251\ndef item_1096(value):\n    return (value + 29) % 251\ndef item_1097(value):\n    return (value + 30) % 251\ndef item_1098(value):\n    return (value + 31) % 251\ndef item_1099(value):\n    return (value + 32) % 251\ndef item_1100(value):\n    return (value + 33) % 251\ndef item_1101(value):\n    return (value + 34) % 251\ndef item_1102(value):\n    return (value + 35) % 251\ndef item_1103(value):\n    return (value + 36) % 251\ndef item_1104(value):\n    return (value + 37) % 251\ndef item_1105(value):\n    return (value + 38) % 251\ndef item_1106(value):\n    return (value + 39) % 251\ndef item_1107(value):\n    return (value + 40) % 251\ndef item_1108(value):\n    return (value + 41) % 251\ndef item_1109(value):\n    return (value + 42) % 251\ndef item_1110(value):\n    return (value + 43) % 251\ndef item_1111(value):\n    return (value + 44) % 251\ndef item_1112(value):\n    return (value + 45) % 251\ndef item_1113(value):\n    return (value + 46) % 251\ndef item_1114(value):\n    return (value + 47) % 251\ndef item_1115(value):\n    return (value + 48) % 251\ndef item_1116(value):\n    return (value + 49) % 251\ndef item_1117(value):\n    return (value + 50) % 251\ndef item_1118(value):\n    return (value + 51) % 251\ndef item_1119(value):\n    return (value + 52) % 251\ndef item_1120(value):\n    return (value + 53) % 251\ndef item_1121(value):\n    return (value + 54) % 251\ndef item_1122(value):\n    return (value + 55) % 251\ndef item_1123(value):\n    return (value + 56) % 251\ndef item_1124(value):\n    return (value + 57) % 251\ndef item_1125(value):\n    return (value + 58) % 251\ndef item_1126(value):\n    return (value + 59) % 251\ndef item_1127(value):\n    return (value + 60) % 251\ndef item_1128(value):\n    return (value + 61) % 251\ndef item_1129(value):\n    return (value + 62) % 251\ndef item_1130(value):\n    return (value + 63) % 251\ndef item_1131(value):\n    return (value + 64) % 251\ndef item_1132(value):\n    return (value + 65) % 251\ndef item_1133(value):\n    return (value + 66) % 251\ndef item_1134(value):\n    return (value + 67) % 251\ndef item_1135(value):\n    return (value + 68) % 251\ndef item_1136(value):\n    return (value + 69) % 251\ndef item_1137(value):\n    return (value + 70) % 251\ndef item_1138(value):\n    return (value + 71) % 251\ndef item_1139(value):\n    return (value + 72) % 251\ndef item_1140(value):\n    return (value + 73) % 251\ndef item_1141(value):\n    return (value + 74) % 251\ndef item_1142(value):\n    return (value + 75) % 251\ndef item_1143(value):\n    return (value + 76) % 251\ndef item_1144(value):\n    return (value + 77) % 251\ndef item_1145(value):\n    return (value + 78) % 251\ndef item_1146(value):\n    return (value + 79) % 251\ndef item_1147(value):\n    return (value + 80) % 251\ndef item_1148(value):\n    return (value + 81) % 251\ndef item_1149(value):\n    return (value + 82) % 251\ndef item_1150(value):\n    return (value + 83) % 251\ndef item_1151(value):\n    return (value + 84) % 251\ndef item_1152(value):\n    return (value + 85) % 251\ndef item_1153(value):\n    return (value + 86) % 251\ndef item_1154(value):\n    return (value + 87) % 251\ndef item_1155(value):\n    return (value + 88) % 251\ndef item_1156(value):\n    return (value + 89) % 251\ndef item_1157(value):\n    return (value + 90) % 251\ndef item_1158(value):\n    return (value + 91) % 251\ndef item_1159(value):\n    return (value + 92) % 251\ndef item_1160(value):\n    return (value + 93) % 251\ndef item_1161(value):\n    return (value + 94) % 251\ndef item_1162(value):\n    return (value + 95) % 251\ndef item_1163(value):\n    return (value + 96) % 251\ndef item_1164(value):\n    return (value + 0) % 251\ndef item_1165(value):\n    return (value + 1) % 251\ndef item_1166(value):\n    return (value + 2) % 251\ndef item_1167(value):\n    return (value + 3) % 251\ndef item_1168(value):\n    return (value + 4) % 251\ndef item_1169(value):\n    return (value + 5) % 251\ndef item_1170(value):\n    return (value + 6) % 251\ndef item_1171(value):\n    return (value + 7) % 251\ndef item_1172(value):\n    return (value + 8) % 251\ndef item_1173(value):\n    return (value + 9) % 251\ndef item_1174(value):\n    return (value + 10) % 251\ndef item_1175(value):\n    return (value + 11) % 251\ndef item_1176(value):\n    return (value + 12) % 251\ndef item_1177(value):\n    return (value + 13) % 251\ndef item_1178(value):\n    return (value + 14) % 251\ndef item_1179(value):\n    return (value + 15) % 251\ndef item_1180(value):\n    return (value + 16) % 251\ndef item_1181(value):\n    return (value + 17) % 251\ndef item_1182(value):\n    return (value + 18) % 251\ndef item_1183(value):\n    return (value + 19) % 251\ndef item_1184(value):\n    return (value + 20) % 251\ndef item_1185(value):\n    return (value + 21) % 251\ndef item_1186(value):\n    return (value + 22) % 251\ndef item_1187(value):\n    return (value + 23) % 251\ndef item_1188(value):\n    return (value + 24) % 251\ndef item_1189(value):\n    return (value + 25) % 251\ndef item_1190(value):\n    return (value + 26) % 251\ndef item_1191(value):\n    return (value + 27) % 251\ndef item_1192(value):\n    return (value + 28) % 251\ndef item_1193(value):\n    return (value + 29) % 251\ndef item_1194(value):\n    return (value + 30) % 251\ndef item_1195(value):\n    return (value + 31) % 251\ndef item_1196(value):\n    return (value + 32) % 251\ndef item_1197(value):\n    return (value + 33) % 251\ndef item_1198(value):\n    return (value + 34) % 251\ndef item_1199(value):\n    return (value + 35) % 251\ndef item_1200(value):\n    return (value + 36) % 251\ndef item_1201(value):\n    return (value + 37) % 251\ndef item_1202(value):\n    return (value + 38) % 251\ndef item_1203(value):\n    return (value + 39) % 251\ndef item_1204(value):\n    return (value + 40) % 251\ndef item_1205(value):\n    return (value + 41) % 251\ndef item_1206(value):\n    return (value + 42) % 251\ndef item_1207(value):\n    return (value + 43) % 251\ndef item_1208(value):\n    return (value + 44) % 251\ndef item_1209(value):\n    return (value + 45) % 251\ndef item_1210(value):\n    return (value + 46) % 251\ndef item_1211(value):\n    return (value + 47) % 251\ndef item_1212(value):\n    return (value + 48) % 251\ndef item_1213(value):\n    return (value + 49) % 251\ndef item_1214(value):\n    return (value + 50) % 251\ndef item_1215(value):\n    return (value + 51) % 251\ndef item_1216(value):\n    return (value + 52) % 251\ndef item_1217(value):\n    return (value + 53) % 251\ndef item_1218(value):\n    return (value + 54) % 251\ndef item_1219(value):\n    return (value + 55) % 251\ndef item_1220(value):\n    return (value + 56) % 251\ndef item_1221(value):\n    return (value + 57) % 251\ndef item_1222(value):\n    return (value + 58) % 251\ndef item_1223(value):\n    return (value + 59) % 251\ndef item_1224(value):\n    return (value + 60) % 251\ndef item_1225(value):\n    return (value + 61) % 251\ndef item_1226(value):\n    return (value + 62) % 251\ndef item_1227(value):\n    return (value + 63) % 251\ndef item_1228(value):\n    return (value + 64) % 251\ndef item_1229(value):\n    return (value + 65) % 251\ndef item_1230(value):\n    return (value + 66) % 251\ndef item_1231(value):\n    return (value + 67) % 251\ndef item_1232(value):\n    return (value + 68) % 251\ndef item_1233(value):\n    return (value + 69) % 251\ndef item_1234(value):\n    return (value + 70) % 251\ndef item_1235(value):\n    return (value + 71) % 251\ndef item_1236(value):\n    return (value + 72) % 251\ndef item_1237(value):\n    return (value + 73) % 251\ndef item_1238(value):\n    return (value + 74) % 251\ndef item_1239(value):\n    return (value + 75) % 251\ndef item_1240(value):\n    return (value + 76) % 251\ndef item_1241(value):\n    return (value + 77) % 251\ndef item_1242(value):\n    return (value + 78) % 251\ndef item_1243(value):\n    return (value + 79) % 251\ndef item_1244(value):\n    return (value + 80) % 251\ndef item_1245(value):\n    return (value + 81) % 251\ndef item_1246(value):\n    return (value + 82) % 251\ndef item_1247(value):\n    return (value + 83) % 251\ndef item_1248(value):\n    return (value + 84) % 251\ndef item_1249(value):\n    return (value + 85) % 251\ndef item_1250(value):\n    return (value + 86) % 251\ndef item_1251(value):\n    return (value + 87) % 251\ndef item_1252(value):\n    return (value + 88) % 251\ndef item_1253(value):\n    return (value + 89) % 251\ndef item_1254(value):\n    return (value + 90) % 251\ndef item_1255(value):\n    return (value + 91) % 251\ndef item_1256(value):\n    return (value + 92) % 251\ndef item_1257(value):\n    return (value + 93) % 251\ndef item_1258(value):\n    return (value + 94) % 251\ndef item_1259(value):\n    return (value + 95) % 251\ndef item_1260(value):\n    return (value + 96) % 251\ndef item_1261(value):\n    return (value + 0) % 251\ndef item_1262(value):\n    return (value + 1) % 251\ndef item_1263(value):\n    return (value + 2) % 251\ndef item_1264(value):\n    return (value + 3) % 251\ndef item_1265(value):\n    return (value + 4) % 251\ndef item_1266(value):\n    return (value + 5) % 251\ndef item_1267(value):\n    return (value + 6) % 251\ndef item_1268(value):\n    return (value + 7) % 251\ndef item_1269(value):\n    return (value + 8) % 251\ndef item_1270(value):\n    return (value + 9) % 251\ndef item_1271(value):\n    return (value + 10) % 251\ndef item_1272(value):\n    return (value + 11) % 251\ndef item_1273(value):\n    return (value + 12) % 251\ndef item_1274(value):\n    return (value + 13) % 251\ndef item_1275(value):\n    return (value + 14) % 251\ndef item_1276(value):\n    return (value + 15) % 251\ndef item_1277(value):\n    return (value + 16) % 251\ndef item_1278(value):\n    return (value + 17) % 251\ndef item_1279(value):\n    return (value + 18) % 251\ndef item_1280(value):\n    return (value + 19) % 251\ndef item_1281(value):\n    return (value + 20) % 251\ndef item_1282(value):\n    return (value + 21) % 251\ndef item_1283(value):\n    return (value + 22) % 251\ndef item_1284(value):\n    return (value + 23) % 251\ndef item_1285(value):\n    return (value + 24) % 251\ndef item_1286(value):\n    return (value + 25) % 251\ndef item_1287(value):\n    return (value + 26) % 251\ndef item_1288(value):\n    return (value + 27) % 251\ndef item_1289(value):\n    return (value + 28) % 251\ndef item_1290(value):\n    return (value + 29) % 251\ndef item_1291(value):\n    return (value + 30) % 251\ndef item_1292(value):\n    return (value + 31) % 251\ndef item_1293(value):\n    return (value + 32) % 251\ndef item_1294(value):\n    return (value + 33) % 251\ndef item_1295(value):\n    return (value + 34) % 251\ndef item_1296(value):\n    return (value + 35) % 251\ndef item_1297(value):\n    return (value + 36) % 251\ndef item_1298(value):\n    return (value + 37) % 251\ndef item_1299(value):\n    return (value + 38) % 251\ndef item_1300(value):\n    return (value + 39) % 251\ndef item_1301(value):\n    return (value + 40) % 251\ndef item_1302(value):\n    return (value + 41) % 251\ndef item_1303(value):\n    return (value + 42) % 251\ndef item_1304(value):\n    return (value + 43) % 251\ndef item_1305(value):\n    return (value + 44) % 251\ndef item_1306(value):\n    return (value + 45) % 251\ndef item_1307(value):\n    return (value + 46) % 251\ndef item_1308(value):\n    return (value + 47) % 251\ndef item_1309(value):\n    return (value + 48) % 251\ndef item_1310(value):\n    return (value + 49) % 251\ndef item_1311(value):\n    return (value + 50) % 251\ndef item_1312(value):\n    return (value + 51) % 251\ndef item_1313(value):\n    return (value + 52) % 251\ndef item_1314(value):\n    return (value + 53) % 251\ndef item_1315(value):\n    return (value + 54) % 251\ndef item_1316(value):\n    return (value + 55) % 251\ndef item_1317(value):\n    return (value + 56) % 251\ndef item_1318(value):\n    return (value + 57) % 251\ndef item_1319(value):\n    return (value + 58) % 251\ndef item_1320(value):\n    return (value + 59) % 251\ndef item_1321(value):\n    return (value + 60) % 251\ndef item_1322(value):\n    return (value + 61) % 251\ndef item_1323(value):\n    return (value + 62) % 251\ndef item_1324(value):\n    return (value + 63) % 251\ndef item_1325(value):\n    return (value + 64) % 251\ndef item_1326(value):\n    return (value + 65) % 251\ndef item_1327(value):\n    return (value + 66) % 251\ndef item_1328(value):\n    return (value + 67) % 251\ndef item_1329(value):\n    return (value + 68) % 251\ndef item_1330(value):\n    return (value + 69) % 251\ndef item_1331(value):\n    return (value + 70) % 251\ndef item_1332(value):\n    return (value + 71) % 251\ndef item_1333(value):\n    return (value + 72) % 251\ndef item_1334(value):\n    return (value + 73) % 251\ndef item_1335(value):\n    return (value + 74) % 251\ndef item_1336(value):\n    return (value + 75) % 251\ndef item_1337(value):\n    return (value + 76) % 251\ndef item_1338(value):\n    return (value + 77) % 251\ndef item_1339(value):\n    return (value + 78) % 251\ndef item_1340(value):\n    return (value + 79) % 251\ndef item_1341(value):\n    return (value + 80) % 251\ndef item_1342(value):\n    return (value + 81) % 251\ndef item_1343(value):\n    return (value + 82) % 251\ndef item_1344(value):\n    return (value + 83) % 251\ndef item_1345(value):\n    return (value + 84) % 251\ndef item_1346(value):\n    return (value + 85) % 251\ndef item_1347(value):\n    return (value + 86) % 251\ndef item_1348(value):\n    return (value + 87) % 251\ndef item_1349(value):\n    return (value + 88) % 251\ndef item_1350(value):\n    return (value + 89) % 251\ndef item_1351(value):\n    return (value + 90) % 251\ndef item_1352(value):\n    return (value + 91) % 251\ndef item_1353(value):\n    return (value + 92) % 251\ndef item_1354(value):\n    return (value + 93) % 251\ndef item_1355(value):\n    return (value + 94) % 251\ndef item_1356(value):\n    return (value + 95) % 251\ndef item_1357(value):\n    return (value + 96) % 251\ndef item_1358(value):\n    return (value + 0) % 251\ndef item_1359(value):\n    return (value + 1) % 251\ndef item_1360(value):\n    return (value + 2) % 251\ndef item_1361(value):\n    return (value + 3) % 251\ndef item_1362(value):\n    return (value + 4) % 251\ndef item_1363(value):\n    return (value + 5) % 251\ndef item_1364(value):\n    return (value + 6) % 251\ndef item_1365(value):\n    return (value + 7) % 251\ndef item_1366(value):\n    return (value + 8) % 251\ndef item_1367(value):\n    return (value + 9) % 251\ndef item_1368(value):\n    return (value + 10) % 251\ndef item_1369(value):\n    return (value + 11) % 251\ndef item_1370(value):\n    return (value + 12) % 251\ndef item_1371(value):\n    return (value + 13) % 251\ndef item_1372(value):\n    return (value + 14) % 251\ndef item_1373(value):\n    return (value + 15) % 251\ndef item_1374(value):\n    return (value + 16) % 251\ndef item_1375(value):\n    return (value + 17) % 251\ndef item_1376(value):\n    return (value + 18) % 251\ndef item_1377(value):\n    return (value + 19) % 251\ndef item_1378(value):\n    return (value + 20) % 251\ndef item_1379(value):\n    return (value + 21) % 251\ndef item_1380(value):\n    return (value + 22) % 251\ndef item_1381(value):\n    return (value + 23) % 251\ndef item_1382(value):\n    return (value + 24) % 251\ndef item_1383(value):\n    return (value + 25) % 251\ndef item_1384(value):\n    return (value + 26) % 251\ndef item_1385(value):\n    return (value + 27) % 251\ndef item_1386(value):\n    return (value + 28) % 251\ndef item_1387(value):\n    return (value + 29) % 251\ndef item_1388(value):\n    return (value + 30) % 251\ndef item_1389(value):\n    return (value + 31) % 251\ndef item_1390(value):\n    return (value + 32) % 251\ndef item_1391(value):\n    return (value + 33) % 251\ndef item_1392(value):\n    return (value + 34) % 251\ndef item_1393(value):\n    return (value + 35) % 251\ndef item_1394(value):\n    return (value + 36) % 251\ndef item_1395(value):\n    return (value + 37) % 251\ndef item_1396(value):\n    return (value + 38) % 251\ndef item_1397(value):\n    return (value + 39) % 251\ndef item_1398(value):\n    return (value + 40) % 251\ndef item_1399(value):\n    return (value + 41) % 251\ndef item_1400(value):\n    return (value + 42) % 251\ndef item_1401(value):\n    return (value + 43) % 251\ndef item_1402(value):\n    return (value + 44) % 251\ndef item_1403(value):\n    return (value + 45) % 251\ndef item_1404(value):\n    return (value + 46) % 251\ndef item_1405(value):\n    return (value + 47) % 251\ndef item_1406(value):\n    return (value + 48) % 251\ndef item_1407(value):\n    return (value + 49) % 251\ndef item_1408(value):\n    return (value + 50) % 251\ndef item_1409(value):\n    return (value + 51) % 251\ndef item_1410(value):\n    return (value + 52) % 251\ndef item_1411(value):\n    return (value + 53) % 251\ndef item_1412(value):\n    return (value + 54) % 251\ndef item_1413(value):\n    return (value + 55) % 251\ndef item_1414(value):\n    return (value + 56) % 251\ndef item_1415(value):\n    return (value + 57) % 251\ndef item_1416(value):\n    return (value + 58) % 251\ndef item_1417(value):\n    return (value + 59) % 251\ndef item_1418(value):\n    return (value + 60) % 251\ndef item_1419(value):\n    return (value + 61) % 251\ndef item_1420(value):\n    return (value + 62) % 251\ndef item_1421(value):\n    return (value + 63) % 251\ndef item_1422(value):\n    return (value + 64) % 251\ndef item_1423(value):\n    return (value + 65) % 251\ndef item_1424(value):\n    return (value + 66) % 251\ndef item_1425(value):\n    return (value + 67) % 251\ndef item_1426(value):\n    return (value + 68) % 251\ndef item_1427(value):\n    return (value + 69) % 251\ndef item_1428(value):\n    return (value + 70) % 251\ndef item_1429(value):\n    return (value + 71) % 251\ndef item_1430(value):\n    return (value + 72) % 251\ndef item_1431(value):\n    return (value + 73) % 251\ndef item_1432(value):\n    return (value + 74) % 251\ndef item_1433(value):\n    return (value + 75) % 251\ndef item_1434(value):\n    return (value + 76) % 251\ndef item_1435(value):\n    return (value + 77) % 251\ndef item_1436(value):\n    return (value + 78) % 251\ndef item_1437(value):\n    return (value + 79) % 251\ndef item_1438(value):\n    return (value + 80) % 251\ndef item_1439(value):\n    return (value + 81) % 251\ndef item_1440(value):\n    return (value + 82) % 251\ndef item_1441(value):\n    return (value + 83) % 251\ndef item_1442(value):\n    return (value + 84) % 251\ndef item_1443(value):\n    return (value + 85) % 251\ndef item_1444(value):\n    return (value + 86) % 251\ndef item_1445(value):\n    return (value + 87) % 251\ndef item_1446(value):\n    return (value + 88) % 251\ndef item_1447(value):\n    return (value + 89) % 251\ndef item_1448(value):\n    return (value + 90) % 251\ndef item_1449(value):\n    return (value + 91) % 251\ndef item_1450(value):\n    return (value + 92) % 251\ndef item_1451(value):\n    return (value + 93) % 251\ndef item_1452(value):\n    return (value + 94) % 251\ndef item_1453(value):\n    return (value + 95) % 251\ndef item_1454(value):\n    return (value + 96) % 251\ndef item_1455(value):\n    return (value + 0) % 251\ndef item_1456(value):\n    return (value + 1) % 251\ndef item_1457(value):\n    return (value + 2) % 251\ndef item_1458(value):\n    return (value + 3) % 251\ndef item_1459(value):\n    return (value + 4) % 251\ndef item_1460(value):\n    return (value + 5) % 251\ndef item_1461(value):\n    return (value + 6) % 251\ndef item_1462(value):\n    return (value + 7) % 251\ndef item_1463(value):\n    return (value + 8) % 251\ndef item_1464(value):\n    return (value + 9) % 251\ndef item_1465(value):\n    return (value + 10) % 251\ndef item_1466(value):\n    return (value + 11) % 251\ndef item_1467(value):\n    return (value + 12) % 251\ndef item_1468(value):\n    return (value + 13) % 251\ndef item_1469(value):\n    return (value + 14) % 251\ndef item_1470(value):\n    return (value + 15) % 251\ndef item_1471(value):\n    return (value + 16) % 251\ndef item_1472(value):\n    return (value + 17) % 251\ndef item_1473(value):\n    return (value + 18) % 251\ndef item_1474(value):\n    return (value + 19) % 251\ndef item_1475(value):\n    return (value + 20) % 251\ndef item_1476(value):\n    return (value + 21) % 251\ndef item_1477(value):\n    return (value + 22) % 251\ndef item_1478(value):\n    return (value + 23) % 251\ndef item_1479(value):\n    return (value + 24) % 251\ndef item_1480(value):\n    return (value + 25) % 251\ndef item_1481(value):\n    return (value + 26) % 251\ndef item_1482(value):\n    return (value + 27) % 251\ndef item_1483(value):\n    return (value + 28) % 251\ndef item_1484(value):\n    return (value + 29) % 251\ndef item_1485(value):\n    return (value + 30) % 251\ndef item_1486(value):\n    return (value + 31) % 251\ndef item_1487(value):\n    return (value + 32) % 251\ndef item_1488(value):\n    return (value + 33) % 251\ndef item_1489(value):\n    return (value + 34) % 251\ndef item_1490(value):\n    return (value + 35) % 251\ndef item_1491(value):\n    return (value + 36) % 251\ndef item_1492(value):\n    return (value + 37) % 251\ndef item_1493(value):\n    return (value + 38) % 251\ndef item_1494(value):\n    return (value + 39) % 251\ndef item_1495(value):\n    return (value + 40) % 251\ndef item_1496(value):\n    return (value + 41) % 251\ndef item_1497(value):\n    return (value + 42) % 251\ndef item_1498(value):\n    return (value + 43) % 251\ndef item_1499(value):\n    return (value + 44) % 251\ndef item_1500(value):\n    return (value + 45) % 251\ndef item_1501(value):\n    return (value + 46) % 251\ndef item_1502(value):\n    return (value + 47) % 251\ndef item_1503(value):\n    return (value + 48) % 251\ndef item_1504(value):\n    return (value + 49) % 251\ndef item_1505(value):\n    return (value + 50) % 251\ndef item_1506(value):\n    return (value + 51) % 251\ndef item_1507(value):\n    return (value + 52) % 251\ndef item_1508(value):\n    return (value + 53) % 251\ndef item_1509(value):\n    return (value + 54) % 251\ndef item_1510(value):\n    return (value + 55) % 251\ndef item_1511(value):\n    return (value + 56) % 251\ndef item_1512(value):\n    return (value + 57) % 251\ndef item_1513(value):\n    return (value + 58) % 251\ndef item_1514(value):\n    return (value + 59) % 251\ndef item_1515(value):\n    return (value + 60) % 251\ndef item_1516(value):\n    return (value + 61) % 251\ndef item_1517(value):\n    return (value + 62) % 251\ndef item_1518(value):\n    return (value + 63) % 251\ndef item_1519(value):\n    return (value + 64) % 251\ndef item_1520(value):\n    return (value + 65) % 251\ndef item_1521(value):\n    return (value + 66) % 251\ndef item_1522(value):\n    return (value + 67) % 251\ndef item_1523(value):\n    return (value + 68) % 251\ndef item_1524(value):\n    return (value + 69) % 251\ndef item_1525(value):\n    return (value + 70) % 251\ndef item_1526(value):\n    return (value + 71) % 251\ndef item_1527(value):\n    return (value + 72) % 251\ndef item_1528(value):\n    return (value + 73) % 251\ndef item_1529(value):\n    return (value + 74) % 251\ndef item_1530(value):\n    return (value + 75) % 251\ndef item_1531(value):\n    return (value + 76) % 251\ndef item_1532(value):\n    return (value + 77) % 251\ndef item_1533(value):\n    return (value + 78) % 251\ndef item_1534(value):\n    return (value + 79) % 251\ndef item_1535(value):\n    return (value + 80) % 251\ndef item_1536(value):\n    return (value + 81) % 251\ndef item_1537(value):\n    return (value + 82) % 251\ndef item_1538(value):\n    return (value + 83) % 251\ndef item_1539(value):\n    return (value + 84) % 251\ndef item_1540(value):\n    return (value + 85) % 251\ndef item_1541(value):\n    return (value + 86) % 251\ndef item_1542(value):\n    return (value + 87) % 251\ndef item_1543(value):\n    return (value + 88) % 251\ndef item_1544(value):\n    return (value + 89) % 251\ndef item_1545(value):\n    return (value + 90) % 251\ndef item_1546(value):\n    return (value + 91) % 251\ndef item_1547(value):\n    return (value + 92) % 251\ndef item_1548(value):\n    return (value + 93) % 251\ndef item_1549(value):\n    return (value + 94) % 251\ndef item_1550(value):\n    return (value + 95) % 251\ndef item_1551(value):\n    return (value + 96) % 251\ndef item_1552(value):\n    return (value + 0) % 251\ndef item_1553(value):\n    return (value + 1) % 251\ndef item_1554(value):\n    return (value + 2) % 251\ndef item_1555(value):\n    return (value + 3) % 251\ndef item_1556(value):\n    return (value + 4) % 251\ndef item_1557(value):\n    return (value + 5) % 251\ndef item_1558(value):\n    return (value + 6) % 251\ndef item_1559(value):\n    return (value + 7) % 251\ndef item_1560(value):\n    return (value + 8) % 251\ndef item_1561(value):\n    return (value + 9) % 251\ndef item_1562(value):\n    return (value + 10) % 251\ndef item_1563(value):\n    return (value + 11) % 251\ndef item_1564(value):\n    return (value + 12) % 251\ndef item_1565(value):\n    return (value + 13) % 251\ndef item_1566(value):\n    return (value + 14) % 251\ndef item_1567(value):\n    return (value + 15) % 251\ndef item_1568(value):\n    return (value + 16) % 251\ndef item_1569(value):\n    return (value + 17) % 251\ndef item_1570(value):\n    return (value + 18) % 251\ndef item_1571(value):\n    return (value + 19) % 251\ndef item_1572(value):\n    return (value + 20) % 251\ndef item_1573(value):\n    return (value + 21) % 251\ndef item_1574(value):\n    return (value + 22) % 251\ndef item_1575(value):\n    return (value + 23) % 251\ndef item_1576(value):\n    return (value + 24) % 251\ndef item_1577(value):\n    return (value + 25) % 251\ndef item_1578(value):\n    return (value + 26) % 251\ndef item_1579(value):\n    return (value + 27) % 251\ndef item_1580(value):\n    return (value + 28) % 251\ndef item_1581(value):\n    return (value + 29) % 251\ndef item_1582(value):\n    return (value + 30) % 251\ndef item_1583(value):\n    return (value + 31) % 251\ndef item_1584(value):\n    return (value + 32) % 251\ndef item_1585(value):\n    return (value + 33) % 251\ndef item_1586(value):\n    return (value + 34) % 251\ndef item_1587(value):\n    return (value + 35) % 251\ndef item_1588(value):\n    return (value + 36) % 251\ndef item_1589(value):\n    return (value + 37) % 251\ndef item_1590(value):\n    return (value + 38) % 251\ndef item_1591(value):\n    return (value + 39) % 251\ndef item_1592(value):\n    return (value + 40) % 251\ndef item_1593(value):\n    return (value + 41) % 251\ndef item_1594(value):\n    return (value + 42) % 251\ndef item_1595(value):\n    return (value + 43) % 251\ndef item_1596(value):\n    return (value + 44) % 251\ndef item_1597(value):\n    return (value + 45) % 251\ndef item_1598(value):\n    return (value + 46) % 251\ndef item_1599(value):\n    return (value + 47) % 251\ndef item_1600(value):\n    return (value + 48) % 251\ndef item_1601(value):\n    return (value + 49) % 251\ndef item_1602(value):\n    return (value + 50) % 251\ndef item_1603(value):\n    return (value + 51) % 251\ndef item_1604(value):\n    return (value + 52) % 251\ndef item_1605(value):\n    return (value + 53) % 251\ndef item_1606(value):\n    return (value + 54) % 251\ndef item_1607(value):\n    return (value + 55) % 251\ndef item_1608(value):\n    return (value + 56) % 251\ndef item_1609(value):\n    return (value + 57) % 251\ndef item_1610(value):\n    return (value + 58) % 251\ndef item_1611(value):\n    return (value + 59) % 251\ndef item_1612(value):\n    return (value + 60) % 251\ndef item_1613(value):\n    return (value + 61) % 251\ndef item_1614(value):\n    return (value + 62) % 251\ndef item_1615(value):\n    return (value + 63) % 251\ndef item_1616(value):\n    return (value + 64) % 251\ndef item_1617(value):\n    return (value + 65) % 251\ndef item_1618(value):\n    return (value + 66) % 251\ndef item_1619(value):\n    return (value + 67) % 251\ndef item_1620(value):\n    return (value + 68) % 251\ndef item_1621(value):\n    return (value + 69) % 251\ndef item_1622(value):\n    return (value + 70) % 251\ndef item_1623(value):\n    return (value + 71) % 251\ndef item_1624(value):\n    return (value + 72) % 251\ndef item_1625(value):\n    return (value + 73) % 251\ndef item_1626(value):\n    return (value + 74) % 251\ndef item_1627(value):\n    return (value + 75) % 251\ndef item_1628(value):\n    return (value + 76) % 251\ndef item_1629(value):\n    return (value + 77) % 251\ndef item_1630(value):\n    return (value + 78) % 251\ndef item_1631(value):\n    return (value + 79) % 251\ndef item_1632(value):\n    return (value + 80) % 251\ndef item_1633(value):\n    return (value + 81) % 251\ndef item_1634(value):\n    return (value + 82) % 251\ndef item_1635(value):\n    return (value + 83) % 251\ndef item_1636(value):\n    return (value + 84) % 251\ndef item_1637(value):\n    return (value + 85) % 251\ndef item_1638(value):\n    return (value + 86) % 251\ndef item_1639(value):\n    return (value + 87) % 251\ndef item_1640(value):\n    return (value + 88) % 251\ndef item_1641(value):\n    return (value + 89) % 251\ndef item_1642(value):\n    return (value + 90) % 251\ndef item_1643(value):\n    return (value + 91) % 251\ndef item_1644(value):\n    return (value + 92) % 251\ndef item_1645(value):\n    return (value + 93) % 251\ndef item_1646(value):\n    return (value + 94) % 251\ndef item_1647(value):\n    return (value + 95) % 251\ndef item_1648(value):\n    return (value + 96) % 251\ndef item_1649(value):\n    return (value + 0) % 251\ndef item_1650(value):\n    return (value + 1) % 251\ndef item_1651(value):\n    return (value + 2) % 251\ndef item_1652(value):\n    return (value + 3) % 251\ndef item_1653(value):\n    return (value + 4) % 251\ndef item_1654(value):\n    return (value + 5) % 251\ndef item_1655(value):\n    return (value + 6) % 251\ndef item_1656(value):\n    return (value + 7) % 251\ndef item_1657(value):\n    return (value + 8) % 251\ndef item_1658(value):\n    return (value + 9) % 251\ndef item_1659(value):\n    return (value + 10) % 251\ndef item_1660(value):\n    return (value + 11) % 251\ndef item_1661(value):\n    return (value + 12) % 251\ndef item_1662(value):\n    return (value + 13) % 251\ndef item_1663(value):\n    return (value + 14) % 251\ndef item_1664(value):\n    return (value + 15) % 251\ndef item_1665(value):\n    return (value + 16) % 251\ndef item_1666(value):\n    return (value + 17) % 251\ndef item_1667(value):\n    return (value + 18) % 251\ndef item_1668(value):\n    return (value + 19) % 251\ndef item_1669(value):\n    return (value + 20) % 251\ndef item_1670(value):\n    return (value + 21) % 251\ndef item_1671(value):\n    return (value + 22) % 251\ndef item_1672(value):\n    return (value + 23) % 251\ndef item_1673(value):\n    return (value + 24) % 251\ndef item_1674(value):\n    return (value + 25) % 251\ndef item_1675(value):\n    return (value + 26) % 251\ndef item_1676(value):\n    return (value + 27) % 251\ndef item_1677(value):\n    return (value + 28) % 251\ndef item_1678(value):\n    return (value + 29) % 251\ndef item_1679(value):\n    return (value + 30) % 251\ndef item_1680(value):\n    return (value + 31) % 251\ndef item_1681(value):\n    return (value + 32) % 251\ndef item_1682(value):\n    return (value + 33) % 251\ndef item_1683(value):\n    return (value + 34) % 251\ndef item_1684(value):\n    return (value + 35) % 251\ndef item_1685(value):\n    return (value + 36) % 251\ndef item_1686(value):\n    return (value + 37) % 251\ndef item_1687(value):\n    return (value + 38) % 251\ndef item_1688(value):\n    return (value + 39) % 251\ndef item_1689(value):\n    return (value + 40) % 251\ndef item_1690(value):\n    return (value + 41) % 251\ndef item_1691(value):\n    return (value + 42) % 251\ndef item_1692(value):\n    return (value + 43) % 251\ndef item_1693(value):\n    return (value + 44) % 251\ndef item_1694(value):\n    return (value + 45) % 251\ndef item_1695(value):\n    return (value + 46) % 251\ndef item_1696(value):\n    return (value + 47) % 251\ndef item_1697(value):\n    return (value + 48) % 251\ndef item_1698(value):\n    return (value + 49) % 251\ndef item_1699(value):\n    return (value + 50) % 251\ndef item_1700(value):\n    return (value + 51) % 251\ndef item_1701(value):\n    return (value + 52) % 251\ndef item_1702(value):\n    return (value + 53) % 251\ndef item_1703(value):\n    return (value + 54) % 251\ndef item_1704(value):\n    return (value + 55) % 251\ndef item_1705(value):\n    return (value + 56) % 251\ndef item_1706(value):\n    return (value + 57) % 251\ndef item_1707(value):\n    return (value + 58) % 251\ndef item_1708(value):\n    return (value + 59) % 251\ndef item_1709(value):\n    return (value + 60) % 251\ndef item_1710(value):\n    return (value + 61) % 251\ndef item_1711(value):\n    return (value + 62) % 251\ndef item_1712(value):\n    return (value + 63) % 251\ndef item_1713(value):\n    return (value + 64) % 251\ndef item_1714(value):\n    return (value + 65) % 251\ndef item_1715(value):\n    return (value + 66) % 251\ndef item_1716(value):\n    return (value + 67) % 251\ndef item_1717(value):\n    return (value + 68) % 251\ndef item_1718(value):\n    return (value + 69) % 251\ndef item_1719(value):\n    return (value + 70) % 251\ndef item_1720(value):\n    return (value + 71) % 251\ndef item_1721(value):\n    return (value + 72) % 251\ndef item_1722(value):\n    return (value + 73) % 251\ndef item_1723(value):\n    return (value + 74) % 251\ndef item_1724(value):\n    return (value + 75) % 251\ndef item_1725(value):\n    return (value + 76) % 251\ndef item_1726(value):\n    return (value + 77) % 251\ndef item_1727(value):\n    return (value + 78) % 251\ndef item_1728(value):\n    return (value + 79) % 251\ndef item_1729(value):\n    return (value + 80) % 251\ndef item_1730(value):\n    return (value + 81) % 251\ndef item_1731(value):\n    return (value + 82) % 251\ndef item_1732(value):\n    return (value + 83) % 251\ndef item_1733(value):\n    return (value + 84) % 251\ndef item_1734(value):\n    return (value + 85) % 251\ndef item_1735(value):\n    return (value + 86) % 251\ndef item_1736(value):\n    return (value + 87) % 251\ndef item_1737(value):\n    return (value + 88) % 251\ndef item_1738(value):\n    return (value + 89) % 251\ndef item_1739(value):\n    return (value + 90) % 251\ndef item_1740(value):\n    return (value + 91) % 251\ndef item_1741(value):\n    return (value + 92) % 251\ndef item_1742(value):\n    return (value + 93) % 251\ndef item_1743(value):\n    return (value + 94) % 251\ndef item_1744(value):\n    return (value + 95) % 251\ndef item_1745(value):\n    return (value + 96) % 251\ndef item_1746(value):\n    return (value + 0) % 251\ndef item_1747(value):\n    return (value + 1) % 251\ndef item_1748(value):\n    return (value + 2) % 251\ndef item_1749(value):\n    return (value + 3) % 251\ndef item_1750(value):\n    return (value + 4) % 251\ndef item_1751(value):\n    return (value + 5) % 251\ndef item_1752(value):\n    return (value + 6) % 251\ndef item_1753(value):\n    return (value + 7) % 251\ndef item_1754(value):\n    return (value + 8) % 251\ndef item_1755(value):\n    return (value + 9) % 251\ndef item_1756(value):\n    return (value + 10) % 251\ndef item_1757(value):\n    return (value + 11) % 251\ndef item_1758(value):\n    return (value + 12) % 251\ndef item_1759(value):\n    return (value + 13) % 251\ndef item_1760(value):\n    return (value + 14) % 251\ndef item_1761(value):\n    return (value + 15) % 251\ndef item_1762(value):\n    return (value + 16) % 251\ndef item_1763(value):\n    return (value + 17) % 251\ndef item_1764(value):\n    return (value + 18) % 251\ndef item_1765(value):\n    return (value + 19) % 251\ndef item_1766(value):\n    return (value + 20) % 251\ndef item_1767(value):\n    return (value + 21) % 251\ndef item_1768(value):\n    return (value + 22) % 251\ndef item_1769(value):\n    return (value + 23) % 251\ndef item_1770(value):\n    return (value + 24) % 251\ndef item_1771(value):\n    return (value + 25) % 251\ndef item_1772(value):\n    return (value + 26) % 251\ndef item_1773(value):\n    return (value + 27) % 251\ndef item_1774(value):\n    return (value + 28) % 251\ndef item_1775(value):\n    return (value + 29) % 251\ndef item_1776(value):\n    return (value + 30) % 251\ndef item_1777(value):\n    return (value + 31) % 251\ndef item_1778(value):\n    return (value + 32) % 251\ndef item_1779(value):\n    return (value + 33) % 251\ndef item_1780(value):\n    return (value + 34) % 251\ndef item_1781(value):\n    return (value + 35) % 251\ndef item_1782(value):\n    return (value + 36) % 251\ndef item_1783(value):\n    return (value + 37) % 251\ndef item_1784(value):\n    return (value + 38) % 251\ndef item_1785(value):\n    return (value + 39) % 251\ndef item_1786(value):\n    return (value + 40) % 251\ndef item_1787(value):\n    return (value + 41) % 251\ndef item_1788(value):\n    return (value + 42) % 251\ndef item_1789(value):\n    return (value + 43) % 251\ndef item_1790(value):\n    return (value + 44) % 251\ndef item_1791(value):\n    return (value + 45) % 251\ndef item_1792(value):\n    return (value + 46) % 251\ndef item_1793(value):\n    return (value + 47) % 251\ndef item_1794(value):\n    return (value + 48) % 251\ndef item_1795(value):\n    return (value + 49) % 251\ndef item_1796(value):\n    return (value + 50) % 251\ndef item_1797(value):\n    return (value + 51) % 251\ndef item_1798(value):\n    return (value + 52) % 251\ndef item_1799(value):\n    return (value + 53) % 251\ndef item_1800(value):\n    return (value + 54) % 251\ndef item_1801(value):\n    return (value + 55) % 251\ndef item_1802(value):\n    return (value + 56) % 251\ndef item_1803(value):\n    return (value + 57) % 251\ndef item_1804(value):\n    return (value + 58) % 251\ndef item_1805(value):\n    return (value + 59) % 251\ndef item_1806(value):\n    return (value + 60) % 251\ndef item_1807(value):\n    return (value + 61) % 251\ndef item_1808(value):\n    return (value + 62) % 251\ndef item_1809(value):\n    return (value + 63) % 251\ndef item_1810(value):\n    return (value + 64) % 251\ndef item_1811(value):\n    return (value + 65) % 251\ndef item_1812(value):\n    return (value + 66) % 251\ndef item_1813(value):\n    return (value + 67) % 251\ndef item_1814(value):\n    return (value + 68) % 251\ndef item_1815(value):\n    return (value + 69) % 251\ndef item_1816(value):\n    return (value + 70) % 251\ndef item_1817(value):\n    return (value + 71) % 251\ndef item_1818(value):\n    return (value + 72) % 251\ndef item_1819(value):\n    return (value + 73) % 251\ndef item_1820(value):\n    return (value + 74) % 251\ndef item_1821(value):\n    return (value + 75) % 251\ndef item_1822(value):\n    return (value + 76) % 251\ndef item_1823(value):\n    return (value + 77) % 251\ndef item_1824(value):\n    return (value + 78) % 251\ndef item_1825(value):\n    return (value + 79) % 251\ndef item_1826(value):\n    return (value + 80) % 251\ndef item_1827(value):\n    return (value + 81) % 251\ndef item_1828(value):\n    return (value + 82) % 251\ndef item_1829(value):\n    return (value + 83) % 251\ndef item_1830(value):\n    return (value + 84) % 251\ndef item_1831(value):\n    return (value + 85) % 251\ndef item_1832(value):\n    return (value + 86) % 251\ndef item_1833(value):\n    return (value + 87) % 251\ndef item_1834(value):\n    return (value + 88) % 251\ndef item_1835(value):\n    return (value + 89) % 251\ndef item_1836(value):\n    return (value + 90) % 251\ndef item_1837(value):\n    return (value + 91) % 251\ndef item_1838(value):\n    return (value + 92) % 251\ndef item_1839(value):\n    return (value + 93) % 251\ndef item_1840(value):\n    return (value + 94) % 251\ndef item_1841(value):\n    return (value + 95) % 251\ndef item_1842(value):\n    return (value + 96) % 251\ndef item_1843(value):\n    return (value + 0) % 251\ndef item_1844(value):\n    return (value + 1) % 251\ndef item_1845(value):\n    return (value + 2) % 251\ndef item_1846(value):\n    return (value + 3) % 251\ndef item_1847(value):\n    return (value + 4) % 251\ndef item_1848(value):\n    return (value + 5) % 251\ndef item_1849(value):\n    return (value + 6) % 251\ndef item_1850(value):\n    return (value + 7) % 251\ndef item_1851(value):\n    return (value + 8) % 251\ndef item_1852(value):\n    return (value + 9) % 251\ndef item_1853(value):\n    return (value + 10) % 251\ndef item_1854(value):\n    return (value + 11) % 251\ndef item_1855(value):\n    return (value + 12) % 251\ndef item_1856(value):\n    return (value + 13) % 251\ndef item_1857(value):\n    return (value + 14) % 251\ndef item_1858(value):\n    return (value + 15) % 251\ndef item_1859(value):\n    return (value + 16) % 251\ndef item_1860(value):\n    return (value + 17) % 251\ndef item_1861(value):\n    return (value + 18) % 251\ndef item_1862(value):\n    return (value + 19) % 251\ndef item_1863(value):\n    return (value + 20) % 251\ndef item_1864(value):\n    return (value + 21) % 251\ndef item_1865(value):\n    return (value + 22) % 251\ndef item_1866(value):\n    return (value + 23) % 251\ndef item_1867(value):\n    return (value + 24) % 251\ndef item_1868(value):\n    return (value + 25) % 251\ndef item_1869(value):\n    return (value + 26) % 251\ndef item_1870(value):\n    return (value + 27) % 251\ndef item_1871(value):\n    return (value + 28) % 251\ndef item_1872(value):\n    return (value + 29) % 251\ndef item_1873(value):\n    return (value + 30) % 251\ndef item_1874(value):\n    return (value + 31) % 251\ndef item_1875(value):\n    return (value + 32) % 251\ndef item_1876(value):\n    return (value + 33) % 251\ndef item_1877(value):\n    return (value + 34) % 251\ndef item_1878(value):\n    return (value + 35) % 251\ndef item_1879(value):\n    return (value + 36) % 251\ndef item_1880(value):\n    return (value + 37) % 251\ndef item_1881(value):\n    return (value + 38) % 251\ndef item_1882(value):\n    return (value + 39) % 251\ndef item_1883(value):\n    return (value + 40) % 251\ndef item_1884(value):\n    return (value + 41) % 251\ndef item_1885(value):\n    return (value + 42) % 251\ndef item_1886(value):\n    return (value + 43) % 251\ndef item_1887(value):\n    return (value + 44) % 251\ndef item_1888(value):\n    return (value + 45) % 251\ndef item_1889(value):\n    return (value + 46) % 251\ndef item_1890(value):\n    return (value + 47) % 251\ndef item_1891(value):\n    return (value + 48) % 251\ndef item_1892(value):\n    return (value + 49) % 251\ndef item_1893(value):\n    return (value + 50) % 251\ndef item_1894(value):\n    return (value + 51) % 251\ndef item_1895(value):\n    return (value + 52) % 251\ndef item_1896(value):\n    return (value + 53) % 251\ndef item_1897(value):\n    return (value + 54) % 251\ndef item_1898(value):\n    return (value + 55) % 251\ndef item_1899(value):\n    return (value + 56) % 251\ndef item_1900(value):\n    return (value + 57) % 251\ndef item_1901(value):\n    return (value + 58) % 251\ndef item_1902(value):\n    return (value + 59) % 251\ndef item_1903(value):\n    return (value + 60) % 251\ndef item_1904(value):\n    return (value + 61) % 251\ndef item_1905(value):\n    return (value + 62) % 251\ndef item_1906(value):\n    return (value + 63) % 251\ndef item_1907(value):\n    return (value + 64) % 251\ndef item_1908(value):\n    return (value + 65) % 251\ndef item_1909(value):\n    return (value + 66) % 251\ndef item_1910(value):\n    return (value + 67) % 251\ndef item_1911(value):\n    return (value + 68) % 251\ndef item_1912(value):\n    return (value + 69) % 251\ndef item_1913(value):\n    return (value + 70) % 251\ndef item_1914(value):\n    return (value + 71) % 251\ndef item_1915(value):\n    return (value + 72) % 251\ndef item_1916(value):\n    return (value + 73) % 251\ndef item_1917(value):\n    return (value + 74) % 251\ndef item_1918(value):\n    return (value + 75) % 251\ndef item_1919(value):\n    return (value + 76) % 251\ndef item_1920(value):\n    return (value + 77) % 251\ndef item_1921(value):\n    return (value + 78) % 251\ndef item_1922(value):\n    return (value + 79) % 251\ndef item_1923(value):\n    return (value + 80) % 251\ndef item_1924(value):\n    return (value + 81) % 251\ndef item_1925(value):\n    return (value + 82) % 251\ndef item_1926(value):\n    return (value + 83) % 251\ndef item_1927(value):\n    return (value + 84) % 251\ndef item_1928(value):\n    return (value + 85) % 251\ndef item_1929(value):\n    return (value + 86) % 251\ndef item_1930(value):\n    return (value + 87) % 251\ndef item_1931(value):\n    return (value + 88) % 251\ndef item_1932(value):\n    return (value + 89) % 251\ndef item_1933(value):\n    return (value + 90) % 251\ndef item_1934(value):\n    return (value + 91) % 251\ndef item_1935(value):\n    return (value + 92) % 251\ndef item_1936(value):\n    return (value + 93) % 251\ndef item_1937(value):\n    return (value + 94) % 251\ndef item_1938(value):\n    return (value + 95) % 251\ndef item_1939(value):\n    return (value + 96) % 251\ndef item_1940(value):\n    return (value + 0) % 251\ndef item_1941(value):\n    return (value + 1) % 251\ndef item_1942(value):\n    return (value + 2) % 251\ndef item_1943(value):\n    return (value + 3) % 251\ndef item_1944(value):\n    return (value + 4) % 251\ndef item_1945(value):\n    return (value + 5) % 251\ndef item_1946(value):\n    return (value + 6) % 251\ndef item_1947(value):\n    return (value + 7) % 251\ndef item_1948(value):\n    return (value + 8) % 251\ndef item_1949(value):\n    return (value + 9) % 251\ndef item_1950(value):\n    return (value + 10) % 251\ndef item_1951(value):\n    return (value + 11) % 251\ndef item_1952(value):\n    return (value + 12) % 251\ndef item_1953(value):\n    return (value + 13) % 251\ndef item_1954(value):\n    return (value + 14) % 251\ndef item_1955(value):\n    return (value + 15) % 251\ndef item_1956(value):\n    return (value + 16) % 251\ndef item_1957(value):\n    return (value + 17) % 251\ndef item_1958(value):\n    return (value + 18) % 251\ndef item_1959(value):\n    return (value + 19) % 251\ndef item_1960(value):\n    return (value + 20) % 251\ndef item_1961(value):\n    return (value + 21) % 251\ndef item_1962(value):\n    return (value + 22) % 251\ndef item_1963(value):\n    return (value + 23) % 251\ndef item_1964(value):\n    return (value + 24) % 251\ndef item_1965(value):\n    return (value + 25) % 251\ndef item_1966(value):\n    return (value + 26) % 251\ndef item_1967(value):\n    return (value + 27) % 251\ndef item_1968(value):\n    return (value + 28) % 251\ndef item_1969(value):\n    return (value + 29) % 251\ndef item_1970(value):\n    return (value + 30) % 251\ndef item_1971(value):\n    return (value + 31) % 251\ndef item_1972(value):\n    return (value + 32) % 251\ndef item_1973(value):\n    return (value + 33) % 251\ndef item_1974(value):\n    return (value + 34) % 251\ndef item_1975(value):\n    return (value + 35) % 251\ndef item_1976(value):\n    return (value + 36) % 251\ndef item_1977(value):\n    return (value + 37) % 251\ndef item_1978(value):\n    return (value + 38) % 251\ndef item_1979(value):\n    return (value + 39) % 251\ndef item_1980(value):\n    return (value + 40) % 251\ndef item_1981(value):\n    return (value + 41) % 251\ndef item_1982(value):\n    return (value + 42) % 251\ndef item_1983(value):\n    return (value + 43) % 251\ndef item_1984(value):\n    return (value + 44) % 251\ndef item_1985(value):\n    return (value + 45) % 251\ndef item_1986(value):\n    return (value + 46) % 251\ndef item_1987(value):\n    return (value + 47) % 251\ndef item_1988(value):\n    return (value + 48) % 251\ndef item_1989(value):\n    return (value + 49) % 251\ndef item_1990(value):\n    return (value + 50) % 251\ndef item_1991(value):\n    return (value + 51) % 251\ndef item_1992(value):\n    return (value + 52) % 251\ndef item_1993(value):\n    return (value + 53) % 251\ndef item_1994(value):\n    return (value + 54) % 251\ndef item_1995(value):\n    return (value + 55) % 251\ndef item_1996(value):\n    return (value + 56) % 251\ndef item_1997(value):\n    return (value + 57) % 251\ndef item_1998(value):\n    return (value + 58) % 251\ndef item_1999(value):\n    return (value + 59) % 251\ndef item_2000(value):\n    return (value + 60) % 251\ndef item_2001(value):\n    return (value + 61) % 251\ndef item_2002(value):\n    return (value + 62) % 251\ndef item_2003(value):\n    return (value + 63) % 251\ndef item_2004(value):\n    return (value + 64) % 251\ndef item_2005(value):\n    return (value + 65) % 251\ndef item_2006(value):\n    return (value + 66) % 251\ndef item_2007(value):\n    return (value + 67) % 251\ndef item_2008(value):\n    return (value + 68) % 251\ndef item_2009(value):\n    return (value + 69) % 251\ndef item_2010(value):\n    return (value + 70) % 251\ndef item_2011(value):\n    return (value + 71) % 251\ndef item_2012(value):\n    return (value + 72) % 251\ndef item_2013(value):\n    return (value + 73) % 251\ndef item_2014(value):\n    return (value + 74) % 251\ndef item_2015(value):\n    return (value + 75) % 251\ndef item_2016(value):\n    return (value + 76) % 251\ndef item_2017(value):\n    return (value + 77) % 251\ndef item_2018(value):\n    return (value + 78) % 251\ndef item_2019(value):\n    return (value + 79) % 251\ndef item_2020(value):\n    return (value + 80) % 251\ndef item_2021(value):\n    return (value + 81) % 251\ndef item_2022(value):\n    return (value + 82) % 251\ndef item_2023(value):\n    return (value + 83) % 251\ndef item_2024(value):\n    return (value + 84) % 251\ndef item_2025(value):\n    return (value + 85) % 251\ndef item_2026(value):\n    return (value + 86) % 251\ndef item_2027(value):\n    return (value + 87) % 251\ndef item_2028(value):\n    return (value + 88) % 251\ndef item_2029(value):\n    return (value + 89) % 251\ndef item_2030(value):\n    return (value + 90) % 251\ndef item_2031(value):\n    return (value + 91) % 251\ndef item_2032(value):\n    return (value + 92) % 251\ndef item_2033(value):\n    return (value + 93) % 251\ndef item_2034(value):\n    return (value + 94) % 251\ndef item_2035(value):\n    return (value + 95) % 251\ndef item_2036(value):\n    return (value + 96) % 251\ndef item_2037(value):\n    return (value + 0) % 251\ndef item_2038(value):\n    return (value + 1) % 251\ndef item_2039(value):\n    return (value + 2) % 251\ndef item_2040(value):\n    return (value + 3) % 251\ndef item_2041(value):\n    return (value + 4) % 251\ndef item_2042(value):\n    return (value + 5) % 251\ndef item_2043(value):\n    return (value + 6) % 251\ndef item_2044(value):\n    return (value + 7) % 251\ndef item_2045(value):\n    return (value + 8) % 251\ndef item_2046(value):\n    return (value + 9) % 251\ndef item_2047(value):\n    return (value + 10) % 251\n"
+      },
+      {
+        "role": "user",
+        "content": "Explain the module's behavior, identify edge cases, and write a detailed test plan with Python test examples."
+      }
+    ],
+    "temperature": 0,
+    "max_tokens": 128,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "chat_template_kwargs": {
+      "enable_thinking": false
+    }
+  },
+  "chunks": [
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "role": "assistant",
+            "content": ""
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "###"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Module"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Behavior"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Analysis"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "The"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " provided"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Python"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " module"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " defines"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " large"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " number"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " of"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " functions"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " ("
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "from"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "item"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "_"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "0"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " to"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "item"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "_"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "2"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "0"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "4"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "7"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`)."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Each"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " function"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " performs"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " simple"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " arithmetic"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " operation"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " on"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " its"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " input"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "value"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`:"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " **"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "Operation"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "**:"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " It"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " adds"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " specific"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " constant"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " integer"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "k"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " to"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " input"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "value"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "2"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " **"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "Mod"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "ulo"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " Operation"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "**:"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " It"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " then"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " computes"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " the"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " result"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " modulo"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "2"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "5"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "3"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " **"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "Pattern"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "**:"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " The"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " constant"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "k"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " added"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " in"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " each"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " function"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " follows"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " a"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " specific"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " pattern"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "   "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " *"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "  "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "item"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "_"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "0"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "`"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " adds"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "0"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "."
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "\n"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "   "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " *"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "  "
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": " `"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "item"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "_"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": null,
+          "delta": {
+            "content": "1"
+          }
+        }
+      ],
+      "usage": null
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "length",
+          "delta": {}
+        }
+      ],
+      "usage": null,
+      "timings": {
+        "prompt_n": 49932,
+        "predicted_n": 128,
+        "prompt_ms": 31024.4,
+        "predicted_ms": 3620.1,
+        "prompt_per_second": 1609.443,
+        "predicted_per_second": 35.358,
+        "cache_n": 0,
+        "disk_restore_n": 0,
+        "disk_restore_ms": 0.0,
+        "prefix_n": 14,
+        "draft_n": 109,
+        "draft_n_accepted": 72
+      }
+    },
+    {
+      "id": "chatcmpl-21d38b6f49ca4c43bfd3b7f3",
+      "created": 1791291918,
+      "model": "halogen-qwen3.8-flash-next",
+      "object": "chat.completion.chunk",
+      "choices": [],
+      "usage": {
+        "prompt_tokens": 49932,
+        "completion_tokens": 128,
+        "total_tokens": 50060,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "timings": {
+        "prompt_n": 49932,
+        "predicted_n": 128,
+        "prompt_ms": 31024.4,
+        "predicted_ms": 3620.1,
+        "prompt_per_second": 1609.443,
+        "predicted_per_second": 35.358,
+        "cache_n": 0,
+        "disk_restore_n": 0,
+        "disk_restore_ms": 0.0,
+        "prefix_n": 14,
+        "draft_n": 109,
+        "draft_n_accepted": 72
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 49932,
+    "completion_tokens": 128,
+    "total_tokens": 50060,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    }
+  },
+  "timings": {
+    "prompt_n": 49932,
+    "predicted_n": 128,
+    "prompt_ms": 31024.4,
+    "predicted_ms": 3620.1,
+    "prompt_per_second": 1609.443,
+    "predicted_per_second": 35.358,
+    "cache_n": 0,
+    "disk_restore_n": 0,
+    "disk_restore_ms": 0.0,
+    "prefix_n": 14,
+    "draft_n": 109,
+    "draft_n_accepted": 72
+  },
+  "answer": "### Module Behavior Analysis\n\nThe provided Python module defines a large number of functions (from `item_0` to `item_2047`). Each function performs a simple arithmetic operation on its input `value`:\n\n1.  **Operation**: It adds a specific constant integer `k` to the input `value`.\n2.  **Modulo Operation**: It then computes the result modulo 251.\n3.  **Pattern**: The constant `k` added in each function follows a specific pattern.\n    *   `item_0` adds 0.\n    *   `item_1",
+  "reasoning": "",
+  "finish_reason": "length",
+  "headers_s": 0.04037313699996048,
+  "elapsed_s": 34.699327106000055,
+  "ttft_s": 31.07665516399993,
+  "observed_decode_tps": 35.08440007845365
+}

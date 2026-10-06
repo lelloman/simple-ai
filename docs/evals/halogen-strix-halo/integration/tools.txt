@@ -1,0 +1,19 @@
+data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","usage":null}
+
+data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"","name":"add"},"id":"call_86b54215baf64ae99979f75f","index":0,"type":"function"}]},"finish_reason":null,"index":0}],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","usage":null}
+
+data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"a\": 2"},"index":0}]},"finish_reason":null,"index":0}],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","usage":null}
+
+data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":", \"b\": 3"},"index":0}]},"finish_reason":null,"index":0}],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","usage":null}
+
+data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"}"},"index":0}]},"finish_reason":null,"index":0}],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","usage":null}
+
+data: {"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","timings":{"cache_n":0,"disk_restore_ms":0.0,"disk_restore_n":0,"draft_n":28,"draft_n_accepted":24,"predicted_ms":687.8,"predicted_n":35,"predicted_per_second":50.887,"prefix_n":1,"prompt_ms":677.8,"prompt_n":297,"prompt_per_second":438.182},"usage":null}
+
+data: {"choices":[],"created":1791293102,"id":"chatcmpl-c7f96b5f9a0e44d495ebed2d","model":"qwen3.8-flash-next-uncensored-iq4xs","object":"chat.completion.chunk","timings":{"cache_n":0,"disk_restore_ms":0.0,"disk_restore_n":0,"draft_n":28,"draft_n_accepted":24,"predicted_ms":687.8,"predicted_n":35,"predicted_per_second":50.887,"prefix_n":1,"prompt_ms":677.8,"prompt_n":297,"prompt_per_second":438.182},"usage":{"completion_tokens":35,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":297,"total_tokens":332}}
+
+event: simple_ai_metrics
+data: {"resolved_model":"qwen3.8-flash-next-uncensored-iq4xs","engine_type":"halogen","context_window":262144,"prompt_tokens":297,"completion_tokens":35,"prompt_eval_ms":678,"completion_eval_ms":688,"total_inference_ms":1366,"prompt_tokens_per_sec":438.182,"completion_tokens_per_sec":50.887,"cached_prompt_tokens":0}
+
+data: [DONE]
+
