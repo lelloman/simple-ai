@@ -25,6 +25,8 @@ ExecStart=/usr/bin/podman run --rm --replace --pull=never --name simple-ai-halog
   -e HALOGEN_KV_SLOTS=4 -e HALOGEN_CTX=262144 \
   -e HALOGEN_KV_POOL_POSITIONS=262144 -e HALOGEN_MAX_TOK=16384 \
   -e HALOGEN_PROMPT_CACHE=2 \
+  -e HALOGEN_TEMPERATURE=1.0 -e HALOGEN_TOP_P=0.95 -e HALOGEN_TOP_K=20 \
+  -e HALOGEN_MAX_THINKING_TOKENS=4096 \
   -e HALOGEN_CACHE_DIR=/cache -e HALOGEN_CACHE_DISK_GIB=46.56612873 \
   -e HALOGEN_CACHE_PRUNE_OLD=1 \
   localhost/simple-ai-halogen:kv-admission-v1

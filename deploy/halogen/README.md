@@ -98,6 +98,27 @@ thinking, and budget -1 leaves it unrestricted. The adapter translates positive
 budgets to Halogen's `max_thinking_tokens`. Timing metrics use Halogen's reported
 new-token prefill rate, avoiding inflated rates from cached prompt tokens.
 
+### Sampling and thinking defaults
+
+The service template sets `HALOGEN_TEMPERATURE=1.0`, `HALOGEN_TOP_P=0.95`
+and `HALOGEN_TOP_K=20`, following Qwen's thinking-mode sampling settings.
+Greedy thinking can enter repetition loops, especially at long context
+([upstream report](https://github.com/peonist-ai/halogen-flash-server/issues/56)).
+`HALOGEN_MAX_THINKING_TOKENS=4096` bounds reasoning by default, leaving room
+for an answer within the server's default 8,192-token output budget. This
+is a starting operational limit, not a model quality guarantee.
+
+These are fallbacks: explicit request settings override them, including
+`temperature: 0` and explicit thinking budgets. Halogen 0.16.2 requires
+`temperature: 0` for JSON-schema output; those callers must set it explicitly
+when the sampling default is enabled. Reasoning effort remains `xhigh`.
+
+The fleet deployer installs this shared service template on both Halo hosts.
+The settings take effect when Halogen next starts with the updated unit;
+`daemon-reload` alone does not change a running container. After redeployment,
+check `/health` for `server_defaults` (temperature/top_p/top_k) and
+`max_thinking_tokens_default` (4096).
+
 To inspect the service after deployment:
 
 ```sh
