@@ -27,7 +27,15 @@ async fn extract(
         .unwrap_or_else(|| requested_model.clone());
     request.model = resolved_model.clone();
     let lease = state.engine_registry.acquire_model(&resolved_model).await?;
-    let mut response = lease.engine.extract(&lease.engine_model, &request).await?;
-    response.model = requested_model;
-    Ok(Json(response))
+    // The provider retains work on disconnect. Keep its admission token and GPU
+    // lease alive until that work actually finishes.
+    let work = state.engine_registry.drain.track_existing();
+    tokio::spawn(async move {
+        let _work = work;
+        let mut response = lease.engine.extract(&lease.engine_model, &request).await?;
+        response.model = requested_model;
+        Ok(Json(response))
+    })
+    .await
+    .map_err(|e| Error::Internal(e.to_string()))?
 }

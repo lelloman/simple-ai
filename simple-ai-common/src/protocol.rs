@@ -62,12 +62,28 @@ pub enum GatewayMessage {
         model_id: String,
         request_id: String,
     },
+    /// Stop admission and optionally perform an action once accepted work finishes.
+    Drain {
+        action: DrainAction,
+        request_id: String,
+    },
     /// Request current status.
     RequestStatus { request_id: String },
     /// Ping for connection health.
     Ping { timestamp: i64 },
     /// Error message from gateway.
     Error { code: String, message: String },
+}
+
+/// Action performed after a runner finishes its accepted work.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DrainAction {
+    #[default]
+    Drain,
+    Stop,
+    Shutdown,
+    Reboot,
 }
 
 /// Runner registration data sent on connection.
@@ -125,6 +141,10 @@ pub enum RunnerHealth {
     Degraded,
     /// Runner is starting up.
     Starting,
+    /// Admission is closed while accepted work finishes.
+    Draining,
+    /// All accepted work has finished; admission remains closed.
+    Drained,
     /// Runner is shutting down.
     ShuttingDown,
     /// Critical failure.
@@ -486,5 +506,7 @@ mod tests {
     #[test]
     fn test_shutting_down_health_not_operational() {
         assert!(!RunnerHealth::ShuttingDown.is_operational());
+        assert!(!RunnerHealth::Draining.is_operational());
+        assert!(!RunnerHealth::Drained.is_operational());
     }
 }

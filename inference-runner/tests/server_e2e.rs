@@ -13,19 +13,55 @@ use wiremock::{
 #[cfg(unix)]
 #[tokio::test]
 async fn actual_runner_drains_chat_on_sigterm() {
-    actual_runner_discovers_models_and_proxies_chat(nix::sys::signal::Signal::SIGTERM, false).await;
+    actual_runner_discovers_models_and_proxies_chat(nix::sys::signal::Signal::SIGTERM, false, None)
+        .await;
 }
 
 #[cfg(unix)]
 #[tokio::test]
 async fn actual_runner_drains_chat_on_sigint_with_gateway() {
-    actual_runner_discovers_models_and_proxies_chat(nix::sys::signal::Signal::SIGINT, true).await;
+    actual_runner_discovers_models_and_proxies_chat(nix::sys::signal::Signal::SIGINT, true, None)
+        .await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn server_drain_then_stop_finishes_accepted_chat() {
+    actual_runner_discovers_models_and_proxies_chat(
+        nix::sys::signal::Signal::SIGTERM,
+        true,
+        Some("drain"),
+    )
+    .await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn server_drain_then_shutdown_uses_host_command_after_chat() {
+    actual_runner_discovers_models_and_proxies_chat(
+        nix::sys::signal::Signal::SIGTERM,
+        true,
+        Some("shutdown"),
+    )
+    .await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn server_drain_then_reboot_uses_host_command_after_chat() {
+    actual_runner_discovers_models_and_proxies_chat(
+        nix::sys::signal::Signal::SIGTERM,
+        true,
+        Some("reboot"),
+    )
+    .await;
 }
 
 #[cfg(unix)]
 async fn actual_runner_discovers_models_and_proxies_chat(
     signal: nix::sys::signal::Signal,
     gateway: bool,
+    drain_action: Option<&str>,
 ) {
     let engine = MockServer::start().await;
     Mock::given(method("GET"))
@@ -58,6 +94,8 @@ async fn actual_runner_discovers_models_and_proxies_chat(
     let gateway_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let gateway_addr = gateway_listener.local_addr().unwrap();
     let (registered_tx, registered_rx) = tokio::sync::oneshot::channel();
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    let (response_tx, mut response_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
     let gateway_task = tokio::spawn(async move {
         use futures_util::{SinkExt, StreamExt};
         let (socket, _) = gateway_listener.accept().await.unwrap();
@@ -70,9 +108,21 @@ async fn actual_runner_discovers_models_and_proxies_chat(
         .await
         .unwrap();
         registered_tx.send(()).unwrap();
-        while let Some(message) = ws.next().await {
-            if message.is_err() {
-                break;
+        loop {
+            tokio::select! {
+                Some(command) = command_rx.recv() => {
+                    ws.send(tokio_tungstenite::tungstenite::Message::Text(command.to_string())).await.unwrap();
+                }
+                message = ws.next() => {
+                    match message {
+                        Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+                            let value: Value = serde_json::from_str(&text).unwrap();
+                            if value["type"] == "command_response" { response_tx.send(value).unwrap(); }
+                        }
+                        Some(Ok(_)) => {},
+                        _ => break,
+                    }
+                }
             }
         }
     });
@@ -91,6 +141,15 @@ async fn actual_runner_discovers_models_and_proxies_chat(
             .unwrap();
         writeln!(file, "[gateway]\nws_url=\"ws://{gateway_addr}\"\nauth_token=\"test\"\nheartbeat_interval_secs=1\nreconnect_delay_secs=60").unwrap();
     }
+    // Intercept systemctl in this child only; tests must never affect the host.
+    use std::os::unix::fs::PermissionsExt;
+    let host_command = directory.path().join("systemctl");
+    std::fs::write(
+        &host_command,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > host-action\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&host_command, std::fs::Permissions::from_mode(0o755)).unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_simple-ai-runner"));
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("RUNNER_") {
@@ -98,6 +157,7 @@ async fn actual_runner_discovers_models_and_proxies_chat(
         }
     }
     let mut child = command
+        .env("PATH", directory.path())
         .current_dir(directory.path())
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
@@ -165,7 +225,7 @@ async fn actual_runner_discovers_models_and_proxies_chat(
         .and(path("/api/chat"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_delay(Duration::from_millis(500))
+                .set_delay(Duration::from_millis(1500))
                 .set_body_json(json!({
                     "model":"e2e-model", "message":{"role":"assistant","content":"drained reply"},
                     "done":true, "prompt_eval_count":2, "eval_count":3
@@ -200,11 +260,45 @@ async fn actual_runner_discovers_models_and_proxies_chat(
     })
     .await
     .unwrap();
-    nix::sys::signal::kill(
-        nix::unistd::Pid::from_raw(child.id().unwrap() as i32),
-        signal,
-    )
-    .unwrap();
+    if let Some(action) = drain_action {
+        command_tx
+            .send(json!({"type":"drain", "action":action, "request_id":"drain-1"}))
+            .unwrap();
+        let ack = timeout(Duration::from_secs(5), response_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(ack["request_id"], "drain-1");
+        assert_eq!(ack["success"], true);
+        assert_eq!(ack["status"]["health"], "draining");
+        assert_eq!(
+            http.post(format!("{base}/v1/chat/completions"))
+                .json(&json!({"model":"e2e-model","messages":[{"role":"user","content":"reject"}]}))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            503
+        );
+        assert!(!directory.path().join("host-action").exists());
+        assert!(!request.is_finished());
+        // Model preparation must be rejected too.
+        command_tx
+            .send(json!({"type":"load_model","model_id":"e2e-model","request_id":"late-load"}))
+            .unwrap();
+        let ack = timeout(Duration::from_secs(5), response_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(ack["success"], false);
+    } else {
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(child.id().unwrap() as i32),
+            signal,
+        )
+        .unwrap();
+    }
+
     let response = timeout(Duration::from_secs(5), request)
         .await
         .unwrap()
@@ -213,6 +307,55 @@ async fn actual_runner_discovers_models_and_proxies_chat(
         response["choices"][0]["message"]["content"],
         "drained reply"
     );
+    if let Some(action) = drain_action {
+        if action == "drain" {
+            let health: Value = http
+                .get(format!("{base}/health"))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(health["status"], "drained");
+            command_tx
+                .send(json!({"type":"drain", "action":"stop", "request_id":"stop-2"}))
+                .unwrap();
+            let ack = timeout(Duration::from_secs(5), response_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(ack["success"], true);
+        } else {
+            timeout(Duration::from_secs(5), async {
+                loop {
+                    if let Ok(args) = std::fs::read_to_string(directory.path().join("host-action"))
+                    {
+                        assert_eq!(
+                            args,
+                            format!(
+                                "--no-ask-password\n{}\n",
+                                if action == "shutdown" {
+                                    "poweroff"
+                                } else {
+                                    "reboot"
+                                }
+                            )
+                        );
+                        break;
+                    }
+                    sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+            nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(child.id().unwrap() as i32),
+                signal,
+            )
+            .unwrap();
+        }
+    }
     assert!(timeout(Duration::from_secs(5), child.wait())
         .await
         .unwrap()

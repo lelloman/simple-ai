@@ -55,7 +55,9 @@ impl StatusCollector {
     pub async fn collect(&self) -> RunnerStatus {
         let engines = self.collect_engine_status().await;
         let capabilities = self.collect_capabilities(&engines).await;
-        let health = if engines.is_empty() && self.ocr_available {
+        let health = if let Some(health) = self.engine_registry.drain.health() {
+            health
+        } else if engines.is_empty() && self.ocr_available {
             RunnerHealth::Healthy
         } else {
             Self::compute_health(&engines)

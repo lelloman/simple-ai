@@ -18,7 +18,7 @@ use simple_server::web::Router;
 use crate::state::AppState;
 
 /// Build the API router.
-pub fn router() -> Router<Arc<AppState>> {
+pub fn router(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .merge(audio_embeddings::router())
         .merge(chat::router())
@@ -29,4 +29,8 @@ pub fn router() -> Router<Arc<AppState>> {
         .merge(models::router())
         .merge(ocr::router())
         .merge(speech::router())
+        .layer(simple_server::web::middleware::from_fn_with_state(
+            state,
+            crate::drain::admission,
+        ))
 }

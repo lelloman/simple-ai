@@ -35,7 +35,7 @@ pub use ocr::{
     OcrTable,
 };
 pub use protocol::{
-    CommandResponse, EngineStatus, GatewayMessage, ModelInfo, PromptCacheCapabilities,
+    CommandResponse, DrainAction, EngineStatus, GatewayMessage, ModelInfo, PromptCacheCapabilities,
     PromptCacheScope, RunnerHealth, RunnerMessage, RunnerMetrics, RunnerRegistration, RunnerStatus,
     PROTOCOL_VERSION,
 };

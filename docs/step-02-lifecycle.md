@@ -39,6 +39,47 @@ external engines such as Ollama are not stopped or unloaded by this change.
 There is no new guarantee that every engine subprocess or background extraction
 job has been joined. Real GPU engines and fleet deployment were not exercised.
 
+## Server-triggered runner draining
+
+An administrator can request draining through `POST /admin/runners/{id}/drain`
+with a JSON body such as `{"action":"drain"}`. The actions are:
+
+| Action | After accepted work finishes |
+| --- | --- |
+| `drain` (default) | Stay running with admission closed |
+| `stop` | Exit the runner service successfully |
+| `shutdown` | Request host power-off using `systemctl --no-ask-password poweroff` |
+| `reboot` | Request host reboot using `systemctl --no-ask-password reboot` |
+
+The HTTP response is `202 Accepted` with a `request_id`: it means the command was
+queued, not that draining has completed. The existing admin command-completion
+event reports the runner's acknowledgment. The runner closes admission before
+acknowledging; its status becomes `draining`, then `drained` when no work remains.
+Both states are excluded from gateway routing. New `/v1` requests return 503,
+as does `/health`; new model load/unload commands are rejected. Requests that
+race with the command and were already admitted finish normally.
+
+The work count covers HTTP handlers, streaming response bodies, detached decision
+and extraction inference, and detached model preparation. Drain has no forced deadline: a stuck
+accepted request keeps the runner draining. The ordinary 30-second process exit
+budget starts only after `stop` has finished draining. External SIGINT/SIGTERM
+retain their existing behavior and can interrupt a drain.
+
+Repeating the same action is idempotent. A drain-only request can be upgraded to
+`stop`, `shutdown`, or `reboot`, including after reaching `drained`. Conflicting
+terminal actions are rejected. Restarting the runner reopens admission. Drain
+state survives gateway reconnects within the runner process. Terminal actions
+wait for the acknowledgment to be sent; if the connection drops first, they wait
+for successful gateway registration on reconnect.
+
+Power-off/reboot require the service account to have the corresponding systemd
+permissions without interactive authentication. Failed host commands are logged;
+the runner stays drained and does not automatically retry. A service configured
+with `Restart=always` may restart after `stop`; the supplied runner unit uses
+`Restart=on-failure`. Existing automatic Wake-on-LAN policies still apply after a
+machine powers off: this API does not establish a persistent maintenance hold.
+Deploy the updated backend and runner together to use the new command/statuses.
+
 ## Building
 
 The workspace now uses the published `lelloman-simple-server` 0.1.0 package,

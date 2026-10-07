@@ -329,3 +329,91 @@ async fn admin_sse_keepalive_and_lagged_broadcast_contract() {
     drop(body);
     tokio::time::resume();
 }
+
+#[tokio::test]
+async fn admin_drain_requires_admin_and_queues_typed_command() {
+    let state = create_test_state().await.unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    state
+        .runner_registry
+        .register(
+            "drain-test".into(),
+            "Drain test".into(),
+            None,
+            status(RunnerHealth::Healthy),
+            None,
+            tx,
+            None,
+        )
+        .await;
+    let app = routes::admin::router(state.clone());
+    for (roles, expected) in [
+        (&["user"][..], StatusCode::FORBIDDEN),
+        (&["admin"][..], StatusCode::ACCEPTED),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/runners/drain-test/drain")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", token(&state, roles, "test")),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"reboot"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+        if expected == StatusCode::FORBIDDEN {
+            assert!(rx.try_recv().is_err());
+        } else {
+            let body = simple_server::web::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            match rx.recv().await.unwrap() {
+                simple_ai_common::GatewayMessage::Drain { action, request_id } => {
+                    assert_eq!(action, simple_ai_common::DrainAction::Reboot);
+                    assert_eq!(request_id, body["request_id"]);
+                }
+                other => panic!("Unexpected command: {other:?}"),
+            }
+        }
+    }
+    for (id, payload, expected) in [
+        ("missing", r#"{"action":"drain"}"#, StatusCode::NOT_FOUND),
+        (
+            "drain-test",
+            r#"{"action":"arbitrary-shell-command"}"#,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/runners/{id}/drain"))
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", token(&state, &["admin"], "test")),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
+    assert!(rx.try_recv().is_err());
+    state
+        .runner_registry
+        .update_status("drain-test", status(RunnerHealth::Draining))
+        .await;
+    assert!(state.runner_registry.operational().await.is_empty());
+}

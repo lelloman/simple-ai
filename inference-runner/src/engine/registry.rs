@@ -13,6 +13,7 @@ use crate::config::ModelRouteConfig;
 /// The registry allows looking up engines by type or finding an engine
 /// that can serve a particular model.
 pub struct EngineRegistry {
+    pub drain: Arc<crate::drain::Drain>,
     engines: RwLock<HashMap<String, Arc<dyn InferenceEngine>>>,
     routes: RwLock<HashMap<String, ModelRouteConfig>>,
     route_aliases: RwLock<HashMap<String, String>>,
@@ -85,6 +86,7 @@ pub struct ModelLease {
 impl EngineRegistry {
     pub fn new() -> Self {
         Self {
+            drain: Arc::new(crate::drain::Drain::default()),
             engines: RwLock::new(HashMap::new()),
             routes: RwLock::new(HashMap::new()),
             route_aliases: RwLock::new(HashMap::new()),
@@ -217,7 +219,9 @@ impl EngineRegistry {
         let owned_model = engine_model.clone();
         // An abandoned HTTP/WebSocket task must not release the gate while an
         // external process is still starting or stopping.
+        let work = self.drain.track_existing();
         let resource_guard = tokio::spawn(async move {
+            let _work = work;
             let target = owned_target;
             let engine_model = owned_model;
             let guard = match gate {

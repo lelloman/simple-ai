@@ -40,6 +40,15 @@ pub struct EngineHealthStatus {
 /// Checks health of all registered engines and returns aggregate status.
 /// Returns 200 OK if at least one engine is healthy, 503 if all are unhealthy.
 pub async fn health(State(state): State<Arc<AppState>>) -> (StatusCode, Json<HealthResponse>) {
+    if let Some(health) = state.engine_registry.drain.health() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(HealthResponse {
+                status: format!("{health:?}").to_lowercase(),
+                engines: vec![],
+            }),
+        );
+    }
     match run_health_check(state.engine_registry.clone(), state.ocr_provider.is_some()).await {
         Ok(response) => (StatusCode::OK, Json(response)),
         Err(failure) => (StatusCode::SERVICE_UNAVAILABLE, Json(failure.error)),

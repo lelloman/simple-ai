@@ -10,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 mod api;
 mod capability;
 mod config;
+mod drain;
 mod engine;
 mod error;
 mod gateway;
@@ -209,6 +210,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         ocr_provider.clone(),
     ));
 
+    let drain = registry.drain.clone();
+
+    let drain_worker = drain.clone();
+    let drain_stop = lifecycle.shutdown();
+    lifecycle.service("drain", async move {
+        drain_worker.run(drain_stop).await;
+        Ok::<(), std::io::Error>(())
+    })?;
+
     // Start gateway client if configured
     if let Some(ref gateway_config) = config.gateway {
         let status_collector = Arc::new(StatusCollector::new(
@@ -242,7 +252,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build router
     let app = Router::new()
-        .nest("/v1", api::router())
+        .nest("/v1", api::router(state.clone()))
         .route(
             "/health",
             simple_server::web::routing::get(api::health::health),
@@ -260,7 +270,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         simple_server::web::serve(listener, app, lifecycle.shutdown()),
     )?;
     let report = lifecycle
-        .run(signals.wait(), async { Ok::<(), std::io::Error>(()) })
+        .run(
+            async {
+                tokio::select! {
+                    signal = signals.wait() => signal,
+                    _ = drain.stopped() => Ok(simple_server::lifecycle::ShutdownReason::Requested),
+                }
+            },
+            async { Ok::<(), std::io::Error>(()) },
+        )
         .await?;
     tracing::info!(?report, "Graceful shutdown complete");
 

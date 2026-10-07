@@ -137,6 +137,8 @@ impl GatewayClient {
             }
         }
 
+        self.engine_registry.drain.arm(None);
+
         // Create channel for outbound messages
         let (tx, mut rx) = mpsc::channel::<RunnerMessage>(32);
 
@@ -169,6 +171,11 @@ impl GatewayClient {
                 Some(msg) = rx.recv() => {
                     let json = serde_json::to_string(&msg)?;
                     write.send(Message::Text(json)).await?;
+                    if let RunnerMessage::CommandResponse(response) = &msg {
+                        if response.success {
+                            self.engine_registry.drain.arm(Some(&response.request_id));
+                        }
+                    }
                     tracing::debug!("Sent message to gateway: {:?}", std::mem::discriminant(&msg));
                 }
 
@@ -214,6 +221,17 @@ impl GatewayClient {
         );
 
         match msg {
+            GatewayMessage::Drain { action, request_id } => {
+                let result = self.engine_registry.drain.begin(action, &request_id);
+                let status = self.status_collector.collect().await;
+                tx.send(RunnerMessage::CommandResponse(CommandResponse {
+                    request_id,
+                    success: result.is_ok(),
+                    error: result.err().map(str::to_string),
+                    status: Some(status),
+                }))
+                .await?;
+            }
             GatewayMessage::Ping { timestamp } => {
                 tracing::debug!("Received ping with timestamp {}", timestamp);
                 // Respond with current status
@@ -282,6 +300,7 @@ impl GatewayClient {
         &self,
         model_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let _work = self.engine_registry.drain.admit().ok_or("Runner is draining")?;
         // Resolve canonical name to local engine name if aliased
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();
@@ -346,6 +365,7 @@ impl GatewayClient {
         &self,
         model_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let _work = self.engine_registry.drain.admit().ok_or("Runner is draining")?;
         // Resolve canonical name to local engine name if aliased
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();

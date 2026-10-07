@@ -58,8 +58,9 @@ async fn decide(
     .map_err(|e| Error::Internal(e.to_string()))?;
     let queue_ms = start.elapsed().as_secs_f64() * 1000.;
     // The owned task keeps the GPU lease until inference/cleanup completes, even after disconnect.
+    let work = state.engine_registry.drain.track_existing();
     tokio::spawn(async move {
-        let (_queue, _slot) = (queue, slot);
+        let (_queue, _slot, _work) = (queue, slot, work);
         let lease = state.engine_registry.acquire_model(&resolved).await?;
         let mut response = lease.engine.decide(&lease.engine_model, &request).await?;
         response.model = requested;

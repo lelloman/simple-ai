@@ -1419,6 +1419,41 @@ async fn runner_events(
         .into_response())
 }
 
+#[derive(Deserialize)]
+struct DrainRequest {
+    #[serde(default)]
+    action: simple_ai_common::DrainAction,
+}
+
+/// Queue a drain command. Acceptance is reported through CommandCompleted events;
+/// the runner closes admission before acknowledging the command.
+async fn drain_runner(
+    State(state): State<Arc<AppState>>,
+    Path(runner_id): Path<String>,
+    Json(request): Json<DrainRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let runner = state.runner_registry.get(&runner_id).await.ok_or((
+        StatusCode::NOT_FOUND,
+        "Runner not found or offline".to_string(),
+    ))?;
+    let request_id = format!("admin-drain-{}", uuid::Uuid::new_v4());
+    runner
+        .tx
+        .send(simple_ai_common::GatewayMessage::Drain {
+            action: request.action,
+            request_id: request_id.clone(),
+        })
+        .await
+        .map_err(|_| (StatusCode::BAD_GATEWAY, "Runner disconnected".to_string()))?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "request_id": request_id, "action": request.action,
+            "message": "Drain command queued; await runner acknowledgment"
+        })),
+    ))
+}
+
 /// Build the admin router.
 pub fn router(state: Arc<AppState>) -> Router {
     // SSE endpoint with query-based auth (separate from middleware-protected routes)
@@ -1436,6 +1471,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let admin_routes = Router::new()
         .route("/runners", get(list_runners))
         .route("/runners/{id}/wake", post(wake_runner))
+        .route("/runners/{id}/drain", post(drain_runner))
         .route("/runners/{id}/load-model", post(load_model))
         .route("/runners/{id}/unload-model", post(unload_model))
         .route("/models", get(list_models))
