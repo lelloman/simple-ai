@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-07",
+  "host": "rtx.homelab",
+  "gpu": "RTX 3090 24 GiB",
+  "runtime": "llama.cpp b9912 c198af4dc",
+  "model": "Qwen3.8-27B-Uncensored-Cyber-Q4_K_M",
+  "source": "nico248000000000/Qwen3.8-27B-Uncensored-cyber-GGUF",
+  "revision": "4e5a0e51ee50433c5390acdffc31defc722306b7",
+  "sha256_verified": "1a52458e7d7a5cd46d52c3f9b3c7377663f4761363d36d870b3bf778e09d229c",
+  "context_size": 16384,
+  "parallel": 1,
+  "gpu_memory_used_mib_after_smokes": 16554,
+  "runner_api": "http://rtx.homelab:8080/v1",
+  "checks": {
+    "listed_in_runner_models": "PASS",
+    "text_generation": "PASS",
+    "reasoning_low_arithmetic": "PASS",
+    "required_tool_call_name_and_arguments": "PASS",
+    "runner_health": "PASS"
+  },
+  "config_backup": "/home/lelloman/config.toml.before-cyber-20261007-154456",
+  "timing_note": "Two 443-token runner requests completed in 39.83s and 56.91s under competing traffic and model switching. These are not isolated decode benchmarks.",
+  "limitations": [
+    "Long-context quality and vision were not tested.",
+    "Patched vLLM was inspected but not enabled for this checkpoint; it requires a compatible W4A16 conversion and separate validation."
+  ]
+}

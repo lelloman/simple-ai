@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-07",
+  "host": "rtx.homelab",
+  "gpu": "RTX 3090 24 GiB",
+  "runtime": "patched vLLM 0.29.0",
+  "model": "qwen3.8-27b-uncensored-cyber",
+  "configuration": "W4A16 GPTQ body, INT8 heads, FP8 KV, MTP-3",
+  "context_length": 180000,
+  "gpu_kv_pool_tokens": 183879,
+  "checks": {
+    "runtime_patch_verification": "PASS",
+    "indexed_weight_integrity": "PASS",
+    "text": "PASS",
+    "reasoning": "PASS",
+    "tool_call": "PASS",
+    "long_context_marker_retrieval_cold_and_cached": "PASS",
+    "short_median_at_least_100_tps": "FAIL",
+    "runner_integration": "PASS",
+    "runner_default_api": "PASS",
+    "runner_gpu_sharing": "PASS",
+    "runner_fast_api": "PASS"
+  },
+  "short_median_decode_tps": 81.01363217814678,
+  "short_range_decode_tps": [
+    69.84293719324336,
+    115.46091510491128
+  ],
+  "long": [
+    {
+      "usage": {
+        "prompt_tokens": 178980,
+        "total_tokens": 179492,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 178048
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "ttft_seconds": 283.1029129819981,
+      "decode_tps": 62.63963761939737
+    },
+    {
+      "usage": {
+        "prompt_tokens": 178980,
+        "total_tokens": 179492,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 178048,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "ttft_seconds": 2.866630256001372,
+      "decode_tps": 62.69412248145932
+    }
+  ],
+  "power_limit_watts": 350,
+  "thermal_throttling_observed_during_long_prefill": true,
+  "vision_tested": false,
+  "status": "DEPLOYED_BOTH_180K_PROFILES_VALIDATED",
+  "fast_profile": {
+    "model": "qwen3.8-27b-uncensored-cyber-fast",
+    "configuration": "W4A16 GPTQ body, INT8 heads, DFlash2-7, KVarN K4/V2 cache",
+    "short_median_decode_tps": 117.11550904408008,
+    "short_range_decode_tps": [
+      99.04575892856542,
+      197.40010906657466
+    ],
+    "long": [
+      {
+        "usage": {
+          "prompt_tokens": 178980,
+          "total_tokens": 179492,
+          "completion_tokens": 512,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "created_cache_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "ttft_seconds": 252.23447210900122,
+        "decode_tps": 19.138840181079036
+      },
+      {
+        "usage": {
+          "prompt_tokens": 178980,
+          "total_tokens": 179492,
+          "completion_tokens": 512,
+          "prompt_tokens_details": {
+            "cached_tokens": 178432,
+            "created_cache_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "ttft_seconds": 2.1596036439987074,
+        "decode_tps": 26.730915860096008
+      }
+    ],
+    "protocol_checks": "PASS: text, reasoning, tool call",
+    "context_length": 180000,
+    "gpu_kv_pool_tokens": 240223,
+    "tradeoff": "Faster short-context generation, slower deep-context generation than FP8/MTP-3.",
+    "checks": {
+      "short_median_at_least_100_tps": "PASS",
+      "long_context_retrieval_cold_and_cached": "PASS",
+      "runner_api": "PASS"
+    }
+  },
+  "config_backup": "/home/lelloman/config.toml.before-cyber-vllm-20261007-172351",
+  "runner_api": "http://rtx.homelab:8080/v1",
+  "limitations": [
+    "100+ tok/s is a short-context benchmark result for the Fast profile, not a full-context guarantee.",
+    "At 178980 input tokens the FP8/MTP-3 profile measured 62.6\u201362.7 tok/s; DFlash2 measured 19.1\u201326.7 tok/s.",
+    "Text-only, one simultaneous generation per profile.",
+    "Other GPU workloads trigger model switching; cold startup latency is additional to measured decode speed.",
+    "Thermal throttling observed at 350 W during long prefill.",
+    "The 16K GGUF remains an explicitly separate fallback model."
+  ]
+}

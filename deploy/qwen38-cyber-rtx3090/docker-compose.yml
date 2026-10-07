@@ -1,0 +1,29 @@
+services:
+  single:
+    image: simple-ai-qwen38-cyber:7759002
+    pull_policy: never
+    runtime: nvidia
+    ipc: host
+    env_file: ${QWEN_ENV_FILE:-profiles/cyber.env}
+    environment:
+      HOME: /cache
+      PREPARE: "0"
+      # Pinned image and immutable weights passed verify.sh during preparation.
+      VERIFY: "0"
+    volumes:
+      - /home/lelloman/qwen38-cyber-serving/models:/app/models:ro
+      - cyber-cache:/cache
+    ports:
+      - "127.0.0.1:18021:18021"
+    command: single
+    profiles: [single]
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, curl, -sf, "http://127.0.0.1:18021/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 1200s
+
+volumes:
+  cyber-cache:

@@ -1,0 +1,51 @@
+{
+  "source_repo": "nico248000000000/Qwen3.8-27B-Uncensored-cyber",
+  "source_revision": "2c52e56feccb4aab7bc81bdeac6b775ae1440b47",
+  "source_files_checksum_verified": 27,
+  "runtime_repo": "https://github.com/cpuchip/qwen38-27b-rtx3090",
+  "runtime_revision": "77590026c65405745868e7e7beab89fb6496253e",
+  "runtime_image": "simple-ai-qwen38-cyber:7759002",
+  "runtime_image_id": "sha256:aab53f62362ccd7b71785b7d6986f2c8060fe714a5672cc219a15c9397311541",
+  "converter_image_id": "sha256:147c6f63d65e00fba76cdbad6ba8708a10c355b4227693b0a1a16972feede99a",
+  "converter": {
+    "llmcompressor": "0.14.0",
+    "compressed_tensors": "0.19.0",
+    "transformers": "5.15.0",
+    "torch": "2.13.0+cu130",
+    "algorithm": "GPTQ",
+    "scheme": "W4A16",
+    "samples": 128,
+    "sequence_length": 1024,
+    "seed": 42
+  },
+  "derived_heads": {
+    "lm_head": "INT8 symmetric group-128",
+    "embed_tokens": "INT8 symmetric group-128",
+    "mtp": "Original source MTP tensors, INT8 symmetric group-128",
+    "draft_vocabulary": "Pinned runtime prepare/draft_vocab_ids.json",
+    "converter": "quant-heads-stream.py: pinned upstream converter adapted for separate head shards; head actorder disabled because head quantization has no permutation"
+  },
+  "target_profile": {
+    "context_length": 180000,
+    "speculation": "MTP-3",
+    "kv_cache": "FP8 via FlashInfer",
+    "kv_cache_memory_bytes": 6871947674,
+    "vision": false
+  },
+  "comparison_profile": {
+    "speculation": "DFlash2, 7 draft tokens",
+    "kv_cache": "KVarN k4v2_g128",
+    "kv_cache_memory_bytes": 5261334938,
+    "context_length": 180000,
+    "drafter": {
+      "repo": "syvai/Qwen3.8-27B-DFlash2-W4A16",
+      "local_source": "Existing RTX checkpoint copied without changes",
+      "model_sha256": "ec26996e6a0745ab5edb857117220ce1e219ad524f71e6e149b703804947d8e7",
+      "config_sha256": "61d6276fe8d76295232cb02d26cbb0d29c25565911f50441e779c88c9220c556"
+    }
+  },
+  "deployed_models": {
+    "qwen3.8-27b-uncensored-cyber": "FP8/MTP-3; default for long-context performance",
+    "qwen3.8-27b-uncensored-cyber-fast": "KVarN/DFlash2-7; higher short-context decode speed"
+  }
+}

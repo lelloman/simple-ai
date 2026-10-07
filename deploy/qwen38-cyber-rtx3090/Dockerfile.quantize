@@ -1,0 +1,6 @@
+FROM qwen38-27b-3090:latest
+# Conversion is isolated from both serving images: the converter needs a newer
+# compressed-tensors release than the pinned vLLM 0.29 serving patch set.
+RUN /app/venv/bin/pip install --no-cache-dir \
+    llmcompressor==0.14.0 torch==2.13.0 transformers==5.15.0
+ENTRYPOINT ["/app/venv/bin/python"]

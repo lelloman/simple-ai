@@ -1,0 +1,225 @@
+{
+  "short": [
+    {
+      "usage": {
+        "prompt_tokens": 26,
+        "total_tokens": 538,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```rust\nuse std::collections::HashMap;\nuse std::collections::LinkedList;\n\npub struct LruCache<K, V> {\n capacity: usize,\n map: HashMap<K, LinkedList<Node<K, V>>>,\n list: LinkedList<Node<K, V>>,\n}\n\nstruct Node<K, V> {\n key: K,\n value: V,\n}\n\nimpl<K: Eq + Hash + Clone, V: Clone> LruCache<K, V> {\n pub fn new(capacity: usize) -> Self {\n Self {\n capacity,\n map: HashMap::new(),\n list: LinkedList::new(),\n }\n }\n\n pub fn get(&mut self, key: &K) -> Option<&V> {\n if let Some(node) = self.map.get(key) {\n // Move to front\n let node = self.list.pop_front().unwrap();\n self.list.push_back(node);\n Some(&node.value)\n } else {\n None\n }\n }\n\n pub fn put(&mut self, key: K, value: V) {\n if self.map.len() >= self.capacity {\n // Evict least recently used\n let lru = self.list.pop_front().unwrap();\n self.map.remove(&lru.key);\n }\n let node = Node { key: key.clone(), value };\n self.map.insert(key, node);\n self.list.push_back(node);\n }\n}\n\n#[cfg(test)]\nmod tests {\n use super::*;\n\n #[test]\n fn test_lru_eviction() {\n let mut cache = LruCache::new(2);\n cache.put(1, \"a\");\n cache.put(2, \"b\");\n assert_eq!(cache.get(&1), Some(&\"a\"));\n cache.put(3, \"c\"); // evicts 2\n assert_eq!(cache.get(&2), None);\n assert_eq!(cache.get(&1), Some(&\"a\"));\n }\n}\n```\n\n**Invariants:**\n- `map.len() <= capacity`\n- `list.len() == map.len()`\n- The front of the list is the most recently used item.\n- Every key in `map` has a corresponding node in `list`.\n- The `get` operation updates recency by moving the node to the back.\n- The `put` operation evicts the front node if capacity is exceeded.\n\n**Complexity:** O(1) average",
+      "ttft_seconds": 0.08714095200048178,
+      "elapsed_seconds": 4.8669319920009,
+      "decode_tps": 106.90843924423007
+    },
+    {
+      "usage": {
+        "prompt_tokens": 30,
+        "total_tokens": 542,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "Identify the process (ps aux). Check /proc/<pid>/status for VmRSS growth over time. Use pmap -x <pid> to see memory map. Use valgrind --tool=memcheck if possible (slow). For production, use gdb attach and inspect heap. Check for file descriptor leaks with lsof. Use strace to see if the process is opening files without closing. Decision points: Is the leak in the application or in a library? Is it a one-time allocation or continuous? Is the process critical? If critical, schedule a restart and collect core dump for analysis. Use systemd to set MemoryLimit to prevent OOM. Document the leak and file a bug. Use monitoring to alert on memory growth. For kernel modules, use /proc/slabinfo and kmemleak. Always have a rollback plan. Memory leaks are common in long-running services; proactive monitoring is key. Use tools like jemalloc or tcmalloc for better diagnostics. In Kubernetes, set resource limits and use liveness probes to restart leaking pods. Document the leak and its impact. Use a memory profiler like massif for heap analysis. For Go, use pprof. For Java, use jmap. For Python, use tracemalloc. The approach depends on the language and runtime. Always test fixes in staging before production. Memory leaks can cause OOM kills and service outages; prioritize high-impact leaks. Use automated tools in CI to catch leaks early. For critical services, implement a watchdog that restarts the process if memory exceeds a threshold. This is a common operational task; have a runbook. Use monitoring dashboards to track memory usage over time. Correlate with deployment events. If a leak is found, coordinate with the development team to fix and deploy. Use a canary deployment to validate the fix. Document the incident and lessons learned. Memory leak diagnosis is a skill that requires practice and familiarity with system tools. Use the right tool for the job. Always have a backup plan. In high-availability environments, ensure that a single leaking node does not take down the service. Use load balancing and health checks. Memory leaks are a common cause of performance degradation; address them proactively. Use static analysis tools to catch potential leaks in code review. For legacy code, consider rewriting or using memory-safe languages. The goal is to maintain system stability and performance. Memory leak diagnosis is an ongoing process; integrate it into your operational procedures. Use automated alerts and dashboards to stay ahead of leaks",
+      "ttft_seconds": 0.08713708999857772,
+      "elapsed_seconds": 7.390888270998403,
+      "decode_tps": 69.96404824541794
+    },
+    {
+      "usage": {
+        "prompt_tokens": 25,
+        "total_tokens": 537,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```python\nimport json\nimport csv\nfrom dataclasses import dataclass\nfrom typing import List, Optional\nimport re\n\n@dataclass\nclass User:\n id: int\n name: str\n email: str\n age: Optional[int] = None\n\ndef parse_user_line(line: str) -> Optional[User]:\n try:\n data = json.loads(line)\n if not isinstance(data, dict):\n return None\n # Validate required fields\n if 'id' not in data or 'name' not in data or 'email' not in data:\n return None\n # Validate email format\n email = data['email']\n if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', email):\n return None\n # Validate age if present\n age = data.get('age')\n if age is not None and (not isinstance(age, int) or age < 0):\n return None\n return User(id=data['id'], name=data['name'], email=email, age=age)\n except (json.JSONDecodeError, TypeError):\n return None\n\ndef process_jsonl_file(input_path: str, output_csv_path: str) -> List[User]:\n users = []\n with open(input_path, 'r', encoding='utf-8') as f:\n for line in f:\n line = line.strip()\n if not line:\n continue\n user = parse_user_line(line)\n if user:\n users.append(user)\n # Write to CSV\n with open(output_csv_path, 'w', newline='', encoding='utf-8') as csvfile:\n writer = csv.writer(csvfile)\n writer.writerow(['id', 'name', 'email', 'age'])\n for user in users:\n writer.writerow([user.id, user.name, user.email, user.age if user.age else ''])\n return users\n\n# Test\nif __name__ == '__main__':\n # Create a sample JSONL file\n sample_data = [\n '{\"id\": 1, \"name\": \"Alice\", \"email\": \"alice@example.com\", \"age\": 30}',\n '{\"id\": 2, \"name\": \"Bob\", \"email\": \"bob@example.com\"}',\n '{\"id\": 3, \"name\": \"Charlie\", \"email\": \"invalid-email\", \"age\": 25}',\n '{\"id\": 4, \"",
+      "ttft_seconds": 0.08681894699839177,
+      "elapsed_seconds": 4.5125590300012846,
+      "decode_tps": 115.46091510491128
+    },
+    {
+      "usage": {
+        "prompt_tokens": 24,
+        "total_tokens": 536,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```sql BEGIN; -- 1. Check if payment already exists (idempotency) SELECT status FROM payments WHERE external_id = $1; -- 2. If not exists, insert with status 'PENDING' INSERT INTO payments (external_id, amount, status) VALUES ($1, $2, 'PENDING'); -- 3. Debit from source account UPDATE accounts SET balance = balance - $2 WHERE id = $3 AND balance >= $2; -- 4. Credit to destination account UPDATE accounts SET balance = balance + $2 WHERE id = $4; -- 5. Update payment status to 'COMPLETED' UPDATE payments SET status = 'COMPLETED' WHERE external_id = $1; COMMIT; ``` Use `SELECT ... FOR UPDATE` for row-level locking. Implement retry logic with exponential backoff for transient failures. Use `SERIALIZABLE` isolation level for strict consistency. Add a unique constraint on `external_id` to prevent duplicates. Log all transactions for audit. Use `SAVEPOINT` for partial rollback if needed. Monitor for deadlocks and implement timeout handling. Ensure the entire flow is atomic to prevent partial payments. Use `pg_advisory_lock` for application-level locking if needed. Test for race conditions with concurrent requests. Implement circuit breakers for downstream service failures. Use `pg_stat_activity` to monitor long-running transactions. Ensure proper error handling with `ROLLBACK` on any exception. Use `pg_notify` for asynchronous processing if needed. Implement idempotency keys with TTL for cleanup. Use `pg_cron` for periodic reconciliation. Monitor for orphaned transactions and implement cleanup procedures. Use `pg_stat_statements` to optimize slow queries. Implement proper indexing on `external_id` and `status` columns. Use `pg_class` to monitor table bloat and implement `VACUUM` schedules. Ensure proper connection pooling with `pgbouncer` for high concurrency. Use `pg_hba.conf` for network-level security. Implement `pgcrypto` for sensitive data encryption. Use `pg_stat_replication` for replication monitoring. Implement `pg_basebackup` for backup strategies. Use `pg_rewind` for failover scenarios. Monitor `pg_stat_bgwriter` for write performance. Implement `pg_stat_io` for I/O analysis. Use `pg_stat_wal` for WAL monitoring. Implement `pg_stat_archiver` for archive monitoring. Use `pg_stat_replication_slots` for slot monitoring. Implement `pg_stat_gssapi`",
+      "ttft_seconds": 0.08706564200110734,
+      "elapsed_seconds": 6.386415275999752,
+      "decode_tps": 81.11948529448935
+    },
+    {
+      "usage": {
+        "prompt_tokens": 27,
+        "total_tokens": 539,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "## Concurrent job queue review **Races** - Shared mutable state without locks/atomics - Double-claim of a job (two workers process same id) - Lost updates on counters/progress - Non-atomic check-then-act on resources **Cancellation** - Cancellation ignored after start (leak) - Cancellation races with completion (double-free / double-close) - No idempotent cancel **Backpressure** - Unbounded queue \u2192 OOM - No max in-flight per worker - No timeout on stuck jobs - No retry cap / dead-letter **Good design** - Claim job atomically (DB `FOR UPDATE SKIP LOCKED`, Redis `SET NX`, or queue ack) - Worker owns job lifecycle; cancel is cooperative + timeout - Bounded queue + semaphore for concurrency - Dead-letter + metrics on failure **Tests** - Two workers same job id - Cancel during processing - Queue overflow - Crash between claim and ack (at-least-once vs exactly-once) Pick delivery semantics explicitly; document them. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse",
+      "ttft_seconds": 0.0870154200019897,
+      "elapsed_seconds": 6.408468001001893,
+      "decode_tps": 80.83585116748151
+    },
+    {
+      "usage": {
+        "prompt_tokens": 26,
+        "total_tokens": 538,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```rust\nuse std::collections::HashMap;\nuse std::collections::LinkedList;\n\npub struct LruCache<K, V> {\n capacity: usize,\n map: HashMap<K, LinkedList<Node<K, V>>>,\n list: LinkedList<Node<K, V>>,\n}\n\nstruct Node<K, V> {\n key: K,\n value: V,\n}\n\nimpl<K: Eq + Hash + Clone, V: Clone> LruCache<K, V> {\n pub fn new(capacity: usize) -> Self {\n Self {\n capacity,\n map: HashMap::new(),\n list: LinkedList::new(),\n }\n }\n\n pub fn get(&mut self, key: &K) -> Option<&V> {\n if let Some(node) = self.map.get(key) {\n // Move to front\n let node = self.list.pop_front().unwrap();\n self.list.push_back(node);\n Some(&node.value)\n } else {\n None\n }\n }\n\n pub fn put(&mut self, key: K, value: V) {\n if self.map.len() >= self.capacity {\n // Evict least recently used\n let lru = self.list.pop_front().unwrap();\n self.map.remove(&lru.key);\n }\n let node = Node { key: key.clone(), value };\n self.map.insert(key, node);\n self.list.push_back(node);\n }\n}\n\n#[cfg(test)]\nmod tests {\n use super::*;\n\n #[test]\n fn test_lru_eviction() {\n let mut cache = LruCache::new(2);\n cache.put(1, \"a\");\n cache.put(2, \"b\");\n assert_eq!(cache.get(&1), Some(&\"a\"));\n cache.put(3, \"c\"); // evicts 2\n assert_eq!(cache.get(&2), None);\n assert_eq!(cache.get(&1), Some(&\"a\"));\n }\n}\n```\n\n**Invariants:**\n- `map.len() <= capacity`\n- `list.len() == map.len()`\n- The front of the list is the most recently used item.\n- Every key in `map` has a corresponding node in `list`.\n- The `get` operation updates recency by moving the node to the back.\n- The `put` operation evicts the front node if capacity is exceeded.\n\n**Complexity:** O(1) average",
+      "ttft_seconds": 0.08727402500153403,
+      "elapsed_seconds": 4.875170875002368,
+      "decode_tps": 106.72744547533662
+    },
+    {
+      "usage": {
+        "prompt_tokens": 30,
+        "total_tokens": 542,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "Identify the process (ps aux). Check /proc/<pid>/status for VmRSS growth over time. Use pmap -x <pid> to see memory map. Use valgrind --tool=memcheck if possible (slow). For production, use gdb attach and inspect heap. Check for file descriptor leaks with lsof. Use strace to see if the process is opening files without closing. Decision points: Is the leak in the application or in a library? Is it a one-time allocation or continuous? Is the process critical? If critical, schedule a restart and collect core dump for analysis. Use systemd to set MemoryLimit to prevent OOM. Document the leak and file a bug. Use monitoring to alert on memory growth. For kernel modules, use /proc/slabinfo and kmemleak. Always have a rollback plan. Memory leaks are common in long-running services; proactive monitoring is key. Use tools like jemalloc or tcmalloc for better diagnostics. In Kubernetes, set resource limits and use liveness probes to restart leaking pods. Document the leak and its impact. Use a memory profiler like massif for heap analysis. For Go, use pprof. For Java, use jmap. For Python, use tracemalloc. The approach depends on the language and runtime. Always test fixes in staging before production. Memory leaks can cause OOM kills and service outages; prioritize high-impact leaks. Use automated tools in CI to catch leaks early. For critical services, implement a watchdog that restarts the process if memory exceeds a threshold. This is a common operational task; have a runbook. Use monitoring dashboards to track memory usage over time. Correlate with deployment events. If a leak is found, coordinate with the development team to fix and deploy. Use a canary deployment to validate the fix. Document the incident and lessons learned. Memory leak diagnosis is a skill that requires practice and familiarity with system tools. Use the right tool for the job. Always have a backup plan. In high-availability environments, ensure that a single leaking node does not take down the service. Use load balancing and health checks. Memory leaks are a common cause of performance degradation; address them proactively. Use static analysis tools to catch potential leaks in code review. For legacy code, consider rewriting or using memory-safe languages. The goal is to maintain system stability and performance. Memory leak diagnosis is an ongoing process; integrate it into your operational procedures. Use automated alerts and dashboards to stay ahead of leaks",
+      "ttft_seconds": 0.08735769799750415,
+      "elapsed_seconds": 7.40377393900053,
+      "decode_tps": 69.84293719324336
+    },
+    {
+      "usage": {
+        "prompt_tokens": 25,
+        "total_tokens": 537,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```python\nimport json\nimport csv\nfrom dataclasses import dataclass\nfrom typing import List, Optional\nimport re\n\n@dataclass\nclass User:\n id: int\n name: str\n email: str\n age: Optional[int] = None\n\ndef parse_user_line(line: str) -> Optional[User]:\n try:\n data = json.loads(line)\n if not isinstance(data, dict):\n return None\n # Validate required fields\n if 'id' not in data or 'name' not in data or 'email' not in data:\n return None\n # Validate email format\n email = data['email']\n if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', email):\n return None\n # Validate age if present\n age = data.get('age')\n if age is not None and (not isinstance(age, int) or age < 0):\n return None\n return User(id=data['id'], name=data['name'], email=email, age=age)\n except (json.JSONDecodeError, TypeError):\n return None\n\ndef process_jsonl_file(input_path: str, output_csv_path: str) -> List[User]:\n users = []\n with open(input_path, 'r', encoding='utf-8') as f:\n for line in f:\n line = line.strip()\n if not line:\n continue\n user = parse_user_line(line)\n if user:\n users.append(user)\n # Write to CSV\n with open(output_csv_path, 'w', newline='', encoding='utf-8') as csvfile:\n writer = csv.writer(csvfile)\n writer.writerow(['id', 'name', 'email', 'age'])\n for user in users:\n writer.writerow([user.id, user.name, user.email, user.age if user.age else ''])\n return users\n\n# Test\nif __name__ == '__main__':\n # Create a sample JSONL file\n sample_data = [\n '{\"id\": 1, \"name\": \"Alice\", \"email\": \"alice@example.com\", \"age\": 30}',\n '{\"id\": 2, \"name\": \"Bob\", \"email\": \"bob@example.com\"}',\n '{\"id\": 3, \"name\": \"Charlie\", \"email\": \"invalid-email\", \"age\": 25}',\n '{\"id\": 4, \"",
+      "ttft_seconds": 0.08679787700020825,
+      "elapsed_seconds": 4.519498804002069,
+      "decode_tps": 115.27960230459858
+    },
+    {
+      "usage": {
+        "prompt_tokens": 24,
+        "total_tokens": 536,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```sql BEGIN; -- 1. Check if payment already exists (idempotency) SELECT status FROM payments WHERE external_id = $1; -- 2. If not exists, insert with status 'PENDING' INSERT INTO payments (external_id, amount, status) VALUES ($1, $2, 'PENDING'); -- 3. Debit from source account UPDATE accounts SET balance = balance - $2 WHERE id = $3 AND balance >= $2; -- 4. Credit to destination account UPDATE accounts SET balance = balance + $2 WHERE id = $4; -- 5. Update payment status to 'COMPLETED' UPDATE payments SET status = 'COMPLETED' WHERE external_id = $1; COMMIT; ``` Use `SELECT ... FOR UPDATE` for row-level locking. Implement retry logic with exponential backoff for transient failures. Use `SERIALIZABLE` isolation level for strict consistency. Add a unique constraint on `external_id` to prevent duplicates. Log all transactions for audit. Use `SAVEPOINT` for partial rollback if needed. Monitor for deadlocks and implement timeout handling. Ensure the entire flow is atomic to prevent partial payments. Use `pg_advisory_lock` for application-level locking if needed. Test for race conditions with concurrent requests. Implement circuit breakers for downstream service failures. Use `pg_stat_activity` to monitor long-running transactions. Ensure proper error handling with `ROLLBACK` on any exception. Use `pg_notify` for asynchronous processing if needed. Implement idempotency keys with TTL for cleanup. Use `pg_cron` for periodic reconciliation. Monitor for orphaned transactions and implement cleanup procedures. Use `pg_stat_statements` to optimize slow queries. Implement proper indexing on `external_id` and `status` columns. Use `pg_class` to monitor table bloat and implement `VACUUM` schedules. Ensure proper connection pooling with `pgbouncer` for high concurrency. Use `pg_hba.conf` for network-level security. Implement `pgcrypto` for sensitive data encryption. Use `pg_stat_replication` for replication monitoring. Implement `pg_basebackup` for backup strategies. Use `pg_rewind` for failover scenarios. Monitor `pg_stat_bgwriter` for write performance. Implement `pg_stat_io` for I/O analysis. Use `pg_stat_wal` for WAL monitoring. Implement `pg_stat_archiver` for archive monitoring. Use `pg_stat_replication_slots` for slot monitoring. Implement `pg_stat_gssapi`",
+      "ttft_seconds": 0.08723050100161345,
+      "elapsed_seconds": 6.4030632419999165,
+      "decode_tps": 80.9077790618042
+    },
+    {
+      "usage": {
+        "prompt_tokens": 27,
+        "total_tokens": 539,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "## Concurrent job queue review **Races** - Shared mutable state without locks/atomics - Double-claim of a job (two workers process same id) - Lost updates on counters/progress - Non-atomic check-then-act on resources **Cancellation** - Cancellation ignored after start (leak) - Cancellation races with completion (double-free / double-close) - No idempotent cancel **Backpressure** - Unbounded queue \u2192 OOM - No max in-flight per worker - No timeout on stuck jobs - No retry cap / dead-letter **Good design** - Claim job atomically (DB `FOR UPDATE SKIP LOCKED`, Redis `SET NX`, or queue ack) - Worker owns job lifecycle; cancel is cooperative + timeout - Bounded queue + semaphore for concurrency - Dead-letter + metrics on failure **Tests** - Two workers same job id - Cancel during processing - Queue overflow - Crash between claim and ack (at-least-once vs exactly-once) Pick delivery semantics explicitly; document them. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse than a visible duplicate. Prefer atomic claim + bounded concurrency + explicit dead-letter over unbounded queues and ignored cancellation. Document delivery semantics (at-least-once vs exactly-once) and test crash between claim and ack. Silent data loss is worse",
+      "ttft_seconds": 0.08724934500060044,
+      "elapsed_seconds": 6.437658675000421,
+      "decode_tps": 80.46725391164894
+    }
+  ],
+  "long": [
+    {
+      "usage": {
+        "prompt_tokens": 178980,
+        "total_tokens": 179492,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 178048
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "ALPHA=731904682\nBETA=296581043\nGAMMA=854207319\n\nThe inventory consists of 3,333 service nodes (node-00000 through node-03332), all owned by the infrastructure team. Each node has a daily backup completed and a patch review pending. The records contain routine inventory information with no audit markers, except for three specific records that contain audit markers. The retention period for all records is thirty days, and the next review is scheduled. The inventory is well-organized and follows a consistent format, making it easy to manage and maintain. The presence of audit markers in specific records suggests that these nodes may require additional attention or verification during the review process. Overall, the inventory appears to be in good standing, with regular backups and scheduled reviews ensuring data integrity and security. The infrastructure team should continue to monitor the patch review status and address any pending updates promptly to maintain optimal system performance and security. Additionally, the audit markers should be reviewed to ensure compliance with organizational policies and regulatory requirements. Regular audits and reviews will help identify any potential issues early on, allowing for timely remediation and maintaining the overall health of the infrastructure. The consistent format and clear ownership make it easier for the infrastructure team to manage and maintain the inventory effectively. By adhering to these maintenance procedures, the organization can ensure that its service nodes remain secure, up-to-date, and compliant with relevant standards. The inventory's structure also facilitates scalability, allowing for the addition of new nodes as needed without disrupting existing operations. In conclusion, the inventory is well-maintained and follows best practices for data management and security. Continued adherence to these procedures will ensure long-term success and reliability of the infrastructure. The infrastructure team should remain vigilant in monitoring the patch review status and addressing any pending updates promptly to maintain optimal system performance and security. Additionally, the audit markers should be reviewed to ensure compliance with organizational policies and regulatory requirements. Regular audits and reviews will help identify any potential issues early on, allowing for timely remediation and maintaining the overall health of the infrastructure. The consistent format and clear ownership make it easier for the infrastructure team to manage and maintain the inventory effectively. By adhering to these maintenance procedures, the organization can ensure that its service nodes remain secure, up-to-date, and compliant with relevant standards. The inventory's structure also facilitates scalability, allowing for the addition of new nodes as needed without disrupting existing",
+      "ttft_seconds": 283.1029129819981,
+      "elapsed_seconds": 291.2606868679977,
+      "decode_tps": 62.63963761939737
+    },
+    {
+      "usage": {
+        "prompt_tokens": 178980,
+        "total_tokens": 179492,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 178048,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "ALPHA=731904682\nBETA=296581043\nGAMMA=854207319\n\nThe inventory consists of 3,333 service nodes (node-00000 through node-03332), all owned by the infrastructure team. Each node has a daily backup completed and a patch review pending. The records contain routine inventory information with no audit markers, except for three specific records that contain audit markers. The retention period for all records is thirty days, and the next review is scheduled. The inventory is well-organized and follows a consistent format, making it easy to manage and maintain. The presence of audit markers in specific records suggests that these nodes may require additional attention or verification during the review process. Overall, the inventory appears to be in good standing, with regular backups and scheduled reviews ensuring data integrity and security. The infrastructure team should continue to monitor the patch review status and address any pending updates promptly to maintain optimal system performance and security. Additionally, the audit markers should be reviewed to ensure compliance with organizational policies and regulatory requirements. Regular audits and reviews will help identify any potential issues early on, allowing for timely remediation and maintaining the overall health of the infrastructure. The consistent format and clear ownership make it easier for the infrastructure team to manage and maintain the inventory effectively. By adhering to these maintenance procedures, the organization can ensure that its service nodes remain secure, up-to-date, and compliant with relevant standards. The inventory's structure also facilitates scalability, allowing for the addition of new nodes as needed without disrupting existing operations. In conclusion, the inventory is well-maintained and follows best practices for data management and security. Continued adherence to these procedures will ensure long-term success and reliability of the infrastructure. The infrastructure team should remain vigilant in monitoring the patch review status and addressing any pending updates promptly to maintain optimal system performance and security. Additionally, the audit markers should be reviewed to ensure compliance with organizational policies and regulatory requirements. Regular audits and reviews will help identify any potential issues early on, allowing for timely remediation and maintaining the overall health of the infrastructure. The consistent format and clear ownership make it easier for the infrastructure team to manage and maintain the inventory effectively. By adhering to these maintenance procedures, the organization can ensure that its service nodes remain secure, up-to-date, and compliant with relevant standards. The inventory's structure also facilitates scalability, allowing for the addition of new nodes as needed without disrupting existing",
+      "ttft_seconds": 2.866630256001372,
+      "elapsed_seconds": 11.017314559001534,
+      "decode_tps": 62.69412248145932
+    }
+  ],
+  "status": "BELOW_SPEED_TARGET",
+  "short_median_decode_tps": 81.01363217814678,
+  "long_tokenize_count": 178980
+}

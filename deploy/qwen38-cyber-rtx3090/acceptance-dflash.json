@@ -1,0 +1,225 @@
+{
+  "short": [
+    {
+      "usage": {
+        "prompt_tokens": 26,
+        "total_tokens": 538,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```rust\nuse std::collections::HashMap;\nuse std::collections::LinkedList;\n\npub struct LruCache<K, V> {\n capacity: usize,\n map: HashMap<K, LinkedList<Node<K, V>>>,\n list: LinkedList<Node<K, V>>,\n}\n\nstruct Node<K, V> {\n key: K,\n value: V,\n}\n\nimpl<K: Eq + Hash + Clone, V: Clone> LruCache<K, V> {\n pub fn new(capacity: usize) -> Self {\n Self {\n capacity,\n map: HashMap::new(),\n list: LinkedList::new(),\n }\n }\n\n pub fn get(&mut self, key: &K) -> Option<&V> {\n if let Some(node) = self.map.get(key) {\n // Move node to front\n let node = self.list.pop_front().unwrap();\n self.list.push_back(node);\n Some(&node.value)\n } else {\n None\n }\n }\n\n pub fn put(&mut self, key: K, value: V) {\n if self.map.len() >= self.capacity {\n // Evict least recently used\n let lru = self.list.pop_front().unwrap();\n self.map.remove(&lru.key);\n }\n let node = Node { key: key.clone(), value };\n self.map.insert(key, node);\n self.list.push_back(node);\n }\n}\n\n#[cfg(test)]\nmod tests {\n use super::*;\n\n #[test]\n fn test_lru_eviction() {\n let mut cache = LruCache::new(2);\n cache.put(1, \"a\");\n cache.put(2, \"b\");\n cache.put(3, \"c\"); // evicts 1\n assert_eq!(cache.get(&1), None);\n assert_eq!(cache.get(&2), Some(&\"b\"));\n assert_eq!(cache.get(&3), Some(&\"c\"));\n }\n}\n```\n\n**Invariants:**\n- `map.len() <= capacity`\n- `list.len() == map.len()`\n- Every key in `map` has a corresponding node in `list`\n- The most recently accessed item is at the back of the list\n- The least recently accessed item is at the front of the list\n\n**Complexity:** O(1) average for get/put.\n\n**Safety:** No unsafe code; all operations are safe. The `",
+      "ttft_seconds": 0.10236591399734607,
+      "elapsed_seconds": 3.1086713539989432,
+      "decode_tps": 169.9760753517209
+    },
+    {
+      "usage": {
+        "prompt_tokens": 30,
+        "total_tokens": 542,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "Identify the process (ps aux, top). Check /proc/<pid>/status (VmRSS, VmSize) over time. Use pmap -x <pid> to see memory map. Use valgrind --tool=memcheck if possible (slow). For production, use gdb attach and inspect heap. Check for growing anonymous mappings. Use perf or eBPF to trace allocation patterns. Decision: if leak is in a library, update; if in application, fix code. Use systemd cgroup memory limits to prevent OOM. Monitor with Prometheus node_exporter. Escalate to vendor if third-party. Document the leak and mitigation. Use a canary process to detect early. Automate alerts on memory growth. This is a common operational issue. Combine with code review and testing. Use a memory profiler in staging. Production diagnosis is limited; use safe tools. Always have a rollback plan. Memory leaks can cause DoS; treat as security if attacker can trigger. Mitigate with resource limits and monitoring. Document the process for future incidents. Use a checklist. This is a standard Linux troubleshooting skill. Train operators. Automate where possible. Keep a runbook. Escalate to developers if needed. Use a ticket system. Measure time to resolution. Improve with better monitoring. This is a core operational capability. Invest in training and tooling. Memory leaks are common; be prepared. Use a standardized approach. Document lessons learned. Share with the team. This is a professional practice. It reduces downtime and improves reliability. It is a key part of incident response. Use it consistently. It is a best practice. It is a standard procedure. It is a required skill. It is a core competency. It is a professional obligation. It is a legal requirement in some cases. It is a moral duty. It is a business necessity. It is a technical requirement. It is a security requirement. It is a compliance requirement. It is a regulatory requirement. It is a contractual requirement. It is a customer requirement. It is a stakeholder requirement. It is a societal requirement. It is a global requirement. It is a universal requirement. It is a fundamental requirement. It is a basic requirement. It is a core requirement. It is a primary requirement. It is a critical requirement. It is a vital requirement. It is an essential requirement. It is a necessary requirement. It is a mandatory requirement. It is a compulsory requirement. It is a required requirement. It is a demanded requirement. It is a",
+      "ttft_seconds": 0.08751442300126655,
+      "elapsed_seconds": 5.236126032999891,
+      "decode_tps": 99.25005782289655
+    },
+    {
+      "usage": {
+        "prompt_tokens": 25,
+        "total_tokens": 537,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```python\nimport json\nfrom dataclasses import dataclass\nfrom typing import List, Optional\nimport re\n\n@dataclass\nclass User:\n id: int\n name: str\n email: str\n age: Optional[int] = None\n\ndef parse_line(line: str) -> Optional[User]:\n try:\n data = json.loads(line)\n if not isinstance(data, dict):\n return None\n # Validate required fields\n if 'id' not in data or 'name' not in data or 'email' not in data:\n return None\n # Validate email format\n email = data['email']\n if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', email):\n return None\n # Validate age if present\n age = data.get('age')\n if age is not None and (not isinstance(age, int) or age < 0):\n return None\n return User(id=data['id'], name=data['name'], email=email, age=age)\n except (json.JSONDecodeError, TypeError):\n return None\n\ndef process_file(input_path: str, output_path: str) -> List[User]:\n users = []\n with open(input_path, 'r') as f:\n for line in f:\n user = parse_line(line.strip())\n if user:\n users.append(user)\n # Write valid users to output\n with open(output_path, 'w') as f:\n for user in users:\n f.write(json.dumps(user.__dict__) + '\\n')\n return users\n\n# Test\nif __name__ == '__main__':\n # Create test input\n test_data = [\n {\"id\": 1, \"name\": \"Alice\", \"email\": \"alice@example.com\", \"age\": 30},\n {\"id\": 2, \"name\": \"Bob\", \"email\": \"invalid-email\"},\n {\"id\": 3, \"name\": \"Charlie\", \"email\": \"charlie@example.com\", \"age\": -5},\n {\"id\": 4, \"name\": \"Diana\", \"email\": \"diana@example.com\"}\n ]\n with open('test_input.jsonl', 'w') as f:\n for item in test_data:\n f.write(json.dumps(item) + '\\n')\n \n users = process_file('test_input.jsonl', 'test_output.jsonl')",
+      "ttft_seconds": 0.09562883299804525,
+      "elapsed_seconds": 2.6842798849975225,
+      "decode_tps": 197.40010906657466
+    },
+    {
+      "usage": {
+        "prompt_tokens": 24,
+        "total_tokens": 536,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```sql BEGIN; -- 1. Check if transaction already exists (idempotency) SELECT status FROM payments WHERE external_id = $1; -- 2. If not exists, insert with status 'PENDING' INSERT INTO payments (external_id, amount, status) VALUES ($1, $2, 'PENDING'); -- 3. Debit from source account UPDATE accounts SET balance = balance - $2 WHERE id = $3 AND balance >= $2; -- 4. Credit to destination account UPDATE accounts SET balance = balance + $2 WHERE id = $4; -- 5. Update payment status to 'COMPLETED' UPDATE payments SET status = 'COMPLETED' WHERE external_id = $1; COMMIT; ``` Use `SELECT ... FOR UPDATE` for row-level locking. Implement retry logic with exponential backoff for transient failures. Use `SERIALIZABLE` isolation level for strict consistency. Add a unique constraint on `external_id` to prevent duplicates. Log all state transitions for auditability. Handle deadlocks with `pg_terminate_backend` and retry. Use `SAVEPOINT` for partial rollback of non-critical steps. Monitor `pg_stat_activity` for long-running transactions. Implement circuit breakers for downstream service failures. Use `pg_advisory_lock` for application-level locking when needed. Ensure all operations are within a single transaction to maintain ACID properties. Use `pg_notify`/`pg_listen` for asynchronous event processing after commit. Implement idempotency keys with TTL for cleanup of stale transactions. Use `pg_cron` for periodic reconciliation of payment states. Monitor `pg_stat_replication` for replication lag in HA setups. Use `pg_stat_statements` to identify slow queries. Implement connection pooling with `pgbouncer` for high concurrency. Use `pg_rewind` for failover scenarios. Implement `pg_basebackup` for disaster recovery. Use `pg_dump` for regular backups. Monitor `pg_stat_activity` for connection leaks. Implement `pg_terminate_backend` for stuck transactions. Use `pg_stat_replication` for replication health. Implement `pg_rewind` for failover. Use `pg_basebackup` for disaster recovery. Monitor `pg_stat_activity` for connection leaks. Implement `pg_terminate_backend` for stuck transactions. Use `pg_stat_replication` for replication health. Implement `pg_rewind` for failover. Use `pg_basebackup` for disaster recovery. Monitor `pg_stat_activity` for connection leaks. Implement `pg",
+      "ttft_seconds": 0.10236743700079387,
+      "elapsed_seconds": 4.46022884100239,
+      "decode_tps": 117.25935100431956
+    },
+    {
+      "usage": {
+        "prompt_tokens": 27,
+        "total_tokens": 539,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "## Job queue review **Races:** - Duplicate job IDs accepted twice - Job claimed by two workers (no atomic claim) - Result written after job marked failed **Cancellation:** - Cancel flag checked only at job start - Long HTTP call ignores cancel - Cancel does not release locks/resources **Backpressure:** - Unbounded queue memory growth - No max in-flight per worker - No retry cap \u2192 thundering herd **Hardening:** - Atomic claim (DB row lock / unique claim token) - Idempotency keys - Cancellation checked at safe points + context timeouts - Bounded queue + reject policy - Dead-letter queue for poison jobs - Metrics: queue depth, p95 latency, failure rate, retry rate **Tests:** duplicate submit, crash between claim and complete, cancel mid-job, poison job, queue full. Prefer at-least-once + idempotent workers over fragile exactly-once. Document delivery semantics. This is distributed-systems correctness, not just \u201cthreads.\u201d Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure",
+      "ttft_seconds": 0.08708879499681643,
+      "elapsed_seconds": 4.818033262999961,
+      "decode_tps": 108.01225917066932
+    },
+    {
+      "usage": {
+        "prompt_tokens": 26,
+        "total_tokens": 538,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```rust\nuse std::collections::HashMap;\nuse std::collections::LinkedList;\n\npub struct LruCache<K, V> {\n capacity: usize,\n map: HashMap<K, LinkedList<Node<K, V>>>,\n list: LinkedList<Node<K, V>>,\n}\n\nstruct Node<K, V> {\n key: K,\n value: V,\n}\n\nimpl<K: Eq + Hash + Clone, V: Clone> LruCache<K, V> {\n pub fn new(capacity: usize) -> Self {\n Self {\n capacity,\n map: HashMap::new(),\n list: LinkedList::new(),\n }\n }\n\n pub fn get(&mut self, key: &K) -> Option<&V> {\n if let Some(node) = self.map.get(key) {\n // Move node to front\n let node = self.list.pop_front().unwrap();\n self.list.push_back(node);\n Some(&node.value)\n } else {\n None\n }\n }\n\n pub fn put(&mut self, key: K, value: V) {\n if self.map.len() >= self.capacity {\n // Evict least recently used\n let lru = self.list.pop_front().unwrap();\n self.map.remove(&lru.key);\n }\n let node = Node { key: key.clone(), value };\n self.map.insert(key, node);\n self.list.push_back(node);\n }\n}\n\n#[cfg(test)]\nmod tests {\n use super::*;\n\n #[test]\n fn test_lru_eviction() {\n let mut cache = LruCache::new(2);\n cache.put(1, \"a\");\n cache.put(2, \"b\");\n cache.put(3, \"c\"); // evicts 1\n assert_eq!(cache.get(&1), None);\n assert_eq!(cache.get(&2), Some(&\"b\"));\n assert_eq!(cache.get(&3), Some(&\"c\"));\n }\n}\n```\n\n**Invariants:**\n- `map.len() <= capacity`\n- `list.len() == map.len()`\n- Every key in `map` has a corresponding node in `list`\n- The most recently accessed item is at the back of the list\n- The least recently accessed item is at the front of the list\n\n**Complexity:** O(1) average for get/put.\n\n**Safety:** No unsafe code; all operations are safe. The `",
+      "ttft_seconds": 0.10249435900186654,
+      "elapsed_seconds": 3.113265197000146,
+      "decode_tps": 169.72397684698578
+    },
+    {
+      "usage": {
+        "prompt_tokens": 30,
+        "total_tokens": 542,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "Identify the process (ps aux, top). Check /proc/<pid>/status (VmRSS, VmSize) over time. Use pmap -x <pid> to see memory map. Use valgrind --tool=memcheck if possible (slow). For production, use gdb attach and inspect heap. Check for growing anonymous mappings. Use perf or eBPF to trace allocation patterns. Decision: if leak is in a library, update; if in application, fix code. Use systemd cgroup memory limits to prevent OOM. Monitor with Prometheus node_exporter. Escalate to vendor if third-party. Document the leak and mitigation. Use a canary process to detect early. Automate alerts on memory growth. This is a common operational issue. Combine with code review and testing. Use a memory profiler in staging. Production diagnosis is limited; use safe tools. Always have a rollback plan. Memory leaks can cause DoS; treat as security if attacker can trigger. Mitigate with resource limits and monitoring. Document the process for future incidents. Use a checklist. This is a standard Linux troubleshooting skill. Train operators. Automate where possible. Keep a runbook. Escalate to developers if needed. Use a ticket system. Measure time to resolution. Improve with better monitoring. This is a core operational capability. Invest in training and tooling. Memory leaks are common; be prepared. Use a standardized approach. Document lessons learned. Share with the team. This is a professional practice. It reduces downtime and improves reliability. It is a key part of incident response. Use it consistently. It is a best practice. It is a standard procedure. It is a required skill. It is a core competency. It is a professional obligation. It is a legal requirement in some cases. It is a moral duty. It is a business necessity. It is a technical requirement. It is a security requirement. It is a compliance requirement. It is a regulatory requirement. It is a contractual requirement. It is a customer requirement. It is a stakeholder requirement. It is a societal requirement. It is a global requirement. It is a universal requirement. It is a fundamental requirement. It is a basic requirement. It is a core requirement. It is a primary requirement. It is a critical requirement. It is a vital requirement. It is an essential requirement. It is a necessary requirement. It is a mandatory requirement. It is a compulsory requirement. It is a required requirement. It is a demanded requirement. It is a",
+      "ttft_seconds": 0.08662311399893952,
+      "elapsed_seconds": 5.245854619999591,
+      "decode_tps": 99.04575892856542
+    },
+    {
+      "usage": {
+        "prompt_tokens": 25,
+        "total_tokens": 537,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```python\nimport json\nfrom dataclasses import dataclass\nfrom typing import List, Optional\nimport re\n\n@dataclass\nclass User:\n id: int\n name: str\n email: str\n age: Optional[int] = None\n\ndef parse_line(line: str) -> Optional[User]:\n try:\n data = json.loads(line)\n if not isinstance(data, dict):\n return None\n # Validate required fields\n if 'id' not in data or 'name' not in data or 'email' not in data:\n return None\n # Validate email format\n email = data['email']\n if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', email):\n return None\n # Validate age if present\n age = data.get('age')\n if age is not None and (not isinstance(age, int) or age < 0):\n return None\n return User(id=data['id'], name=data['name'], email=email, age=age)\n except (json.JSONDecodeError, TypeError):\n return None\n\ndef process_file(input_path: str, output_path: str) -> List[User]:\n users = []\n with open(input_path, 'r') as f:\n for line in f:\n user = parse_line(line.strip())\n if user:\n users.append(user)\n # Write valid users to output\n with open(output_path, 'w') as f:\n for user in users:\n f.write(json.dumps(user.__dict__) + '\\n')\n return users\n\n# Test\nif __name__ == '__main__':\n # Create test input\n test_data = [\n {\"id\": 1, \"name\": \"Alice\", \"email\": \"alice@example.com\", \"age\": 30},\n {\"id\": 2, \"name\": \"Bob\", \"email\": \"invalid-email\"},\n {\"id\": 3, \"name\": \"Charlie\", \"email\": \"charlie@example.com\", \"age\": -5},\n {\"id\": 4, \"name\": \"Diana\", \"email\": \"diana@example.com\"}\n ]\n with open('test_input.jsonl', 'w') as f:\n for item in test_data:\n f.write(json.dumps(item) + '\\n')\n \n users = process_file('test_input.jsonl', 'test_output.jsonl')",
+      "ttft_seconds": 0.10304224699939368,
+      "elapsed_seconds": 2.6998117469993304,
+      "decode_tps": 196.78296437169817
+    },
+    {
+      "usage": {
+        "prompt_tokens": 24,
+        "total_tokens": 536,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "```sql BEGIN; -- 1. Check if transaction already exists (idempotency) SELECT status FROM payments WHERE external_id = $1; -- 2. If not exists, insert with status 'PENDING' INSERT INTO payments (external_id, amount, status) VALUES ($1, $2, 'PENDING'); -- 3. Debit from source account UPDATE accounts SET balance = balance - $2 WHERE id = $3 AND balance >= $2; -- 4. Credit to destination account UPDATE accounts SET balance = balance + $2 WHERE id = $4; -- 5. Update payment status to 'COMPLETED' UPDATE payments SET status = 'COMPLETED' WHERE external_id = $1; COMMIT; ``` Use `SELECT ... FOR UPDATE` for row-level locking. Implement retry logic with exponential backoff for transient failures. Use `SERIALIZABLE` isolation level for strict consistency. Add a unique constraint on `external_id` to prevent duplicates. Log all state transitions for auditability. Handle deadlocks with `pg_terminate_backend` and retry. Use `SAVEPOINT` for partial rollback of non-critical steps. Monitor `pg_stat_activity` for long-running transactions. Implement circuit breakers for downstream service failures. Use `pg_advisory_lock` for application-level locking when needed. Ensure all operations are within a single transaction to maintain ACID properties. Use `pg_notify`/`pg_listen` for asynchronous event processing after commit. Implement idempotency keys with TTL for cleanup of stale transactions. Use `pg_cron` for periodic reconciliation of payment states. Monitor `pg_stat_replication` for replication lag in HA setups. Use `pg_stat_statements` to identify slow queries. Implement connection pooling with `pgbouncer` for high concurrency. Use `pg_rewind` for failover scenarios. Implement `pg_basebackup` for disaster recovery. Use `pg_dump` for regular backups. Monitor `pg_stat_activity` for connection leaks. Implement `pg_terminate_backend` for stuck transactions. Use `pg_stat_replication` for replication health. Implement `pg_rewind` for failover. Use `pg_basebackup` for disaster recovery. Monitor `pg_stat_activity` for connection leaks. Implement `pg_terminate_backend` for stuck transactions. Use `pg_stat_replication` for replication health. Implement `pg_rewind` for failover. Use `pg_basebackup` for disaster recovery. Monitor `pg_stat_activity` for connection leaks. Implement `pg",
+      "ttft_seconds": 0.1026415359992825,
+      "elapsed_seconds": 4.471220806000929,
+      "decode_tps": 116.9716670838406
+    },
+    {
+      "usage": {
+        "prompt_tokens": 27,
+        "total_tokens": 539,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "## Job queue review **Races:** - Duplicate job IDs accepted twice - Job claimed by two workers (no atomic claim) - Result written after job marked failed **Cancellation:** - Cancel flag checked only at job start - Long HTTP call ignores cancel - Cancel does not release locks/resources **Backpressure:** - Unbounded queue memory growth - No max in-flight per worker - No retry cap \u2192 thundering herd **Hardening:** - Atomic claim (DB row lock / unique claim token) - Idempotency keys - Cancellation checked at safe points + context timeouts - Bounded queue + reject policy - Dead-letter queue for poison jobs - Metrics: queue depth, p95 latency, failure rate, retry rate **Tests:** duplicate submit, crash between claim and complete, cancel mid-job, poison job, queue full. Prefer at-least-once + idempotent workers over fragile exactly-once. Document delivery semantics. This is distributed-systems correctness, not just \u201cthreads.\u201d Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure configuration of CI/CD. Track SAST/SCA/DAST findings to closure with risk acceptance only for documented residual risk. Map to ISO/IEC 27001 controls 8.25\u20138.32 (secure development): threat modeling, SDLC security, segregation of test/prod, and secure",
+      "ttft_seconds": 0.08659237300162204,
+      "elapsed_seconds": 4.827185081998323,
+      "decode_tps": 107.79242836665208
+    }
+  ],
+  "long": [
+    {
+      "usage": {
+        "prompt_tokens": 178980,
+        "total_tokens": 179492,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "ALPHA=731904682\nBETA=296581043\nGAMMA=854207319\n\nThe inventory consists of 3,333 service nodes (node-00000 through node-03332), all owned by the infrastructure team. Each node has a daily backup completed and a patch review pending. The records contain routine inventory information with no audit markers, except for three specific records that contain audit markers. The retention period for all records is thirty days, and the next review is scheduled. The inventory is well-organized and follows a consistent format, making it easy to manage and maintain. The presence of audit markers in certain records suggests that these nodes may require additional attention or verification during the review process. Overall, the inventory appears to be in good standing, with regular backups and scheduled reviews ensuring data integrity and security. The infrastructure team should continue to monitor the patch review status and address any pending patches promptly to maintain system security and performance. Additionally, the audit markers should be reviewed to ensure compliance with organizational policies and regulations. By maintaining this level of organization and attention to detail, the infrastructure team can effectively manage their service nodes and minimize potential risks associated with outdated or unpatched systems. Regular reviews and updates will help ensure that the inventory remains accurate and up-to-date, supporting the overall goals of the organization. In conclusion, the inventory is well-maintained and follows best practices for data management and security. The infrastructure team should continue to prioritize regular backups, patch reviews, and compliance checks to maintain the integrity and security of their service nodes. By doing so, they can ensure that their systems remain reliable, secure, and aligned with organizational objectives. The consistent format and clear retention policies make it easy for the team to manage the inventory efficiently, reducing the risk of errors or oversights. Overall, the inventory is a valuable asset that supports the organization's operations and should be maintained with the same level of care and attention going forward. Regular reviews and updates will help ensure that the inventory remains a reliable source of information for the infrastructure team and the organization as a whole. By continuing to follow best practices for data management and security, the infrastructure team can maintain the integrity and security of their service nodes, supporting the overall goals and objectives of the organization. The inventory is a critical component of the organization's infrastructure, and its proper maintenance is essential for ensuring the reliability and security of the systems it supports. By maintaining",
+      "ttft_seconds": 252.23447210900122,
+      "elapsed_seconds": 278.934104644999,
+      "decode_tps": 19.138840181079036
+    },
+    {
+      "usage": {
+        "prompt_tokens": 178980,
+        "total_tokens": 179492,
+        "completion_tokens": 512,
+        "prompt_tokens_details": {
+          "cached_tokens": 178432,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "text": "ALPHA=731904682\nBETA=296581043\nGAMMA=854207319\n\nThe inventory consists of 3,333 service nodes (node-00000 through node-03332). Each node is owned by the infrastructure team and has a daily backup completed. Patch review is pending for all nodes. The retention period for each node is thirty days, and the next review is scheduled. The inventory is maintained by the infrastructure team, who are responsible for ensuring that all nodes are up-to-date and secure. The team also ensures that all backups are completed on a daily basis. The patch review process is ongoing, and the team is working to complete it as soon as possible. The retention period of thirty days ensures that any outdated or unnecessary data is removed from the system. The next review is scheduled to ensure that all nodes are still functioning correctly and that any issues are addressed promptly. Overall, the inventory is well-maintained and secure, with regular backups and patch reviews in place. The infrastructure team is committed to keeping the system up-to-date and secure, and they are working diligently to complete the patch review process. The retention period of thirty days ensures that any outdated or unnecessary data is removed from the system, and the next review is scheduled to ensure that all nodes are still functioning correctly and that any issues are addressed promptly. Overall, the inventory is well-maintained and secure, with regular backups and patch reviews in place. The infrastructure team is committed to keeping the system up-to-date and secure, and they are working diligently to complete the patch review process. The retention period of thirty days ensures that any outdated or unnecessary data is removed from the system, and the next review is scheduled to ensure that all nodes are still functioning correctly and that any issues are addressed promptly. Overall, the inventory is well-maintained and secure, with regular backups and patch reviews in place. The infrastructure team is committed to keeping the system up-to-date and secure, and they are working diligently to complete the patch review process. The retention period of thirty days ensures that any outdated or unnecessary data is removed from the system, and the next review is scheduled to ensure that all nodes are still functioning correctly and that any issues are addressed promptly. Overall, the inventory is well-maintained and secure, with regular backups and patch reviews in place. The infrastructure team is committed to keeping the system up-to-date and",
+      "ttft_seconds": 2.1596036439987074,
+      "elapsed_seconds": 21.276045544997032,
+      "decode_tps": 26.730915860096008
+    }
+  ],
+  "status": "PASS",
+  "short_median_decode_tps": 117.11550904408008,
+  "long_tokenize_count": 178980
+}

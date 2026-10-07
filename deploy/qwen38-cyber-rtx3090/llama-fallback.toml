@@ -1,0 +1,21 @@
+# Merge these tables into the RTX runner config, and link the verified GGUF
+# into engines.llama_cpp.model_dir under the model ID below.
+# Source: nico248000000000/Qwen3.8-27B-Uncensored-cyber-GGUF
+# Revision: 4e5a0e51ee50433c5390acdffc31defc722306b7
+# Upstream file: Qwen3.8-27B-Uncensored-Q4_K_M.gguf
+# SHA256: 1a52458e7d7a5cd46d52c3f9b3c7377663f4761363d36d870b3bf778e09d229c
+# Local filename includes Cyber to distinguish the existing general checkpoint.
+
+[engines.llama_cpp.models."Qwen3.8-27B-Uncensored-Cyber-Q4_K_M"]
+context_size = 16384
+parallel = 1
+fit = false
+default_max_tokens = 2048
+reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "none", supports_thinking_budget = false }
+
+[engines.llama_cpp.model_memory_gb]
+"Qwen3.8-27B-Uncensored-Cyber-Q4_K_M" = 21.0
+
+[model_routes."Qwen3.8-27B-Uncensored-Cyber-Q4_K_M"]
+engine = "llama_cpp"
+engine_model = "Qwen3.8-27B-Uncensored-Cyber-Q4_K_M"

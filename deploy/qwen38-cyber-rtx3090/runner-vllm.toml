@@ -1,0 +1,42 @@
+# Replace the disabled legacy vLLM engine block with this after acceptance.
+# The runner's existing engine_resources.vllm = "cuda:0" coordinates GPU use.
+[engines.vllm]
+enabled = true
+base_url = "http://127.0.0.1:18021"
+api_key_file = "/home/lelloman/qwen38-cyber-deploy/api_key.txt"
+compose_dir = "/home/lelloman/qwen38-cyber-deploy"
+startup_timeout_secs = 1200
+shutdown_timeout_secs = 60
+batch_size = 1
+
+[engines.vllm.models."qwen3.8-27b-uncensored-cyber-fast"]
+served_model = "qwen3.8-27b"
+profile = "cyber-dflash"
+env_file = "profiles/cyber-dflash.env"
+compose_profile = "single"
+compose_service = "single"
+context_length = 180000
+quantization = "W4A16-GPTQ"
+reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "none", supports_thinking_budget = false }
+
+[engines.vllm.models."qwen3.8-27b-uncensored-cyber"]
+served_model = "qwen38-cyber-long"
+profile = "cyber-mtp"
+env_file = "profiles/cyber.env"
+compose_profile = "single"
+compose_service = "single"
+context_length = 180000
+quantization = "W4A16-GPTQ"
+reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "none", supports_thinking_budget = false }
+
+[model_routes."qwen3.8-27b-uncensored-cyber"]
+engine = "vllm"
+engine_model = "qwen3.8-27b-uncensored-cyber"
+
+[model_routes."qwen3.8-27b-uncensored-cyber-long"]
+engine = "vllm"
+engine_model = "qwen3.8-27b-uncensored-cyber"
+
+[model_routes."qwen3.8-27b-uncensored-cyber-fast"]
+engine = "vllm"
+engine_model = "qwen3.8-27b-uncensored-cyber-fast"
