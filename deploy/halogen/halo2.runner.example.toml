@@ -1,0 +1,145 @@
+# Credential-free snapshot of the deployed Halo runner configuration.
+# Copy to scripts/configs/ and supply gateway.auth_token locally or via
+# RUNNER__GATEWAY__AUTH_TOKEN in the runner service environment.
+[runner]
+mac_address = "84:47:09:74:D6:57"
+id = "strix-halo-02"
+name = "Strix Halo GPU Server 2"
+machine_type = "halo"
+
+[api]
+host = "0.0.0.0"
+port = 8080
+
+[engines.llama_cpp]
+# Halo chat inference is dedicated to class:big / code:smart via Halogen.
+enabled = false
+server_binary = "podman"
+server_args = [
+  "run",
+  "--rm",
+  "--network", "host",
+  "--device", "/dev/dri",
+  "--group-add", "keep-groups",
+  "--security-opt", "label=disable",
+  "--volume", "/home/lelloman/model-catalog:/home/lelloman/model-catalog:ro",
+  "--volume", "/home/lelloman/.cache/huggingface/hub:/home/lelloman/.cache/huggingface/hub:ro",
+  "localhost/strix-qwen38-mtp:463c0f6",
+  "--server",
+]
+model_dir = "/home/lelloman/model-catalog"
+gpu_layers = 999
+startup_timeout_secs = 300
+max_servers = 1
+batch_size = 2
+log_server_output = true
+extra_args = ["--device", "Vulkan0", "--flash-attn", "on", "-ctk", "q4_0", "-ctv", "q4_0", "-b", "2048", "-ub", "2048", "-t", "16", "--jinja"]
+
+[engines.llama_cpp.models."Qwen3.6-35B-A3B-MXFP4_MOE"]
+reasoning = { enabled = true, supported_efforts = ["none"], supports_thinking_budget = false }
+
+[engines.llama_cpp.models."gemma-3-4b-it-Q4_K_M"]
+parallel = 2
+
+[engines.audio_embeddings]
+enabled = true
+provider = "rustentia-audio"
+command = [
+  "/home/lelloman/rustentia_musicfm/.venv_musicfm/bin/python",
+  "/home/lelloman/simple-ai-audio-provider.py",
+  "--device",
+  "cpu",
+]
+max_file_mb = 100
+max_loaded_models = 1
+opportunistic_unload_cooldown_secs = 600
+startup_timeout_secs = 300
+shutdown_timeout_secs = 10
+
+[[engines.audio_embeddings.models]]
+id = "ast-audioset"
+name = "MIT AST AudioSet"
+provider = "MIT AST"
+size_bytes = 346289331
+
+[[engines.audio_embeddings.models.namespaces]]
+namespace = "ast.audioset.v1"
+dim = 527
+dtype = "float32"
+description = "AST AudioSet sigmoid probabilities"
+
+[[engines.audio_embeddings.models.namespaces]]
+namespace = "ast.instruments.v1"
+dim = 44
+dtype = "float32"
+description = "AST-derived instrument probability axes"
+
+[[engines.audio_embeddings.models.namespaces]]
+namespace = "ast.audioset.v2"
+dim = 527
+dtype = "float32"
+description = "AST AudioSet sigmoid probabilities averaged over windows across the whole track"
+
+[[engines.audio_embeddings.models.namespaces]]
+namespace = "ast.instruments.v2"
+dim = 44
+dtype = "float32"
+description = "AST-derived instrument probability axes averaged over windows across the whole track"
+
+[capabilities.persistence]
+always_loaded = []
+idle_timeout_secs = 600
+max_loaded_models = 1
+
+[gateway]
+ws_url = "ws://192.168.1.101:8081/ws/runners"
+auth_token = "REPLACE_WITH_GATEWAY_TOKEN"
+reconnect_delay_secs = 5
+heartbeat_interval_secs = 30
+
+[aliases.mappings]
+"code:smart" = "qwen3.8-flash-next-uncensored-iq4xs"
+
+[engines.extraction]
+enabled = true
+command = ["/home/lelloman/.simple-ai-extraction/venv/bin/python", "/home/lelloman/simple-ai-extraction-provider.py"]
+model_id = "fastino/gliner2.5-multi-v1"
+revision = "235cf92d6d4318da9bfca0d08975c8fa7250d13b"
+model_path = "/home/lelloman/.simple-ai-extraction/model"
+device = "cpu"
+num_threads = 8
+batch_size = 4
+startup_timeout_secs = 600
+request_timeout_secs = 180
+
+# JEV and llama.cpp use the same Radeon GPU. CPU providers remain independent.
+[engine_resources]
+halogen = "gpu:0"
+decisions = "gpu:0"
+llama_cpp = "gpu:0"
+
+[engines.decisions]
+enabled = true
+compose_command = ["podman", "compose"]
+compose_dir = "/home/lelloman/simple-ai-semantic/deploy/semantic-halo"
+base_url = "http://127.0.0.1:18040"
+startup_timeout_secs = 600
+request_timeout_secs = 180
+shutdown_timeout_secs = 60
+
+# Dedicated checkpoint; other engines remain available under the same GPU lease.
+[engines.halogen]
+enabled = true
+base_url = "http://127.0.0.1:8731"
+service = "simple-ai-halogen.service"
+model_id = "qwen3.8-flash-next-uncensored-iq4xs"
+served_model = "halogen-qwen3.8-flash-next"
+context_length = 262144
+quantization = "IQ4_XS"
+batch_size = 4
+startup_timeout_secs = 180
+shutdown_timeout_secs = 90
+
+[model_routes."qwen3.8-flash-next-uncensored-iq4xs"]
+engine = "halogen"
+engine_model = "qwen3.8-flash-next-uncensored-iq4xs"
