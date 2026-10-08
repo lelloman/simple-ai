@@ -211,12 +211,28 @@ and system prompts are collapsed); the raw request and response bodies are avail
 underneath.
 
 The admin-only API supports `GET /admin/api/requests` with `model`, `origin`,
-`since`, `until`, `page`, `per_page`, and `snapshot`. Time bounds are inclusive
+`since`, `until`, `status=failed` (status 400 and above), `page`, `per_page`, and `snapshot`. Time bounds are inclusive
 RFC 3339 timestamps. The returned snapshot excludes later inserts during pagination.
 `GET /admin/api/requests/{id}` returns recorded bodies on demand.
+`GET /admin/api/summary?hours=24` (1–720) powers the dashboard: request, completion and
+failure counts, token totals, p50/p95 latency of successful requests, the five busiest
+models and origins (app, API key, user, or IP), and the six most recent failures.
 
 New chat and Responses API streams retain their client-visible SSE output, including
 partial output when a client disconnects. History capture is capped at 4 MiB per
 stream and explicitly marks truncation or interruption; delivery is unaffected.
 Older streamed responses containing only `[stream]` have no recoverable output.
 The existing audit database retains this history across backend restarts.
+
+### Dashboard preview with mock data
+
+To work on `static/admin.html` without a backend, login, or runners:
+
+```bash
+node backend/dev/mock-dashboard.mjs   # http://localhost:8787/admin-ui
+```
+
+It serves the real `admin.html` with a fake login token and a fake `/admin/ws`
+feed (router events, queue changes, new requests every few seconds), plus in-memory
+mocks for the admin and `/v1` APIs the dashboard calls. The page reloads itself when
+`admin.html` changes. Mock state resets when the server restarts.

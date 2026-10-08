@@ -117,82 +117,99 @@
                     <div id="page-dashboard" class="page">
                         <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Total Users</dt>
-                                <dd id="stat-users" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
-                            </div>
-                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Total Requests</dt>
-                                <dd id="stat-requests" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
-                            </div>
-                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Requests (24h)</dt>
+                                <dt class="truncate text-sm font-medium text-gray-500">Requests <span class="text-gray-400">· 24h</span></dt>
                                 <dd id="stat-requests-24h" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                                <dd id="stat-requests-24h-sub" class="mt-1 truncate text-xs text-gray-500"></dd>
                             </div>
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Tokens In</dt>
+                                <dt class="truncate text-sm font-medium text-gray-500">Error rate <span class="text-gray-400">· 24h</span></dt>
+                                <dd id="stat-error-rate" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                                <dd id="stat-error-rate-sub" class="mt-1 truncate text-xs text-gray-500"></dd>
+                            </div>
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Latency p50 <span class="text-gray-400">· 24h</span></dt>
+                                <dd id="stat-latency" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
+                                <dd id="stat-latency-sub" class="mt-1 truncate text-xs text-gray-500"></dd>
+                            </div>
+                            <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+                                <dt class="truncate text-sm font-medium text-gray-500">Tokens in <span class="text-gray-400">· 24h</span></dt>
                                 <dd id="stat-tokens-prompt" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
                             </div>
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Tokens Out</dt>
+                                <dt class="truncate text-sm font-medium text-gray-500">Tokens out <span class="text-gray-400">· 24h</span></dt>
                                 <dd id="stat-tokens-completion" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
                             </div>
                             <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
-                                <dt class="truncate text-sm font-medium text-gray-500">Connected Runners</dt>
+                                <dt class="truncate text-sm font-medium text-gray-500">Runners online</dt>
                                 <dd id="stat-runners" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
                             </div>
                         </div>
 
-                        <section class="mt-6 rounded-lg bg-white p-5 shadow" aria-labelledby="lan-local-title">
-                            <h3 id="lan-local-title" class="font-medium text-gray-900">Temporary LAN-local access</h3>
-                            <p class="mt-1 text-sm text-gray-500">Tokenless requests from this private network use the shared lan-local user. Tokens still take priority. Connect directly to the server's LAN address.</p>
-                            <p id="lan-local-status" class="mt-2 text-sm" role="status">Loading access status…</p>
-                            <form onsubmit="updateLanLocal(event, true)" class="mt-3 flex flex-wrap items-end gap-3">
-                                <label class="text-sm">LAN subnet or device
-                                    <input id="lan-local-network" required placeholder="192.168.1.0/24 or 192.168.1.10/32" class="mt-1 block w-80 rounded border border-gray-300 px-3 py-2">
-                                </label>
-                                <label class="text-sm">Timeout
-                                    <select id="lan-local-duration" class="mt-1 block rounded border border-gray-300 px-3 py-2">
-                                        <option value="900">15 minutes</option>
-                                        <option value="3600" selected>1 hour</option>
-                                        <option value="14400">4 hours</option>
-                                        <option value="28800">8 hours</option>
-                                        <option value="86400">24 hours</option>
-                                    </select>
-                                </label>
-                                <button id="lan-local-enable" type="submit" disabled class="rounded bg-primary-600 px-3 py-2 text-sm text-white disabled:opacity-50">Enable / renew</button>
-                                <button id="lan-local-disable" type="button" disabled onclick="updateLanLocal(event, false)" class="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50">Disable</button>
-                            </form>
-                            <p id="lan-local-error" class="mt-2 text-sm text-red-600" role="alert"></p>
+                        <div class="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+                            <section class="overflow-hidden rounded-lg bg-white shadow" aria-labelledby="dashboard-fleet-title">
+                                <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                                    <h3 id="dashboard-fleet-title" class="text-sm font-medium text-gray-900">Fleet</h3>
+                                    <a href="#runners" class="text-xs text-primary-600 hover:underline">Runners →</a>
+                                </div>
+                                <ul id="dashboard-fleet" class="divide-y divide-gray-100"></ul>
+                            </section>
+                            <section class="overflow-hidden rounded-lg bg-white shadow" aria-labelledby="dashboard-problems-title">
+                                <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                                    <h3 id="dashboard-problems-title" class="text-sm font-medium text-gray-900">Recent failures</h3>
+                                    <a href="#requests" onclick="showFailedRequests()" class="text-xs text-primary-600 hover:underline">All failures →</a>
+                                </div>
+                                <p id="dashboard-problems-scope" class="px-4 pt-3 text-xs text-gray-500"></p>
+                                <ul id="dashboard-problems" class="divide-y divide-gray-100"></ul>
+                            </section>
+                        </div>
+
+                        <section class="mt-6 overflow-hidden rounded-lg bg-white shadow" aria-labelledby="dashboard-usage-title">
+                            <div class="border-b border-gray-200 px-4 py-3">
+                                <h3 id="dashboard-usage-title" class="text-sm font-medium text-gray-900">Top usage <span class="font-normal text-gray-400">· 24h</span></h3>
+                            </div>
+                            <div class="grid grid-cols-1 divide-y divide-gray-200 md:grid-cols-2 md:divide-x md:divide-y-0">
+                                <div class="p-4">
+                                    <h4 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Models</h4>
+                                    <ul id="dashboard-top-models" class="space-y-3"></ul>
+                                </div>
+                                <div class="p-4">
+                                    <h4 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Apps, keys &amp; users</h4>
+                                    <ul id="dashboard-top-origins" class="space-y-3"></ul>
+                                </div>
+                            </div>
                         </section>
 
-                        <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
-                            <div class="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-                                <div>
-                                    <h3 class="text-sm font-medium text-gray-900">Model Speed by Context</h3>
-                                    <p class="mt-1 text-xs text-gray-500">Inference-only token rates. Load, unload, wake, and queue time are excluded.</p>
-                                </div>
-                                <button onclick="loadModelSpeeds(true)" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Refresh</button>
+                        <details id="lan-local-panel" class="group mt-6 rounded-lg bg-white shadow">
+                            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
+                                <span class="min-w-0">
+                                    <span id="lan-local-title" class="text-sm font-medium text-gray-900">LAN-local access</span>
+                                    <span id="lan-local-status" class="ml-2 text-sm text-gray-600" role="status">Loading access status…</span>
+                                </span>
+                                <span class="text-xs text-primary-600 group-open:hidden">Configure</span>
+                                <span class="hidden text-xs text-primary-600 group-open:inline">Close</span>
+                            </summary>
+                            <div class="border-t border-gray-200 px-4 pb-4 pt-3">
+                                <p class="text-sm text-gray-500">Tokenless requests from this private network use the shared lan-local user. Tokens still take priority. Connect directly to the server's LAN address.</p>
+                                <form onsubmit="updateLanLocal(event, true)" class="mt-3 flex flex-wrap items-end gap-3">
+                                    <label class="text-sm">LAN subnet or device
+                                        <input id="lan-local-network" required placeholder="192.168.1.0/24 or 192.168.1.10/32" class="mt-1 block w-80 rounded border border-gray-300 px-3 py-2">
+                                    </label>
+                                    <label class="text-sm">Timeout
+                                        <select id="lan-local-duration" class="mt-1 block rounded border border-gray-300 px-3 py-2">
+                                            <option value="900">15 minutes</option>
+                                            <option value="3600" selected>1 hour</option>
+                                            <option value="14400">4 hours</option>
+                                            <option value="28800">8 hours</option>
+                                            <option value="86400">24 hours</option>
+                                        </select>
+                                    </label>
+                                    <button id="lan-local-enable" type="submit" disabled class="rounded bg-primary-600 px-3 py-2 text-sm text-white disabled:opacity-50">Enable / renew</button>
+                                    <button id="lan-local-disable" type="button" disabled onclick="updateLanLocal(event, false)" class="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50">Disable</button>
+                                </form>
+                                <p id="lan-local-error" class="mt-2 text-sm text-red-600" role="alert"></p>
                             </div>
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-gray-50">
-                                        <tr>
-                                            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Model</th>
-                                            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Runner</th>
-                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Context</th>
-                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Samples</th>
-                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Input tok/s</th>
-                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Output tok/s</th>
-                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Tokens</th>
-                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Updated</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="model-speeds-tbody" class="divide-y divide-gray-200 bg-white">
-                                        <tr><td colspan="8" class="px-4 py-6 text-center text-sm text-gray-500">No speed samples yet.</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                        </details>
+
                     </div>
 
                     <!-- Runners page -->
@@ -239,6 +256,35 @@
                     <div id="page-models" class="page hidden">
                         <div id="models-list" class="overflow-hidden bg-white shadow sm:rounded-md">
                             <ul role="list" class="divide-y divide-gray-200" id="models-ul"></ul>
+                        </div>
+
+                        <div class="mt-6 overflow-hidden rounded-lg bg-white shadow">
+                            <div class="border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-sm font-medium text-gray-900">Model Speed by Context</h3>
+                                    <p class="mt-1 text-xs text-gray-500">Inference-only token rates. Load, unload, wake, and queue time are excluded.</p>
+                                </div>
+                                <button onclick="loadModelSpeeds(true)" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Refresh</button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Model</th>
+                                            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Runner</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Context</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Samples</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Input tok/s</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Output tok/s</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Tokens</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Updated</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="model-speeds-tbody" class="divide-y divide-gray-200 bg-white">
+                                        <tr><td colspan="8" class="px-4 py-6 text-center text-sm text-gray-500">No speed samples yet.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -465,7 +511,7 @@
                                     <div class="px-4 py-3 border-b border-gray-200">
                                         <h3 class="text-sm font-medium text-gray-900">Router Activity</h3>
                                     </div>
-                                    <div id="requests-router-events" class="p-4 space-y-3 max-h-[55vh] overflow-y-auto"></div>
+                                    <div id="requests-router-events" class="p-4 space-y-3"></div>
                                 </div>
 
                                 <!-- Batch Queue Panel -->
@@ -495,6 +541,7 @@
                                         <label class="text-sm">Origin<input id="request-origin" placeholder="App, IP, API key or client" class="block w-full border rounded p-2"></label>
                                         <label class="text-sm">From (local time)<input id="request-since" type="datetime-local" class="block w-full border rounded p-2"></label>
                                         <label class="text-sm">To (local time)<input id="request-until" type="datetime-local" class="block w-full border rounded p-2"></label>
+                                        <label class="sm:col-span-2 flex items-center gap-2 text-sm"><input id="request-failed" type="checkbox" class="rounded border-gray-300"> Failed only (status 400 and above)</label>
                                         <div class="sm:col-span-2 flex items-center gap-3">
                                             <button class="bg-primary-600 text-white rounded px-4 py-2" type="submit">Apply filters</button>
                                             <button class="border rounded px-4 py-2" type="button" onclick="clearRequestFilters()">Clear</button>
@@ -1340,14 +1387,9 @@
                     prependNewRequest(data);
 
                 }
-                // Update dashboard stats (increment request count)
-                if (statsState) {
-                    statsState.total_requests = (statsState.total_requests || 0) + 1;
-                    statsState.requests_24h = (statsState.requests_24h || 0) + 1;
-                    renderDashboardStats();
-                }
+                scheduleDashboardSummary();
                 modelSpeedsLoaded = false;
-                if (currentPage === 'dashboard') {
+                if (currentPage === 'models') {
                     loadModelSpeeds(true);
                 }
             }
@@ -1561,7 +1603,12 @@
             currentPage = page;
             if (page === 'dashboard') {
                 loadLanLocal();
-                refreshInterval = setInterval(loadLanLocal, 10000);
+                dashboardSummary = null;
+                let ticks = 0;
+                refreshInterval = setInterval(() => {
+                    loadLanLocal();
+                    if (++ticks % 6 === 0) loadDashboardSummary();
+                }, 10000);
             }
 
             // Update nav (user-detail highlights the Users nav)
@@ -1637,6 +1684,7 @@
             document.getElementById('lan-local-status').textContent = data.enabled
                 ? `ON — ${data.network}; expires ${new Date(data.expires_at).toLocaleString()}`
                 : 'OFF — token authentication required';
+            document.getElementById('lan-local-status').className = `ml-2 text-sm ${data.enabled ? 'font-medium text-amber-700' : 'text-gray-600'}`;
             if (data.network && !document.getElementById('lan-local-network').value) {
                 document.getElementById('lan-local-network').value = data.network;
             }
@@ -1695,21 +1743,176 @@
         // Render dashboard stats from local state
         function renderDashboard() {
             renderDashboardStats();
-            renderModelSpeeds();
-            if (!modelSpeedsLoaded && !modelSpeedsLoading) {
-                loadModelSpeeds();
+            renderDashboardFleet();
+            renderDashboardProblems();
+            renderDashboardUsage();
+            if (!dashboardSummary) loadDashboardSummary();
+        }
+
+        const FLEET_STATE_STYLES = {
+            ready: ['bg-green-500', 'Ready'],
+            loading: ['bg-blue-500', 'Loading'],
+            waking: ['bg-yellow-400', 'Waking'],
+            asleep: ['bg-gray-300', 'Asleep'],
+            offline: ['bg-red-400', 'Offline'],
+        };
+
+        // One line per runner: routing state, what is loaded, and current load.
+        function renderDashboardFleet() {
+            const ul = document.getElementById('dashboard-fleet');
+            if (!ul) return;
+            const fleet = (routerState.runners || []).length ? routerState.runners : runnersState.map(r => ({
+                runner_id: r.id, name: r.name, is_online: r.is_online, health: r.health,
+                scheduler_state: r.is_online ? 'ready' : 'offline', loaded_models: r.loaded_models, active_requests: 0,
+            }));
+            if (!fleet.length) {
+                ul.innerHTML = '<li class="px-4 py-6 text-center text-sm text-gray-500">No runners registered</li>';
+                return;
             }
+            ul.innerHTML = fleet.map(runner => {
+                const state = !runner.is_online && runner.scheduler_state !== 'waking' && runner.scheduler_state !== 'asleep' ? 'offline' : runner.scheduler_state;
+                const [dot, label] = FLEET_STATE_STYLES[state] || ['bg-gray-300', state || 'unknown'];
+                const loaded = (runner.loaded_models || []).join(', ');
+                const detail = state === 'loading' && runner.target_model ? `→ ${runner.target_model}` : loaded || 'nothing loaded';
+                return `
+                    <li class="flex items-center gap-3 px-4 py-3">
+                        <span class="h-2.5 w-2.5 shrink-0 rounded-full ${dot}" aria-hidden="true"></span>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-medium text-gray-900">${escapeHtml(runner.name)} <span class="font-normal text-gray-500">· ${escapeHtml(label)}</span></p>
+                            <p class="truncate text-xs text-gray-500" title="${escapeAttr(detail)}">${escapeHtml(detail)}</p>
+                        </div>
+                        ${runner.active_requests ? `<span class="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">${runner.active_requests} active</span>` : ''}
+                        ${renderFleetWakeButton(runner)}
+                    </li>`;
+            }).join('');
+        }
+
+        // Wake-on-LAN for offline runners that registered a MAC address.
+        function renderFleetWakeButton(runner) {
+            const info = runnersState.find(r => r.id === runner.runner_id);
+            if (runner.is_online || !info?.mac_address) return '';
+            const sent = Date.now() - (wakeSentAt.get(runner.runner_id) || 0) < WAKE_PENDING_MS;
+            return sent
+                ? '<button disabled class="shrink-0 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white">Sent!</button>'
+                : `<button onclick="wakeRunner('${escapeAttr(runner.runner_id)}', this)" title="Send Wake-on-LAN" class="shrink-0 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700">Wake</button>`;
+        }
+
+        let dashboardSummary = null;
+        let dashboardSummaryGeneration = 0;
+        let dashboardSummaryTimer = null;
+
+        // Large counts as 391k / 1.2M, with the exact value kept for hover titles.
+        function formatCompact(value) {
+            return new Intl.NumberFormat(undefined, {notation: 'compact', maximumFractionDigits: 1}).format(value || 0);
+        }
+
+        function formatLatency(ms) {
+            if (ms === null || ms === undefined) return '-';
+            return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} s`;
+        }
+
+        async function loadDashboardSummary() {
+            const generation = ++dashboardSummaryGeneration;
+            try {
+                const data = await apiFetch('/admin/api/summary?hours=24');
+                if (generation !== dashboardSummaryGeneration) return;
+                dashboardSummary = data;
+            } catch (e) {
+                if (generation !== dashboardSummaryGeneration) return;
+                console.error('Failed to load activity summary:', e);
+                dashboardSummary = dashboardSummary || {failed_to_load: true};
+            }
+            if (currentPage === 'dashboard') {
+                renderDashboardStats();
+                renderDashboardProblems();
+                renderDashboardUsage();
+            }
+        }
+
+        // Coalesce bursts of live traffic into one summary reload.
+        function scheduleDashboardSummary() {
+            if (dashboardSummaryTimer) return;
+            dashboardSummaryTimer = setTimeout(() => {
+                dashboardSummaryTimer = null;
+                if (currentPage === 'dashboard') loadDashboardSummary();
+                else dashboardSummary = null;
+            }, 3000);
+        }
+
+        function renderDashboardProblems() {
+            const ul = document.getElementById('dashboard-problems');
+            const scope = document.getElementById('dashboard-problems-scope');
+            if (!dashboardSummary) {
+                ul.innerHTML = '<li class="px-4 py-6 text-center text-sm text-gray-500">Loading…</li>';
+                return;
+            }
+            if (dashboardSummary.failed_to_load) {
+                scope.textContent = '';
+                ul.innerHTML = '<li class="px-4 py-6 text-center text-sm text-red-600">Could not load recent activity</li>';
+                return;
+            }
+            const failures = dashboardSummary.recent_failures || [];
+            scope.textContent = `${dashboardSummary.failed.toLocaleString()} failed in the last 24h${dashboardSummary.failed > failures.length ? `, latest ${failures.length} shown` : ''}`;
+            ul.innerHTML = failures.length ? failures.map(req => `
+                <li class="px-4 py-3" data-request-id="${escapeAttr(req.id)}">
+                    <div class="flex items-center gap-3">
+                        <span class="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">${req.status}</span>
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm text-gray-900">${escapeHtml(req.model || req.request_path)}</p>
+                            <p class="truncate text-xs text-gray-500">${escapeHtml(req.request_path)} · ${escapeHtml(req.source_app || req.api_key_name || req.user_email || req.client_ip || '')} · <span title="${escapeAttr(new Date(req.timestamp).toLocaleString())}">${formatRelativeTime(req.timestamp)}</span></p>
+                        </div>
+                        <button onclick="peekRequest(this)" class="shrink-0 rounded border px-2.5 py-1 text-xs">Peek</button>
+                    </div>
+                </li>`).join('') : '<li class="px-4 py-6 text-center text-sm text-gray-500">No failures in the last 24h</li>';
+        }
+
+        function renderUsageList(id, rows, showKind) {
+            const ul = document.getElementById(id);
+            if (!rows.length) {
+                ul.innerHTML = '<li class="text-sm text-gray-500">No requests in the last 24h</li>';
+                return;
+            }
+            const max = Math.max(...rows.map(row => row.requests));
+            ul.innerHTML = rows.map(row => `
+                <li>
+                    <div class="flex items-baseline justify-between gap-3 text-sm">
+                        <span class="min-w-0 truncate text-gray-900" title="${escapeAttr(row.label)}">${showKind ? `<span class="mr-1 rounded bg-gray-100 px-1.5 py-0.5 text-[11px] uppercase text-gray-500">${escapeHtml(row.kind)}</span>` : ''}${escapeHtml(row.label)}</span>
+                        <span class="shrink-0 tabular-nums text-gray-600">
+                            ${row.failed ? `<span class="mr-2 text-xs text-red-600">${row.failed.toLocaleString()} failed</span>` : ''}
+                            <span title="${row.requests.toLocaleString()} requests">${formatCompact(row.requests)}</span>
+                            ${row.tokens ? `<span class="ml-1 text-xs text-gray-400" title="${row.tokens.toLocaleString()} tokens">${formatCompact(row.tokens)} tok</span>` : ''}
+                        </span>
+                    </div>
+                    <div class="mt-1 h-1.5 overflow-hidden rounded bg-gray-100" aria-hidden="true"><div class="h-full rounded bg-primary-500" style="width: ${(row.requests / max * 100).toFixed(1)}%"></div></div>
+                </li>`).join('');
+        }
+
+        function renderDashboardUsage() {
+            if (!dashboardSummary || dashboardSummary.failed_to_load) return;
+            renderUsageList('dashboard-top-models', dashboardSummary.top_models || [], false);
+            renderUsageList('dashboard-top-origins', dashboardSummary.top_origins || [], true);
         }
 
         // Update dashboard stats counters
         function renderDashboardStats() {
-            const onlineCount = runnersState.filter(r => r.is_online).length;
-            document.getElementById('stat-runners').textContent = onlineCount;
-            document.getElementById('stat-users').textContent = statsState.total_users;
-            document.getElementById('stat-requests').textContent = statsState.total_requests;
-            document.getElementById('stat-requests-24h').textContent = statsState.requests_24h;
-            document.getElementById('stat-tokens-prompt').textContent = (statsState.tokens_prompt || 0).toLocaleString();
-            document.getElementById('stat-tokens-completion').textContent = (statsState.tokens_completion || 0).toLocaleString();
+            const set = (id, text, title = '') => {
+                const el = document.getElementById(id);
+                el.textContent = text;
+                el.title = title;
+            };
+            set('stat-runners', runnersState.filter(r => r.is_online).length);
+            const summary = dashboardSummary && !dashboardSummary.failed_to_load ? dashboardSummary : null;
+            if (!summary) return;
+            set('stat-requests-24h', formatCompact(summary.requests), `${summary.requests.toLocaleString()} requests`);
+            set('stat-requests-24h-sub', summary.requests > summary.completed ? `${(summary.requests - summary.completed).toLocaleString()} in flight or unrecorded` : '');
+            const rate = summary.completed ? summary.failed / summary.completed * 100 : null;
+            set('stat-error-rate', rate === null ? '-' : `${rate < 10 && rate > 0 ? rate.toFixed(1) : Math.round(rate)}%`);
+            document.getElementById('stat-error-rate').className = `mt-1 text-3xl font-semibold tracking-tight ${rate >= 5 ? 'text-red-600' : 'text-gray-900'}`;
+            set('stat-error-rate-sub', `${summary.failed.toLocaleString()} of ${summary.completed.toLocaleString()} completed`);
+            set('stat-latency', formatLatency(summary.latency_p50_ms));
+            set('stat-latency-sub', summary.latency_p95_ms === null ? '' : `p95 ${formatLatency(summary.latency_p95_ms)}`);
+            set('stat-tokens-prompt', formatCompact(summary.tokens_prompt), `${summary.tokens_prompt.toLocaleString()} tokens`);
+            set('stat-tokens-completion', formatCompact(summary.tokens_completion), `${summary.tokens_completion.toLocaleString()} tokens`);
         }
 
         async function loadModelSpeeds(force = false) {
@@ -1795,6 +1998,10 @@
 
         // Render models list from local state
         function renderModels() {
+            renderModelSpeeds();
+            if (!modelSpeedsLoaded && !modelSpeedsLoading) {
+                loadModelSpeeds();
+            }
             const ul = document.getElementById('models-ul');
 
             if (modelsState.length === 0) {
@@ -2515,13 +2722,15 @@
         function renderRouterIfVisible() {
             if (currentPage === 'router') {
                 renderRouter();
+            } else if (currentPage === 'dashboard') {
+                renderDashboardFleet();
             }
         }
 
         function renderRequestsRouterEvents() {
             const el = document.getElementById('requests-router-events');
             if (!el) return;
-            renderRouterEventsInto(el, routerState.recent_events || [], 8);
+            renderRouterEventsInto(el, routerState.recent_events || [], 6);
         }
 
         function renderRequestsRouterEventsIfVisible() {
@@ -2591,17 +2800,18 @@
                         <span class="text-[11px] text-gray-400">${new Date(event.timestamp).toLocaleTimeString()}</span>
                     </div>
                     <p class="mt-1 text-sm text-gray-800">${escapeHtml(event.message)}</p>
-                    <p class="mt-1 text-xs text-gray-500">
-                        ${event.request_id ? `req ${escapeHtml(event.request_id)}` : ''}
-                        ${event.runner_id ? `${event.request_id ? ' • ' : ''}${escapeHtml(event.runner_id)}` : ''}
-                        ${event.model ? `${(event.request_id || event.runner_id) ? ' • ' : ''}${escapeHtml(event.model)}` : ''}
+                    <p class="mt-1 text-xs text-gray-500 truncate" title="${escapeAttr([event.request_id && `req ${event.request_id}`, event.runner_id, event.model].filter(Boolean).join(' • '))}">
+                        ${[event.request_id && `req ${event.request_id.slice(0, 8)}`, event.runner_id, event.model].filter(Boolean).map(escapeHtml).join(' • ')}
                     </p>
                 </div>
             `).join('');
         }
 
-        async function wakeRunner(runnerId) {
-            const btn = document.getElementById(`wake-btn-${runnerId}`);
+        // Runner id -> time a wake was sent, so re-rendered buttons stay in their "sent" state.
+        const wakeSentAt = new Map();
+        const WAKE_PENDING_MS = 120000;
+
+        async function wakeRunner(runnerId, btn = document.getElementById(`wake-btn-${runnerId}`)) {
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = 'Waking...';
@@ -2623,7 +2833,7 @@
                 if (response.status === 401 && refreshToken) {
                     try {
                         await refreshTokens();
-                        return wakeRunner(runnerId); // Retry
+                        return wakeRunner(runnerId, btn); // Retry
                     } catch (e) {
                         logout();
                         return;
@@ -2633,6 +2843,7 @@
                 const result = await response.json();
 
                 if (response.ok && result.success) {
+                    wakeSentAt.set(runnerId, Date.now());
                     if (btn) {
                         btn.textContent = 'Sent!';
                         btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
@@ -2838,6 +3049,14 @@
 
         function clearRequestFilters() {
             for (const name of ['model', 'origin', 'since', 'until']) document.getElementById(`request-${name}`).value = '';
+            document.getElementById('request-failed').checked = false;
+            refreshRequests();
+        }
+
+        // Dashboard shortcut: open history filtered to failures only.
+        function showFailedRequests() {
+            for (const name of ['model', 'origin', 'since', 'until']) document.getElementById(`request-${name}`).value = '';
+            document.getElementById('request-failed').checked = true;
             refreshRequests();
         }
 
@@ -2847,6 +3066,7 @@
                 const value = document.getElementById(`request-${name}`).value.trim();
                 if (value) filters.set(name, ['since', 'until'].includes(name) ? new Date(value).toISOString() : value);
             }
+            if (document.getElementById('request-failed').checked) filters.set('status', 'failed');
             if (filters.has('since') && filters.has('until') && filters.get('since') > filters.get('until')) {
                 document.getElementById('request-load-status').textContent = 'From must be before To.';
                 return;

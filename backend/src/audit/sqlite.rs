@@ -30,6 +30,34 @@ pub struct RequestFilters<'a> {
     pub since: Option<&'a str>,
     pub until: Option<&'a str>,
     pub snapshot: Option<i64>,
+    /// Only requests whose response status is 400 or above.
+    pub failed_only: bool,
+}
+
+/// Request counts and token usage for one model or origin within a summary window.
+#[derive(Debug, serde::Serialize)]
+pub struct UsageRow {
+    pub label: String,
+    /// "model" for model rows; "app", "key", "user" or "ip" for origin rows.
+    pub kind: String,
+    pub requests: u64,
+    pub failed: u64,
+    pub tokens: u64,
+}
+
+/// Aggregate activity since a point in time, for the dashboard.
+#[derive(Debug, serde::Serialize)]
+pub struct ActivitySummary {
+    pub requests: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub tokens_prompt: u64,
+    pub tokens_completion: u64,
+    /// Latency percentiles over successful (status < 400) requests.
+    pub latency_p50_ms: Option<i64>,
+    pub latency_p95_ms: Option<i64>,
+    pub top_models: Vec<UsageRow>,
+    pub top_origins: Vec<UsageRow>,
 }
 
 #[derive(serde::Serialize)]
@@ -653,6 +681,9 @@ impl AuditLogger {
         };
         where_clauses.push("r.rowid <= ?");
         params_vec.push(Box::new(snapshot));
+        if filters.failed_only {
+            where_clauses.push("resp.status >= 400");
+        }
         if let Some(origin) = filters.origin.filter(|value| !value.is_empty()) {
             where_clauses.push("(instr(lower(COALESCE(r.source_app,'')), lower(?)) > 0 OR instr(lower(COALESCE(r.client_ip,'')), lower(?)) > 0 OR instr(lower(COALESCE(r.api_key_name,'')), lower(?)) > 0 OR instr(lower(COALESCE(r.user_agent,'')), lower(?)) > 0)");
             for _ in 0..4 {
@@ -676,7 +707,10 @@ impl AuditLogger {
         };
 
         // Get total count
-        let count_sql = format!("SELECT COUNT(*) FROM requests r {}", where_clause);
+        let count_sql = format!(
+            "SELECT COUNT(*) FROM requests r LEFT JOIN responses resp ON resp.request_id = r.id {}",
+            where_clause
+        );
         let total: i64 = {
             let mut stmt = conn
                 .prepare(&count_sql)
@@ -747,6 +781,94 @@ impl AuditLogger {
         }
 
         Ok((requests, total_pages, snapshot))
+    }
+
+    /// Summarise requests at or after `since` (RFC 3339), with the `top` busiest models and origins.
+    pub fn get_activity_summary(
+        &self,
+        since: &str,
+        top: u32,
+    ) -> Result<ActivitySummary, AuditError> {
+        let db_err = |e: rusqlite::Error| AuditError::DatabaseError(e.to_string());
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        const WINDOW: &str = "FROM requests r
+             LEFT JOIN responses resp ON resp.request_id = r.id
+             LEFT JOIN users u ON u.id = r.user_id
+             WHERE julianday(r.timestamp) >= julianday(?1)";
+
+        let (requests, completed, failed, tokens_prompt, tokens_completion): (i64, i64, i64, i64, i64) = conn
+            .query_row(
+                &format!(
+                    "SELECT COUNT(*), COUNT(resp.status), COALESCE(SUM(resp.status >= 400), 0),
+                            COALESCE(SUM(resp.tokens_prompt), 0), COALESCE(SUM(resp.tokens_completion), 0)
+                     {WINDOW}"
+                ),
+                params![since],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .map_err(db_err)?;
+
+        let latencies = conn
+            .prepare(&format!(
+                "SELECT resp.latency_ms {WINDOW} AND resp.status < 400 ORDER BY resp.latency_ms"
+            ))
+            .map_err(db_err)?
+            .query_map(params![since], |row| row.get::<_, i64>(0))
+            .map_err(db_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(db_err)?;
+        // Nearest-rank percentile over the sorted latencies.
+        let percentile = |p: usize| {
+            (!latencies.is_empty())
+                .then(|| latencies[((latencies.len() * p).div_ceil(100)).max(1) - 1])
+        };
+
+        let usage = |kind_sql: &str, label_sql: &str| -> Result<Vec<UsageRow>, AuditError> {
+            conn.prepare(&format!(
+                "SELECT {kind_sql} AS kind, {label_sql} AS label, COUNT(*) AS n,
+                        COALESCE(SUM(resp.status >= 400), 0),
+                        COALESCE(SUM(COALESCE(resp.tokens_prompt, 0) + COALESCE(resp.tokens_completion, 0)), 0)
+                 {WINDOW}
+                 GROUP BY kind, label ORDER BY n DESC, label LIMIT ?2"
+            ))
+            .map_err(db_err)?
+            .query_map(params![since, top], |row| {
+                Ok(UsageRow {
+                    kind: row.get(0)?,
+                    label: row.get(1)?,
+                    requests: row.get::<_, i64>(2)? as u64,
+                    failed: row.get::<_, i64>(3)? as u64,
+                    tokens: row.get::<_, i64>(4)? as u64,
+                })
+            })
+            .map_err(db_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(db_err)
+        };
+        // An origin is the most specific attribution available for the request.
+        let top_origins = usage(
+            "CASE WHEN COALESCE(r.source_app, '') != '' THEN 'app'
+                  WHEN COALESCE(r.api_key_name, '') != '' THEN 'key'
+                  WHEN COALESCE(u.email, '') != '' THEN 'user'
+                  ELSE 'ip' END",
+            "COALESCE(NULLIF(r.source_app, ''), NULLIF(r.api_key_name, ''), NULLIF(u.email, ''), r.client_ip, 'unknown')",
+        )?;
+        let top_models = usage("'model'", "COALESCE(NULLIF(r.model, ''), r.request_path)")?;
+
+        Ok(ActivitySummary {
+            requests: requests as u64,
+            completed: completed as u64,
+            failed: failed as u64,
+            tokens_prompt: tokens_prompt as u64,
+            tokens_completion: tokens_completion as u64,
+            latency_p50_ms: percentile(50),
+            latency_p95_ms: percentile(95),
+            top_models,
+            top_origins,
+        })
     }
 
     /// Enable a user.
@@ -1930,6 +2052,105 @@ mod tests {
         assert!(logger
             .get_request_history(&RequestFilters::default(), 1, 0)
             .is_ok());
+    }
+
+    #[test]
+    fn activity_summary_counts_window_failures_latency_and_top_usage() {
+        let logger = AuditLogger::new(":memory:").unwrap();
+        let user = logger
+            .find_or_create_user("summary-user", Some("summary@example.com"))
+            .unwrap();
+        let log = |model: &str, app: Option<&str>, status: u16, latency_ms: u64, age_hours: i64| {
+            let mut request = Request::new(user.id.clone(), "/v1/chat/completions".into());
+            request.model = Some(model.into());
+            request.source_app = app.map(Into::into);
+            request.timestamp = Utc::now() - chrono::Duration::hours(age_hours);
+            logger.log_request(&request).unwrap();
+            let mut response = Response::new(request.id.clone(), status);
+            response.latency_ms = latency_ms;
+            response.tokens_prompt = Some(10);
+            response.tokens_completion = Some(5);
+            logger.log_response(&response).unwrap();
+            request.id
+        };
+        for latency in [100, 200, 300, 400] {
+            log("busy-model", Some("app-one"), 200, latency, 1);
+        }
+        let failed = log("quiet-model", None, 503, 9000, 2);
+        log("old-model", Some("app-one"), 500, 50, 48);
+        let mut pending = Request::new(user.id.clone(), "/v1/embeddings".into());
+        pending.api_key_name = Some("ci key".into());
+        logger.log_request(&pending).unwrap();
+
+        let since = (Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
+        let summary = logger.get_activity_summary(&since, 5).unwrap();
+        assert_eq!(
+            (summary.requests, summary.completed, summary.failed),
+            (6, 5, 1)
+        );
+        assert_eq!((summary.tokens_prompt, summary.tokens_completion), (50, 25));
+        // Failures are excluded from latency percentiles.
+        assert_eq!(
+            (summary.latency_p50_ms, summary.latency_p95_ms),
+            (Some(200), Some(400))
+        );
+        let models: Vec<_> = summary
+            .top_models
+            .iter()
+            .map(|row| (row.label.as_str(), row.requests, row.failed))
+            .collect();
+        assert_eq!(
+            models,
+            [
+                ("busy-model", 4, 0),
+                ("/v1/embeddings", 1, 0),
+                ("quiet-model", 1, 1)
+            ]
+        );
+        let origins: Vec<_> = summary
+            .top_origins
+            .iter()
+            .map(|row| (row.kind.as_str(), row.label.as_str(), row.requests))
+            .collect();
+        assert_eq!(
+            origins,
+            [
+                ("app", "app-one", 4),
+                ("key", "ci key", 1),
+                ("user", "summary@example.com", 1)
+            ]
+        );
+        assert_eq!(
+            logger
+                .get_activity_summary(&since, 1)
+                .unwrap()
+                .top_models
+                .len(),
+            1
+        );
+
+        let (rows, pages, _) = logger
+            .get_request_history(
+                &RequestFilters {
+                    since: Some(&since),
+                    failed_only: true,
+                    ..Default::default()
+                },
+                1,
+                10,
+            )
+            .unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
+            [failed.as_str()]
+        );
+        assert_eq!(pages, 1);
+
+        let empty = logger
+            .get_activity_summary("2100-01-01T00:00:00Z", 5)
+            .unwrap();
+        assert_eq!((empty.requests, empty.latency_p50_ms), (0, None));
+        assert!(empty.top_models.is_empty());
     }
 
     #[test]

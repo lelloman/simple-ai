@@ -2,9 +2,9 @@ mod schema;
 mod sqlite;
 
 pub use sqlite::{
-    ApiKey, AuditError, AuditLogger, DashboardStats, ModelContextMetricRow, RequestBodies,
+    ActivitySummary, ApiKey, AuditError, AuditLogger, DashboardStats, ModelContextMetricRow, RequestBodies,
     RequestFilters, RequestSummary, RequestWithResponse, RunnerMetricRow, RunnerRecord,
-    UserWithStats, ValidatedApiKey,
+    UsageRow, UserWithStats, ValidatedApiKey,
 };
 
 #[cfg(test)]

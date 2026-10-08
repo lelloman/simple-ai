@@ -554,6 +554,8 @@ struct RequestsApiQuery {
     since: Option<String>,
     until: Option<String>,
     snapshot: Option<i64>,
+    /// `failed` limits results to responses with status 400 or above.
+    status: Option<String>,
     page: Option<u32>,
     per_page: Option<u32>,
 }
@@ -593,6 +595,11 @@ async fn api_requests_list(
             return Err(StatusCode::BAD_REQUEST);
         }
     }
+    let failed_only = match query.status.as_deref() {
+        None | Some("") => false,
+        Some("failed") => true,
+        Some(_) => return Err(StatusCode::BAD_REQUEST),
+    };
     let (requests, total_pages, snapshot) = state
         .audit_logger
         .get_request_history(
@@ -603,6 +610,7 @@ async fn api_requests_list(
                 since: query.since.as_deref(),
                 until: query.until.as_deref(),
                 snapshot: query.snapshot,
+                failed_only,
             },
             page,
             per_page,
@@ -618,6 +626,56 @@ async fn api_requests_list(
         per_page,
         total_pages,
         snapshot,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct SummaryApiQuery {
+    hours: Option<u32>,
+}
+
+/// Response for /admin/api/summary.
+#[derive(Debug, Serialize)]
+pub struct SummaryApiResponse {
+    pub since: String,
+    pub hours: u32,
+    #[serde(flatten)]
+    pub summary: crate::audit::ActivitySummary,
+    pub recent_failures: Vec<RequestWithResponse>,
+}
+
+/// GET /admin/api/summary - activity over the last `hours` (default 24, max 720).
+async fn api_summary(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SummaryApiQuery>,
+) -> Result<Json<SummaryApiResponse>, StatusCode> {
+    let hours = query.hours.unwrap_or(24).clamp(1, 720);
+    let since = (chrono::Utc::now() - chrono::Duration::hours(i64::from(hours))).to_rfc3339();
+    let internal = |error: crate::audit::AuditError| {
+        tracing::error!(%error, "Cannot load activity summary");
+        StatusCode::INTERNAL_SERVER_ERROR
+    };
+    let summary = state
+        .audit_logger
+        .get_activity_summary(&since, 5)
+        .map_err(internal)?;
+    let (recent_failures, _, _) = state
+        .audit_logger
+        .get_request_history(
+            &crate::audit::RequestFilters {
+                since: Some(&since),
+                failed_only: true,
+                ..Default::default()
+            },
+            1,
+            6,
+        )
+        .map_err(internal)?;
+    Ok(Json(SummaryApiResponse {
+        since,
+        hours,
+        summary,
+        recent_failures,
     }))
 }
 
@@ -1517,6 +1575,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
+        .route("/api/summary", get(api_summary))
         .route("/api/requests/{id}", get(api_request_detail))
         .route("/api/requests/{id}/cancel", post(api_request_cancel))
         .route("/api/model-speeds", get(api_model_speeds))
