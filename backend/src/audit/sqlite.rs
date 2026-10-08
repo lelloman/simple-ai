@@ -1563,38 +1563,25 @@ impl AuditLogger {
 mod tests {
     use super::*;
     use std::fs;
-    use uuid::Uuid;
 
     fn create_test_logger() -> AuditLogger {
-        let test_db_path = format!(
-            "test_audit_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         AuditLogger::new(&test_db_path).unwrap()
-    }
-
-    fn cleanup_db(path: &str) {
-        let _ = fs::remove_file(path);
     }
 
     #[test]
     fn test_new_creates_tables() {
-        let test_db_path = format!(
-            "test_new_tables_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let dir = tempfile::tempdir().unwrap();
+        let test_db_path = dir.path().join("audit.db").to_str().unwrap().to_string();
         let logger = AuditLogger::new(&test_db_path).unwrap();
         drop(logger);
         assert!(fs::metadata(&test_db_path).is_ok());
-        cleanup_db(&test_db_path);
     }
 
     #[test]
     fn test_existing_api_keys_table_gets_roles_migration() {
-        let test_db_path = format!(
-            "test_api_key_roles_migration_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let dir = tempfile::tempdir().unwrap();
+        let test_db_path = dir.path().join("audit.db").to_str().unwrap().to_string();
         let conn = Connection::open(&test_db_path).unwrap();
         conn.execute(
             "CREATE TABLE api_keys (
@@ -1624,7 +1611,6 @@ mod tests {
         assert_eq!(roles, "'[]'");
         drop(conn);
         drop(logger);
-        cleanup_db(&test_db_path);
     }
 
     #[test]
@@ -1946,8 +1932,8 @@ mod tests {
 
     #[test]
     fn legacy_request_attribution_remains_null_after_repeated_migration() {
-        let path =
-            std::env::temp_dir().join(format!("audit-attribution-{}.sqlite", uuid::Uuid::new_v4()));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit-attribution.sqlite");
         let conn = Connection::open(&path).unwrap();
         crate::audit::legacy_bootstrap_tests::bootstrap(&conn).unwrap();
         conn.execute(
@@ -1973,7 +1959,6 @@ mod tests {
                 assert!(json[field].is_null(), "{field}");
             }
         }
-        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

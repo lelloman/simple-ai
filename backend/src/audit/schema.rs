@@ -315,8 +315,8 @@ mod tests {
         let legacy = Connection::open_in_memory().unwrap();
         crate::audit::legacy_bootstrap_tests::bootstrap(&legacy).unwrap();
         super::migrate_request_attribution(&legacy).unwrap();
-        let path =
-            std::env::temp_dir().join(format!("simple-ai-07e-{}.sqlite", uuid::Uuid::new_v4()));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("simple-ai-07e.sqlite");
         let logger = AuditLogger::new(path.to_str().unwrap()).unwrap();
         drop(logger);
         let shared = Connection::open(&path).unwrap();
@@ -356,15 +356,12 @@ mod tests {
         );
         assert_eq!(metadata(&conn), metadata(&legacy));
         drop(conn);
-        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
     fn legacy_file_reopens_without_changing_records_with_nullable_attribution() {
-        let path = std::env::temp_dir().join(format!(
-            "simple-ai-07e-legacy-{}.sqlite",
-            uuid::Uuid::new_v4()
-        ));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("simple-ai-07e-legacy.sqlite");
         let conn = Connection::open(&path).unwrap();
         crate::audit::legacy_bootstrap_tests::bootstrap(&conn).unwrap();
         conn.execute(
@@ -384,7 +381,6 @@ mod tests {
         let conn = Connection::open(&path).unwrap();
         assert_eq!(metadata(&conn), before);
         drop(conn);
-        std::fs::remove_file(path).unwrap();
     }
     #[test]
     fn malformed_legacy_file_keeps_bootstrap_failure_order() {
@@ -393,10 +389,8 @@ mod tests {
             .execute_batch("CREATE TABLE requests(id TEXT PRIMARY KEY)")
             .unwrap();
         assert!(crate::audit::legacy_bootstrap_tests::bootstrap(&legacy).is_err());
-        let path = std::env::temp_dir().join(format!(
-            "simple-ai-07e-failed-{}.sqlite",
-            uuid::Uuid::new_v4()
-        ));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("simple-ai-07e-failed.sqlite");
         let shared = Connection::open(&path).unwrap();
         shared
             .execute_batch("CREATE TABLE requests(id TEXT PRIMARY KEY)")
@@ -416,7 +410,6 @@ mod tests {
             0
         );
         drop(shared);
-        std::fs::remove_file(path).unwrap();
     }
     #[test]
     fn index_execution_restores_dqs_on_error_and_keeps_existing_index_acceptance() {

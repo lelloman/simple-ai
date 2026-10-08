@@ -308,7 +308,6 @@ mod tests {
     use simple_server::web::{extract::State, routing::post, Json, Router};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::mpsc;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_dispatcher_creation() {
@@ -320,10 +319,7 @@ mod tests {
     }
 
     fn create_test_router(registry: Arc<RunnerRegistry>) -> Arc<InferenceRouter> {
-        let test_db_path = format!(
-            "test_batch_dispatcher_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let audit_logger = Arc::new(crate::audit::AuditLogger::new(&test_db_path).unwrap());
         Arc::new(InferenceRouter::new(
             registry,

@@ -35,7 +35,7 @@ pub fn test_config() -> Config {
             admin_users: vec![],
         },
         database: DatabaseConfig {
-            url: "sqlite:memory".to_string(),
+            url: ":memory:".to_string(),
         },
         logging: LoggingConfig {
             level: "debug".to_string(),

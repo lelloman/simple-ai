@@ -1597,7 +1597,6 @@ mod tests {
     };
     use std::sync::Mutex;
     use tokio::sync::mpsc;
-    use uuid::Uuid;
 
     fn create_test_status(models: Vec<String>) -> RunnerStatus {
         create_test_status_with_batch(models, 1)
@@ -1636,10 +1635,7 @@ mod tests {
     }
 
     fn create_test_router(registry: Arc<RunnerRegistry>) -> InferenceRouter {
-        let test_db_path = format!(
-            "test_router_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         InferenceRouter::with_strategy(
             registry,
@@ -1855,10 +1851,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!(
-            "test_smart_routing_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
@@ -1956,10 +1949,7 @@ mod tests {
             fast: vec!["fast-model".to_string()],
             ..Default::default()
         };
-        let test_db_path = format!(
-            "test_resource_routing_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let router = InferenceRouter::new(
             registry,
             models_config,
@@ -2025,10 +2015,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!(
-            "test_smart_queue_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
@@ -2089,10 +2076,7 @@ mod tests {
             fast: vec![model],
             ..Default::default()
         };
-        let test_db_path = format!(
-            "test_smart_capacity_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let router = InferenceRouter::new(
             registry,
             models_config,
@@ -2140,10 +2124,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!(
-            "test_excessive_weights_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
@@ -2188,10 +2169,7 @@ mod tests {
             ..Default::default()
         };
 
-        let test_db_path = format!(
-            "test_complementary_coverage_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
         let router = InferenceRouter::new(
             registry,
@@ -2225,10 +2203,7 @@ mod tests {
                 .await;
         }
 
-        let test_db_path = format!(
-            "test_affinity_{}.db",
-            Uuid::new_v4().to_string().replace('-', "")
-        );
+        let test_db_path = ":memory:";
         let router = InferenceRouter::with_strategy(
             registry.clone(),
             LoadBalanceStrategy::SmartRouting,
