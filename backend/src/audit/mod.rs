@@ -2,9 +2,13 @@ mod schema;
 mod sqlite;
 
 pub use sqlite::{
-    ApiKey, AuditError, AuditLogger, DashboardStats, ModelContextMetricRow, RequestSummary,
-    RequestWithResponse, RunnerMetricRow, RunnerRecord, UserWithStats, ValidatedApiKey,
+    ApiKey, AuditError, AuditLogger, DashboardStats, ModelContextMetricRow, RequestBodies,
+    RequestFilters, RequestSummary, RequestWithResponse, RunnerMetricRow, RunnerRecord,
+    UserWithStats, ValidatedApiKey,
 };
 
 #[cfg(test)]
 mod legacy_bootstrap_tests;
+
+mod stream;
+pub use stream::capture_response;

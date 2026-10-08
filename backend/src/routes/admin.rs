@@ -550,6 +550,10 @@ async fn api_users_list(State(state): State<Arc<AppState>>) -> Json<UsersApiResp
 struct RequestsApiQuery {
     user_id: Option<String>,
     model: Option<String>,
+    origin: Option<String>,
+    since: Option<String>,
+    until: Option<String>,
+    snapshot: Option<i64>,
     page: Option<u32>,
     per_page: Option<u32>,
 }
@@ -562,6 +566,7 @@ pub struct RequestsApiResponse {
     pub page: u32,
     pub per_page: u32,
     pub total_pages: u32,
+    pub snapshot: i64,
 }
 
 /// Response for /admin/api/model-speeds endpoint.
@@ -575,27 +580,57 @@ pub struct ModelSpeedsApiResponse {
 async fn api_requests_list(
     State(state): State<Arc<AppState>>,
     Query(query): Query<RequestsApiQuery>,
-) -> Json<RequestsApiResponse> {
+) -> Result<Json<RequestsApiResponse>, StatusCode> {
     let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(50).min(100);
-
-    let (requests, total_pages) = state
+    let per_page = query.per_page.unwrap_or(50).clamp(1, 100);
+    for value in [&query.since, &query.until].into_iter().flatten() {
+        chrono::DateTime::parse_from_rfc3339(value).map_err(|_| StatusCode::BAD_REQUEST)?;
+    }
+    if let (Some(since), Some(until)) = (&query.since, &query.until) {
+        if chrono::DateTime::parse_from_rfc3339(since).unwrap()
+            > chrono::DateTime::parse_from_rfc3339(until).unwrap()
+        {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    let (requests, total_pages, snapshot) = state
         .audit_logger
-        .get_requests_paginated(
-            query.user_id.as_deref(),
-            query.model.as_deref(),
+        .get_request_history(
+            &crate::audit::RequestFilters {
+                user_id: query.user_id.as_deref(),
+                model: query.model.as_deref(),
+                origin: query.origin.as_deref(),
+                since: query.since.as_deref(),
+                until: query.until.as_deref(),
+                snapshot: query.snapshot,
+            },
             page,
             per_page,
         )
-        .unwrap_or_default();
-
-    Json(RequestsApiResponse {
+        .map_err(|error| {
+            tracing::error!(%error, "Cannot load request history");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(RequestsApiResponse {
         requests,
         cancellable_request_ids: state.request_cancellations.active_request_ids(),
         page,
         per_page,
         total_pages,
-    })
+        snapshot,
+    }))
+}
+
+async fn api_request_detail(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::audit::RequestBodies>, StatusCode> {
+    state
+        .audit_logger
+        .get_request_bodies(&id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map(Json)
+        .ok_or(StatusCode::NOT_FOUND)
 }
 
 #[derive(Debug, Serialize)]
@@ -1476,9 +1511,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/runners/{id}/unload-model", post(unload_model))
         .route("/models", get(list_models))
         // JSON API endpoints (for SPA dashboard)
-        .route("/api/lan-local", get(lan_local_status).put(lan_local_update))
+        .route(
+            "/api/lan-local",
+            get(lan_local_status).put(lan_local_update),
+        )
         .route("/api/users", get(api_users_list))
         .route("/api/requests", get(api_requests_list))
+        .route("/api/requests/{id}", get(api_request_detail))
         .route("/api/requests/{id}/cancel", post(api_request_cancel))
         .route("/api/model-speeds", get(api_model_speeds))
         .route("/metrics", get(prometheus_metrics))

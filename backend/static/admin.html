@@ -462,7 +462,7 @@
                             <div class="px-4 py-3 border-b border-gray-200">
                                 <h3 class="text-sm font-medium text-gray-900">Router Activity</h3>
                             </div>
-                            <div id="requests-router-events" class="p-4 space-y-3"></div>
+                            <div id="requests-router-events" class="p-4 space-y-3 h-48 overflow-y-auto"></div>
                         </div>
 
                         <!-- Batch Queue Panel -->
@@ -471,11 +471,38 @@
                                 <h3 class="text-sm font-medium text-gray-900">Request Queue</h3>
                                 <span id="batch-status-badge" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Disabled</span>
                             </div>
-                            <div id="batch-queue-content" class="p-4">
+                            <div id="batch-queue-content" class="p-4 h-32 overflow-y-auto">
                                 <p class="text-sm text-gray-500">Batching is disabled</p>
                             </div>
                         </div>
 
+                        <div class="mb-4 bg-white rounded-lg shadow p-4">
+                            <h3 class="text-lg font-medium">Request history</h3>
+                            <p class="text-sm text-gray-500 mb-4">Your view stays in place as requests arrive. Refresh to see updates.</p>
+                            <form onsubmit="event.preventDefault(); refreshRequests()" class="flex flex-wrap gap-3 items-end">
+                                <label class="text-sm">Model<input id="request-model" placeholder="Filter models" class="block border rounded p-2"></label>
+                                <label class="text-sm">Origin<input id="request-origin" placeholder="App, IP, API key or client" class="block border rounded p-2"></label>
+                                <label class="text-sm">From (local time)<input id="request-since" type="datetime-local" class="block border rounded p-2"></label>
+                                <label class="text-sm">To (local time)<input id="request-until" type="datetime-local" class="block border rounded p-2"></label>
+                                <button class="bg-primary-600 text-white rounded px-4 py-2" type="submit">Apply filters</button>
+                                <button class="border rounded px-4 py-2" type="button" onclick="clearRequestFilters()">Clear</button>
+                            </form>
+                            <div class="mt-3 flex items-center gap-3 min-h-10">
+                                <button id="request-refresh" onclick="refreshRequests()" class="border rounded px-3 py-2 text-sm">Refresh</button>
+                                <span id="request-load-status" role="status" class="text-sm text-gray-500"></span>
+                            </div>
+                        </div>
+                        <dialog id="request-inspector" class="rounded-lg shadow-xl p-6 w-full" style="max-width: 900px; max-height: 85vh">
+                            <div class="flex justify-between items-center gap-4 mb-4">
+                                <h3 id="request-inspector-title" class="font-medium break-all">Request details</h3>
+                                <button onclick="document.getElementById('request-inspector').close()" class="border rounded px-3 py-2">Close</button>
+                            </div>
+                            <p id="request-detail-status" role="status" class="text-sm text-gray-500"></p>
+                            <h4 class="font-medium mt-4 mb-2">Prompt / request body</h4>
+                            <pre id="request-body" class="bg-gray-50 p-3 rounded whitespace-pre-wrap break-words text-sm"></pre>
+                            <h4 class="font-medium mt-4 mb-2">Response body</h4>
+                            <pre id="response-body" class="bg-gray-50 p-3 rounded whitespace-pre-wrap break-words text-sm"></pre>
+                        </dialog>
                         <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
                             <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
                         </div>
@@ -1310,13 +1337,7 @@
                 // If we're on the requests page, prepend the new request to the list
                 if (currentPage === 'requests') {
                     prependNewRequest(data);
-                    // Registration happens immediately after the pending audit
-                    // event, so refresh once to reveal its Cancel button.
-                    if (data.status === null || data.status === undefined) {
-                        setTimeout(() => {
-                            if (currentPage === 'requests') loadRequests(requestsPage);
-                        }, 100);
-                    }
+
                 }
                 // Update dashboard stats (increment request count)
                 if (statsState) {
@@ -2809,52 +2830,88 @@
 
         let requestsPage = 1;
         let requestsTotalPages = 1;
+        let requestsSnapshot = null;
+        let requestsGeneration = 0;
+        let requestEventVersion = 0;
+        let requestFilters = new URLSearchParams();
+        let inspectorGeneration = 0;
+
+        function clearRequestFilters() {
+            for (const name of ['model', 'origin', 'since', 'until']) document.getElementById(`request-${name}`).value = '';
+            refreshRequests();
+        }
+
+        function refreshRequests() {
+            const filters = new URLSearchParams();
+            for (const name of ['model', 'origin', 'since', 'until']) {
+                const value = document.getElementById(`request-${name}`).value.trim();
+                if (value) filters.set(name, ['since', 'until'].includes(name) ? new Date(value).toISOString() : value);
+            }
+            if (filters.has('since') && filters.has('until') && filters.get('since') > filters.get('until')) {
+                document.getElementById('request-load-status').textContent = 'From must be before To.';
+                return;
+            }
+            requestFilters = filters;
+            requestsSnapshot = null;
+            loadRequests(1);
+        }
 
         async function loadRequests(page = 1) {
+            const generation = ++requestsGeneration;
+            const eventVersion = requestEventVersion;
             const ul = document.getElementById('requests-ul');
-            ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">Loading requests...</li>';
-
+            const status = document.getElementById('request-load-status');
+            status.textContent = 'Loading…';
+            const params = new URLSearchParams(requestFilters);
+            params.set('page', page);
+            params.set('per_page', 50);
+            if (requestsSnapshot !== null) params.set('snapshot', requestsSnapshot);
             try {
-                const data = await apiFetch(`/admin/api/requests?page=${page}&per_page=50`);
+                const data = await apiFetch(`/admin/api/requests?${params}`);
+                if (generation !== requestsGeneration) return;
                 requestsPage = data.page;
                 requestsTotalPages = data.total_pages;
-
-                if (data.requests.length === 0) {
-                    ul.innerHTML = '<li class="px-4 py-8 text-center text-gray-500">No requests found</li>';
-                    return;
-                }
-
+                requestsSnapshot = data.snapshot;
                 const cancellableIds = new Set(data.cancellable_request_ids || []);
-                const requestsHtml = data.requests.map(req => `
+                ul.innerHTML = data.requests.length ? data.requests.map(req => `
                     <li class="px-4 py-4" data-request-id="${escapeAttr(req.id)}">
                         ${renderRequestHtml(req, cancellableIds.has(req.id))}
-                    </li>
-                `).join('');
-
-                // Add pagination controls if needed
-                let paginationHtml = '';
-                if (requestsTotalPages > 1) {
-                    paginationHtml = `
-                        <li class="px-4 py-3 bg-gray-50 flex items-center justify-between border-t">
-                            <button onclick="loadRequests(${Math.max(1, requestsPage - 1)})"
-                                    class="px-3 py-1 text-sm rounded ${requestsPage <= 1 ? 'text-gray-400 cursor-not-allowed' : 'text-primary-600 hover:bg-primary-50'}"
-                                    ${requestsPage <= 1 ? 'disabled' : ''}>
-                                Previous
-                            </button>
-                            <span class="text-sm text-gray-600">Page ${requestsPage} of ${requestsTotalPages}</span>
-                            <button onclick="loadRequests(${Math.min(requestsTotalPages, requestsPage + 1)})"
-                                    class="px-3 py-1 text-sm rounded ${requestsPage >= requestsTotalPages ? 'text-gray-400 cursor-not-allowed' : 'text-primary-600 hover:bg-primary-50'}"
-                                    ${requestsPage >= requestsTotalPages ? 'disabled' : ''}>
-                                Next
-                            </button>
-                        </li>
-                    `;
-                }
-
-                ul.innerHTML = requestsHtml + paginationHtml;
+                    </li>`).join('') : '<li class="px-4 py-8 text-center text-gray-500">No requests match these filters</li>';
+                ul.innerHTML += `<li class="px-4 py-3 bg-gray-50 flex items-center justify-between border-t">
+                    <button onclick="loadRequests(${requestsPage - 1})" ${requestsPage <= 1 ? 'disabled' : ''} class="border rounded px-3 py-1 disabled:opacity-40">Previous</button>
+                    <span class="text-sm">Page ${requestsPage} of ${Math.max(1, requestsTotalPages)}</span>
+                    <button onclick="loadRequests(${requestsPage + 1})" ${requestsPage >= requestsTotalPages ? 'disabled' : ''} class="border rounded px-3 py-1 disabled:opacity-40">Next</button>
+                </li>`;
+                status.textContent = 'History loaded';
+                if (eventVersion === requestEventVersion) document.getElementById('request-refresh').textContent = 'Refresh';
             } catch (e) {
-                console.error('Failed to load requests:', e);
-                ul.innerHTML = '<li class="px-4 py-8 text-center text-red-500">Failed to load requests</li>';
+                if (generation !== requestsGeneration) return;
+                status.textContent = 'Failed to load requests. Try refreshing.';
+            }
+        }
+
+        function formatRequestBody(body, fallback) {
+            if (body === '[stream]') return 'This older streamed response was not recorded.';
+            if (body === null || body === undefined || body === '') return fallback;
+            try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
+        }
+
+        async function inspectRequest(id) {
+            const generation = ++inspectorGeneration;
+            const dialog = document.getElementById('request-inspector');
+            document.getElementById('request-inspector-title').textContent = `Request ${id}`;
+            document.getElementById('request-body').textContent = '';
+            document.getElementById('response-body').textContent = '';
+            document.getElementById('request-detail-status').textContent = 'Loading…';
+            if (!dialog.open) dialog.showModal();
+            try {
+                const data = await apiFetch(`/admin/api/requests/${encodeURIComponent(id)}`);
+                if (generation !== inspectorGeneration) return;
+                document.getElementById('request-body').textContent = formatRequestBody(data.request_body, 'No request body recorded.');
+                document.getElementById('response-body').textContent = formatRequestBody(data.response_body, 'No response recorded yet.');
+                document.getElementById('request-detail-status').textContent = 'Recorded payloads';
+            } catch (e) {
+                if (generation === inspectorGeneration) document.getElementById('request-detail-status').textContent = 'Could not load details. Close and try again.';
             }
         }
 
@@ -2871,6 +2928,7 @@
                             <span class="text-gray-400">at</span> ${new Date(req.timestamp).toLocaleString()}
                         </p>
                         <p class="text-xs text-gray-500">
+                            ${req.source_app ? `App: ${escapeHtml(req.source_app)} · ` : ''}
                             ${req.auth_method ? `Auth: ${escapeHtml(req.auth_method)}` : ''}
                             ${req.api_key_name ? ` · Key: ${escapeHtml(req.api_key_name)}` : ''}
                             ${req.api_key_id ? ` (${escapeHtml(req.api_key_id)})` : ''}
@@ -2885,6 +2943,7 @@
                         </p>
                     </div>
                     <div class="flex items-center space-x-3 ml-4">
+                        <button onclick="inspectRequest(this.closest('[data-request-id]').dataset.requestId)" class="border rounded px-3 py-1 text-sm">Inspect</button>
                         ${!isPending && req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
                         ${!isPending && (req.tokens_prompt !== null || req.tokens_completion !== null) ? `
                             <span class="text-xs text-gray-500" title="Prompt / Completion tokens">
@@ -2929,50 +2988,10 @@
             }
         }
 
-        // Prepend a new request or update an existing one
+        // Live traffic never mutates the history being read or its pagination.
         function prependNewRequest(req) {
-            const ul = document.getElementById('requests-ul');
-            if (!ul) return;
-
-            // Check if this request already exists (update case)
-            const existingLi = ul.querySelector(`li[data-request-id="${escapeAttr(req.id)}"]`);
-            if (existingLi) {
-                // Update existing request
-                existingLi.innerHTML = renderRequestHtml(req);
-                existingLi.classList.remove('bg-yellow-50');
-                if (req.status !== null) {
-                    existingLi.classList.add('bg-green-50');
-                    setTimeout(() => existingLi.classList.remove('bg-green-50'), 3000);
-                }
-                return;
-            }
-
-            // Check if we're showing "No requests found" or loading message
-            const existingContent = ul.innerHTML;
-            if (existingContent.includes('No requests found') || existingContent.includes('Loading')) {
-                ul.innerHTML = '';
-            }
-
-            // Create the new request HTML
-            const li = document.createElement('li');
-            li.className = req.status === null ? 'px-4 py-4 bg-yellow-50' : 'px-4 py-4 bg-green-50';
-            li.setAttribute('data-request-id', req.id);
-            li.innerHTML = renderRequestHtml(req);
-
-            // Insert at the top (after any pagination if present)
-            const firstItem = ul.querySelector('li:not(.bg-gray-50)');
-            if (firstItem) {
-                ul.insertBefore(li, firstItem);
-            } else {
-                ul.insertBefore(li, ul.firstChild);
-            }
-
-            // Remove highlight after 3 seconds (only for completed requests)
-            if (req.status !== null) {
-                setTimeout(() => {
-                    li.classList.remove('bg-green-50');
-                }, 3000);
-            }
+            requestEventVersion++;
+            document.getElementById('request-refresh').textContent = 'Updates available — refresh';
         }
 
         // ========== User Detail & API Keys ==========

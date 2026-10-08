@@ -197,3 +197,23 @@ The admin API exposes `GET /admin/api/lan-local` and `PUT /admin/api/lan-local`.
 To enable, send `{"enabled":true,"network":"192.168.1.0/24","duration_seconds":3600}`;
 to disable, send `{"enabled":false}`. Status includes `enabled`, `network`,
 `expires_at`, and `remaining_seconds`. This setting is local to each server process.
+
+### Request history
+
+The dashboard's **Requests** page shows persisted audit history. Live traffic marks
+updates as available without changing the rows you are reading. **Refresh** starts
+a new history snapshot; Previous/Next retain that snapshot and the applied filters.
+Filter by model, origin (source app, client IP, API key name, or user agent), and a
+local-time date range. **Inspect** loads the recorded prompt/request and response
+bodies for a request.
+
+The admin-only API supports `GET /admin/api/requests` with `model`, `origin`,
+`since`, `until`, `page`, `per_page`, and `snapshot`. Time bounds are inclusive
+RFC 3339 timestamps. The returned snapshot excludes later inserts during pagination.
+`GET /admin/api/requests/{id}` returns recorded bodies on demand.
+
+New chat and Responses API streams retain their client-visible SSE output, including
+partial output when a client disconnects. History capture is capped at 4 MiB per
+stream and explicitly marks truncation or interruption; delivery is unaffected.
+Older streamed responses containing only `[stream]` have no recoverable output.
+The existing audit database retains this history across backend restarts.

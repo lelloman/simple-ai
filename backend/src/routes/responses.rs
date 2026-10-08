@@ -621,6 +621,7 @@ async fn create_response(
             }
         };
 
+        let stream_body = crate::audit::capture_response(stream_body, state.audit_logger.clone(), req_log.id.clone());
         let mut response = AxumResponse::new(stream_body);
         *response.status_mut() = StatusCode::OK;
         response.headers_mut().insert(

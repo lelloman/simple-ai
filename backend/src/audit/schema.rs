@@ -15,6 +15,7 @@ pub(super) fn migrate_request_attribution(
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(map_err)?;
     for column in [
+        "stream_body",
         "auth_method",
         "api_key_id",
         "api_key_name",

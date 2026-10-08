@@ -22,6 +22,22 @@ pub enum AuditError {
     UserDisabled,
 }
 
+#[derive(Default)]
+pub struct RequestFilters<'a> {
+    pub user_id: Option<&'a str>,
+    pub model: Option<&'a str>,
+    pub origin: Option<&'a str>,
+    pub since: Option<&'a str>,
+    pub until: Option<&'a str>,
+    pub snapshot: Option<i64>,
+}
+
+#[derive(serde::Serialize)]
+pub struct RequestBodies {
+    pub request_body: Option<String>,
+    pub response_body: Option<String>,
+}
+
 impl AuditLogger {
     pub fn new(database_url: &str) -> Result<Self, AuditError> {
         // Parse sqlite: prefix if present
@@ -491,7 +507,7 @@ impl AuditLogger {
             .prepare(
                 "SELECT r.id, r.timestamp, r.user_id, r.request_path, r.model
              FROM requests r
-             ORDER BY r.timestamp DESC
+             ORDER BY r.timestamp DESC, r.rowid DESC
              LIMIT ?1",
             )
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
@@ -559,6 +575,52 @@ impl AuditLogger {
         page: u32,
         per_page: u32,
     ) -> Result<(Vec<RequestWithResponse>, u32), AuditError> {
+        self.get_request_history(
+            &RequestFilters {
+                user_id,
+                model,
+                ..Default::default()
+            },
+            page,
+            per_page,
+        )
+        .map(|(requests, pages, _)| (requests, pages))
+    }
+
+    pub(super) fn save_stream_body(&self, id: &str, body: &str) -> Result<(), AuditError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        conn.execute(
+            "UPDATE requests SET stream_body = ? WHERE id = ?",
+            params![body, id],
+        )
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_request_bodies(&self, id: &str) -> Result<Option<RequestBodies>, AuditError> {
+        use rusqlite::OptionalExtension;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        conn.query_row(
+            "SELECT r.request_body, COALESCE(r.stream_body, resp.response_body) FROM requests r LEFT JOIN responses resp ON resp.request_id = r.id WHERE r.id = ?",
+            [id], |row| Ok(RequestBodies { request_body: row.get(0)?, response_body: row.get(1)? })
+        ).optional().map_err(|e| AuditError::DatabaseError(e.to_string()))
+    }
+
+    pub fn get_request_history(
+        &self,
+        filters: &RequestFilters<'_>,
+        page: u32,
+        per_page: u32,
+    ) -> Result<(Vec<RequestWithResponse>, u32, i64), AuditError> {
+        let per_page = per_page.clamp(1, 100);
+        let user_id = filters.user_id;
+        let model = filters.model;
         let conn = self
             .conn
             .lock()
@@ -581,6 +643,32 @@ impl AuditLogger {
             }
         }
 
+        let snapshot = match filters.snapshot {
+            Some(value) => value,
+            None => conn
+                .query_row("SELECT COALESCE(MAX(rowid), 0) FROM requests", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|e| AuditError::DatabaseError(e.to_string()))?,
+        };
+        where_clauses.push("r.rowid <= ?");
+        params_vec.push(Box::new(snapshot));
+        if let Some(origin) = filters.origin.filter(|value| !value.is_empty()) {
+            where_clauses.push("(instr(lower(COALESCE(r.source_app,'')), lower(?)) > 0 OR instr(lower(COALESCE(r.client_ip,'')), lower(?)) > 0 OR instr(lower(COALESCE(r.api_key_name,'')), lower(?)) > 0 OR instr(lower(COALESCE(r.user_agent,'')), lower(?)) > 0)");
+            for _ in 0..4 {
+                params_vec.push(Box::new(origin.to_owned()));
+            }
+        }
+        for (value, clause) in [
+            (filters.since, "julianday(r.timestamp) >= julianday(?)"),
+            (filters.until, "julianday(r.timestamp) <= julianday(?)"),
+        ] {
+            if let Some(value) = value {
+                where_clauses.push(clause);
+                params_vec.push(Box::new(value.to_owned()));
+            }
+        }
+
         let where_clause = if where_clauses.is_empty() {
             String::new()
         } else {
@@ -596,11 +684,11 @@ impl AuditLogger {
             let params_refs: Vec<&dyn rusqlite::ToSql> =
                 params_vec.iter().map(|p| p.as_ref()).collect();
             stmt.query_row(params_refs.as_slice(), |row| row.get(0))
-                .unwrap_or(0)
+                .map_err(|e| AuditError::DatabaseError(e.to_string()))?
         };
 
         let total_pages = ((total as u32) + per_page - 1) / per_page;
-        let offset = (page.saturating_sub(1)) * per_page;
+        let offset = u64::from(page.saturating_sub(1)) * u64::from(per_page);
 
         // Get requests with user email
         let query_sql = format!(
@@ -612,7 +700,7 @@ impl AuditLogger {
              LEFT JOIN users u ON u.id = r.user_id
              LEFT JOIN responses resp ON resp.request_id = r.id
              {}
-             ORDER BY r.timestamp DESC
+             ORDER BY r.timestamp DESC, r.rowid DESC
              LIMIT ? OFFSET ?",
             where_clause
         );
@@ -658,7 +746,7 @@ impl AuditLogger {
             requests.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
         }
 
-        Ok((requests, total_pages))
+        Ok((requests, total_pages, snapshot))
     }
 
     /// Enable a user.
@@ -1765,6 +1853,83 @@ mod tests {
             requests[0].source_app.as_deref(),
             Some("org.example.personal")
         );
+    }
+
+    #[test]
+    fn test_request_history_filters_snapshot_and_bodies() {
+        let logger = AuditLogger::new(":memory:").unwrap();
+        let user = logger.find_or_create_user("history-user", None).unwrap();
+        let mut request = Request::new(user.id, "/v1/chat/completions".into());
+        request.model = Some("history-model".into());
+        request.source_app = Some("Example-App".into());
+        request.request_body = r#"{"messages":[{"role":"user","content":"hello"}]}"#.into();
+        logger.log_request(&request).unwrap();
+        let filters = RequestFilters {
+            model: Some("history-model"),
+            origin: Some("example-app"),
+            since: Some("2000-01-01T00:00:00Z"),
+            until: Some("2100-01-01T00:00:00Z"),
+            ..Default::default()
+        };
+        let (rows, pages, snapshot) = logger.get_request_history(&filters, 1, 1).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(pages, 1);
+        let mut newer = request.clone();
+        newer.id = "newer".into();
+        logger.log_request(&newer).unwrap();
+        let (rows, pages, _) = logger
+            .get_request_history(
+                &RequestFilters {
+                    snapshot: Some(snapshot),
+                    ..filters
+                },
+                1,
+                1,
+            )
+            .unwrap();
+        assert_eq!(rows[0].id, request.id);
+        assert_eq!(pages, 1);
+        for filters in [
+            RequestFilters {
+                origin: Some("missing"),
+                ..Default::default()
+            },
+            RequestFilters {
+                until: Some("2000-01-01T00:00:00Z"),
+                ..Default::default()
+            },
+        ] {
+            assert!(logger
+                .get_request_history(&filters, 1, 10)
+                .unwrap()
+                .0
+                .is_empty());
+        }
+        let mut response = Response::new(request.id.clone(), 200);
+        response.response_body = "answer".into();
+        logger.log_response(&response).unwrap();
+        let bodies = logger.get_request_bodies(&request.id).unwrap().unwrap();
+        assert_eq!(
+            bodies.request_body.as_deref(),
+            Some(request.request_body.as_str())
+        );
+        assert_eq!(bodies.response_body.as_deref(), Some("answer"));
+        logger
+            .save_stream_body(&request.id, "data: streamed answer")
+            .unwrap();
+        assert_eq!(
+            logger
+                .get_request_bodies(&request.id)
+                .unwrap()
+                .unwrap()
+                .response_body
+                .as_deref(),
+            Some("data: streamed answer")
+        );
+        assert!(logger.get_request_bodies("missing").unwrap().is_none());
+        assert!(logger
+            .get_request_history(&RequestFilters::default(), 1, 0)
+            .is_ok());
     }
 
     #[test]
