@@ -1,0 +1,64 @@
+# Runner config for the RTX 3090 serving Qwen3.8 27B through the managed vLLM
+# stack in this directory, with a small llama.cpp model alongside it.
+# Copy to the host as config.toml and fill in the gateway token and paths.
+# The runner's unit tests parse this file, so keep it valid.
+
+[runner]
+id = "gpu-server-rtx"
+name = "RTX GPU Server"
+machine_type = "gpu-server"
+mac_address = "00:00:00:00:00:00"
+
+[api]
+host = "0.0.0.0"
+port = 8080
+
+[gateway]
+ws_url = "ws://gateway.lan:8081/ws/runners"
+auth_token = "replace-with-gateway-token"
+reconnect_delay_secs = 5
+heartbeat_interval_secs = 30
+
+# Every GPU-backed engine shares the one RTX 3090. The runner unloads a model
+# owned by another engine before it starts the requested one.
+[engine_resources]
+vllm = "cuda:0"
+llama_cpp = "cuda:0"
+
+[engines.vllm]
+enabled = true
+base_url = "http://127.0.0.1:18020"
+api_key_file = "/home/user/qwen38-serving/api_key.txt"
+compose_dir = "/home/user/qwen38-serving"
+startup_timeout_secs = 1200
+shutdown_timeout_secs = 60
+batch_size = 32
+
+# Long-context batch profile: 150k context served by the "batch" compose service.
+[engines.vllm.models.qwen38-base]
+served_model = "qwen3.8-27b"
+profile = "agent-long"
+env_file = "profiles/agent-long.env"
+compose_profile = "batch"
+compose_service = "batch"
+context_length = 150000
+quantization = "W4A16-AWQ"
+reasoning = { enabled = true, supported_efforts = ["none", "low", "medium", "xhigh"], default_effort = "medium", supports_thinking_budget = false }
+
+[engines.llama_cpp]
+enabled = true
+batch_size = 10
+model_dir = "/home/user/simple-ai-fast-models"
+server_binary = "/home/user/llama.cpp/build/bin/llama-server"
+gpu_layers = 99
+context_size = 32768
+max_servers = 1
+startup_timeout_secs = 300
+
+[engines.llama_cpp.models.gemma3-4b]
+parallel = 10
+
+[model_routes."qwen3.8-27b"]
+engine = "vllm"
+engine_model = "qwen38-base"
+aliases = ["qwen3.8-27b-uncensored", "qwen3.8-27b-vllm", "Qwen3.8-27B-Uncensored-Q4_K_M"]

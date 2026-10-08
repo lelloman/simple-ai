@@ -943,7 +943,7 @@ mod tests {
 
     #[test]
     fn rtx_deployment_config_deserializes() {
-        let source = include_str!("../../scripts/configs/rtx.toml");
+        let source = include_str!("../../deploy/qwen38-rtx3090/runner.example.toml");
         let loaded = ConfigLoader::builder()
             .add_source(File::from_str(source, FileFormat::Toml))
             .build()
