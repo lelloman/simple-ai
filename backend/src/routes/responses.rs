@@ -449,6 +449,7 @@ async fn create_response(
             .as_deref()
             .ok_or((StatusCode::BAD_REQUEST, "model is required".to_string()))?,
     );
+    crate::routes::pressure::note_class(model_request.effective_class(&state.config.models));
 
     if !can_request_model(&auth_user.roles, &model_request) {
         return Err((

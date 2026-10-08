@@ -226,6 +226,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         config.routing.clone(),
     ));
 
+    // Advisory pressure levels: failures come from logged responses, waits from
+    // the registry and router telemetry, sampled once per second.
+    let pressure = Arc::new(simple_ai_backend::gateway::PressureTracker::new(
+        config.pressure.clone(),
+        config.models.clone(),
+    ));
+    {
+        let pressure = pressure.clone();
+        audit_logger.set_response_observer(Box::new(move |response| {
+            pressure.record_response(response)
+        }));
+    }
+    pressure.spawn_sampler(
+        runner_registry.clone(),
+        router_telemetry.clone(),
+        audit_logger.clone(),
+    );
+
     let state = Arc::new(AppState {
         lan_local: Default::default(),
         config: config.clone(),
@@ -240,10 +258,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         wake_service,
         request_events: request_events_tx,
         request_cancellations: Arc::new(simple_ai_backend::RequestCancellationRegistry::new()),
-        router_telemetry,
+        router_telemetry: router_telemetry.clone(),
         batch_queue,
         batch_dispatcher,
         circuit_breaker,
+        pressure: pressure.clone(),
     });
 
     let cors = cors_policy();
@@ -277,7 +296,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .merge(simple_ai_backend::routes::models::router(state.clone()))
         .merge(simple_ai_backend::routes::ocr::router(state.clone()))
         .merge(simple_ai_backend::routes::responses::router(state.clone()))
-        .merge(simple_ai_backend::routes::speech::router(state.clone()));
+        .merge(simple_ai_backend::routes::speech::router(state.clone()))
+        .merge(simple_ai_backend::routes::pressure::router(pressure.clone()))
+        .layer(simple_server::web::middleware::from_fn_with_state(
+            pressure.clone(),
+            simple_ai_backend::routes::pressure::pressure_header_middleware,
+        ));
 
     let v1_routes = if config.gateway.rate_limit_rpm > 0 {
         let limiter = Arc::new(simple_ai_backend::rate_limit::RateLimiter::new(
@@ -340,6 +364,14 @@ fn cors_policy() -> simple_server::cors::CorsLayer {
         .allow_any_origin()
         .allow_any_method()
         .allow_any_header()
+        .expose_headers([
+            simple_server::web::http::HeaderName::from_static(
+                simple_ai_backend::routes::pressure::PRESSURE_HEADER,
+            ),
+            simple_server::web::http::HeaderName::from_static(
+                simple_ai_backend::routes::pressure::PRESSURE_GROUP_HEADER,
+            ),
+        ])
         .build()
         .expect("static wildcard CORS policy without credentials")
 }
@@ -401,9 +433,11 @@ mod cors_tests {
                         .headers()
                         .contains_key("access-control-expose-headers"));
                 } else {
-                    assert!(!response
-                        .headers()
-                        .contains_key("access-control-expose-headers"));
+                    // Browser clients may read the advisory pressure headers.
+                    assert_eq!(
+                        response.headers()["access-control-expose-headers"],
+                        "x-simpleai-pressure,x-simpleai-pressure-group"
+                    );
                 }
                 assert_eq!(
                     to_bytes(response.into_body(), usize::MAX)

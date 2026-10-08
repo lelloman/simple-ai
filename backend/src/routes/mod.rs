@@ -11,6 +11,7 @@ pub mod health;
 pub mod language;
 pub mod models;
 pub mod ocr;
+pub mod pressure;
 pub mod responses;
 pub mod speech;
 

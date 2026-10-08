@@ -51,6 +51,7 @@ async fn create_test_state(
         models: simple_ai_backend::config::ModelsConfig::default(),
         routing: simple_ai_backend::config::RoutingConfig::default(),
         trusted_proxies: vec![],
+        pressure: Default::default(),
     };
 
     let mock_server = MockServer::start().await;
@@ -142,6 +143,10 @@ async fn create_test_state(
         batch_queue: None,
         batch_dispatcher: None,
         circuit_breaker: std::sync::Arc::new(simple_ai_backend::CircuitBreaker::new(0, 30)),
+        pressure: std::sync::Arc::new(simple_ai_backend::gateway::PressureTracker::new(
+            Default::default(),
+            Default::default(),
+        )),
     }))
 }
 

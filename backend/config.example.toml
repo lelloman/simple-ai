@@ -144,3 +144,24 @@ big = ["halo"]                  # Only halos can run big models
 audio_embeddings = ["gpu-server"]
 tts = ["gpu-server"]
 text_classification = ["gpu-server"]
+
+[pressure]
+# Advisory load levels for clients (X-SimpleAI-Pressure header, GET /v1/pressure).
+# Green: nothing waits. Orange: requests wait longer than grace_ms for a host
+# (beyond loaded slots, or for a model load or wake). Red: waiting exceeds
+# red_after_secs, or the host failed requests (status >= 500) within
+# failure_window_secs. Levels drop one step per cooldown_secs of calm.
+grace_ms = 1000
+red_after_secs = 10
+failure_window_secs = 120
+cooldown_secs = 30
+
+# Client-facing feature groups (model class names). A group's level is the best
+# level among the host lanes that can serve it.
+[pressure.groups]
+fast = ["fast"]
+big = ["big"]
+embeddings = ["embed_small", "embed_large", "audio_embeddings"]
+tts = ["tts"]
+decisions = ["semantic_decisions", "text_classification"]
+extraction = ["information_extraction"]

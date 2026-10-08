@@ -236,3 +236,27 @@ It serves the real `admin.html` with a fake login token and a fake `/admin/ws`
 feed (router events, queue changes, new requests every few seconds), plus in-memory
 mocks for the admin and `/v1` APIs the dashboard calls. The page reloads itself when
 `admin.html` changes. Mock state resets when the server restarts.
+
+### Pressure
+
+Pressure is an advisory green / orange / red level that polite clients can use to
+defer work. Nothing is ever rejected because of it.
+
+- **Lanes:** each host is split into lanes. Engines sharing a `resource_group` (one
+  GPU) form one lane, because they take turns on that device; every other engine is
+  its own lane.
+- **Levels:** a lane is green when nothing waits, orange when requests wait longer
+  than `grace_ms` (beyond the loaded model's slots, or for a model load or wake), and
+  red when waiting exceeds `red_after_secs` or the lane recently failed requests
+  (status 500 and above). Levels rise immediately and fall one step per
+  `cooldown_secs`.
+- **Hosts and groups:** a host's level is its worst lane. A feature group's level is
+  the best lane able to serve it, since the router uses whichever host has room.
+  Groups are configured under `[pressure.groups]`.
+
+Every `/v1` response carries `X-SimpleAI-Pressure` (the level of the request's
+feature group, or the worst host when the endpoint has no group) and
+`X-SimpleAI-Pressure-Group`. Both are exposed to browser clients via CORS.
+`GET /v1/pressure` returns the server level and each group's `level`, `available`,
+`cold` (every serving host asleep) and advisory `retry_after_secs`. The admin
+dashboard shows per-host levels and receives changes over its WebSocket.

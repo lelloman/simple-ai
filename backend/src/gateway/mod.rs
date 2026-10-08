@@ -12,6 +12,7 @@ pub mod affinity;
 pub mod batch_dispatcher;
 pub mod batch_queue;
 pub mod model_class;
+pub mod pressure;
 mod registry;
 pub mod router;
 pub mod scheduler;
@@ -31,6 +32,7 @@ pub use router::{
     AffinityDecision, InferenceRouter, ReservedRoute, RoutePlan, RoutedResponse, RoutedStream,
     RouterError,
 };
+pub use pressure::{PressureLevel, PressureSnapshot, PressureTracker};
 pub use scheduler::{RequestScheduler, ScheduledResponse, SchedulerError};
 pub use telemetry::{RouterAffinityState, RouterEventRecord, RouterStateSnapshot, RouterTelemetry};
 pub use ws::{ws_handler, WsState};

@@ -283,13 +283,13 @@ impl InferenceRouter {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
 
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
 
         let response = self
             .proxy_request_value(&selection.runner, "/v1/embeddings", request_value)
             .await;
 
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
 
         if let Some(cb) = &self.circuit_breaker {
             if response.is_ok() {
@@ -325,11 +325,11 @@ impl InferenceRouter {
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_value(&selection.runner, "/v1/classifications", request_value)
             .await;
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
         if let Some(breaker) = &self.circuit_breaker {
             if response.is_ok() {
                 breaker.record_success(&runner_id);
@@ -363,11 +363,11 @@ impl InferenceRouter {
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_value(&selection.runner, "/v1/extractions", request_value)
             .await;
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
         if let Some(breaker) = &self.circuit_breaker {
             if response.is_ok() {
                 breaker.record_success(&runner_id);
@@ -397,11 +397,11 @@ impl InferenceRouter {
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_value(&selection.runner, "/v1/decisions", request_value)
             .await;
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
         if let Some(breaker) = &self.circuit_breaker {
             if response.is_ok() {
                 breaker.record_success(&runner_id);
@@ -435,9 +435,9 @@ impl InferenceRouter {
             )
             .text("options", options_json);
 
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&runner, "ocr");
         let response = self.proxy_multipart(&runner, "/v1/ocr", form).await;
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
 
         if let Some(cb) = &self.circuit_breaker {
             if response.is_ok() {
@@ -475,11 +475,11 @@ impl InferenceRouter {
             )
             .text("options", options_json);
 
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_multipart(&selection.runner, "/v1/audio/embeddings", form)
             .await;
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
 
         if let Some(cb) = &self.circuit_breaker {
             if response.is_ok() {
@@ -514,11 +514,11 @@ impl InferenceRouter {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
 
-        self.registry.increment_requests(&runner_id).await;
+        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_raw_value(&selection.runner, "/v1/audio/speech", request_value)
             .await;
-        self.registry.decrement_requests(&runner_id).await;
+        drop(reservation);
 
         if let Some(cb) = &self.circuit_breaker {
             if response.is_ok() {
@@ -937,7 +937,7 @@ impl InferenceRouter {
                 AffinityDecision::Disabled | AffinityDecision::Unkeyed => {}
             }
         }
-        let reservation = self.registry.reserve(&current);
+        let reservation = self.registry.reserve(&current, &plan.resolved_model);
         if plan.affinity.is_some() && plan.affinity_decision != AffinityDecision::Unkeyed {
             self.affinity_store
                 .metrics()

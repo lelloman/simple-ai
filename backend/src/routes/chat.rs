@@ -272,6 +272,7 @@ async fn chat_completions(
             }
         }
     };
+    crate::routes::pressure::note_class(model_request.effective_class(&state.config.models));
 
     // Check permissions
     if !can_request_model(&auth_user.roles, &model_request) {
@@ -743,7 +744,7 @@ mod tests {
             };
             let body = filter_gateway_stream(RoutedStream {
                 response, runner_id: "test".into(), resolved_model: "model".into(),
-                reservation: state.runner_registry.reserve(&runner),
+                reservation: state.runner_registry.reserve(&runner, "model"),
             }, context);
             let mut release = Some(release);
             if drop_body {

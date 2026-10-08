@@ -182,6 +182,33 @@ const routerState = {
 };
 const batchQueue = { enabled: true, timeout_ms: 50, saturation_timeout_ms: 500, min_batch_size: 2, queues: { 'qwen3-coder-30b': { pending: 2, oldest_age_ms: 340 }, 'halogen-70b': { pending: 1, oldest_age_ms: 1200 } } };
 
+// Pressure: hosts random-walk a waiting count; groups take their best serving host.
+const PRESSURE_GROUPS = {
+    fast: ['rtx3090-box'], big: ['halo-strix'], embeddings: ['rtx3090-box', 'mini-cpu'],
+    tts: ['rtx3090-box'], decisions: ['halo-strix', 'rtx3090-box'], extraction: ['halo-strix', 'mini-cpu'],
+};
+const hostWaiting = { 'rtx3090-box': 0, 'halo-strix': 2, 'mini-cpu': 0 };
+const ORDER = ['green', 'orange', 'red'];
+function pressure() {
+    const hosts = RUNNERS.map((r, i) => {
+        const waiting = hostWaiting[r.id];
+        const level = waiting === 0 ? 'green' : waiting < 3 ? 'orange' : 'red';
+        const reason = waiting ? `${waiting} waiting for ${waiting * 4}s` : '';
+        return { runner_id: r.id, name: r.name, online: i !== 2, level, reason, lanes: [] };
+    });
+    const groups = Object.fromEntries(Object.entries(PRESSURE_GROUPS).map(([name, ids]) => {
+        const serving = hosts.filter(h => ids.includes(h.runner_id));
+        const best = serving.reduce((a, b) => ORDER.indexOf(b.level) < ORDER.indexOf(a.level) ? b : a);
+        return [name, {
+            level: best.level, available: true, cold: serving.every(h => !h.online), hosts: ids,
+            reason: best.reason ? `${best.name}: ${best.reason}` : '',
+            ...(best.level !== 'green' ? { retry_after_secs: best.level === 'orange' ? 15 : 60 } : {}),
+        }];
+    }));
+    const level = hosts.map(h => h.level).reduce((a, b) => ORDER.indexOf(b) > ORDER.indexOf(a) ? b : a, 'green');
+    return { level, updated_at: iso(Date.now()), groups, hosts };
+}
+
 function snapshot() {
     const runners = RUNNERS.map((r, i) => ({
         id: r.id, name: r.name, machine_type: r.machine_type, health: i === 2 ? 'offline' : 'healthy',
@@ -198,7 +225,7 @@ function snapshot() {
     const tp = done.reduce((a, e) => a + (e.summary.tokens_prompt || 0), 0);
     const tc = done.reduce((a, e) => a + (e.summary.tokens_completion || 0), 0);
     return {
-        type: 'state_snapshot', runners, models, batch_queue: batchQueue, router_state: routerState,
+        type: 'state_snapshot', runners, models, batch_queue: batchQueue, router_state: routerState, pressure: pressure(),
         stats: { total_users: USERS.length, total_requests: history.length, requests_24h: history.filter(e => Date.parse(e.summary.timestamp) > Date.now() - 86400e3).length, total_tokens: tp + tc, tokens_prompt: tp, tokens_completion: tc },
     };
 }
@@ -248,6 +275,11 @@ function tick() {
         q.oldest_age_ms = q.pending ? int(50, 2500) : null;
     }
     out.push({ type: 'batch_queue_updated', batch_queue: batchQueue });
+    if (rand() < 0.4) {
+        const id = pick(['rtx3090-box', 'halo-strix']);
+        hostWaiting[id] = Math.max(0, Math.min(4, hostWaiting[id] + int(-1, 1)));
+        out.push({ type: 'pressure_updated', pressure: pressure() });
+    }
     if (rand() < 0.5) {
         const r = pick(routerState.runners);
         if (r.is_online) r.active_requests = Math.max(0, r.active_requests + int(-1, 2));
@@ -376,6 +408,10 @@ async function route(req, res, url) {
     if (p === '/admin/api/users') {
         const users = USERS.map((u, i) => ({ id: u.id, email: u.email, created_at: iso(now - 86400e3 * (60 - i)), last_seen_at: iso(now - 3600e3 * i), is_enabled: i !== 3, request_count: history.filter(e => e.summary.user_id === u.id).length }));
         return json(res, { users, total: users.length });
+    }
+    if (p === '/v1/pressure') {
+        const { level, updated_at, groups } = pressure();
+        return json(res, { level, updated_at, groups: Object.fromEntries(Object.entries(groups).map(([k, g]) => [k, { level: g.level, available: g.available, cold: g.cold, ...(g.retry_after_secs ? { retry_after_secs: g.retry_after_secs } : {}) }])) });
     }
     if (p === '/admin/api/summary') return json(res, summary(Math.min(720, Math.max(1, Number(url.searchParams.get('hours')) || 24))));
     if (p === '/admin/api/requests' && m === 'GET') return json(res, listRequests(url.searchParams));

@@ -888,6 +888,11 @@ enum AdminServerMessage {
         stats: DashboardStatsInfo,
         batch_queue: BatchQueueInfo,
         router_state: RouterStateSnapshot,
+        pressure: crate::gateway::PressureSnapshot,
+    },
+    /// Pressure levels changed for a host or feature group.
+    PressureUpdated {
+        pressure: crate::gateway::PressureSnapshot,
     },
     /// A runner connected.
     RunnerConnected {
@@ -1076,6 +1081,8 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
     let stats = get_stats_snapshot(&state);
     let batch_queue = get_batch_queue_snapshot(&state).await;
     let router_state = get_router_state_snapshot(&state).await;
+    let mut pressure_rx = state.pressure.subscribe();
+    let pressure = pressure_rx.borrow_and_update().clone();
     if send_admin_message(
         &mut ws_tx,
         &AdminServerMessage::StateSnapshot {
@@ -1084,6 +1091,7 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
             stats,
             batch_queue,
             router_state,
+            pressure,
         },
     )
     .await
@@ -1246,6 +1254,13 @@ async fn handle_admin_ws(socket: WebSocket, state: Arc<AppState>) {
             // Send ping for keep-alive
             _ = ping_interval.tick() => {
                 if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
+                    break;
+                }
+            }
+
+            Ok(()) = pressure_rx.changed() => {
+                let pressure = pressure_rx.borrow_and_update().clone();
+                if send_admin_message(&mut ws_tx, &AdminServerMessage::PressureUpdated { pressure }).await.is_err() {
                     break;
                 }
             }

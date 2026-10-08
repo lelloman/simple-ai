@@ -3,7 +3,7 @@ mod sqlite;
 
 pub use sqlite::{
     ActivitySummary, ApiKey, AuditError, AuditLogger, DashboardStats, ModelContextMetricRow, RequestBodies,
-    RequestFilters, RequestSummary, RequestWithResponse, RunnerMetricRow, RunnerRecord,
+    RequestFilters, RequestSummary, RequestWithResponse, ResponseObserver, RunnerMetricRow, RunnerRecord,
     UsageRow, UserWithStats, ValidatedApiKey,
 };
 

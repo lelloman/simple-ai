@@ -8,8 +8,12 @@ use crate::models::user::User;
 use simple_ai_common::InferenceMetrics;
 
 /// SQLite-based audit logger with user management.
+/// Called after every response is persisted, e.g. to track runner failures.
+pub type ResponseObserver = Box<dyn Fn(&Response) + Send + Sync>;
+
 pub struct AuditLogger {
     conn: Mutex<Connection>,
+    response_observer: std::sync::OnceLock<ResponseObserver>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -151,6 +155,7 @@ impl AuditLogger {
 
         Ok(Self {
             conn: Mutex::new(conn),
+            response_observer: std::sync::OnceLock::new(),
         })
     }
 
@@ -263,7 +268,15 @@ impl AuditLogger {
     }
 
     /// Log a response (after getting LLM result).
+    /// Install the response observer. Only the first call takes effect.
+    pub fn set_response_observer(&self, observer: ResponseObserver) {
+        let _ = self.response_observer.set(observer);
+    }
+
     pub fn log_response(&self, response: &Response) -> Result<(), AuditError> {
+        if let Some(observer) = self.response_observer.get() {
+            observer(response);
+        }
         let conn = self
             .conn
             .lock()

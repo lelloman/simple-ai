@@ -90,4 +90,6 @@ pub struct AppState {
     pub batch_dispatcher: Option<Arc<BatchDispatcher>>,
     /// Circuit breaker for failing backends.
     pub circuit_breaker: Arc<CircuitBreaker>,
+    /// Advisory load levels per host and feature group.
+    pub pressure: Arc<gateway::PressureTracker>,
 }

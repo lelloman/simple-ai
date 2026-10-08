@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio::sync::{broadcast, RwLock};
 
@@ -128,6 +128,31 @@ impl RouterTelemetry {
                 updated_at: Utc::now().to_rfc3339(),
             },
         );
+    }
+
+    /// Transient scheduler states ("waking", "loading") by runner id, with the
+    /// target model and when the state was entered.
+    pub async fn transient_runner_states(
+        &self,
+    ) -> HashMap<String, (String, Option<String>, DateTime<Utc>)> {
+        self.runner_states
+            .read()
+            .await
+            .iter()
+            .map(|(id, state)| {
+                let since = DateTime::parse_from_rfc3339(&state.updated_at)
+                    .map(|time| time.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
+                (
+                    id.clone(),
+                    (
+                        state.scheduler_state.clone(),
+                        state.target_model.clone(),
+                        since,
+                    ),
+                )
+            })
+            .collect()
     }
 
     pub async fn clear_runner_state(&self, runner_id: &str) {

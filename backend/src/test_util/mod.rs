@@ -51,6 +51,7 @@ pub fn test_config() -> Config {
         models: ModelsConfig::default(),
         routing: RoutingConfig::default(),
         trusted_proxies: vec![],
+        pressure: Default::default(),
     }
 }
 
@@ -110,6 +111,10 @@ pub async fn create_test_state_with_config(config: Config) -> AppState {
         batch_queue: None,
         batch_dispatcher: None,
         circuit_breaker: std::sync::Arc::new(crate::CircuitBreaker::new(0, 30)),
+        pressure: std::sync::Arc::new(crate::gateway::PressureTracker::new(
+            Default::default(),
+            Default::default(),
+        )),
     }
 }
 

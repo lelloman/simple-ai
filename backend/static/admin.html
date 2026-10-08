@@ -102,7 +102,8 @@
                 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                     <div class="flex items-center justify-between">
                         <h1 id="page-title" class="text-3xl font-bold tracking-tight text-gray-900">Dashboard</h1>
-                        <div id="refresh-indicator" class="text-xs text-gray-400">
+                        <div id="refresh-indicator" class="flex items-center text-xs text-gray-400">
+                            <span id="pressure-pill" class="mr-3 hidden items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"></span>
                             <span id="last-updated"></span>
                             <span id="auto-refresh-badge" class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Auto-refresh</span>
                         </div>
@@ -144,6 +145,14 @@
                                 <dd id="stat-runners" class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">-</dd>
                             </div>
                         </div>
+
+                        <section class="mt-6 rounded-lg bg-white shadow" aria-labelledby="dashboard-pressure-title">
+                            <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                                <h3 id="dashboard-pressure-title" class="text-sm font-medium text-gray-900">Pressure by feature</h3>
+                                <span class="text-xs text-gray-500">What clients see in <code>X-SimpleAI-Pressure</code></span>
+                            </div>
+                            <ul id="dashboard-pressure-groups" class="grid grid-cols-2 gap-px bg-gray-100 sm:grid-cols-3 lg:grid-cols-6"></ul>
+                        </section>
 
                         <div class="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
                             <section class="overflow-hidden rounded-lg bg-white shadow" aria-labelledby="dashboard-fleet-title">
@@ -578,6 +587,7 @@
         let statsState = { total_users: 0, total_requests: 0, requests_24h: 0, total_tokens: 0, tokens_prompt: 0, tokens_completion: 0 };
         let batchQueueState = { enabled: false, timeout_ms: 0, min_batch_size: 0, queues: {} };
         let routerState = { runners: [], queues: {}, recent_events: [], affinity: null };
+        let pressureState = null;
         let modelSpeedsState = [];
         let modelSpeedsLoading = false;
         let modelSpeedsLoaded = false;
@@ -1192,6 +1202,8 @@
                         statsState = msg.stats;
                         batchQueueState = msg.batch_queue;
                         routerState = msg.router_state || routerState;
+                        pressureState = msg.pressure || null;
+                        renderPressurePill();
                         renderCurrentPage();
                         break;
 
@@ -1235,6 +1247,15 @@
                         routerState = msg.router_state;
                         renderRouterIfVisible();
                         renderRequestsRouterEventsIfVisible();
+                        break;
+
+                    case 'pressure_updated':
+                        pressureState = msg.pressure;
+                        renderPressurePill();
+                        if (currentPage === 'dashboard') {
+                            renderDashboardPressure();
+                            renderDashboardFleet();
+                        }
                         break;
 
                     case 'router_event':
@@ -1743,6 +1764,7 @@
         // Render dashboard stats from local state
         function renderDashboard() {
             renderDashboardStats();
+            renderDashboardPressure();
             renderDashboardFleet();
             renderDashboardProblems();
             renderDashboardUsage();
@@ -1782,9 +1804,63 @@
                             <p class="truncate text-xs text-gray-500" title="${escapeAttr(detail)}">${escapeHtml(detail)}</p>
                         </div>
                         ${runner.active_requests ? `<span class="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">${runner.active_requests} active</span>` : ''}
+                        ${renderHostPressureBadge(runner.runner_id)}
                         ${renderFleetWakeButton(runner)}
                     </li>`;
             }).join('');
+        }
+
+        const PRESSURE_STYLES = {
+            green: {dot: 'bg-green-500', pill: 'bg-green-100 text-green-800', label: 'Green'},
+            orange: {dot: 'bg-orange-500', pill: 'bg-orange-100 text-orange-800', label: 'Orange'},
+            red: {dot: 'bg-red-500', pill: 'bg-red-100 text-red-800', label: 'Red'},
+        };
+
+        // Server-wide level (worst host), shown on every page.
+        function renderPressurePill() {
+            const pill = document.getElementById('pressure-pill');
+            if (!pill) return;
+            if (!pressureState) {
+                pill.classList.add('hidden');
+                pill.classList.remove('inline-flex');
+                return;
+            }
+            const style = PRESSURE_STYLES[pressureState.level] || PRESSURE_STYLES.green;
+            const worst = (pressureState.hosts || []).find(host => host.level === pressureState.level && host.reason);
+            pill.className = `mr-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${style.pill}`;
+            pill.title = worst ? `${worst.name}: ${worst.reason}` : 'No requests are waiting';
+            pill.innerHTML = `<span class="h-2 w-2 rounded-full ${style.dot}" aria-hidden="true"></span>Pressure: ${style.label}`;
+        }
+
+        function renderDashboardPressure() {
+            const ul = document.getElementById('dashboard-pressure-groups');
+            if (!ul) return;
+            const groups = Object.entries(pressureState?.groups || {});
+            if (!groups.length) {
+                ul.innerHTML = '<li class="col-span-full bg-white px-4 py-6 text-center text-sm text-gray-500">No pressure data yet</li>';
+                return;
+            }
+            ul.innerHTML = groups.map(([name, group]) => {
+                const style = PRESSURE_STYLES[group.level] || PRESSURE_STYLES.green;
+                const note = !group.available ? 'no runner serves this'
+                    : group.reason || (group.cold ? 'asleep — first request wakes a host' : 'requests start immediately');
+                return `
+                    <li class="bg-white px-4 py-3 ${group.available ? '' : 'opacity-60'}" title="${escapeAttr(note)}">
+                        <div class="flex items-center gap-2">
+                            <span class="h-2.5 w-2.5 shrink-0 rounded-full ${group.available ? style.dot : 'bg-gray-300'}" aria-hidden="true"></span>
+                            <span class="text-sm font-medium text-gray-900">${escapeHtml(name)}</span>
+                            ${group.cold && group.available ? '<span class="rounded bg-gray-100 px-1.5 text-[11px] text-gray-500">cold</span>' : ''}
+                        </div>
+                        <p class="mt-1 truncate text-xs text-gray-500">${escapeHtml(group.available ? style.label + (group.reason ? ' · ' + group.reason : '') : 'Unavailable')}</p>
+                    </li>`;
+            }).join('');
+        }
+
+        function renderHostPressureBadge(runnerId) {
+            const host = (pressureState?.hosts || []).find(h => h.runner_id === runnerId);
+            if (!host || host.level === 'green') return '';
+            const style = PRESSURE_STYLES[host.level];
+            return `<span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${style.pill}" title="${escapeAttr(host.reason)}">${style.label}</span>`;
         }
 
         // Wake-on-LAN for offline runners that registered a MAC address.

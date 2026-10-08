@@ -69,6 +69,8 @@ pub struct ConnectedRunner {
     pub model_aliases: HashMap<String, String>,
     /// Number of active requests currently being processed by this runner.
     pub active_requests: Arc<AtomicUsize>,
+    /// Active requests per local model name (lowercase), for pressure tracking.
+    pub model_requests: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     /// Unique incarnation of this runner connection.
     pub generation: u64,
 }
@@ -78,10 +80,24 @@ pub struct ConnectedRunner {
 pub struct CapacityReservation {
     runner_id: String,
     active_requests: Arc<AtomicUsize>,
+    model: String,
+    model_requests: Arc<std::sync::Mutex<HashMap<String, usize>>>,
 }
 
 impl Drop for CapacityReservation {
     fn drop(&mut self) {
+        {
+            let mut models = self
+                .model_requests
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(count) = models.get_mut(&self.model) {
+                *count -= 1;
+                if *count == 0 {
+                    models.remove(&self.model);
+                }
+            }
+        }
         if self
             .active_requests
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
@@ -150,6 +166,19 @@ impl ConnectedRunner {
                 .collect();
         }
         matching.into_iter().min().unwrap_or(1)
+    }
+
+    /// Key under which requests for `model` are counted in `model_requests`.
+    pub fn model_request_key(&self, model: &str) -> String {
+        self.resolve_model_alias(model).to_lowercase()
+    }
+
+    /// Snapshot of active requests per local model name.
+    pub fn active_requests_by_model(&self) -> HashMap<String, usize> {
+        self.model_requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     /// Get list of loaded models across all engines.
@@ -335,6 +364,7 @@ impl RunnerRegistry {
             mac_address,
             model_aliases,
             active_requests: Arc::new(AtomicUsize::new(0)),
+            model_requests: Default::default(),
             generation,
         };
         self.runners.write().await.insert(id.clone(), runner);
@@ -419,8 +449,16 @@ impl RunnerRegistry {
         self.runners.read().await.get(id).cloned()
     }
 
-    /// Reserve one active-request slot on an already validated runner instance.
-    pub fn reserve(&self, runner: &ConnectedRunner) -> CapacityReservation {
+    /// Reserve one active-request slot for `model` on an already validated runner instance.
+    /// The slot is released when the reservation is dropped.
+    pub fn reserve(&self, runner: &ConnectedRunner, model: &str) -> CapacityReservation {
+        let model = runner.model_request_key(model);
+        *runner
+            .model_requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entry(model.clone())
+            .or_default() += 1;
         let previous = runner.active_requests.fetch_add(1, Ordering::SeqCst);
         tracing::debug!(
             "Runner {} active requests: {} -> {}",
@@ -431,6 +469,8 @@ impl RunnerRegistry {
         CapacityReservation {
             runner_id: runner.id.clone(),
             active_requests: runner.active_requests.clone(),
+            model,
+            model_requests: runner.model_requests.clone(),
         }
     }
 
@@ -985,6 +1025,7 @@ mod tests {
             mac_address: None,
             model_aliases: aliases,
             active_requests: Arc::new(AtomicUsize::new(0)),
+            model_requests: Default::default(),
         };
 
         assert_eq!(runner.resolve_model_alias("canonical-model"), "local-model");
@@ -1005,6 +1046,7 @@ mod tests {
             mac_address: None,
             model_aliases: std::collections::HashMap::new(),
             active_requests: Arc::new(AtomicUsize::new(0)),
+            model_requests: Default::default(),
         };
 
         // Should return original name when no alias exists
@@ -1026,6 +1068,7 @@ mod tests {
             mac_address: None,
             model_aliases: std::collections::HashMap::new(),
             active_requests: Arc::new(AtomicUsize::new(0)),
+            model_requests: Default::default(),
         };
 
         assert!(runner.has_model_or_alias("model-a"));
@@ -1050,6 +1093,7 @@ mod tests {
             mac_address: None,
             model_aliases: aliases,
             active_requests: Arc::new(AtomicUsize::new(0)),
+            model_requests: Default::default(),
         };
 
         // Should find via alias

@@ -36,6 +36,73 @@ pub struct Config {
     /// Proxy addresses allowed to supply request-origin metadata.
     #[serde(default)]
     pub trusted_proxies: Vec<ipnet::IpNet>,
+    /// Advisory load levels reported to clients and the dashboard.
+    #[serde(default)]
+    pub pressure: PressureConfig,
+}
+
+/// Pressure: green when nothing waits, orange when requests wait for a host,
+/// red when waiting is prolonged or a host recently failed requests.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PressureConfig {
+    /// Waiting shorter than this is normal dispatch, not pressure.
+    #[serde(default = "default_pressure_grace_ms")]
+    pub grace_ms: u64,
+    /// Waiting this long turns a host red.
+    #[serde(default = "default_pressure_red_after_secs")]
+    pub red_after_secs: u64,
+    /// A failed request keeps its host red for this long.
+    #[serde(default = "default_pressure_failure_window_secs")]
+    pub failure_window_secs: u64,
+    /// Calm time required before a level drops by one step.
+    #[serde(default = "default_pressure_cooldown_secs")]
+    pub cooldown_secs: u64,
+    /// Client-facing feature groups, each a list of model class names.
+    #[serde(default = "default_pressure_groups")]
+    pub groups: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+impl Default for PressureConfig {
+    fn default() -> Self {
+        Self {
+            grace_ms: default_pressure_grace_ms(),
+            red_after_secs: default_pressure_red_after_secs(),
+            failure_window_secs: default_pressure_failure_window_secs(),
+            cooldown_secs: default_pressure_cooldown_secs(),
+            groups: default_pressure_groups(),
+        }
+    }
+}
+
+fn default_pressure_grace_ms() -> u64 {
+    1000
+}
+fn default_pressure_red_after_secs() -> u64 {
+    10
+}
+fn default_pressure_failure_window_secs() -> u64 {
+    120
+}
+fn default_pressure_cooldown_secs() -> u64 {
+    30
+}
+fn default_pressure_groups() -> std::collections::BTreeMap<String, Vec<String>> {
+    [
+        ("fast", &["fast"][..]),
+        ("big", &["big"]),
+        ("embeddings", &["embed_small", "embed_large", "audio_embeddings"]),
+        ("tts", &["tts"]),
+        ("decisions", &["semantic_decisions", "text_classification"]),
+        ("extraction", &["information_extraction"]),
+    ]
+    .into_iter()
+    .map(|(group, classes)| {
+        (
+            group.to_string(),
+            classes.iter().map(|class| class.to_string()).collect(),
+        )
+    })
+    .collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -227,6 +294,22 @@ impl Default for ModelsConfig {
 }
 
 impl ModelsConfig {
+    /// Configured model IDs for a class name, or an empty slice for unknown classes.
+    pub fn models_for_class(&self, class: &str) -> &[String] {
+        match class {
+            "big" => &self.big,
+            "fast" => &self.fast,
+            "embed_small" => &self.embed_small,
+            "embed_large" => &self.embed_large,
+            "audio_embeddings" => &self.audio_embeddings,
+            "tts" => &self.tts,
+            "text_classification" => &self.text_classification,
+            "information_extraction" => &self.information_extraction,
+            "semantic_decisions" => &self.semantic_decisions,
+            _ => &[],
+        }
+    }
+
     /// Classify a model ID into a class name.
     ///
     /// Returns Some("big") if in the `big` list, Some("fast") if in the `fast` list,
