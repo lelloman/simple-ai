@@ -200,12 +200,15 @@ to disable, send `{"enabled":false}`. Status includes `enabled`, `network`,
 
 ### Request history
 
-The dashboard's **Requests** page shows persisted audit history. Live traffic marks
+The dashboard's **Requests** page shows router activity and the request queue in a
+left column and persisted audit history in a right column. Live traffic marks
 updates as available without changing the rows you are reading. **Refresh** starts
 a new history snapshot; Previous/Next retain that snapshot and the applied filters.
 Filter by model, origin (source app, client IP, API key name, or user agent), and a
-local-time date range. **Inspect** loads the recorded prompt/request and response
-bodies for a request.
+local-time date range. **Peek** expands a row inline with the recorded prompt
+messages and response text (streamed output is reassembled from its deltas, reasoning
+and system prompts are collapsed); the raw request and response bodies are available
+underneath.
 
 The admin-only API supports `GET /admin/api/requests` with `model`, `origin`,
 `since`, `until`, `page`, `per_page`, and `snapshot`. Time bounds are inclusive

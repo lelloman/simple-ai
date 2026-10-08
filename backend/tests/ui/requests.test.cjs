@@ -12,7 +12,7 @@ function dashboard() {
     const calls = [];
     const context = vm.createContext({ URLSearchParams, document: {getElementById: element},
         apiFetch: url => new Promise((resolve, reject) => calls.push({url, resolve, reject})),
-        escapeHtml: String, escapeAttr: String,
+        escapeHtml: s => s ? String(s).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c])) : '', escapeAttr: String,
     });
     vm.runInContext(html.slice(html.indexOf('        let requestsPage = 1;'), html.indexOf('        // ========== User Detail')), context);
     return {context, element, calls};
@@ -46,17 +46,57 @@ test('Pagination preserves snapshot and filters; stale responses cannot replace 
     await first;
     assert.equal(element('request-load-status').textContent, 'History loaded');
 });
-test('Inspector renders payloads as text and ignores a previous selection', async () => {
-    const {context, element, calls} = dashboard();
-    const first = context.inspectRequest('first');
-    const second = context.inspectRequest('second');
-    calls[1].resolve({request_body: '<script>bad()</script>', response_body: '{"answer":"hello"}'});
+function row(id) {
+    const panels = [];
+    const li = {dataset: {requestId: id}, querySelector: () => panels[0] || null, appendChild: p => panels.push(p)};
+    const button = {textContent: 'Peek', closest: () => li};
+    return {button, panels};
+}
+test('Peek escapes payloads and ignores a superseded load', async () => {
+    const {context, calls} = dashboard();
+    context.document.createElement = () => ({className: '', dataset: {}, innerHTML: '', classList: {
+        hidden: false, add() {this.hidden = true;}, remove() {this.hidden = false;}, contains() {return this.hidden;},
+    }});
+    const {button, panels} = row('first');
+    const first = context.peekRequest(button);
+    await context.peekRequest(button); // hide
+    const second = context.peekRequest(button); // reopen
+    assert.equal(calls.length, 2);
+    calls[1].resolve({request_body: JSON.stringify({messages: [{role: 'user', content: '<script>bad()</script>'}]}), response_body: '{"choices":[{"message":{"content":"hello"}}]}'});
     await second;
     calls[0].resolve({request_body: 'old', response_body: 'old'});
     await first;
-    assert.equal(element('request-body').textContent, '<script>bad()</script>');
-    assert.match(element('response-body').textContent, /hello/);
-    assert.equal(element('request-body').innerHTML, '');
+    assert.match(panels[0].innerHTML, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+    assert.doesNotMatch(panels[0].innerHTML, /<script>/);
+    assert.match(panels[0].innerHTML, /hello/);
+    assert.doesNotMatch(panels[0].innerHTML, />old</);
+});
+test('Prompt extraction handles chat, multimodal and Responses inputs', () => {
+    const {context} = dashboard();
+    const chat = context.promptMessages(JSON.stringify({messages: [
+        {role: 'system', content: 'be nice'},
+        {role: 'user', content: [{type: 'text', text: 'look'}, {type: 'image_url', image_url: {url: 'x'}}]},
+    ]}));
+    assert.deepEqual(JSON.parse(JSON.stringify(chat.map(m => [m.role, m.text]))), [['system', 'be nice'], ['user', 'look\n[image_url]']]);
+    const responses = context.promptMessages(JSON.stringify({instructions: 'sys', input: 'hi'}));
+    assert.deepEqual([...responses.map(m => m.role)], ['system', 'user']);
+    assert.equal(context.promptMessages('not json'), null);
+});
+test('Response extraction joins streamed deltas and keeps capture notes', () => {
+    const {context} = dashboard();
+    const chat = context.responseText([
+        'data: {"choices":[{"delta":{"reasoning_content":"think"}}]}',
+        'data: {"choices":[{"delta":{"content":"Hel"}}]}',
+        'data: {"choices":[{"delta":{"content":"lo"}}]}',
+        'data: [DONE]', '', '[Stream interrupted; partial output]',
+    ].join('\n'));
+    assert.equal(chat.text, 'Hello');
+    assert.equal(chat.reasoning, 'think');
+    assert.deepEqual([...chat.notes], ['[Stream interrupted; partial output]']);
+    const responses = context.responseText('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Hi"}\n\n');
+    assert.equal(responses.text, 'Hi');
+    assert.equal(context.responseText('[stream]'), null);
+    assert.equal(context.responseText('{"data":[1,2]}'), null);
 });
 test('Live event during a fetch remains visible as an available update', async () => {
     const {context, element, calls} = dashboard();

@@ -458,53 +458,54 @@
 
                     <!-- Requests page -->
                     <div id="page-requests" class="page hidden">
-                        <div class="mb-6 bg-white shadow rounded-lg overflow-hidden">
-                            <div class="px-4 py-3 border-b border-gray-200">
-                                <h3 class="text-sm font-medium text-gray-900">Router Activity</h3>
-                            </div>
-                            <div id="requests-router-events" class="p-4 space-y-3 h-48 overflow-y-auto"></div>
-                        </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                            <!-- Live column: router activity and queue -->
+                            <div class="space-y-6 lg:sticky lg:top-4">
+                                <div class="bg-white shadow rounded-lg overflow-hidden">
+                                    <div class="px-4 py-3 border-b border-gray-200">
+                                        <h3 class="text-sm font-medium text-gray-900">Router Activity</h3>
+                                    </div>
+                                    <div id="requests-router-events" class="p-4 space-y-3 max-h-[55vh] overflow-y-auto"></div>
+                                </div>
 
-                        <!-- Batch Queue Panel -->
-                        <div id="batch-queue-panel" class="mb-6 bg-white shadow rounded-lg overflow-hidden">
-                            <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                                <h3 class="text-sm font-medium text-gray-900">Request Queue</h3>
-                                <span id="batch-status-badge" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Disabled</span>
+                                <!-- Batch Queue Panel -->
+                                <div id="batch-queue-panel" class="bg-white shadow rounded-lg overflow-hidden">
+                                    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                                        <h3 class="text-sm font-medium text-gray-900">Request Queue</h3>
+                                        <span id="batch-status-badge" class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">Disabled</span>
+                                    </div>
+                                    <div id="batch-queue-content" class="p-4 max-h-[30vh] overflow-y-auto">
+                                        <p class="text-sm text-gray-500">Batching is disabled</p>
+                                    </div>
+                                </div>
                             </div>
-                            <div id="batch-queue-content" class="p-4 h-32 overflow-y-auto">
-                                <p class="text-sm text-gray-500">Batching is disabled</p>
-                            </div>
-                        </div>
 
-                        <div class="mb-4 bg-white rounded-lg shadow p-4">
-                            <h3 class="text-lg font-medium">Request history</h3>
-                            <p class="text-sm text-gray-500 mb-4">Your view stays in place as requests arrive. Refresh to see updates.</p>
-                            <form onsubmit="event.preventDefault(); refreshRequests()" class="flex flex-wrap gap-3 items-end">
-                                <label class="text-sm">Model<input id="request-model" placeholder="Filter models" class="block border rounded p-2"></label>
-                                <label class="text-sm">Origin<input id="request-origin" placeholder="App, IP, API key or client" class="block border rounded p-2"></label>
-                                <label class="text-sm">From (local time)<input id="request-since" type="datetime-local" class="block border rounded p-2"></label>
-                                <label class="text-sm">To (local time)<input id="request-until" type="datetime-local" class="block border rounded p-2"></label>
-                                <button class="bg-primary-600 text-white rounded px-4 py-2" type="submit">Apply filters</button>
-                                <button class="border rounded px-4 py-2" type="button" onclick="clearRequestFilters()">Clear</button>
-                            </form>
-                            <div class="mt-3 flex items-center gap-3 min-h-10">
-                                <button id="request-refresh" onclick="refreshRequests()" class="border rounded px-3 py-2 text-sm">Refresh</button>
-                                <span id="request-load-status" role="status" class="text-sm text-gray-500"></span>
+                            <!-- History column: filters and requests -->
+                            <div class="lg:col-span-2 min-w-0">
+                                <div class="mb-4 bg-white rounded-lg shadow p-4">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <h3 class="text-lg font-medium">Request history</h3>
+                                            <p class="text-sm text-gray-500">Your view stays in place as requests arrive. Refresh to see updates.</p>
+                                        </div>
+                                        <button id="request-refresh" onclick="refreshRequests()" class="border rounded px-3 py-2 text-sm whitespace-nowrap">Refresh</button>
+                                    </div>
+                                    <form onsubmit="event.preventDefault(); refreshRequests()" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <label class="text-sm">Model<input id="request-model" placeholder="Filter models" class="block w-full border rounded p-2"></label>
+                                        <label class="text-sm">Origin<input id="request-origin" placeholder="App, IP, API key or client" class="block w-full border rounded p-2"></label>
+                                        <label class="text-sm">From (local time)<input id="request-since" type="datetime-local" class="block w-full border rounded p-2"></label>
+                                        <label class="text-sm">To (local time)<input id="request-until" type="datetime-local" class="block w-full border rounded p-2"></label>
+                                        <div class="sm:col-span-2 flex items-center gap-3">
+                                            <button class="bg-primary-600 text-white rounded px-4 py-2" type="submit">Apply filters</button>
+                                            <button class="border rounded px-4 py-2" type="button" onclick="clearRequestFilters()">Clear</button>
+                                            <span id="request-load-status" role="status" class="text-sm text-gray-500"></span>
+                                        </div>
+                                    </form>
+                                </div>
+                                <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
+                                    <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
+                                </div>
                             </div>
-                        </div>
-                        <dialog id="request-inspector" class="rounded-lg shadow-xl p-6 w-full" style="max-width: 900px; max-height: 85vh">
-                            <div class="flex justify-between items-center gap-4 mb-4">
-                                <h3 id="request-inspector-title" class="font-medium break-all">Request details</h3>
-                                <button onclick="document.getElementById('request-inspector').close()" class="border rounded px-3 py-2">Close</button>
-                            </div>
-                            <p id="request-detail-status" role="status" class="text-sm text-gray-500"></p>
-                            <h4 class="font-medium mt-4 mb-2">Prompt / request body</h4>
-                            <pre id="request-body" class="bg-gray-50 p-3 rounded whitespace-pre-wrap break-words text-sm"></pre>
-                            <h4 class="font-medium mt-4 mb-2">Response body</h4>
-                            <pre id="response-body" class="bg-gray-50 p-3 rounded whitespace-pre-wrap break-words text-sm"></pre>
-                        </dialog>
-                        <div id="requests-list" class="overflow-hidden bg-white shadow sm:rounded-md">
-                            <ul role="list" class="divide-y divide-gray-200" id="requests-ul"></ul>
                         </div>
                     </div>
                 </div>
@@ -2834,7 +2835,6 @@
         let requestsGeneration = 0;
         let requestEventVersion = 0;
         let requestFilters = new URLSearchParams();
-        let inspectorGeneration = 0;
 
         function clearRequestFilters() {
             for (const name of ['model', 'origin', 'since', 'until']) document.getElementById(`request-${name}`).value = '';
@@ -2896,24 +2896,140 @@
             try { return JSON.stringify(JSON.parse(body), null, 2); } catch { return body; }
         }
 
-        async function inspectRequest(id) {
-            const generation = ++inspectorGeneration;
-            const dialog = document.getElementById('request-inspector');
-            document.getElementById('request-inspector-title').textContent = `Request ${id}`;
-            document.getElementById('request-body').textContent = '';
-            document.getElementById('response-body').textContent = '';
-            document.getElementById('request-detail-status').textContent = 'Loading…';
-            if (!dialog.open) dialog.showModal();
+        function contentText(content) {
+            if (content === null || content === undefined) return '';
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) return content.map(part => {
+                if (typeof part === 'string') return part;
+                if (typeof part?.text === 'string') return part.text;
+                if (part?.type) return `[${part.type}]`;
+                return '';
+            }).filter(Boolean).join('\n');
+            return JSON.stringify(content, null, 2);
+        }
+
+        // Readable prompt messages, or null when the body is not a recognised LLM request.
+        function promptMessages(body) {
+            let data;
+            try { data = JSON.parse(body); } catch { return null; }
+            if (!data || typeof data !== 'object') return null;
+            const messages = [];
+            if (data.instructions) messages.push({role: 'system', text: contentText(data.instructions)});
+            if (Array.isArray(data.messages)) {
+                for (const m of data.messages) {
+                    let text = contentText(m.content);
+                    if (Array.isArray(m.tool_calls) && m.tool_calls.length) {
+                        text += (text ? '\n' : '') + m.tool_calls.map(c => `→ ${c.function?.name}(${c.function?.arguments ?? ''})`).join('\n');
+                    }
+                    messages.push({role: m.role || 'message', text});
+                }
+            } else if (typeof data.input === 'string') {
+                messages.push({role: 'user', text: data.input});
+            } else if (Array.isArray(data.input)) {
+                for (const item of data.input) messages.push({role: item.role || item.type || 'input', text: contentText(item.content ?? item.output ?? item)});
+            } else if (typeof data.prompt === 'string') {
+                messages.push({role: 'prompt', text: data.prompt});
+            }
+            return messages.length ? messages : null;
+        }
+
+        // Readable assistant output from a JSON response or a captured SSE stream.
+        function responseText(body) {
+            if (!body || body === '[stream]') return null;
+            const out = {text: '', reasoning: '', notes: []};
+            const take = data => {
+                for (const choice of data.choices || []) {
+                    const part = choice.delta || choice.message || {};
+                    out.text += contentText(part.content) || choice.text || '';
+                    out.reasoning += part.reasoning_content || part.reasoning || '';
+                    for (const call of part.tool_calls || []) out.text += call.function?.name ? `\n→ ${call.function.name}(${call.function.arguments ?? ''}` + (choice.delta ? '' : ')') : call.function?.arguments ?? '';
+                }
+                if (data.type === 'response.output_text.delta') out.text += data.delta || '';
+                if (data.type === 'response.reasoning_text.delta' || data.type === 'response.reasoning_summary_text.delta') out.reasoning += data.delta || '';
+                if (!data.type && Array.isArray(data.output)) {
+                    for (const item of data.output) {
+                        for (const c of item.content || []) {
+                            if (c.type === 'output_text') out.text += c.text || '';
+                            if (c.type === 'reasoning_text') out.reasoning += c.text || '';
+                        }
+                    }
+                }
+            };
+            const trimmed = body.trimStart();
+            if (trimmed.startsWith('data:') || trimmed.startsWith('event:')) {
+                for (const line of body.split('\n')) {
+                    if (line.startsWith('data:')) {
+                        const payload = line.slice(5).trim();
+                        if (!payload || payload === '[DONE]') continue;
+                        try { take(JSON.parse(payload)); } catch { /* ignore partial chunk */ }
+                    } else if (/^\[(History capture|Stream interrupted)/.test(line)) {
+                        out.notes.push(line);
+                    }
+                }
+            } else {
+                let data;
+                try { data = JSON.parse(body); } catch { return null; }
+                if (!data || typeof data !== 'object') return null;
+                take(data);
+            }
+            return out.text || out.reasoning || out.notes.length ? out : null;
+        }
+
+        function renderPeekHtml(data) {
+            const block = 'bg-gray-50 p-3 rounded whitespace-pre-wrap break-words text-sm max-h-96 overflow-auto';
+            const messages = promptMessages(data.request_body || '');
+            const response = responseText(data.response_body);
+            const promptHtml = messages ? messages.map(m => {
+                const inner = `<pre class="${block}">${escapeHtml(m.text || '(empty)')}</pre>`;
+                return m.role === 'system'
+                    ? `<details class="mb-2"><summary class="text-xs font-medium text-gray-500 cursor-pointer">system (${m.text.length} chars)</summary>${inner}</details>`
+                    : `<div class="mb-2"><div class="text-xs font-medium text-gray-500 mb-1">${escapeHtml(m.role)}</div>${inner}</div>`;
+            }).join('') : `<pre class="${block}">${escapeHtml(formatRequestBody(data.request_body, 'No request body recorded.'))}</pre>`;
+            const responseHtml = response ? `
+                ${response.reasoning ? `<details class="mb-2"><summary class="text-xs font-medium text-gray-500 cursor-pointer">reasoning (${response.reasoning.length} chars)</summary><pre class="${block}">${escapeHtml(response.reasoning)}</pre></details>` : ''}
+                <pre class="${block}">${escapeHtml(response.text || '(no text output)')}</pre>
+                ${response.notes.map(n => `<p class="text-xs text-amber-700 mt-1">${escapeHtml(n)}</p>`).join('')}
+            ` : `<pre class="${block}">${escapeHtml(formatRequestBody(data.response_body, 'No response recorded yet.'))}</pre>`;
+            return `
+                <div class="mt-3 border-t pt-3 space-y-4">
+                    <section><h4 class="text-sm font-medium text-gray-900 mb-2">Prompt</h4>${promptHtml}</section>
+                    <section><h4 class="text-sm font-medium text-gray-900 mb-2">Response</h4>${responseHtml}</section>
+                    <details><summary class="text-xs text-gray-500 cursor-pointer">Raw payloads</summary>
+                        <h5 class="text-xs font-medium text-gray-500 mt-2 mb-1">Request body</h5>
+                        <pre class="${block}">${escapeHtml(formatRequestBody(data.request_body, 'No request body recorded.'))}</pre>
+                        <h5 class="text-xs font-medium text-gray-500 mt-2 mb-1">Response body</h5>
+                        <pre class="${block}">${escapeHtml(formatRequestBody(data.response_body, 'No response recorded yet.'))}</pre>
+                    </details>
+                </div>`;
+        }
+
+        // Toggle the inline payload peek below a request row; reopening refetches so pending rows catch up.
+        async function peekRequest(button) {
+            const li = button.closest('[data-request-id]');
+            let panel = li.querySelector('.request-peek');
+            if (panel && !panel.classList.contains('hidden')) {
+                panel.classList.add('hidden');
+                button.textContent = 'Peek';
+                return;
+            }
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'request-peek';
+                li.appendChild(panel);
+            }
+            panel.classList.remove('hidden');
+            button.textContent = 'Hide';
+            const generation = String(Number(panel.dataset.generation || 0) + 1);
+            panel.dataset.generation = generation;
+            panel.innerHTML = '<p class="mt-3 text-sm text-gray-500">Loading…</p>';
             try {
-                const data = await apiFetch(`/admin/api/requests/${encodeURIComponent(id)}`);
-                if (generation !== inspectorGeneration) return;
-                document.getElementById('request-body').textContent = formatRequestBody(data.request_body, 'No request body recorded.');
-                document.getElementById('response-body').textContent = formatRequestBody(data.response_body, 'No response recorded yet.');
-                document.getElementById('request-detail-status').textContent = 'Recorded payloads';
+                const data = await apiFetch(`/admin/api/requests/${encodeURIComponent(li.dataset.requestId)}`);
+                if (panel.dataset.generation === generation) panel.innerHTML = renderPeekHtml(data);
             } catch (e) {
-                if (generation === inspectorGeneration) document.getElementById('request-detail-status').textContent = 'Could not load details. Close and try again.';
+                if (panel.dataset.generation === generation) panel.innerHTML = '<p class="mt-3 text-sm text-red-600">Could not load details. Hide and try again.</p>';
             }
         }
+
 
         // Render a request item HTML
         function renderRequestHtml(req, cancellable = false) {
@@ -2943,7 +3059,7 @@
                         </p>
                     </div>
                     <div class="flex items-center space-x-3 ml-4">
-                        <button onclick="inspectRequest(this.closest('[data-request-id]').dataset.requestId)" class="border rounded px-3 py-1 text-sm">Inspect</button>
+                        <button onclick="peekRequest(this)" class="border rounded px-3 py-1 text-sm">Peek</button>
                         ${!isPending && req.latency_ms !== null ? `<span class="text-xs text-gray-500">${req.latency_ms}ms</span>` : ''}
                         ${!isPending && (req.tokens_prompt !== null || req.tokens_completion !== null) ? `
                             <span class="text-xs text-gray-500" title="Prompt / Completion tokens">
