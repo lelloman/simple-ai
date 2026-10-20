@@ -45,7 +45,7 @@ class GatewayAuth(context: Context, private val settings: CloudSettings, private
         }
         _signedIn.value = account != null
         _account.value = account
-        _signingIn.value = account == null && saved?.has("pending") == true
+        _signingIn.value = saved?.has("pending") == true
     }
 
     private fun read(): JSONObject? = store.read()?.let(::JSONObject)?.takeIf { it.getString("server") == settings.endpoint.value }
@@ -53,14 +53,20 @@ class GatewayAuth(context: Context, private val settings: CloudSettings, private
     private fun identity(state: AuthState, saved: JSONObject): String? =
         GatewayIdentity.usernameFromIdToken(state.idToken) ?: saved.optString("username").takeIf { it.isNotBlank() }
 
-    private fun persist(server: String, state: AuthState, previousUsername: String? = null) {
+    private fun persist(
+        server: String,
+        state: AuthState,
+        previousUsername: String? = null,
+        keepPending: Boolean = false,
+    ) {
         check(server == settings.endpoint.value) { "Server changed. Sign in again." }
         val username = GatewayIdentity.usernameFromIdToken(state.idToken) ?: previousUsername?.takeIf { it.isNotBlank() }
         val saved = JSONObject().put("server", server).put("auth", state.jsonSerialize())
         if (!username.isNullOrBlank()) saved.put("username", username)
+        if (keepPending) read()?.optJSONObject("pending")?.let { saved.put("pending", it) }
         store.write(saved.toString())
         _signedIn.value = state.isAuthorized
-        _signingIn.value = false
+        _signingIn.value = keepPending && saved.has("pending")
         _account.value = if (state.isAuthorized) GatewayAccount(server, username) else null
     }
 
@@ -148,7 +154,7 @@ class GatewayAuth(context: Context, private val settings: CloudSettings, private
             val token = exchange(response.createTokenExchangeRequest())
             state.update(token, null)
             check(!state.accessToken.isNullOrBlank())
-            persist(saved.getString("server"), state, saved.optString("username").takeIf { it.isNotBlank() })
+            persist(saved.getString("server"), state)
             _error.value = null
         } catch (e: Exception) {
             _signingIn.value = false
@@ -180,7 +186,7 @@ class GatewayAuth(context: Context, private val settings: CloudSettings, private
             }
             try { withContext(NonCancellable) {
                 state.update(exchange(state.createTokenRefreshRequest()), null)
-                persist(server, state, saved.optString("username").takeIf { it.isNotBlank() })
+                persist(server, state, saved.optString("username").takeIf { it.isNotBlank() }, keepPending = true)
             } }
             catch (e: AuthorizationException) {
                 if (e.error == "invalid_grant") {

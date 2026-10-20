@@ -21,10 +21,49 @@ class GatewayAuthTest {
     @Before fun setup() { store.clear(); settings.save("https://gateway.example") }
     @After fun cleanup() { store.clear(); context.getSharedPreferences("gateway_test_settings", Context.MODE_PRIVATE).edit().clear().commit() }
 
-    private fun idToken(username: String): String {
+    private fun idToken(claims: JSONObject): String {
         fun encode(value: String) = android.util.Base64.encodeToString(value.toByteArray(),
             android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
-        return encode("""{"alg":"none"}""") + "." + encode(JSONObject().put("preferred_username", username).toString()) + ".signature"
+        return encode("""{"alg":"none"}""") + "." + encode(claims.toString()) + ".signature"
+    }
+
+    private fun idToken(username: String): String = idToken(JSONObject().put("preferred_username", username))
+
+    private fun authorizationRequest(): AuthorizationRequest {
+        val config = AuthorizationServiceConfiguration(Uri.parse("https://issuer.example/authorize"), Uri.parse("https://issuer.example/token"))
+        return AuthorizationRequest.Builder(config, "gateway", ResponseTypeValues.CODE, Uri.parse(GatewayAuth.REDIRECT)).build()
+    }
+
+    private fun signedInWithPending(expired: Boolean, username: String, request: AuthorizationRequest): String {
+        val saved = JSONObject(signedInState(expired, username))
+        saved.put("username", username)
+        saved.put("pending", request.jsonSerialize())
+        return saved.toString()
+    }
+
+    private fun tokenResponse(accessToken: String, refreshToken: String, idToken: String? = null): String =
+        JSONObject()
+            .put("access_token", accessToken)
+            .put("refresh_token", refreshToken)
+            .put("token_type", "Bearer")
+            .put("expires_in", 3600)
+            .apply { if (idToken != null) put("id_token", idToken) }
+            .toString()
+
+    private fun tokenService(response: (String) -> String): AuthorizationService {
+        val configuration = AppAuthConfiguration.Builder().setConnectionBuilder { uri ->
+            val body = java.io.ByteArrayOutputStream()
+            object : java.net.HttpURLConnection(java.net.URL(uri.toString())) {
+                override fun connect() { }
+                override fun disconnect() { }
+                override fun usingProxy() = false
+                override fun getResponseCode() = 200
+                override fun getOutputStream(): java.io.OutputStream = body
+                override fun getInputStream(): java.io.InputStream =
+                    java.io.ByteArrayInputStream(response(body.toString("UTF-8")).toByteArray())
+            }
+        }.build()
+        return AuthorizationService(context, configuration)
     }
 
     private fun signedInState(expired: Boolean = false, username: String? = null): String {
@@ -124,6 +163,64 @@ class GatewayAuthTest {
             assertTrue(body.toString("UTF-8").contains("refresh_token=gateway-refresh-token"))
             assertTrue(store.read()!!.contains("rotated-refresh-token"))
             assertEquals("fresh-gateway-token", GatewayAuth(context, settings, store).session().token)
+        } finally { service.dispose() }
+    }
+
+    @Test fun newSignInDoesNotInheritPreviousAccountsUsername() = runBlocking {
+        val request = authorizationRequest()
+        store.write(signedInWithPending(expired = false, username = "alice", request))
+        val service = tokenService {
+            tokenResponse("bob-token", "bob-refresh", idToken(JSONObject().put("sub", "bob")))
+        }
+        try {
+            val auth = GatewayAuth(context, settings, store, service)
+            assertEquals("alice", auth.account.value?.username)
+            auth.complete(AuthorizationResponse.Builder(request).setAuthorizationCode("bob-code").build().toIntent())
+            assertTrue(auth.signedIn.value)
+            assertNull(auth.account.value?.username)
+            val saved = JSONObject(store.read()!!)
+            assertFalse(saved.has("username"))
+            assertFalse(saved.has("pending"))
+            assertNull(GatewayAuth(context, settings, store).account.value?.username)
+        } finally { service.dispose() }
+    }
+
+    @Test fun pendingSignInSurvivesSessionRefreshAndCompletes() = runBlocking {
+        val request = authorizationRequest()
+        store.write(signedInWithPending(expired = true, username = "alice", request))
+        val service = tokenService { body ->
+            if (body.contains("grant_type=refresh_token")) tokenResponse("fresh-token", "rotated-refresh")
+            else tokenResponse("bob-token", "bob-refresh", idToken("bob"))
+        }
+        try {
+            val auth = GatewayAuth(context, settings, store, service)
+            assertTrue(auth.signingIn.value)
+            assertEquals("alice", auth.account.value?.username)
+            assertEquals("fresh-token", auth.session().token)
+            assertTrue(auth.signingIn.value)
+            assertTrue(JSONObject(store.read()!!).has("pending"))
+            auth.complete(AuthorizationResponse.Builder(request).setAuthorizationCode("bob-code").build().toIntent())
+            assertFalse(auth.signingIn.value)
+            assertEquals("bob", auth.account.value?.username)
+            assertFalse(JSONObject(store.read()!!).has("pending"))
+        } finally { service.dispose() }
+    }
+
+    @Test fun cancellingRecoveryAfterRefreshKeepsCurrentSession() = runBlocking {
+        val request = authorizationRequest()
+        store.write(signedInWithPending(expired = true, username = "alice", request))
+        val service = tokenService { tokenResponse("fresh-token", "rotated-refresh") }
+        try {
+            val auth = GatewayAuth(context, settings, store, service)
+            assertEquals("fresh-token", auth.session().token)
+            auth.cancelSignIn()
+            assertFalse(auth.signingIn.value)
+            assertTrue(auth.signedIn.value)
+            assertEquals("alice", auth.account.value?.username)
+            val saved = JSONObject(store.read()!!)
+            assertFalse(saved.has("pending"))
+            assertTrue(saved.has("auth"))
+            assertEquals("alice", GatewayAuth(context, settings, store).account.value?.username)
         } finally { service.dispose() }
     }
 
