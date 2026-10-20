@@ -92,6 +92,9 @@ android {
             buildConfigField("String", "CLOUD_LLM_ENDPOINT", "\"$cloudLlmEndpoint\"")
         }
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -181,6 +184,10 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

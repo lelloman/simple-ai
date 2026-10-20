@@ -52,6 +52,15 @@ fun ConnectedApps() {
     val context = LocalContext.current
     val access = remember(context) { ClientAccess.get(context) }
     val clients by access.clients.collectAsState()
+    ConnectedAppsContent(clients = clients, onSetApproved = access::setApproved)
+}
+
+@Composable
+internal fun ConnectedAppsContent(
+    clients: List<ClientAccess.Client>,
+    onSetApproved: (ClientAccess.Client, Boolean) -> Unit,
+    metadata: @Composable (List<String>) -> AppMetadata = { rememberAppMetadata(it) },
+) {
     val ordered = remember(clients) { orderConnectedApps(clients) }
 
     if (ordered.isEmpty()) {
@@ -84,7 +93,7 @@ fun ConnectedApps() {
                     )
                 }
                 items(ordered, key = { it.identity }) { client ->
-                    ConnectedAppRow(client, onSetApproved = access::setApproved)
+                    ConnectedAppRow(client, onSetApproved = onSetApproved, metadata = metadata)
                 }
             }
         }
@@ -95,12 +104,13 @@ fun ConnectedApps() {
 private fun ConnectedAppRow(
     client: ClientAccess.Client,
     onSetApproved: (ClientAccess.Client, Boolean) -> Unit,
+    metadata: @Composable (List<String>) -> AppMetadata,
 ) {
     val packageNames = remember(client.packages) { parsePackageNames(client.packages) }
-    val metadata = rememberAppMetadata(packageNames)
+    val appMetadata = metadata(packageNames)
     val fallbackName = stringResource(R.string.apps_unknown_name)
-    val displayName = metadata.label ?: fallbackName
-    val actionTarget = metadata.label ?: client.packages
+    val displayName = appMetadata.label ?: fallbackName
+    val actionTarget = appMetadata.label ?: client.packages
     val approveLabel = stringResource(R.string.apps_approve_label, actionTarget)
     val revokeLabel = stringResource(R.string.apps_revoke_label, actionTarget)
 
@@ -119,7 +129,7 @@ private fun ConnectedAppRow(
                 horizontalArrangement = Arrangement.spacedBy(LelloDimensions.space3),
                 verticalAlignment = Alignment.Top,
             ) {
-                AppIcon(metadata.icon)
+                AppIcon(appMetadata.icon)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -203,7 +213,7 @@ private fun ApprovalTag(approved: Boolean) {
     }
 }
 
-private data class AppMetadata(val label: String?, val icon: ImageBitmap?)
+internal data class AppMetadata(val label: String?, val icon: ImageBitmap?)
 
 @Composable
 private fun rememberAppMetadata(packageNames: List<String>): AppMetadata {
