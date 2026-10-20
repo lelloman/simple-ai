@@ -16,7 +16,7 @@ use simple_server::web::response::Response as AxumResponse;
 use simple_server::web::routing::{get, post};
 use simple_server::web::{Json, Router};
 
-use super::auth_helpers::{authenticate_inference_request};
+use super::auth_helpers::authenticate_inference_request;
 use crate::gateway::{can_request_model, classify_model, ModelClass, ModelRequest, SchedulerError};
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
@@ -127,10 +127,7 @@ where
 }
 
 async fn list_voices(
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(query): Query<VoicesQuery>,
@@ -149,6 +146,7 @@ async fn list_voices(
     let data = collect_voice_objects(
         runners
             .iter()
+            .filter(|runner| runner.is_dispatchable())
             .map(|runner| (runner.id.as_str(), &runner.status)),
         query.model.as_deref(),
         &auth_user.roles,
@@ -177,10 +175,7 @@ fn response_body(response: reqwest::Response) -> Body {
 
 async fn create_speech(
     State(state): State<Arc<AppState>>,
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(request): Json<SpeechRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
@@ -226,7 +221,10 @@ async fn create_speech(
     let mut req_log = Request::new(user.id.clone(), "/v1/audio/speech".to_string());
     req_log.model = Some(model.clone());
     super::auth_helpers::attribute_request(
-        &mut req_log, &auth_user, &headers, connect_info.as_ref().ok().map(|c| c.0),
+        &mut req_log,
+        &auth_user,
+        &headers,
+        connect_info.as_ref().ok().map(|c| c.0),
         &state.config.trusted_proxies,
     );
     req_log.request_body = request_json;

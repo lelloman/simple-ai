@@ -58,6 +58,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize gateway components
     let runner_registry = Arc::new(RunnerRegistry::new());
+    match audit_logger.get_all_runners() {
+        Ok(runners) => {
+            for runner in runners {
+                runner_registry.install_state(runner.id, runner.state).await;
+            }
+        }
+        Err(error) => tracing::warn!(%error, "Failed to load persisted runner states"),
+    }
     // Initialize circuit breaker
     let circuit_breaker = Arc::new(CircuitBreaker::new(
         config.gateway.circuit_breaker_threshold,
@@ -102,7 +110,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         Ok(RunnerEvent::StatusChanged { runner_id, loaded_models, .. }) => {
                             if let Some(runner) = registry.get(&runner_id).await {
-                                if runner.is_operational() {
+                                if runner.is_dispatchable() {
                                     let removed = affinity_store.invalidate_unloaded_models(
                                         &runner_id,
                                         runner.generation,
@@ -119,6 +127,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                                         removed,
                                     );
                                 }
+                            }
+                        }
+                        Ok(RunnerEvent::StateChanged { runner_id, .. }) => {
+                            if let Some(runner) = registry.get(&runner_id).await {
+                                let removed = affinity_store.invalidate_runner(&runner_id, runner.generation);
+                                affinity_store.metrics().record_removals(
+                                    simple_ai_backend::gateway::AffinityRemovalReason::RunnerDisabled,
+                                    removed,
+                                );
                             }
                         }
                         Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
@@ -234,9 +251,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     ));
     {
         let pressure = pressure.clone();
-        audit_logger.set_response_observer(Box::new(move |response| {
-            pressure.record_response(response)
-        }));
+        audit_logger
+            .set_response_observer(Box::new(move |response| pressure.record_response(response)));
     }
     pressure.spawn_sampler(
         runner_registry.clone(),
@@ -297,7 +313,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .merge(simple_ai_backend::routes::ocr::router(state.clone()))
         .merge(simple_ai_backend::routes::responses::router(state.clone()))
         .merge(simple_ai_backend::routes::speech::router(state.clone()))
-        .merge(simple_ai_backend::routes::pressure::router(pressure.clone()))
+        .merge(simple_ai_backend::routes::pressure::router(
+            pressure.clone(),
+        ))
         .layer(simple_server::web::middleware::from_fn_with_state(
             pressure.clone(),
             simple_ai_backend::routes::pressure::pressure_header_middleware,
@@ -343,12 +361,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let listener = simple_server::http::bind(&addr).await?;
     let shutdown = lifecycle.shutdown();
     lifecycle.service("http", async move {
-        let result = simple_server::web::serve_with_connect_info(
-            listener,
-            app,
-            shutdown,
-        )
-        .await;
+        let result = simple_server::web::serve_with_connect_info(listener, app, shutdown).await;
         workers_stop.request();
         result
     })?;

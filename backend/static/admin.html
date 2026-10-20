@@ -1077,6 +1077,18 @@
             return Number(value).toLocaleString();
         }
 
+        function formatBytes(value) {
+            if (value === null || value === undefined || Number.isNaN(Number(value))) return '-';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let amount = Number(value);
+            let unit = 0;
+            while (amount >= 1024 && unit < units.length - 1) {
+                amount /= 1024;
+                unit++;
+            }
+            return `${formatNumber(amount, amount >= 10 ? 0 : 1)} ${units[unit]}`;
+        }
+
         function formatRelativeTime(value) {
             if (!value) return '-';
             const timestamp = Date.parse(value);
@@ -1222,6 +1234,11 @@
                         this.handleRunnerStatusChanged(msg);
                         break;
 
+                    case 'runner_state_changed':
+                        console.log('Runner state changed:', msg);
+                        this.handleRunnerStateChanged(msg);
+                        break;
+
                     case 'models_updated':
                         console.log('Models updated:', msg.models.length, 'models');
                         modelsState = msg.models;
@@ -1357,7 +1374,9 @@
                     connected_at: new Date().toISOString(),
                     last_heartbeat: new Date().toISOString(),
                     mac_address: existingIndex >= 0 ? runnersState[existingIndex].mac_address : null,
-                    http_base_url: null
+                    http_base_url: null,
+                    state: data.state || 'enabled',
+                    metrics: data.metrics || null
                 };
 
                 if (existingIndex >= 0) {
@@ -1393,12 +1412,22 @@
                 const runner = runnersState.find(r => r.id === data.runner_id);
                 if (runner) {
                     runner.health = data.health;
+                    runner.state = data.state || runner.state || 'enabled';
                     runner.loaded_models = data.loaded_models;
                     runner.available_models = data.available_models || [];
+                    runner.metrics = data.metrics || runner.metrics || null;
                     runner.last_heartbeat = new Date().toISOString();
 
-                    // Update UI with the full runner object
-                    updateRunnerCard(data.runner_id, runner);
+                    // Update UI with the full runner object (including metrics)
+                    upsertRunnerCard(data.runner_id, runner);
+                }
+            }
+
+            handleRunnerStateChanged(data) {
+                const runner = runnersState.find(r => r.id === data.runner_id);
+                if (runner) {
+                    runner.state = data.state;
+                    upsertRunnerCard(data.runner_id, runner);
                 }
             }
 
@@ -1427,22 +1456,39 @@
 
             const availableModels = runner.available_models || [];
             const loadedModels = runner.loaded_models || [];
+            const runnerState = runner.state || 'enabled';
+            const safeState = ['enabled', 'draining', 'disabled'].includes(runnerState) ? runnerState : 'enabled';
+            const stateLabel = safeState.charAt(0).toUpperCase() + safeState.slice(1);
+            const stateStyles = {
+                enabled: 'bg-green-100 text-green-800',
+                draining: 'bg-yellow-100 text-yellow-800',
+                disabled: 'bg-gray-200 text-gray-700'
+            };
+            const metrics = runner.metrics || {};
+            const memoryParts = [];
+            if (metrics.gpu_memory_used !== null && metrics.gpu_memory_used !== undefined) {
+                memoryParts.push(`GPU ${formatBytes(metrics.gpu_memory_used)}${metrics.gpu_memory_total ? ' / ' + formatBytes(metrics.gpu_memory_total) : ''}`);
+            }
+            if (metrics.memory_used !== null && metrics.memory_used !== undefined) {
+                memoryParts.push(`RAM ${formatBytes(metrics.memory_used)}`);
+            }
 
             return `
-                <div id="runner-card-${safeId}" class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}" data-runner-id="${safeId}" data-is-online="${runner.is_online}" data-mac-address="${escapeAttr(runner.mac_address || '')}">
+                <div id="runner-card-${safeId}" class="rounded-lg shadow p-6 ${runner.is_online ? 'bg-white' : 'bg-gray-50 border border-gray-200'}" data-runner-id="${safeId}" data-is-online="${runner.is_online}" data-mac-address="${escapeAttr(runner.mac_address || '')}" data-state="${safeState}">
                     <div class="flex items-center justify-between mb-4">
                         <div>
                             <h3 class="text-lg font-medium ${runner.is_online ? 'text-gray-900' : 'text-gray-500'}">${safeName}</h3>
                             <p class="text-sm text-gray-500">${safeId}</p>
                         </div>
                         <div class="flex items-center space-x-2">
-                            ${!runner.is_online && runner.mac_address ? `
+                            ${!runner.is_online && runner.mac_address && safeState === 'enabled' ? `
                                 <button onclick="wakeRunner('${safeId}')"
                                         class="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                                         id="wake-btn-${safeId}">
                                     Wake
                                 </button>
                             ` : ''}
+                            <span class="runner-state-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${stateStyles[safeState]}">${stateLabel}</span>
                             <span class="runner-health-badge inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
                                 runner.health === 'Healthy' ? 'bg-green-100 text-green-800' :
                                 runner.health === 'Degraded' ? 'bg-yellow-100 text-yellow-800' :
@@ -1450,6 +1496,11 @@
                                 'bg-red-100 text-red-800'
                             }">${safeHealth}</span>
                         </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        ${safeState !== 'enabled' ? `<button onclick="setRunnerState('${safeId}', 'enabled', this)" class="inline-flex items-center rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700">Enable</button>` : ''}
+                        ${safeState !== 'draining' ? `<button onclick="setRunnerState('${safeId}', 'draining', this)" class="inline-flex items-center rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600">Drain</button>` : ''}
+                        ${safeState !== 'disabled' ? `<button onclick="setRunnerState('${safeId}', 'disabled', this)" class="inline-flex items-center rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700">Disable</button>` : ''}
                     </div>
                     <div class="grid grid-cols-2 gap-4 text-sm">
                         <div>
@@ -1474,6 +1525,12 @@
                             <span class="text-gray-500">${runner.is_online ? 'Last Heartbeat' : 'Last Seen'}:</span>
                             <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${runner.last_heartbeat ? new Date(runner.last_heartbeat).toLocaleString() : 'N/A'}</span>
                         </div>
+                        ${memoryParts.length > 0 ? `
+                            <div>
+                                <span class="text-gray-500">Memory:</span>
+                                <span class="ml-2 ${runner.is_online ? 'text-gray-900' : 'text-gray-600'}">${escapeHtml(memoryParts.join(' · '))}</span>
+                            </div>
+                        ` : ''}
                     </div>
                     ${availableModels.length > 0 ? `
                         <div class="runner-models-section mt-4">
@@ -1485,8 +1542,10 @@
                                     const safeModelName = escapeHtml(m);
                                     if (isLoaded) {
                                         return `<button onclick="unloadModel('${safeId}', '${safeModelId}')" class="model-tag loaded inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 hover:bg-red-100 hover:text-red-700 cursor-pointer" data-runner-id="${safeId}" data-model-id="${safeModelId}">${safeModelName} ✓</button>`;
-                                    } else {
+                                    } else if (safeState === 'enabled') {
                                         return `<button onclick="loadModel('${safeId}', '${safeModelId}')" class="model-tag inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer" data-runner-id="${safeId}" data-model-id="${safeModelId}">${safeModelName}</button>`;
+                                    } else {
+                                        return `<span class="model-tag inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-gray-100 text-gray-400" data-runner-id="${safeId}" data-model-id="${safeModelId}">${safeModelName}</span>`;
                                     }
                                 }).join('')}
                             </div>
@@ -1542,7 +1601,7 @@
                 // Add Wake button if runner has MAC address and button doesn't exist
                 const macAddress = card.dataset.macAddress;
                 const existingWakeBtn = card.querySelector(`#wake-btn-${runnerId}`);
-                if (macAddress && !existingWakeBtn) {
+                if (macAddress && card.dataset.state === 'enabled' && !existingWakeBtn) {
                     const safeId = escapeAttr(runnerId);
                     const wakeBtn = `<button onclick="wakeRunner('${safeId}')"
                             class="inline-flex items-center rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -2940,6 +2999,27 @@
                     btn.disabled = false;
                     btn.textContent = 'Wake';
                 }
+            }
+        }
+
+        async function setRunnerState(runnerId, newState, btn) {
+            if (btn) {
+                btn.disabled = true;
+            }
+            try {
+                const result = await apiFetch(`/admin/runners/${encodeURIComponent(runnerId)}/state`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ state: newState }),
+                    errorDetail: true
+                });
+                const runner = runnersState.find(r => r.id === runnerId);
+                if (runner) {
+                    runner.state = result.state || newState;
+                }
+                renderRunners();
+            } catch (error) {
+                alert(`Failed to change runner state: ${error.message}`);
+                renderRunners();
             }
         }
 

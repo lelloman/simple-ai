@@ -422,3 +422,134 @@ async fn admin_drain_requires_admin_and_queues_typed_command() {
         .await;
     assert!(state.runner_registry.operational().await.is_empty());
 }
+
+#[tokio::test]
+async fn admin_runner_state_is_persisted_and_controls_dispatch() {
+    use simple_ai_backend::runner_state::RunnerState;
+
+    let state = create_test_state().await.unwrap();
+    let (tx, _rx) = tokio::sync::mpsc::channel(4);
+    state
+        .runner_registry
+        .register(
+            "strix-halo-01".into(),
+            "Halo 1".into(),
+            Some("halo".into()),
+            status(RunnerHealth::Healthy),
+            None,
+            tx,
+            Some("AA:BB:CC:DD:EE:01".into()),
+        )
+        .await;
+    state
+        .audit_logger
+        .upsert_runner(
+            "strix-halo-01",
+            "Halo 1",
+            Some("AA:BB:CC:DD:EE:01"),
+            Some("halo"),
+            Some(&["fast-model".to_string()]),
+        )
+        .unwrap();
+
+    let app = routes::admin::router(state.clone());
+    for (roles, expected) in [
+        (&["user"][..], StatusCode::FORBIDDEN),
+        (&["admin"][..], StatusCode::OK),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/runners/strix-halo-01/state")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", token(&state, roles, "test")),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"state":"disabled"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+        if expected == StatusCode::FORBIDDEN {
+            assert_eq!(
+                state.runner_registry.state_of("strix-halo-01").await,
+                RunnerState::Enabled
+            );
+        }
+    }
+
+    assert_eq!(
+        state.runner_registry.state_of("strix-halo-01").await,
+        RunnerState::Disabled
+    );
+    assert!(state.runner_registry.operational().await.is_empty());
+    assert_eq!(
+        state
+            .audit_logger
+            .get_runner("strix-halo-01")
+            .unwrap()
+            .unwrap()
+            .state,
+        RunnerState::Disabled
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runners")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", token(&state, &["admin"], "test")),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = simple_server::web::body::to_bytes(response.into_body(), 8192)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["runners"][0]["state"], "disabled");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/runners/strix-halo-01/wake")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", token(&state, &["admin"], "test")),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/runners/strix-halo-01/state")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", token(&state, &["admin"], "test")),
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"state":"always"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}

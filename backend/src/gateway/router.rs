@@ -29,6 +29,8 @@ use crate::config::{ModelsConfig, RoutingConfig};
 pub enum RouterError {
     #[error("No runners available")]
     NoRunners,
+    #[error("No enabled runner for class {0}")]
+    NoEnabledRunner(String),
     #[error("Unknown model: {0}")]
     UnknownModel(String),
     #[error("No runners have model '{0}' loaded")]
@@ -55,6 +57,9 @@ impl RouterError {
             Self::RunnerError { status, .. } if (400..500).contains(status) => {
                 simple_server::web::http::StatusCode::from_u16(*status)
                     .unwrap_or(simple_server::web::http::StatusCode::BAD_REQUEST)
+            }
+            Self::NoRunners | Self::NoModelsOfClass(_) | Self::NoEnabledRunner(_) => {
+                simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE
             }
             _ => simple_server::web::http::StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -283,7 +288,9 @@ impl InferenceRouter {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
 
-        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
+        let reservation = self
+            .registry
+            .reserve(&selection.runner, &selection.resolved_model);
 
         let response = self
             .proxy_request_value(&selection.runner, "/v1/embeddings", request_value)
@@ -325,7 +332,9 @@ impl InferenceRouter {
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
+        let reservation = self
+            .registry
+            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_value(&selection.runner, "/v1/classifications", request_value)
             .await;
@@ -363,7 +372,9 @@ impl InferenceRouter {
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
+        let reservation = self
+            .registry
+            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_value(&selection.runner, "/v1/extractions", request_value)
             .await;
@@ -386,8 +397,7 @@ impl InferenceRouter {
         &self,
         plan: &RoutePlan,
         request: &simple_ai_common::DecisionRequest,
-    ) -> Result<RoutedResponse<simple_ai_common::DecisionResponse>, RouterError>
-    {
+    ) -> Result<RoutedResponse<simple_ai_common::DecisionResponse>, RouterError> {
         let selection = plan;
         let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
@@ -397,7 +407,9 @@ impl InferenceRouter {
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
+        let reservation = self
+            .registry
+            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_value(&selection.runner, "/v1/decisions", request_value)
             .await;
@@ -475,7 +487,9 @@ impl InferenceRouter {
             )
             .text("options", options_json);
 
-        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
+        let reservation = self
+            .registry
+            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_multipart(&selection.runner, "/v1/audio/embeddings", form)
             .await;
@@ -514,7 +528,9 @@ impl InferenceRouter {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
 
-        let reservation = self.registry.reserve(&selection.runner, &selection.resolved_model);
+        let reservation = self
+            .registry
+            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
             .proxy_request_raw_value(&selection.runner, "/v1/audio/speech", request_value)
             .await;
@@ -574,30 +590,63 @@ impl InferenceRouter {
     /// Pin a speculative plan to a live, compatible runner. Used by the readiness
     /// race so preparation and dispatch cannot silently select different hosts.
     pub(crate) async fn speculative_plan_on(
-        &self, selector: &str, runner_id: &str, ready_only: bool,
+        &self,
+        selector: &str,
+        runner_id: &str,
+        ready_only: bool,
     ) -> Result<RoutePlan, RouterError> {
         let request = ModelRequest::parse(selector);
-        let runner = self.registry.get(runner_id).await.ok_or(RouterError::NoRunners)?;
+        let runner = self
+            .registry
+            .get(runner_id)
+            .await
+            .ok_or(RouterError::NoRunners)?;
         let resolved_model = match &request {
             ModelRequest::Specific(id) => id.clone(),
-            ModelRequest::Class(ModelClass::SemanticDecisions) => self.models_config
-                .semantic_decisions.first().cloned().ok_or(RouterError::NoRunners)?,
-            ModelRequest::Class(ModelClass::Fast) => self.models_config
-                .fast.iter().find(|id| runner.has_available_model_or_alias(id))
-                .cloned().ok_or(RouterError::NoRunners)?,
+            ModelRequest::Class(ModelClass::SemanticDecisions) => self
+                .models_config
+                .semantic_decisions
+                .first()
+                .cloned()
+                .ok_or(RouterError::NoRunners)?,
+            ModelRequest::Class(ModelClass::Fast) => self
+                .models_config
+                .fast
+                .iter()
+                .find(|id| runner.has_available_model_or_alias(id))
+                .cloned()
+                .ok_or(RouterError::NoRunners)?,
             _ => return Err(RouterError::NoRunners),
         };
-        let runner = self.filter_available(vec![runner]).into_iter().next()
-            .filter(|r| r.is_operational() && r.has_available_model_or_alias(&resolved_model))
+        let runner = self
+            .filter_available(vec![runner])
+            .into_iter()
+            .next()
+            .filter(|r| r.is_dispatchable() && r.has_available_model_or_alias(&resolved_model))
             .ok_or(RouterError::NoRunners)?;
         let local_model = runner.resolve_model_alias(&resolved_model);
-        let is_loaded = runner.status.engines.iter().any(|engine| engine.is_healthy
-            && engine.loaded_models.iter().any(|id| id == &resolved_model || id == &local_model));
-        if ready_only && !is_loaded { return Err(RouterError::NoRunners); }
+        let is_loaded = runner.status.engines.iter().any(|engine| {
+            engine.is_healthy
+                && engine
+                    .loaded_models
+                    .iter()
+                    .any(|id| id == &resolved_model || id == &local_model)
+        });
+        if ready_only && !is_loaded {
+            return Err(RouterError::NoRunners);
+        }
         Ok(RoutePlan {
-            runner, resolved_model, is_loaded, requested_selector: selector.into(),
-            class_hint: match request { ModelRequest::Class(c) => Some(c), _ => Some(ModelClass::SemanticDecisions) }, affinity: None,
-            affinity_decision: AffinityDecision::Unkeyed, observed_binding: None,
+            runner,
+            resolved_model,
+            is_loaded,
+            requested_selector: selector.into(),
+            class_hint: match request {
+                ModelRequest::Class(c) => Some(c),
+                _ => Some(ModelClass::SemanticDecisions),
+            },
+            affinity: None,
+            affinity_decision: AffinityDecision::Unkeyed,
+            observed_binding: None,
         })
     }
 
@@ -608,11 +657,22 @@ impl InferenceRouter {
                 ready.push(plan);
             }
         }
-        let preferences = self.routing_config.class_preferences.get("semantic_decisions");
+        let preferences = self
+            .routing_config
+            .class_preferences
+            .get("semantic_decisions");
         ready.sort_by_key(|plan| {
-            let rank = preferences.and_then(|p| p.iter().position(|t|
-                Some(t.as_str()) == plan.runner.machine_type.as_deref())).unwrap_or(usize::MAX);
-            (rank, plan.runner.active_requests.load(Ordering::SeqCst), plan.runner.id.clone())
+            let rank = preferences
+                .and_then(|p| {
+                    p.iter()
+                        .position(|t| Some(t.as_str()) == plan.runner.machine_type.as_deref())
+                })
+                .unwrap_or(usize::MAX);
+            (
+                rank,
+                plan.runner.active_requests.load(Ordering::SeqCst),
+                plan.runner.id.clone(),
+            )
         });
         ready.into_iter().next()
     }
@@ -829,7 +889,7 @@ impl InferenceRouter {
     ) -> Option<ConnectedRunner> {
         let runner = self.registry.get(&binding.runner_id).await?;
         if runner.generation != binding.runner_generation
-            || !runner.is_operational()
+            || !runner.is_dispatchable()
             || !runner.has_model_or_alias(&binding.resolved_model)
             || self
                 .circuit_breaker
@@ -878,7 +938,7 @@ impl InferenceRouter {
             .await
             .ok_or(RouterError::StalePlan)?;
         if current.generation != plan.runner.generation
-            || !current.is_operational()
+            || !current.is_dispatchable()
             || !current.has_model_or_alias(&plan.resolved_model)
             || self
                 .circuit_breaker
@@ -1478,7 +1538,11 @@ impl InferenceRouter {
         let response = self
             .http_client
             .post(&url)
-            .timeout(std::time::Duration::from_secs(if path == "/v1/decisions" { 960 } else { 300 }))
+            .timeout(std::time::Duration::from_secs(if path == "/v1/decisions" {
+                960
+            } else {
+                300
+            }))
             .json(&request)
             .send()
             .await
@@ -1590,11 +1654,11 @@ pub struct ModelEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simple_server::web::{extract::State, routing::post, Json, Router};
     use simple_ai_common::{
         ChatCompletionRequest, ChatCompletionResponse, ChatMessage, EngineStatus, ModelInfo,
         PromptCacheCapabilities, PromptCacheScope, RunnerHealth, RunnerStatus,
     };
+    use simple_server::web::{extract::State, routing::post, Json, Router};
     use std::sync::Mutex;
     use tokio::sync::mpsc;
 
@@ -1678,7 +1742,10 @@ mod tests {
             status: 400,
             body: "context length exceeded".to_string(),
         };
-        assert_eq!(error.client_status(), simple_server::web::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.client_status(),
+            simple_server::web::http::StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]
@@ -1690,6 +1757,22 @@ mod tests {
         assert_eq!(
             error.client_status(),
             simple_server::web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn no_enabled_runner_is_a_service_unavailable() {
+        let error = RouterError::NoEnabledRunner("fast".to_string());
+        assert_eq!(
+            error.client_status(),
+            simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert!(error
+            .to_string()
+            .contains("No enabled runner for class fast"));
+        assert_eq!(
+            RouterError::NoRunners.client_status(),
+            simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE
         );
     }
 
@@ -2321,7 +2404,11 @@ mod tests {
         let app = Router::new()
             .route("/v1/chat/completions", post(capture_chat_body))
             .with_state(captured.clone());
-        tokio::spawn(async move { simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new()).await.unwrap() });
+        tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap()
+        });
 
         let registry = Arc::new(RunnerRegistry::new());
         let mut status = create_test_status(vec!["model-a".to_string()]);
