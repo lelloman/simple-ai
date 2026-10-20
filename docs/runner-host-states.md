@@ -51,24 +51,39 @@ and SSE streams report state changes as `runner_state_changed`.
 
 ## Procedure: dedicate halo1 to agents
 
-1. Wait for SimpleAI work on halo1 to finish, or accept interruption.
-2. In SimpleAI, set `strix-halo-01` to `disabled`. This stops dispatch
-   immediately, prevents any wake, and unloads its models when idle.
-   (`draining` first is optional if you want a graceful hand-off.)
-3. In Crumbles, set the halo1 agent host to `enabled` (or clear its draining
-   state).
-4. Re-enable the SimpleAI runner unit at the systemd level on halo1, so it
-   comes back after a reboot and stays available when the machine is dedicated
-   to SimpleAI again:
+Do not enable the Crumbles host until the SimpleAI model is really gone. That
+means all of the following are visible for `strix-halo-01` in the admin UI
+(the **Runners** page and the dashboard fleet):
+
+- state is `draining` or `disabled`;
+- active requests are zero;
+- loaded models are empty;
+- GPU and system memory have dropped back to the host baseline.
+
+1. In SimpleAI, set `strix-halo-01` to `draining` to stop new dispatch while
+   in-flight work finishes.
+2. Wait for the conditions above. If a model stays loaded, keep waiting; do
+   not hand the host over while it is resident. Then set `strix-halo-01` to
+   `disabled` to prevent any later load or wake.
+3. Only after step 2 is confirmed, in Crumbles set the halo1 agent host to
+   `enabled` (or clear its draining state).
+4. On halo1 keep the SimpleAI runner unit enabled at the systemd level so it
+   is part of the declared configuration and can come back later:
    `systemctl --user enable simple-ai-runner`
-   Do not start it while the host is dedicated to agents.
+   It may be left running with state `disabled` (the gateway keeps its models
+   unloaded), or stopped to free its process memory:
+   `systemctl --user stop simple-ai-runner`
+   Do not disable the unit.
 
 ## Procedure: dedicate halo1 to SimpleAI
 
 1. In Crumbles, set the halo1 agent host to `draining`, then `disabled` once
-   its VMs have stopped so the machine's memory is free.
-2. In SimpleAI, confirm that the halo1 runner unit is enabled at the systemd
-   level (`systemctl --user enable simple-ai-runner`) and can register.
+   its VMs have stopped. Wait until the host's memory has been released.
+2. On halo1 ensure the SimpleAI runner unit is enabled and start it:
+   `systemctl --user enable simple-ai-runner`
+   `systemctl --user start simple-ai-runner`
+   A disabled persisted state still lets it register, but it will not serve
+   work until step 3.
 3. Set `strix-halo-01` to `enabled` in SimpleAI. Routing and wake-on-LAN resume
    normally.
 
@@ -89,8 +104,9 @@ Replace it with the two switches:
 3. In Crumbles, set the halo2 host to `enabled` (or undo its draining state)
    when halo2 is meant for agents; keep `strix-halo-02` `enabled` in SimpleAI
    only while SimpleAI owns halo2.
-4. Remove the manual halo1 stop/disable from runbooks; the persisted SimpleAI
-   state is now the switch that keeps it out of routing.
+4. Remove the manual halo1 stop/disable from runbooks. The unit stays enabled
+   (stopped is fine while agents own the host); the persisted SimpleAI
+   `disabled` state is the switch that keeps it out of routing.
 
 ## Rollout order
 
@@ -99,6 +115,8 @@ Replace it with the two switches:
 2. Apply the intended state to each runner through the admin UI/API.
 3. No inference-runner upgrade is required for these states; the gateway sends
    the existing `UnloadModel` command to keep models unloaded.
-4. If a host is dedicated to agents, stop/disable its SimpleAI runner unit as
-   described above. Merging the backend change does not deploy or restart
+4. If a host is dedicated to agents, first set its SimpleAI state to
+   `disabled` and confirm that no models or requests remain, then optionally
+   stop the runner unit while leaving it enabled as described above. Never
+   disable the unit. Merging the backend change does not deploy or restart
    anything.

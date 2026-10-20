@@ -595,6 +595,17 @@ impl WakeService {
         Ok(selected)
     }
 
+    /// Reject a wake attempt for a runner that is not enabled right now.
+    async fn ensure_enabled(&self, runner_id: &str) -> Result<(), WakeError> {
+        let state = self.registry.state_of(runner_id).await;
+        if state != RunnerState::Enabled {
+            return Err(WakeError::WakeFailed(format!(
+                "Runner {runner_id} is {state}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Wake a single runner by MAC address.
     ///
     /// Tries idle-manager first (if configured), falls back to direct WOL.
@@ -603,6 +614,7 @@ impl WakeService {
             .mac_address
             .as_ref()
             .ok_or_else(|| WakeError::WakeFailed("No MAC address".to_string()))?;
+        self.ensure_enabled(&runner.id).await?;
 
         // Try idle-manager first if configured
         if let Some(ref idle_manager_url) = self.gateway_config.idle_manager_url {
@@ -615,6 +627,10 @@ impl WakeService {
                     return Ok(());
                 }
                 Err(e) => {
+                    // The state may have changed while the request was in
+                    // flight. Never fall back to another wake path for a
+                    // runner that is no longer enabled.
+                    self.ensure_enabled(&runner.id).await?;
                     tracing::warn!(
                         "Failed to wake {} via idle-manager ({}), falling back to direct WOL",
                         runner.id,
@@ -623,6 +639,10 @@ impl WakeService {
                 }
             }
         }
+
+        // Re-check immediately before the direct send; another task may have
+        // changed the state while this one was waiting.
+        self.ensure_enabled(&runner.id).await?;
 
         // Fall back to direct WOL
         if let Some(ref bouncer_url) = self.wol_config.bouncer_url {
@@ -977,6 +997,86 @@ mod wake_service_tests {
         };
         assert_eq!(result.runner_id, "runner-1");
         assert_eq!(result.runners_woken, 2);
+    }
+
+    #[tokio::test]
+    async fn disabling_while_idle_manager_wake_is_pending_skips_wol_fallback() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::sync::oneshot;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_seen_tx, request_seen_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 1024];
+            let read = socket.read(&mut request).await.unwrap();
+            assert!(read > 0);
+            let _ = request_seen_tx.send(());
+            let _ = release_rx.await;
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await;
+        });
+
+        let dir = tempfile::tempdir().unwrap();
+        let audit = Arc::new(
+            AuditLogger::new(dir.path().join("wake-state.sqlite").to_str().unwrap()).unwrap(),
+        );
+        audit
+            .upsert_runner(
+                "halo",
+                "Halo",
+                Some("AA:BB:CC:DD:EE:FF"),
+                Some("halo"),
+                Some(&["model-x".to_string()]),
+            )
+            .unwrap();
+        let registry = Arc::new(RunnerRegistry::new());
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let service = Arc::new(WakeService::new(
+            registry.clone(),
+            audit.clone(),
+            GatewayConfig {
+                auto_wake_enabled: true,
+                idle_manager_url: Some(format!("http://{address}")),
+                ..Default::default()
+            },
+            WolConfig {
+                broadcast_address: "127.0.0.1".into(),
+                port: socket.local_addr().unwrap().port(),
+                ..Default::default()
+            },
+            ModelsConfig::default(),
+            RoutingConfig::default(),
+        ));
+        let record = audit.get_runner("halo").unwrap().unwrap();
+        let waking = {
+            let service = service.clone();
+            tokio::spawn(async move { service.wake_runner(&record).await })
+        };
+
+        request_seen_rx.await.unwrap();
+        registry.set_state("halo", RunnerState::Disabled).await;
+        release_tx.send(()).unwrap();
+
+        let result = timeout(Duration::from_secs(2), waking)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result.is_err());
+
+        let mut packet = [0; 1024];
+        assert!(
+            timeout(Duration::from_millis(250), socket.recv(&mut packet))
+                .await
+                .is_err(),
+            "a disabled runner must not receive a WOL fallback packet"
+        );
+        server.await.unwrap();
     }
 
     #[tokio::test]

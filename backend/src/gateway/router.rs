@@ -277,10 +277,17 @@ impl InferenceRouter {
         Resp: DeserializeOwned,
     {
         let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
-
-        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
 
         let mut request_value = serde_json::to_value(request)
             .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
@@ -288,12 +295,8 @@ impl InferenceRouter {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
 
-        let reservation = self
-            .registry
-            .reserve(&selection.runner, &selection.resolved_model);
-
         let response = self
-            .proxy_request_value(&selection.runner, "/v1/embeddings", request_value)
+            .proxy_request_value(&runner, "/v1/embeddings", request_value)
             .await;
 
         drop(reservation);
@@ -324,19 +327,24 @@ impl InferenceRouter {
         Resp: DeserializeOwned,
     {
         let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
-        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
         let mut request_value = serde_json::to_value(request)
             .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        let reservation = self
-            .registry
-            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
-            .proxy_request_value(&selection.runner, "/v1/classifications", request_value)
+            .proxy_request_value(&runner, "/v1/classifications", request_value)
             .await;
         drop(reservation);
         if let Some(breaker) = &self.circuit_breaker {
@@ -364,19 +372,24 @@ impl InferenceRouter {
         Resp: DeserializeOwned,
     {
         let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
-        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
         let mut request_value = serde_json::to_value(request)
             .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        let reservation = self
-            .registry
-            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
-            .proxy_request_value(&selection.runner, "/v1/extractions", request_value)
+            .proxy_request_value(&runner, "/v1/extractions", request_value)
             .await;
         drop(reservation);
         if let Some(breaker) = &self.circuit_breaker {
@@ -399,19 +412,24 @@ impl InferenceRouter {
         request: &simple_ai_common::DecisionRequest,
     ) -> Result<RoutedResponse<simple_ai_common::DecisionResponse>, RouterError> {
         let selection = plan;
-        let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
-        let local_model = selection.runner.resolve_model_alias(&resolved_model);
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                true,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
         let mut request_value = serde_json::to_value(request)
             .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
         if let Some(object) = request_value.as_object_mut() {
             object.insert("model".to_string(), serde_json::Value::String(local_model));
         }
-        let reservation = self
-            .registry
-            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
-            .proxy_request_value(&selection.runner, "/v1/decisions", request_value)
+            .proxy_request_value(&runner, "/v1/decisions", request_value)
             .await;
         drop(reservation);
         if let Some(breaker) = &self.circuit_breaker {
@@ -437,7 +455,10 @@ impl InferenceRouter {
     ) -> Result<RoutedResponse<OcrResponse>, RouterError> {
         let options: OcrOptions = serde_json::from_str(&options_json)
             .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
-        let runner = self.select_runner_for_ocr(options.mode).await?;
+        let selected = self.select_runner_for_ocr(options.mode).await?;
+        let (runner, reservation) = self
+            .reserve_current(&selected.id, selected.generation, None, false)
+            .await?;
         let runner_id = runner.id.clone();
 
         let form = reqwest::multipart::Form::new()
@@ -447,7 +468,6 @@ impl InferenceRouter {
             )
             .text("options", options_json);
 
-        let reservation = self.registry.reserve(&runner, "ocr");
         let response = self.proxy_multipart(&runner, "/v1/ocr", form).await;
         drop(reservation);
 
@@ -477,8 +497,16 @@ impl InferenceRouter {
         let _options: AudioEmbeddingOptions = serde_json::from_str(&options_json)
             .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
         let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
         let resolved_model = selection.resolved_model.clone();
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
 
         let form = reqwest::multipart::Form::new()
             .part(
@@ -487,11 +515,8 @@ impl InferenceRouter {
             )
             .text("options", options_json);
 
-        let reservation = self
-            .registry
-            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
-            .proxy_multipart(&selection.runner, "/v1/audio/embeddings", form)
+            .proxy_multipart(&runner, "/v1/audio/embeddings", form)
             .await;
         drop(reservation);
 
@@ -517,10 +542,17 @@ impl InferenceRouter {
         request: &SpeechRequest,
     ) -> Result<RoutedResponse<reqwest::Response>, RouterError> {
         let selection = self.select_runner_for_model(model).await?;
-        let runner_id = selection.runner.id.clone();
-        let local_model = selection
-            .runner
-            .resolve_model_alias(&selection.resolved_model);
+        let resolved_model = selection.resolved_model.clone();
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
 
         let mut request_value = serde_json::to_value(request)
             .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
@@ -528,11 +560,8 @@ impl InferenceRouter {
             obj.insert("model".to_string(), serde_json::Value::String(local_model));
         }
 
-        let reservation = self
-            .registry
-            .reserve(&selection.runner, &selection.resolved_model);
         let response = self
-            .proxy_request_raw_value(&selection.runner, "/v1/audio/speech", request_value)
+            .proxy_request_raw_value(&runner, "/v1/audio/speech", request_value)
             .await;
         drop(reservation);
 
@@ -547,7 +576,7 @@ impl InferenceRouter {
         response.map(|response| RoutedResponse {
             response,
             runner_id,
-            resolved_model: selection.resolved_model,
+            resolved_model,
         })
     }
 
@@ -931,6 +960,22 @@ impl InferenceRouter {
         (active / batch_size).saturating_mul(latency_ms)
     }
 
+    /// Atomically re-check that a selected runner is still enabled before
+    /// taking capacity. A state change that happened after planning must not
+    /// receive new work.
+    async fn reserve_current(
+        &self,
+        runner_id: &str,
+        generation: u64,
+        model: Option<&str>,
+        require_loaded: bool,
+    ) -> Result<(ConnectedRunner, CapacityReservation), RouterError> {
+        self.registry
+            .reserve_if_dispatchable(runner_id, generation, model, require_loaded)
+            .await
+            .ok_or(RouterError::StalePlan)
+    }
+
     pub async fn reserve_plan(&self, mut plan: RoutePlan) -> Result<ReservedRoute, RouterError> {
         let current = self
             .registry
@@ -997,7 +1042,18 @@ impl InferenceRouter {
                 AffinityDecision::Disabled | AffinityDecision::Unkeyed => {}
             }
         }
-        let reservation = self.registry.reserve(&current, &plan.resolved_model);
+        let Some((current, reservation)) = self
+            .registry
+            .reserve_if_dispatchable(
+                &current.id,
+                current.generation,
+                Some(&plan.resolved_model),
+                true,
+            )
+            .await
+        else {
+            return Err(RouterError::StalePlan);
+        };
         if plan.affinity.is_some() && plan.affinity_decision != AffinityDecision::Unkeyed {
             self.affinity_store
                 .metrics()
@@ -1774,6 +1830,38 @@ mod tests {
             RouterError::NoRunners.client_status(),
             simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE
         );
+    }
+
+    #[tokio::test]
+    async fn decision_dispatch_rechecks_state_after_planning() {
+        use crate::runner_state::RunnerState;
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model-a".to_string()]),
+                Some("http://127.0.0.1:1".to_string()),
+                tx,
+                None,
+            )
+            .await;
+        let router = create_test_router(registry.clone());
+        let plan = router.plan_request("model-a").await.unwrap();
+
+        registry.set_state("runner-1", RunnerState::Disabled).await;
+        let request = simple_ai_common::DecisionRequest {
+            model: "model-a".to_string(),
+            state: serde_json::Value::Null,
+            questions: vec![],
+        };
+        let error = router.decision(&plan, &request).await.unwrap_err();
+
+        assert!(matches!(error, RouterError::StalePlan));
+        assert_eq!(registry.get_active_requests("runner-1").await, 0);
     }
 
     #[tokio::test]

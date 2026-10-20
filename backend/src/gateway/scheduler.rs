@@ -40,6 +40,13 @@ pub enum SchedulerError {
     Wake(#[from] WakeError),
 }
 
+fn no_enabled_runner_error(plan: &RoutePlan) -> SchedulerError {
+    match plan.class_hint {
+        Some(class) => RouterError::NoEnabledRunner(class.to_string()).into(),
+        None => RouterError::NoRunners.into(),
+    }
+}
+
 #[derive(Clone)]
 pub struct RequestScheduler {
     decision_races: Arc<
@@ -291,10 +298,23 @@ impl RequestScheduler {
         let _activity = self
             .wake_service
             .keep_runner_awake(prepared.plan.runner.id.clone());
-        let routed = self
+        let routed = match self
             .inference_router
             .decision(&prepared.plan, request)
-            .await?;
+            .await
+        {
+            Err(RouterError::StalePlan) => {
+                let retry = if self.routing_config.decision_ready_race {
+                    self.prepare_decision_race(request_id, model, model_request)
+                        .await?
+                } else {
+                    self.prepare_for_request(request_id, model, model_request, None)
+                        .await?
+                };
+                self.inference_router.decision(&retry.plan, request).await?
+            }
+            other => other?,
+        };
         Ok(ScheduledResponse {
             response: routed.response,
             runner_id: routed.runner_id,
@@ -381,7 +401,11 @@ impl RequestScheduler {
                     wol_sent: false,
                 });
             }
-            return Err(RouterError::NoRunners.into());
+            let error = match request {
+                ModelRequest::Class(class) => RouterError::NoEnabledRunner(class.to_string()),
+                ModelRequest::Specific(_) => RouterError::NoRunners,
+            };
+            return Err(error.into());
         }
         // Class and concrete selectors share a preparation flight for the same
         // model. It outlives the winning request so RTX still finishes loading.
@@ -476,12 +500,17 @@ impl RequestScheduler {
         }
         let plan = timeout(self.wake_service.wake_timeout(), async {
             loop {
+                if self.runner_registry.state_of(&target.id).await
+                    != crate::runner_state::RunnerState::Enabled
+                {
+                    return Err(RouterError::NoRunners);
+                }
                 if let Ok(plan) = self
                     .inference_router
                     .speculative_plan_on(selector, &target.id, false)
                     .await
                 {
-                    return plan;
+                    return Ok(plan);
                 }
                 sleep(Duration::from_millis(100)).await;
             }
@@ -491,7 +520,8 @@ impl RequestScheduler {
             RouterError::ConnectionFailed(format!("Runner {} did not connect", target.id))
         });
         let result = match plan {
-            Ok(plan) => self.prepare_runner_model(request_id, &plan).await,
+            Ok(Ok(plan)) => self.prepare_runner_model(request_id, &plan).await,
+            Ok(Err(e)) => Err(e.into()),
             Err(e) => Err(e.into()),
         };
         self.router_telemetry.clear_runner_state(&target.id).await;
@@ -525,11 +555,11 @@ impl RequestScheduler {
         if !matches!(request, ModelRequest::Class(super::ModelClass::Fast))
             || !self.wake_service.is_enabled()
             || !self.routing_config.speculative_wake_enabled
-            || !self
+            || self
                 .routing_config
                 .speculative_wake_targets
                 .get("fast")
-                .is_some_and(|t| !t.is_empty())
+                .is_none_or(|t| t.is_empty())
         {
             return;
         }
@@ -915,6 +945,11 @@ impl RequestScheduler {
         if plan.is_loaded {
             return Ok(());
         }
+        if self.runner_registry.state_of(&plan.runner.id).await
+            != crate::runner_state::RunnerState::Enabled
+        {
+            return Err(no_enabled_runner_error(plan));
+        }
 
         let _activity = self.wake_service.keep_runner_awake(plan.runner.id.clone());
         self.router_telemetry
@@ -944,14 +979,25 @@ impl RequestScheduler {
         );
         // Subscribe before dispatch so immediate command failures are not lost.
         let events = self.runner_registry.subscribe_events();
-        plan.runner
-            .tx
-            .send(GatewayMessage::LoadModel {
-                model_id: plan.resolved_model.clone(),
-                request_id: request_id.clone(),
-            })
+        if self
+            .runner_registry
+            .send_load_if_dispatchable(
+                &plan.runner.id,
+                plan.runner.generation,
+                &plan.resolved_model,
+                GatewayMessage::LoadModel {
+                    model_id: plan.resolved_model.clone(),
+                    request_id: request_id.clone(),
+                },
+            )
             .await
-            .map_err(|e| RouterError::ConnectionFailed(e.to_string()))?;
+            .is_err()
+        {
+            self.router_telemetry
+                .clear_runner_state(&plan.runner.id)
+                .await;
+            return Err(no_enabled_runner_error(plan));
+        }
 
         self.wait_for_model_ready(&plan.runner.id, &plan.resolved_model, &request_id, events)
             .await
@@ -969,6 +1015,11 @@ impl RequestScheduler {
         timeout(timeout_duration, async {
             loop {
                 if let Some(runner) = self.runner_registry.get(runner_id).await {
+                    if !runner.is_dispatchable() {
+                        self.runner_registry.enforce_runner_state(runner_id);
+                        self.router_telemetry.clear_runner_state(runner_id).await;
+                        return Err(RouterError::NoRunners);
+                    }
                     if runner.has_model_or_alias(model_id) {
                         self.router_telemetry.clear_runner_state(runner_id).await;
                         self.router_telemetry
@@ -1549,6 +1600,56 @@ mod decision_race_tests {
                 .id,
             "rtx"
         );
+    }
+
+    #[tokio::test]
+    async fn disabling_between_planning_and_loading_sends_no_load() {
+        let (s, audit) = setup();
+        let loads = runner(&s, &audit, "halo1", "halo", false, Duration::ZERO, false).await;
+        let plan = s
+            .inference_router
+            .plan_request(DECISION_MODEL)
+            .await
+            .unwrap();
+        s.runner_registry
+            .set_state("halo1", crate::runner_state::RunnerState::Disabled)
+            .await;
+
+        let error = s.prepare_runner_model("test", &plan).await.unwrap_err();
+        assert!(matches!(
+            error,
+            SchedulerError::Router(RouterError::NoEnabledRunner(_))
+        ));
+        sleep(Duration::from_millis(100)).await;
+        assert_eq!(loads.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn decision_race_all_disabled_reports_no_enabled_runner() {
+        let (s, audit) = setup();
+        runner(&s, &audit, "rtx", "gpu-server", true, Duration::ZERO, false).await;
+        runner(&s, &audit, "halo1", "halo", true, Duration::ZERO, false).await;
+        for id in ["rtx", "halo1"] {
+            s.runner_registry
+                .set_state(id, crate::runner_state::RunnerState::Disabled)
+                .await;
+        }
+        let selector = "class:semantic_decisions";
+        let request = ModelRequest::parse(selector);
+        let decision = simple_ai_common::DecisionRequest {
+            model: DECISION_MODEL.to_string(),
+            state: serde_json::Value::Null,
+            questions: vec![],
+        };
+        let error = s
+            .decision("test", selector, &request, &decision)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            SchedulerError::Router(RouterError::NoEnabledRunner(class))
+                if class == "semantic_decisions"
+        ));
     }
 
     #[tokio::test]
