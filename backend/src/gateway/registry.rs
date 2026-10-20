@@ -659,9 +659,15 @@ impl RunnerRegistry {
         Some((runner.clone(), reservation))
     }
 
-    /// Send a load command only while the runner is still enabled. Keeping the
-    /// registry lock across the check and the channel send prevents a state
-    /// change from slipping between them.
+    /// Send a load command only while the runner is still enabled.
+    ///
+    /// Channel capacity is waited for *before* taking the registry read lock.
+    /// The runner's WebSocket loop is both the consumer of this channel and
+    /// the caller that applies status updates under the registry write lock,
+    /// so awaiting `send` while holding the read lock would deadlock on a full
+    /// queue: the loop could not receive before updating status. Once capacity
+    /// is reserved, the state is re-checked and the message is sent
+    /// synchronously through the permit.
     pub async fn send_load_if_dispatchable(
         &self,
         runner_id: &str,
@@ -669,6 +675,20 @@ impl RunnerRegistry {
         model: &str,
         message: GatewayMessage,
     ) -> Result<ConnectedRunner, ()> {
+        let tx = {
+            let runners = self.runners.read().await;
+            let runner = runners.get(runner_id).ok_or(())?;
+            if runner.generation != generation
+                || !runner.is_dispatchable()
+                || !runner.has_available_model_or_alias(model)
+            {
+                return Err(());
+            }
+            runner.tx.clone()
+        };
+        let permit = tx.reserve().await.map_err(|_| ())?;
+        // A state change or reconnect may have happened while waiting for
+        // queue capacity, so validate again under the registry lock.
         let runners = self.runners.read().await;
         let runner = runners.get(runner_id).ok_or(())?;
         if runner.generation != generation
@@ -677,7 +697,7 @@ impl RunnerRegistry {
         {
             return Err(());
         }
-        runner.tx.send(message).await.map_err(|_| ())?;
+        permit.send(message);
         Ok(runner.clone())
     }
 
@@ -1639,6 +1659,93 @@ mod tests {
             GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "model"),
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn full_queue_keeps_registry_responsive_and_rejects_load_after_disable() {
+        use simple_ai_common::GatewayMessage;
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, mut rx) = mpsc::channel(1);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let runner = registry.get("runner-1").await.unwrap();
+        let generation = runner.generation;
+        runner
+            .tx
+            .try_send(GatewayMessage::UnloadModel {
+                model_id: "queued".to_string(),
+                request_id: "queued".to_string(),
+            })
+            .expect("fill the runner queue");
+
+        let sender = {
+            let registry = registry.clone();
+            tokio::spawn(async move {
+                registry
+                    .send_load_if_dispatchable(
+                        "runner-1",
+                        generation,
+                        "model",
+                        GatewayMessage::LoadModel {
+                            model_id: "model".to_string(),
+                            request_id: "load".to_string(),
+                        },
+                    )
+                    .await
+            })
+        };
+        // Let the sender reach the wait for queue capacity.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(!sender.is_finished(), "load should wait for queue capacity");
+
+        // Status updates and administrative changes must not be blocked by the
+        // full queue: the WebSocket loop needs the registry write lock before
+        // it can drain the channel.
+        let updated = create_test_status(vec!["model".to_string()]);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            registry.update_status("runner-1", updated),
+        )
+        .await
+        .expect("status update must not block on a full runner queue");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            registry.set_state("runner-1", RunnerState::Disabled),
+        )
+        .await
+        .expect("disable must not block on a full runner queue");
+        let current =
+            tokio::time::timeout(std::time::Duration::from_secs(1), registry.get("runner-1"))
+                .await
+                .expect("registry reads stay responsive")
+                .expect("runner still connected");
+        assert_eq!(current.state, RunnerState::Disabled);
+
+        // Freeing a slot lets the waiting load proceed, but it must re-check
+        // the state and be rejected instead of reaching the disabled runner.
+        match rx.recv().await.expect("queued command") {
+            GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "queued"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), sender)
+            .await
+            .expect("load admission finishes")
+            .expect("sender task");
+        assert!(result.is_err(), "load must be rejected after disable");
+        assert!(
+            rx.try_recv().is_err(),
+            "no LoadModel may be queued for a disabled runner"
+        );
     }
 
     #[tokio::test]
