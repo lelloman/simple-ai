@@ -119,7 +119,12 @@ class MainActivity : ComponentActivity() {
                     },
                     account = { compact ->
                         val signedIn by sharedViewModel.gatewaySignedIn.collectAsState()
-                        LelloAccount(stringResource(if (signedIn) R.string.gateway_signed_in else R.string.gateway_signed_out),
+                        val gatewayAccount by sharedViewModel.gatewayAccount.collectAsState()
+                        val label = when {
+                            !signedIn -> stringResource(R.string.gateway_signed_out)
+                            else -> gatewayAccount?.username ?: stringResource(R.string.gateway_signed_in)
+                        }
+                        LelloAccount(label,
                             onClick = { navController.navigate(Settings) { launchSingleTop = true } }, compact = compact)
                     },
                     actions = { LelloAppearanceSelector(appearance, onSelected = {

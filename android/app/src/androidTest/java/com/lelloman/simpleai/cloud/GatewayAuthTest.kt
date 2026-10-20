@@ -21,16 +21,24 @@ class GatewayAuthTest {
     @Before fun setup() { store.clear(); settings.save("https://gateway.example") }
     @After fun cleanup() { store.clear(); context.getSharedPreferences("gateway_test_settings", Context.MODE_PRIVATE).edit().clear().commit() }
 
-    private fun signedInState(expired: Boolean = false): String {
+    private fun idToken(username: String): String {
+        fun encode(value: String) = android.util.Base64.encodeToString(value.toByteArray(),
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+        return encode("""{"alg":"none"}""") + "." + encode(JSONObject().put("preferred_username", username).toString()) + ".signature"
+    }
+
+    private fun signedInState(expired: Boolean = false, username: String? = null): String {
         val config = AuthorizationServiceConfiguration(Uri.parse("https://issuer.example/authorize"), Uri.parse("https://issuer.example/token"))
         val request = AuthorizationRequest.Builder(config, "gateway", ResponseTypeValues.CODE, Uri.parse(GatewayAuth.REDIRECT)).build()
         val response = AuthorizationResponse.Builder(request).setAuthorizationCode("test-code").build()
         val auth = AuthState(response, null)
-        auth.update(TokenResponse.Builder(response.createTokenExchangeRequest())
+        val token = TokenResponse.Builder(response.createTokenExchangeRequest())
             .setAccessToken("gateway-token-never-caller-token")
             .setRefreshToken("gateway-refresh-token")
             .setTokenType("Bearer")
-            .setAccessTokenExpirationTime(System.currentTimeMillis() + if (expired) -600000 else 600000).build(), null)
+            .setAccessTokenExpirationTime(System.currentTimeMillis() + if (expired) -600000 else 600000)
+        if (username != null) token.setIdToken(idToken(username))
+        auth.update(token.build(), null)
         return JSONObject().put("server", settings.endpoint.value).put("auth", auth.jsonSerialize()).toString()
     }
 
@@ -63,6 +71,26 @@ class GatewayAuthTest {
         assertNull(store.read())
         try { auth.session(); fail("Signed-out requests must fail") } catch (_: CloudAuthException) { }
     }
+    @Test fun accountIdentitySurvivesRecreationAndIsClearedBySignOutOrServerSwitch() = runBlocking {
+        store.write(signedInState(username = "alice"))
+        val auth = GatewayAuth(context, settings, store)
+        assertEquals("alice", auth.account.value?.username)
+        assertEquals("https://gateway.example", auth.account.value?.server)
+        assertEquals("alice", GatewayAuth(context, settings, store).account.value?.username)
+
+        assertTrue(auth.changeServer("https://different.example"))
+        assertNull(auth.account.value)
+        assertNull(GatewayAuth(context, settings, store).account.value)
+
+        assertTrue(auth.changeServer("https://gateway.example"))
+        store.write(signedInState(username = "bob"))
+        val switched = GatewayAuth(context, settings, store)
+        assertEquals("bob", switched.account.value?.username)
+        switched.signOut()
+        assertNull(switched.account.value)
+        assertNull(GatewayAuth(context, settings, store).account.value)
+    }
+
     @Test fun staleRedirectCannotRestoreSessionAfterSignOut() = runBlocking {
         val config = AuthorizationServiceConfiguration(Uri.parse("https://issuer.example/authorize"), Uri.parse("https://issuer.example/token"))
         val request = AuthorizationRequest.Builder(config, "gateway", ResponseTypeValues.CODE, Uri.parse(GatewayAuth.REDIRECT)).build()

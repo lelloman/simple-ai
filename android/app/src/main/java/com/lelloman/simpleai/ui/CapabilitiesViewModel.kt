@@ -83,8 +83,11 @@ class CapabilitiesViewModel(application: Application, savedStateHandle: SavedSta
 
     val cloudEndpoint = models.cloudSettings.endpoint
     val gatewaySignedIn = models.gatewayAuth.signedIn
+    val gatewaySigningIn = models.gatewayAuth.signingIn
+    val gatewayAccount = models.gatewayAuth.account
     val gatewayAuthError = models.gatewayAuth.error
     fun signOutGateway() { viewModelScope.launch { models.gatewayAuth.signOut() } }
+    fun cancelGatewaySignIn() { viewModelScope.launch { models.gatewayAuth.cancelSignIn() } }
     suspend fun saveCloudEndpoint(endpoint: String): Boolean = withContext(Dispatchers.IO) {
         models.gatewayAuth.changeServer(endpoint)
     }

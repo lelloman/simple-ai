@@ -116,5 +116,21 @@
     <string name="gateway_signed_out">Sign in to let approved apps use Cloud AI</string>
     <string name="gateway_sign_in">Sign in</string>
     <string name="gateway_sign_out">Sign out</string>
+    <string name="settings_account">Account</string>
+    <string name="gateway_status_signed_in">Signed in</string>
+    <string name="gateway_status_signed_out">Not signed in</string>
+    <string name="gateway_signed_out_hint">Sign in to let approved apps use Cloud AI with your account.</string>
+    <string name="gateway_no_server_title">No Cloud AI server</string>
+    <string name="gateway_no_server_hint">Set a server to sign in and let approved apps use Cloud AI.</string>
+    <string name="gateway_configure_server">Set up server</string>
+    <string name="gateway_server_line">Server: %1$s</string>
+    <string name="gateway_signing_in">Signing in…</string>
+    <string name="gateway_signing_in_hint">Finish signing in in your browser. This screen updates when you return.</string>
+    <string name="gateway_sign_in_again">Sign in again</string>
+    <string name="gateway_cancel_sign_in">Cancel sign-in</string>
+    <string name="gateway_auth_error">Sign-in problem</string>
+    <string name="gateway_sign_in_failed">Sign-in failed or was cancelled. Try again.</string>
+    <string name="gateway_profile_unavailable">Account details unavailable</string>
+    <string name="gateway_profile_unavailable_hint">Your session is active, but no username was provided. Sign in again to refresh account details.</string>
     <string name="settings_downloads">Downloads</string>
 </resources>
