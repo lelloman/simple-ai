@@ -660,6 +660,20 @@ impl RunnerRegistry {
     }
 
     /// Send a load command only while the runner is still enabled.
+    pub async fn send_load_if_dispatchable(
+        &self,
+        runner_id: &str,
+        generation: u64,
+        model: &str,
+        message: GatewayMessage,
+    ) -> Result<ConnectedRunner, ()> {
+        self.send_if_dispatchable(runner_id, generation, Some(model), message)
+            .await
+    }
+
+    /// Send a command only while the runner is still the same connection and
+    /// enabled. When `available_model` is set, the runner must still advertise
+    /// that model.
     ///
     /// Channel capacity is waited for *before* taking the registry read lock.
     /// The runner's WebSocket loop is both the consumer of this channel and
@@ -668,20 +682,22 @@ impl RunnerRegistry {
     /// queue: the loop could not receive before updating status. Once capacity
     /// is reserved, the state is re-checked and the message is sent
     /// synchronously through the permit.
-    pub async fn send_load_if_dispatchable(
+    pub async fn send_if_dispatchable(
         &self,
         runner_id: &str,
         generation: u64,
-        model: &str,
+        available_model: Option<&str>,
         message: GatewayMessage,
     ) -> Result<ConnectedRunner, ()> {
+        let is_dispatchable = |runner: &ConnectedRunner| {
+            runner.generation == generation
+                && runner.is_dispatchable()
+                && available_model.is_none_or(|model| runner.has_available_model_or_alias(model))
+        };
         let tx = {
             let runners = self.runners.read().await;
             let runner = runners.get(runner_id).ok_or(())?;
-            if runner.generation != generation
-                || !runner.is_dispatchable()
-                || !runner.has_available_model_or_alias(model)
-            {
+            if !is_dispatchable(runner) {
                 return Err(());
             }
             runner.tx.clone()
@@ -691,10 +707,7 @@ impl RunnerRegistry {
         // queue capacity, so validate again under the registry lock.
         let runners = self.runners.read().await;
         let runner = runners.get(runner_id).ok_or(())?;
-        if runner.generation != generation
-            || !runner.is_dispatchable()
-            || !runner.has_available_model_or_alias(model)
-        {
+        if !is_dispatchable(runner) {
             return Err(());
         }
         permit.send(message);

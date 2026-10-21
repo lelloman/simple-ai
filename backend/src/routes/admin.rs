@@ -439,13 +439,19 @@ async fn load_model(
     // Generate a unique request ID
     let request_id = format!("admin-load-{}-{}", runner_id, uuid::Uuid::new_v4().simple());
 
-    // Send LoadModel message to runner
+    // Send LoadModel message to runner. Queue capacity is awaited without the
+    // registry lock, and the runner's generation and state are re-checked
+    // immediately before the synchronous send.
     let msg = GatewayMessage::LoadModel {
         model_id: req.model_id.clone(),
         request_id: request_id.clone(),
     };
 
-    match runner.tx.send(msg).await {
+    match state
+        .runner_registry
+        .send_if_dispatchable(&runner_id, runner.generation, None, msg)
+        .await
+    {
         Ok(_) => {
             tracing::info!(
                 "Sent load model request '{}' for model '{}' to runner {}",
@@ -458,17 +464,25 @@ async fn load_model(
                 message: format!("Loading model '{}' on runner {}", req.model_id, runner_id),
             }))
         }
-        Err(e) => {
-            tracing::error!(
-                "Failed to send load model message to runner {}: {}",
-                runner_id,
-                e
+        Err(()) => {
+            let current_state = state.runner_registry.state_of(&runner_id).await;
+            tracing::warn!(
+                runner = %runner_id,
+                model = %req.model_id,
+                request_id = %request_id,
+                state = %current_state,
+                "Discarded admin model load after runner state changed"
             );
+            let message = if current_state == RunnerState::Enabled {
+                "Runner connection changed; model load was discarded".to_string()
+            } else {
+                format!("Runner is {}; models are kept unloaded", current_state)
+            };
             Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::CONFLICT,
                 Json(LoadModelResponse {
                     success: false,
-                    message: format!("Failed to send load command to runner: {}", e),
+                    message,
                 }),
             ))
         }
