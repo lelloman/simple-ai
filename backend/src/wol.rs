@@ -16,6 +16,7 @@ use crate::audit::{AuditLogger, RunnerRecord};
 use crate::config::ModelsConfig;
 use crate::config::{GatewayConfig, RoutingConfig, WolConfig};
 use crate::gateway::{classify_model, ModelClass, ModelRequest, RunnerEvent, RunnerRegistry};
+use crate::runner_state::RunnerState;
 
 /// Request-owned activity lease. Cancellation drops it and stops renewal.
 pub struct RunnerActivity(tokio::task::JoinHandle<()>);
@@ -339,11 +340,17 @@ impl WakeService {
         let connected = self.registry.all().await;
         let connected_ids: std::collections::HashSet<_> =
             connected.iter().map(|r| r.id.as_str()).collect();
+        let states = self.registry.states().await;
 
-        // Filter to runners that are offline and have MAC addresses
+        // Filter to runners that are enabled, offline and have MAC addresses.
+        // Disabled runners must never be woken.
         let mut wakeable: Vec<RunnerRecord> = all_runners
             .into_iter()
-            .filter(|r| r.mac_address.is_some() && !connected_ids.contains(r.id.as_str()))
+            .filter(|r| {
+                r.mac_address.is_some()
+                    && !connected_ids.contains(r.id.as_str())
+                    && states.get(&r.id).copied().unwrap_or_default() == RunnerState::Enabled
+            })
             .collect();
 
         // Further filter by model request if specified
@@ -381,7 +388,9 @@ impl WakeService {
                         ModelClass::EmbedLarge => self.models_config.embed_large.first(),
                         ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
                         ModelClass::Tts => self.models_config.tts.first(),
-                        ModelClass::SemanticDecisions => self.models_config.semantic_decisions.first(),
+                        ModelClass::SemanticDecisions => {
+                            self.models_config.semantic_decisions.first()
+                        }
                         ModelClass::InformationExtraction => {
                             self.models_config.information_extraction.first()
                         }
@@ -527,35 +536,74 @@ impl WakeService {
     /// One runner per configured machine type, including connected runners.
     /// Reuse a loaded/connected Halo before considering another powered-off one.
     pub(crate) async fn decision_race_targets(
-        &self, request: &ModelRequest,
+        &self,
+        request: &ModelRequest,
     ) -> Result<Vec<RunnerRecord>, WakeError> {
         let live = self.registry.all().await;
-        let mut records = self.audit_logger.get_all_runners()
+        let states = self.registry.states().await;
+        let mut records = self
+            .audit_logger
+            .get_all_runners()
             .map_err(|e| WakeError::DatabaseError(e.to_string()))?;
-        records.retain(|r| self.runner_matches_request(r, request)
-            && (live.iter().any(|l| l.id == r.id) || (self.is_enabled() && r.mac_address.is_some())));
+        records.retain(|r| {
+            self.runner_matches_request(r, request)
+                && states.get(&r.id).copied().unwrap_or_default() == RunnerState::Enabled
+                && (live.iter().any(|l| l.id == r.id)
+                    || (self.is_enabled() && r.mac_address.is_some()))
+        });
         records.sort_by_key(|record| {
             let rank = match live.iter().find(|l| l.id == record.id) {
                 Some(r) if r.has_model_or_alias(simple_ai_common::DECISION_MODEL) => 0,
-                Some(r) if !r.has_resource_conflict_for_model(simple_ai_common::DECISION_MODEL) => 1,
+                Some(r) if !r.has_resource_conflict_for_model(simple_ai_common::DECISION_MODEL) => {
+                    1
+                }
                 Some(_) => 2,
                 None => 3,
             };
-            (rank, live.iter().find(|r| r.id == record.id)
-                .map(|r| r.active_requests.load(std::sync::atomic::Ordering::SeqCst)).unwrap_or(0), record.id.clone())
+            (
+                rank,
+                live.iter()
+                    .find(|r| r.id == record.id)
+                    .map(|r| r.active_requests.load(std::sync::atomic::Ordering::SeqCst))
+                    .unwrap_or(0),
+                record.id.clone(),
+            )
         });
-        let types = self.routing_config.speculative_wake_targets.get("semantic_decisions")
-            .or_else(|| self.routing_config.class_preferences.get("semantic_decisions"));
-        let Some(types) = types else { return Ok(Vec::new()); };
+        let types = self
+            .routing_config
+            .speculative_wake_targets
+            .get("semantic_decisions")
+            .or_else(|| {
+                self.routing_config
+                    .class_preferences
+                    .get("semantic_decisions")
+            });
+        let Some(types) = types else {
+            return Ok(Vec::new());
+        };
         let mut selected = Vec::new();
         for machine in types {
-            if let Some(record) = records.iter().find(|r| r.machine_type.as_ref() == Some(machine)) {
+            if let Some(record) = records
+                .iter()
+                .find(|r| r.machine_type.as_ref() == Some(machine))
+            {
                 if !selected.iter().any(|r: &RunnerRecord| r.id == record.id) {
                     selected.push(record.clone());
                 }
             }
         }
         Ok(selected)
+    }
+
+    /// Reject a wake attempt for a runner that is not enabled right now.
+    async fn ensure_enabled(&self, runner_id: &str) -> Result<(), WakeError> {
+        let state = self.registry.state_of(runner_id).await;
+        if state != RunnerState::Enabled {
+            return Err(WakeError::WakeFailed(format!(
+                "Runner {runner_id} is {state}"
+            )));
+        }
+        Ok(())
     }
 
     /// Wake a single runner by MAC address.
@@ -566,6 +614,7 @@ impl WakeService {
             .mac_address
             .as_ref()
             .ok_or_else(|| WakeError::WakeFailed("No MAC address".to_string()))?;
+        self.ensure_enabled(&runner.id).await?;
 
         // Try idle-manager first if configured
         if let Some(ref idle_manager_url) = self.gateway_config.idle_manager_url {
@@ -578,6 +627,10 @@ impl WakeService {
                     return Ok(());
                 }
                 Err(e) => {
+                    // The state may have changed while the request was in
+                    // flight. Never fall back to another wake path for a
+                    // runner that is no longer enabled.
+                    self.ensure_enabled(&runner.id).await?;
                     tracing::warn!(
                         "Failed to wake {} via idle-manager ({}), falling back to direct WOL",
                         runner.id,
@@ -586,6 +639,10 @@ impl WakeService {
                 }
             }
         }
+
+        // Re-check immediately before the direct send; another task may have
+        // changed the state while this one was waiting.
+        self.ensure_enabled(&runner.id).await?;
 
         // Fall back to direct WOL
         if let Some(ref bouncer_url) = self.wol_config.bouncer_url {
@@ -623,7 +680,23 @@ impl WakeService {
         };
 
         let client = self.http_client.clone();
+        let registry = self.registry.clone();
         tokio::spawn(async move {
+            // Disabled and draining runners do not keep a host awake, but an
+            // already admitted request still needs the host to stay up until
+            // it finishes.
+            let active = registry
+                .get(&runner_id)
+                .await
+                .map(|runner| {
+                    runner
+                        .active_requests
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                })
+                .unwrap_or(0);
+            if registry.state_of(&runner_id).await != RunnerState::Enabled && active == 0 {
+                return;
+            }
             let url = format!(
                 "{}/nodes/{}/keepalive",
                 idle_manager_url.trim_end_matches('/'),
@@ -924,6 +997,149 @@ mod wake_service_tests {
         };
         assert_eq!(result.runner_id, "runner-1");
         assert_eq!(result.runners_woken, 2);
+    }
+
+    #[tokio::test]
+    async fn disabling_while_idle_manager_wake_is_pending_skips_wol_fallback() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::sync::oneshot;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (request_seen_tx, request_seen_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 1024];
+            let read = socket.read(&mut request).await.unwrap();
+            assert!(read > 0);
+            let _ = request_seen_tx.send(());
+            let _ = release_rx.await;
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await;
+        });
+
+        let dir = tempfile::tempdir().unwrap();
+        let audit = Arc::new(
+            AuditLogger::new(dir.path().join("wake-state.sqlite").to_str().unwrap()).unwrap(),
+        );
+        audit
+            .upsert_runner(
+                "halo",
+                "Halo",
+                Some("AA:BB:CC:DD:EE:FF"),
+                Some("halo"),
+                Some(&["model-x".to_string()]),
+            )
+            .unwrap();
+        let registry = Arc::new(RunnerRegistry::new());
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let service = Arc::new(WakeService::new(
+            registry.clone(),
+            audit.clone(),
+            GatewayConfig {
+                auto_wake_enabled: true,
+                idle_manager_url: Some(format!("http://{address}")),
+                ..Default::default()
+            },
+            WolConfig {
+                broadcast_address: "127.0.0.1".into(),
+                port: socket.local_addr().unwrap().port(),
+                ..Default::default()
+            },
+            ModelsConfig::default(),
+            RoutingConfig::default(),
+        ));
+        let record = audit.get_runner("halo").unwrap().unwrap();
+        let waking = {
+            let service = service.clone();
+            tokio::spawn(async move { service.wake_runner(&record).await })
+        };
+
+        request_seen_rx.await.unwrap();
+        registry.set_state("halo", RunnerState::Disabled).await;
+        release_tx.send(()).unwrap();
+
+        let result = timeout(Duration::from_secs(2), waking)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result.is_err());
+
+        let mut packet = [0; 1024];
+        assert!(
+            timeout(Duration::from_millis(250), socket.recv(&mut packet))
+                .await
+                .is_err(),
+            "a disabled runner must not receive a WOL fallback packet"
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn only_enabled_runners_are_wakeable() {
+        let dir = tempfile::tempdir().unwrap();
+        let audit = Arc::new(
+            AuditLogger::new(dir.path().join("wake-state.sqlite").to_str().unwrap()).unwrap(),
+        );
+        audit
+            .upsert_runner(
+                "halo",
+                "Halo",
+                Some("AA:BB:CC:DD:EE:FF"),
+                Some("halo"),
+                Some(&["model-x".to_string()]),
+            )
+            .unwrap();
+        let registry = Arc::new(RunnerRegistry::new());
+        let service = WakeService::new(
+            registry.clone(),
+            audit.clone(),
+            GatewayConfig::default(),
+            WolConfig::default(),
+            ModelsConfig::default(),
+            RoutingConfig::default(),
+        );
+        let request = ModelRequest::Specific("model-x".to_string());
+
+        assert_eq!(
+            service
+                .find_wakeable_runners(Some(&request))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        for state in [RunnerState::Draining, RunnerState::Disabled] {
+            audit.set_runner_state("halo", state).unwrap();
+            registry.set_state("halo", state).await;
+            assert!(service
+                .find_wakeable_runners(Some(&request))
+                .await
+                .unwrap()
+                .is_empty());
+            assert!(service
+                .planned_wake_targets(&request)
+                .await
+                .unwrap()
+                .is_empty());
+        }
+
+        audit
+            .set_runner_state("halo", RunnerState::Enabled)
+            .unwrap();
+        registry.set_state("halo", RunnerState::Enabled).await;
+        assert_eq!(
+            service
+                .find_wakeable_runners(Some(&request))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
 

@@ -154,6 +154,7 @@ fn table(name: &str) -> Result<TableSpec<'static>, DefinitionError> {
                 ("machine_type", "TEXT", false, None),
                 ("last_seen_at", "TEXT", true, None),
                 ("available_models", "TEXT", false, None),
+                ("state", "TEXT", true, Some("'enabled'")),
             ],
             &["id"],
             &[],

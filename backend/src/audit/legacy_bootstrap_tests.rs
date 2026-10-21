@@ -121,7 +121,8 @@ pub(super) fn bootstrap(conn: &Connection) -> Result<(), AuditError> {
                 mac_address TEXT,
                 machine_type TEXT,
                 last_seen_at TEXT NOT NULL,
-                available_models TEXT
+                available_models TEXT,
+                state TEXT NOT NULL DEFAULT 'enabled'
             )",
         [],
     )
@@ -129,6 +130,10 @@ pub(super) fn bootstrap(conn: &Connection) -> Result<(), AuditError> {
 
     // Migration: add available_models column if it doesn't exist
     let _ = conn.execute("ALTER TABLE runners ADD COLUMN available_models TEXT", []); // Ignore error if column already exists
+    let _ = conn.execute(
+        "ALTER TABLE runners ADD COLUMN state TEXT NOT NULL DEFAULT 'enabled'",
+        [],
+    );
 
     // Migration: add model_class column to responses
     let _ = conn.execute("ALTER TABLE responses ADD COLUMN model_class TEXT", []);

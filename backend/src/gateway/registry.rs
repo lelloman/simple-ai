@@ -10,8 +10,28 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 
 use simple_ai_common::{
     Capability, CommandResponse, EngineStatus, GatewayMessage, OcrMode, OcrProviderInfo,
-    ReasoningCapabilities, RunnerStatus,
+    ReasoningCapabilities, RunnerMetrics, RunnerStatus,
 };
+
+use crate::runner_state::RunnerState;
+
+/// How long to keep watching a non-enabled runner after its models are gone,
+/// to catch a load that was already in flight when the state changed.
+const STATE_ENFORCEMENT_SETTLE: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// Whether a status report carries metric changes the admin UI displays.
+fn metrics_changed(old: Option<&RunnerMetrics>, new: Option<&RunnerMetrics>) -> bool {
+    match (old, new) {
+        (None, None) => false,
+        (Some(old), Some(new)) => {
+            old.gpu_memory_used != new.gpu_memory_used
+                || old.gpu_memory_total != new.gpu_memory_total
+                || old.memory_used != new.memory_used
+                || old.cpu_usage_percent != new.cpu_usage_percent
+        }
+        _ => true,
+    }
+}
 
 /// Event emitted when runner state changes.
 #[derive(Debug, Clone, Serialize)]
@@ -23,17 +43,26 @@ pub enum RunnerEvent {
         name: String,
         machine_type: Option<String>,
         health: String,
+        state: RunnerState,
         loaded_models: Vec<String>,
         available_models: Vec<String>,
+        metrics: Option<RunnerMetrics>,
     },
     /// A runner has disconnected from the gateway.
     Disconnected { runner_id: String },
-    /// A runner's status has changed (health or loaded models).
+    /// A runner's status has changed (health, metrics or loaded models).
     StatusChanged {
         runner_id: String,
         health: String,
+        state: RunnerState,
         loaded_models: Vec<String>,
         available_models: Vec<String>,
+        metrics: Option<RunnerMetrics>,
+    },
+    /// An administrator changed the runner's dispatch state.
+    StateChanged {
+        runner_id: String,
+        state: RunnerState,
     },
     /// A runner completed a gateway command such as load/unload model.
     CommandCompleted {
@@ -73,6 +102,8 @@ pub struct ConnectedRunner {
     pub model_requests: Arc<std::sync::Mutex<HashMap<String, usize>>>,
     /// Unique incarnation of this runner connection.
     pub generation: u64,
+    /// Persisted administrative state for this runner.
+    pub state: RunnerState,
 }
 
 /// Non-cloneable ownership token for one active runner request.
@@ -118,6 +149,11 @@ impl ConnectedRunner {
     /// Check if the runner is healthy and operational.
     pub fn is_operational(&self) -> bool {
         self.status.health.is_operational()
+    }
+
+    /// Whether new requests may be dispatched to this runner.
+    pub fn is_dispatchable(&self) -> bool {
+        self.state == RunnerState::Enabled && self.is_operational()
     }
 
     pub fn prompt_cache_accepts_key(&self, resolved_model: &str) -> bool {
@@ -289,6 +325,10 @@ impl ConnectedRunner {
 /// Registry of connected inference runners.
 pub struct RunnerRegistry {
     runners: RwLock<HashMap<String, ConnectedRunner>>,
+    /// Persisted administrative state, including runners that are offline.
+    states: RwLock<HashMap<String, RunnerState>>,
+    /// Runner IDs with a background state-enforcement task in flight.
+    state_enforcement: tokio::sync::Mutex<std::collections::HashSet<String>>,
     /// Broadcast channel for runner events (connect, disconnect, status changes).
     event_tx: broadcast::Sender<RunnerEvent>,
     next_generation: AtomicU64,
@@ -304,6 +344,7 @@ impl std::fmt::Debug for RunnerRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RunnerRegistry")
             .field("runners", &"<RwLock<...>>")
+            .field("states", &"<RwLock<...>>")
             .field("event_tx", &"<broadcast::Sender>")
             .finish()
     }
@@ -315,9 +356,136 @@ impl RunnerRegistry {
         let (tx, _) = broadcast::channel(64);
         Self {
             runners: RwLock::new(HashMap::new()),
+            states: RwLock::new(HashMap::new()),
+            state_enforcement: Default::default(),
             event_tx: tx,
             next_generation: AtomicU64::new(1),
         }
+    }
+
+    /// Load a persisted state before the gateway starts serving.
+    pub async fn install_state(&self, id: impl Into<String>, state: RunnerState) {
+        self.states.write().await.insert(id.into(), state);
+    }
+
+    /// Current state for a runner. Unknown runners are enabled by default.
+    pub async fn state_of(&self, id: &str) -> RunnerState {
+        self.states
+            .read()
+            .await
+            .get(id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Snapshot of all known runner states.
+    pub async fn states(&self) -> HashMap<String, RunnerState> {
+        self.states.read().await.clone()
+    }
+
+    /// Change a runner's state, updating a live connection and notifying admin
+    /// clients. Returns whether the runner was connected.
+    pub async fn set_state(&self, id: &str, state: RunnerState) -> bool {
+        self.states.write().await.insert(id.to_string(), state);
+        let connected = {
+            let mut runners = self.runners.write().await;
+            match runners.get_mut(id) {
+                Some(runner) => {
+                    runner.state = state;
+                    true
+                }
+                None => false,
+            }
+        };
+        let _ = self.event_tx.send(RunnerEvent::StateChanged {
+            runner_id: id.to_string(),
+            state,
+        });
+        connected
+    }
+
+    /// Unload models from a runner that must not keep them loaded. The runner
+    /// is watched until its models are gone, it is enabled again, or it
+    /// disconnects. At most one task runs per runner.
+    pub fn enforce_runner_state(self: &Arc<Self>, runner_id: &str) {
+        let registry = self.clone();
+        let runner_id = runner_id.to_string();
+        tokio::spawn(async move {
+            if !registry
+                .state_enforcement
+                .lock()
+                .await
+                .insert(runner_id.clone())
+            {
+                return;
+            }
+            let mut last_unload: HashMap<String, tokio::time::Instant> = HashMap::new();
+            // A model load may already be in flight when the state changes. It
+            // can take a while before the model shows up as loaded, so do not
+            // stop watching just because the runner is momentarily empty.
+            let mut empty_since: Option<tokio::time::Instant> = None;
+            loop {
+                if registry.state_of(&runner_id).await == RunnerState::Enabled {
+                    break;
+                }
+                let Some(runner) = registry.get(&runner_id).await else {
+                    break;
+                };
+                let loaded = runner.loaded_models();
+                if loaded.is_empty() {
+                    let since = *empty_since.get_or_insert_with(tokio::time::Instant::now);
+                    if since.elapsed() >= STATE_ENFORCEMENT_SETTLE {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    continue;
+                }
+                empty_since = None;
+                if runner.active_requests.load(Ordering::SeqCst) == 0 {
+                    for model in loaded {
+                        let should_send = last_unload.get(&model).is_none_or(|sent| {
+                            sent.elapsed() >= std::time::Duration::from_secs(30)
+                        });
+                        if !should_send {
+                            continue;
+                        }
+                        let request_id = format!(
+                            "state-unload-{}-{}",
+                            runner_id,
+                            uuid::Uuid::new_v4().simple()
+                        );
+                        match runner
+                            .tx
+                            .send(GatewayMessage::UnloadModel {
+                                model_id: model.clone(),
+                                request_id,
+                            })
+                            .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    runner = %runner_id,
+                                    model = %model,
+                                    "Unloading model from non-enabled runner"
+                                );
+                                last_unload.insert(model, tokio::time::Instant::now());
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    runner = %runner_id,
+                                    model = %model,
+                                    %error,
+                                    "Could not send unload command to non-enabled runner"
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            registry.state_enforcement.lock().await.remove(&runner_id);
+        });
     }
 
     /// Subscribe to runner events (connect, disconnect, status changes).
@@ -350,6 +518,8 @@ impl RunnerRegistry {
             .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
             .collect();
         let model_aliases = status.model_aliases.clone();
+        let runner_state = self.state_of(&id).await;
+        let metrics = status.metrics.clone();
 
         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
         let runner = ConnectedRunner {
@@ -366,6 +536,7 @@ impl RunnerRegistry {
             active_requests: Arc::new(AtomicUsize::new(0)),
             model_requests: Default::default(),
             generation,
+            state: runner_state,
         };
         self.runners.write().await.insert(id.clone(), runner);
 
@@ -376,8 +547,10 @@ impl RunnerRegistry {
             name,
             machine_type,
             health,
+            state: runner_state,
             loaded_models,
             available_models,
+            metrics,
         });
     }
 
@@ -412,13 +585,18 @@ impl RunnerRegistry {
                 .iter()
                 .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
                 .collect();
+            let metrics_did_change =
+                metrics_changed(runner.status.metrics.as_ref(), status.metrics.as_ref());
 
             let changed = old_health != new_health
                 || old_models != new_models
-                || old_available != new_available_models;
+                || old_available != new_available_models
+                || metrics_did_change;
 
             // Update model aliases from status
             runner.model_aliases = status.model_aliases.clone();
+            let metrics = status.metrics.clone();
+            let state = runner.state;
             runner.status = status;
             runner.last_heartbeat = Utc::now();
 
@@ -427,8 +605,10 @@ impl RunnerRegistry {
                 let _ = self.event_tx.send(RunnerEvent::StatusChanged {
                     runner_id: id.to_string(),
                     health: new_health,
+                    state,
                     loaded_models: new_models,
                     available_models: new_available_models,
+                    metrics,
                 });
             }
         }
@@ -447,6 +627,91 @@ impl RunnerRegistry {
     /// Get a runner by ID.
     pub async fn get(&self, id: &str) -> Option<ConnectedRunner> {
         self.runners.read().await.get(id).cloned()
+    }
+
+    /// Reserve one active-request slot on a runner only if it is still the
+    /// same connection and still enabled. The state is checked and the slot is
+    /// taken under the same registry lock, so a concurrent disable cannot be
+    /// overtaken by a request that was planned earlier.
+    pub async fn reserve_if_dispatchable(
+        &self,
+        runner_id: &str,
+        generation: u64,
+        model: Option<&str>,
+        require_loaded: bool,
+    ) -> Option<(ConnectedRunner, CapacityReservation)> {
+        let runners = self.runners.read().await;
+        let runner = runners.get(runner_id)?;
+        if runner.generation != generation || !runner.is_dispatchable() {
+            return None;
+        }
+        if let Some(model) = model {
+            let has_model = if require_loaded {
+                runner.has_model_or_alias(model)
+            } else {
+                runner.has_model_or_alias(model) || runner.has_available_model_or_alias(model)
+            };
+            if !has_model {
+                return None;
+            }
+        }
+        let reservation = self.reserve(runner, model.unwrap_or("ocr"));
+        Some((runner.clone(), reservation))
+    }
+
+    /// Send a load command only while the runner is still enabled.
+    pub async fn send_load_if_dispatchable(
+        &self,
+        runner_id: &str,
+        generation: u64,
+        model: &str,
+        message: GatewayMessage,
+    ) -> Result<ConnectedRunner, ()> {
+        self.send_if_dispatchable(runner_id, generation, Some(model), message)
+            .await
+    }
+
+    /// Send a command only while the runner is still the same connection and
+    /// enabled. When `available_model` is set, the runner must still advertise
+    /// that model.
+    ///
+    /// Channel capacity is waited for *before* taking the registry read lock.
+    /// The runner's WebSocket loop is both the consumer of this channel and
+    /// the caller that applies status updates under the registry write lock,
+    /// so awaiting `send` while holding the read lock would deadlock on a full
+    /// queue: the loop could not receive before updating status. Once capacity
+    /// is reserved, the state is re-checked and the message is sent
+    /// synchronously through the permit.
+    pub async fn send_if_dispatchable(
+        &self,
+        runner_id: &str,
+        generation: u64,
+        available_model: Option<&str>,
+        message: GatewayMessage,
+    ) -> Result<ConnectedRunner, ()> {
+        let is_dispatchable = |runner: &ConnectedRunner| {
+            runner.generation == generation
+                && runner.is_dispatchable()
+                && available_model.is_none_or(|model| runner.has_available_model_or_alias(model))
+        };
+        let tx = {
+            let runners = self.runners.read().await;
+            let runner = runners.get(runner_id).ok_or(())?;
+            if !is_dispatchable(runner) {
+                return Err(());
+            }
+            runner.tx.clone()
+        };
+        let permit = tx.reserve().await.map_err(|_| ())?;
+        // A state change or reconnect may have happened while waiting for
+        // queue capacity, so validate again under the registry lock.
+        let runners = self.runners.read().await;
+        let runner = runners.get(runner_id).ok_or(())?;
+        if !is_dispatchable(runner) {
+            return Err(());
+        }
+        permit.send(message);
+        Ok(runner.clone())
     }
 
     /// Reserve one active-request slot for `model` on an already validated runner instance.
@@ -517,13 +782,13 @@ impl RunnerRegistry {
         self.runners.read().await.values().cloned().collect()
     }
 
-    /// Get all operational runners (healthy or degraded).
+    /// Get all dispatchable runners (healthy or degraded, and enabled).
     pub async fn operational(&self) -> Vec<ConnectedRunner> {
         self.runners
             .read()
             .await
             .values()
-            .filter(|r| r.is_operational())
+            .filter(|r| r.is_dispatchable())
             .cloned()
             .collect()
     }
@@ -534,7 +799,7 @@ impl RunnerRegistry {
             .read()
             .await
             .values()
-            .filter(|r| r.is_operational() && r.has_model_or_alias(model_id))
+            .filter(|r| r.is_dispatchable() && r.has_model_or_alias(model_id))
             .cloned()
             .collect()
     }
@@ -545,7 +810,7 @@ impl RunnerRegistry {
             .read()
             .await
             .values()
-            .filter(|r| r.is_operational() && r.has_available_model_or_alias(model_id))
+            .filter(|r| r.is_dispatchable() && r.has_available_model_or_alias(model_id))
             .cloned()
             .collect()
     }
@@ -556,7 +821,7 @@ impl RunnerRegistry {
         let mut models: HashMap<String, ModelInfo> = HashMap::new();
 
         for runner in runners.values() {
-            if !runner.is_operational() {
+            if !runner.is_dispatchable() {
                 continue;
             }
 
@@ -1026,6 +1291,7 @@ mod tests {
             model_aliases: aliases,
             active_requests: Arc::new(AtomicUsize::new(0)),
             model_requests: Default::default(),
+            state: RunnerState::Enabled,
         };
 
         assert_eq!(runner.resolve_model_alias("canonical-model"), "local-model");
@@ -1047,6 +1313,7 @@ mod tests {
             model_aliases: std::collections::HashMap::new(),
             active_requests: Arc::new(AtomicUsize::new(0)),
             model_requests: Default::default(),
+            state: RunnerState::Enabled,
         };
 
         // Should return original name when no alias exists
@@ -1069,6 +1336,7 @@ mod tests {
             model_aliases: std::collections::HashMap::new(),
             active_requests: Arc::new(AtomicUsize::new(0)),
             model_requests: Default::default(),
+            state: RunnerState::Enabled,
         };
 
         assert!(runner.has_model_or_alias("model-a"));
@@ -1094,6 +1362,7 @@ mod tests {
             model_aliases: aliases,
             active_requests: Arc::new(AtomicUsize::new(0)),
             model_requests: Default::default(),
+            state: RunnerState::Enabled,
         };
 
         // Should find via alias
@@ -1174,5 +1443,351 @@ mod tests {
 
         // Non-existent runner returns 0
         assert_eq!(registry.get_active_requests("non-existent").await, 0);
+    }
+
+    #[tokio::test]
+    async fn non_enabled_states_are_not_selected_for_dispatch() {
+        let registry = RunnerRegistry::new();
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+
+        assert_eq!(registry.operational().await.len(), 1);
+        assert_eq!(registry.with_model("model").await.len(), 1);
+        assert_eq!(registry.with_available_model("model").await.len(), 1);
+
+        for state in [RunnerState::Draining, RunnerState::Disabled] {
+            assert!(registry.set_state("runner-1", state).await);
+            assert!(registry.operational().await.is_empty());
+            assert!(registry.with_model("model").await.is_empty());
+            assert!(registry.with_available_model("model").await.is_empty());
+            assert!(registry.all_models().await.is_empty());
+            assert!(registry
+                .get("runner-1")
+                .await
+                .is_some_and(|runner| !runner.is_dispatchable()));
+        }
+
+        registry.set_state("runner-1", RunnerState::Enabled).await;
+        assert_eq!(registry.operational().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn persisted_state_is_applied_to_a_later_registration() {
+        let registry = RunnerRegistry::new();
+        registry
+            .install_state("runner-1", RunnerState::Disabled)
+            .await;
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+
+        assert_eq!(registry.state_of("runner-1").await, RunnerState::Disabled);
+        assert_eq!(
+            registry.get("runner-1").await.unwrap().state,
+            RunnerState::Disabled
+        );
+        assert!(registry.operational().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn state_change_is_broadcast_to_admin_clients() {
+        let registry = RunnerRegistry::new();
+        let mut events = registry.subscribe_events();
+        registry.set_state("runner-1", RunnerState::Draining).await;
+
+        match events.recv().await.unwrap() {
+            RunnerEvent::StateChanged { runner_id, state } => {
+                assert_eq!(runner_id, "runner-1");
+                assert_eq!(state, RunnerState::Draining);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn enabled_runner_models_are_not_unloaded() {
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, mut rx) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        registry.set_state("runner-1", RunnerState::Enabled).await;
+        registry.enforce_runner_state("runner-1");
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(150), rx.recv())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn draining_waits_for_inflight_work_before_unloading() {
+        use simple_ai_common::GatewayMessage;
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, mut rx) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let runner = registry.get("runner-1").await.unwrap();
+        let reservation = registry.reserve(&runner, "model");
+        registry.set_state("runner-1", RunnerState::Draining).await;
+        registry.enforce_runner_state("runner-1");
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(150), rx.recv())
+                .await
+                .is_err()
+        );
+        drop(reservation);
+
+        let message = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("unload command after in-flight work")
+            .expect("channel open");
+        match message {
+            GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "model"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn memory_only_status_change_is_broadcast_to_admin_clients() {
+        let registry = RunnerRegistry::new();
+        let (tx, _rx) = mpsc::channel(32);
+        let mut initial = create_test_status(vec!["model".to_string()]);
+        initial.metrics = Some(RunnerMetrics {
+            requests_processed: 10,
+            avg_latency_ms: Some(5.0),
+            gpu_memory_used: Some(1024),
+            gpu_memory_total: Some(8192),
+            cpu_usage_percent: Some(3.0),
+            memory_used: Some(2048),
+        });
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                initial,
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let mut events = registry.subscribe_events();
+
+        let mut updated = create_test_status(vec!["model".to_string()]);
+        updated.metrics = Some(RunnerMetrics {
+            requests_processed: 20,
+            avg_latency_ms: Some(5.0),
+            gpu_memory_used: Some(4096),
+            gpu_memory_total: Some(8192),
+            cpu_usage_percent: Some(3.0),
+            memory_used: Some(2048),
+        });
+        registry.update_status("runner-1", updated).await;
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), events.recv())
+            .await
+            .expect("status event")
+            .expect("channel open");
+        match event {
+            RunnerEvent::StatusChanged { metrics, .. } => {
+                assert_eq!(metrics.unwrap().gpu_memory_used, Some(4096));
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn late_load_after_disable_is_still_unloaded() {
+        use simple_ai_common::GatewayMessage;
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, mut rx) = mpsc::channel(32);
+        let mut idle = create_test_status(vec!["model".to_string()]);
+        idle.engines[0].loaded_models.clear();
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                idle,
+                None,
+                tx,
+                None,
+            )
+            .await;
+        registry.set_state("runner-1", RunnerState::Disabled).await;
+        registry.enforce_runner_state("runner-1");
+
+        // A load that was already in flight lands after enforcement started.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        registry
+            .update_status("runner-1", create_test_status(vec!["model".to_string()]))
+            .await;
+
+        let message = tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv())
+            .await
+            .expect("unload command for late load")
+            .expect("channel open");
+        match message {
+            GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "model"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn full_queue_keeps_registry_responsive_and_rejects_load_after_disable() {
+        use simple_ai_common::GatewayMessage;
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, mut rx) = mpsc::channel(1);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let runner = registry.get("runner-1").await.unwrap();
+        let generation = runner.generation;
+        runner
+            .tx
+            .try_send(GatewayMessage::UnloadModel {
+                model_id: "queued".to_string(),
+                request_id: "queued".to_string(),
+            })
+            .expect("fill the runner queue");
+
+        let sender = {
+            let registry = registry.clone();
+            tokio::spawn(async move {
+                registry
+                    .send_load_if_dispatchable(
+                        "runner-1",
+                        generation,
+                        "model",
+                        GatewayMessage::LoadModel {
+                            model_id: "model".to_string(),
+                            request_id: "load".to_string(),
+                        },
+                    )
+                    .await
+            })
+        };
+        // Let the sender reach the wait for queue capacity.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(!sender.is_finished(), "load should wait for queue capacity");
+
+        // Status updates and administrative changes must not be blocked by the
+        // full queue: the WebSocket loop needs the registry write lock before
+        // it can drain the channel.
+        let updated = create_test_status(vec!["model".to_string()]);
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            registry.update_status("runner-1", updated),
+        )
+        .await
+        .expect("status update must not block on a full runner queue");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            registry.set_state("runner-1", RunnerState::Disabled),
+        )
+        .await
+        .expect("disable must not block on a full runner queue");
+        let current =
+            tokio::time::timeout(std::time::Duration::from_secs(1), registry.get("runner-1"))
+                .await
+                .expect("registry reads stay responsive")
+                .expect("runner still connected");
+        assert_eq!(current.state, RunnerState::Disabled);
+
+        // Freeing a slot lets the waiting load proceed, but it must re-check
+        // the state and be rejected instead of reaching the disabled runner.
+        match rx.recv().await.expect("queued command") {
+            GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "queued"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), sender)
+            .await
+            .expect("load admission finishes")
+            .expect("sender task");
+        assert!(result.is_err(), "load must be rejected after disable");
+        assert!(
+            rx.try_recv().is_err(),
+            "no LoadModel may be queued for a disabled runner"
+        );
+    }
+
+    #[tokio::test]
+    async fn disabled_runner_models_are_unloaded_when_idle() {
+        use simple_ai_common::GatewayMessage;
+
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, mut rx) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".to_string(),
+                "Runner 1".to_string(),
+                None,
+                create_test_status(vec!["model".to_string()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        registry.set_state("runner-1", RunnerState::Disabled).await;
+        registry.enforce_runner_state("runner-1");
+
+        let message = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("unload command")
+            .expect("channel open");
+        match message {
+            GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "model"),
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 }

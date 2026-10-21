@@ -21,7 +21,7 @@ use simple_server::web::{
     http::StatusCode,
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use tokio_stream::wrappers::BroadcastStream;
@@ -31,6 +31,7 @@ use crate::audit::{
     ApiKey, DashboardStats, ModelContextMetricRow, RequestWithResponse, UserWithStats,
 };
 use crate::gateway::{ModelQueueStats, RouterEventRecord, RouterStateSnapshot, RunnerEvent};
+use crate::runner_state::RunnerState;
 use crate::wol;
 use crate::AppState;
 
@@ -103,6 +104,10 @@ pub struct RunnerInfo {
     pub http_base_url: Option<String>,
     pub mac_address: Option<String>,
     pub is_online: bool,
+    /// Enabled, draining or disabled.
+    pub state: RunnerState,
+    /// Latest system metrics reported by the runner.
+    pub metrics: Option<simple_ai_common::RunnerMetrics>,
 }
 
 /// Response for /admin/runners endpoint.
@@ -137,6 +142,8 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
                 http_base_url: r.http_base_url,
                 mac_address: r.mac_address,
                 is_online: true,
+                state: r.state,
+                metrics: r.status.metrics.clone(),
             }
         })
         .collect();
@@ -165,6 +172,8 @@ async fn list_runners(State(state): State<Arc<AppState>>) -> Json<RunnersRespons
                         http_base_url: None,
                         mac_address: db_runner.mac_address,
                         is_online: false,
+                        state: db_runner.state,
+                        metrics: None,
                     });
                     added += 1;
                 }
@@ -286,6 +295,19 @@ async fn wake_runner(
     State(state): State<Arc<AppState>>,
     Path(runner_id): Path<String>,
 ) -> Result<Json<WakeResponse>, (StatusCode, Json<WakeResponse>)> {
+    let runner_state = state.runner_registry.state_of(&runner_id).await;
+    if runner_state != RunnerState::Enabled {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(WakeResponse {
+                success: false,
+                message: format!(
+                    "Runner is {runner_state}; no work will be dispatched and it will not be woken"
+                ),
+            }),
+        ));
+    }
+
     // First check if runner is already online
     if let Some(runner) = state.runner_registry.get(&runner_id).await {
         if runner.is_operational() {
@@ -396,6 +418,16 @@ async fn load_model(
         ));
     }
 
+    if runner.state != RunnerState::Enabled {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(LoadModelResponse {
+                success: false,
+                message: format!("Runner is {}; models are kept unloaded", runner.state),
+            }),
+        ));
+    }
+
     // Check if model is already loaded
     if runner.has_model(&req.model_id) {
         return Ok(Json(LoadModelResponse {
@@ -407,13 +439,19 @@ async fn load_model(
     // Generate a unique request ID
     let request_id = format!("admin-load-{}-{}", runner_id, uuid::Uuid::new_v4().simple());
 
-    // Send LoadModel message to runner
+    // Send LoadModel message to runner. Queue capacity is awaited without the
+    // registry lock, and the runner's generation and state are re-checked
+    // immediately before the synchronous send.
     let msg = GatewayMessage::LoadModel {
         model_id: req.model_id.clone(),
         request_id: request_id.clone(),
     };
 
-    match runner.tx.send(msg).await {
+    match state
+        .runner_registry
+        .send_if_dispatchable(&runner_id, runner.generation, None, msg)
+        .await
+    {
         Ok(_) => {
             tracing::info!(
                 "Sent load model request '{}' for model '{}' to runner {}",
@@ -426,17 +464,25 @@ async fn load_model(
                 message: format!("Loading model '{}' on runner {}", req.model_id, runner_id),
             }))
         }
-        Err(e) => {
-            tracing::error!(
-                "Failed to send load model message to runner {}: {}",
-                runner_id,
-                e
+        Err(()) => {
+            let current_state = state.runner_registry.state_of(&runner_id).await;
+            tracing::warn!(
+                runner = %runner_id,
+                model = %req.model_id,
+                request_id = %request_id,
+                state = %current_state,
+                "Discarded admin model load after runner state changed"
             );
+            let message = if current_state == RunnerState::Enabled {
+                "Runner connection changed; model load was discarded".to_string()
+            } else {
+                format!("Runner is {}; models are kept unloaded", current_state)
+            };
             Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::CONFLICT,
                 Json(LoadModelResponse {
                     success: false,
-                    message: format!("Failed to send load command to runner: {}", e),
+                    message,
                 }),
             ))
         }
@@ -900,8 +946,10 @@ enum AdminServerMessage {
         name: String,
         machine_type: Option<String>,
         health: String,
+        state: RunnerState,
         loaded_models: Vec<String>,
         available_models: Vec<String>,
+        metrics: Option<simple_ai_common::RunnerMetrics>,
     },
     /// A runner disconnected.
     RunnerDisconnected { runner_id: String },
@@ -909,8 +957,15 @@ enum AdminServerMessage {
     RunnerStatusChanged {
         runner_id: String,
         health: String,
+        state: RunnerState,
         loaded_models: Vec<String>,
         available_models: Vec<String>,
+        metrics: Option<simple_ai_common::RunnerMetrics>,
+    },
+    /// An administrator changed a runner's dispatch state.
+    RunnerStateChanged {
+        runner_id: String,
+        state: RunnerState,
     },
     /// A runner command completed.
     RunnerCommandCompleted {
@@ -955,15 +1010,19 @@ impl From<RunnerEvent> for AdminServerMessage {
                 name,
                 machine_type,
                 health,
+                state,
                 loaded_models,
                 available_models,
+                metrics,
             } => AdminServerMessage::RunnerConnected {
                 runner_id,
                 name,
                 machine_type,
                 health,
+                state,
                 loaded_models,
                 available_models,
+                metrics,
             },
             RunnerEvent::Disconnected { runner_id } => {
                 AdminServerMessage::RunnerDisconnected { runner_id }
@@ -971,14 +1030,21 @@ impl From<RunnerEvent> for AdminServerMessage {
             RunnerEvent::StatusChanged {
                 runner_id,
                 health,
+                state,
                 loaded_models,
                 available_models,
+                metrics,
             } => AdminServerMessage::RunnerStatusChanged {
                 runner_id,
                 health,
+                state,
                 loaded_models,
                 available_models,
+                metrics,
             },
+            RunnerEvent::StateChanged { runner_id, state } => {
+                AdminServerMessage::RunnerStateChanged { runner_id, state }
+            }
             RunnerEvent::CommandCompleted {
                 runner_id,
                 request_id,
@@ -1308,6 +1374,8 @@ async fn get_runners_snapshot(state: &AppState) -> Vec<RunnerInfo> {
                 http_base_url: r.http_base_url,
                 mac_address: r.mac_address,
                 is_online: true,
+                state: r.state,
+                metrics: r.status.metrics.clone(),
             }
         })
         .collect();
@@ -1328,6 +1396,8 @@ async fn get_runners_snapshot(state: &AppState) -> Vec<RunnerInfo> {
                     http_base_url: None,
                     mac_address: db_runner.mac_address,
                     is_online: false,
+                    state: db_runner.state,
+                    metrics: None,
                 });
             }
         }
@@ -1507,6 +1577,7 @@ async fn runner_events(
                     RunnerEvent::Connected { .. } => "runner_connected",
                     RunnerEvent::Disconnected { .. } => "runner_disconnected",
                     RunnerEvent::StatusChanged { .. } => "runner_status_changed",
+                    RunnerEvent::StateChanged { .. } => "runner_state_changed",
                     RunnerEvent::CommandCompleted { .. } => "runner_command_completed",
                 };
 
@@ -1525,6 +1596,87 @@ async fn runner_events(
     Ok(Sse::new(stream)
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
         .into_response())
+}
+
+#[derive(Debug, Deserialize)]
+struct SetRunnerStateRequest {
+    state: RunnerState,
+}
+
+#[derive(Debug, Serialize)]
+struct SetRunnerStateResponse {
+    success: bool,
+    state: RunnerState,
+    message: String,
+}
+
+/// PUT /admin/runners/{id}/state - Persist and apply the dispatch state.
+async fn set_runner_state(
+    State(state): State<Arc<AppState>>,
+    Path(runner_id): Path<String>,
+    Json(request): Json<SetRunnerStateRequest>,
+) -> Result<Json<SetRunnerStateResponse>, (StatusCode, Json<SetRunnerStateResponse>)> {
+    let connected = state.runner_registry.get(&runner_id).await.is_some();
+    let known = connected
+        || state
+            .audit_logger
+            .get_runner(&runner_id)
+            .ok()
+            .flatten()
+            .is_some();
+    if !known {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(SetRunnerStateResponse {
+                success: false,
+                state: request.state,
+                message: "Runner not found".to_string(),
+            }),
+        ));
+    }
+
+    let persisted = state
+        .audit_logger
+        .set_runner_state(&runner_id, request.state)
+        .map_err(|error| {
+            tracing::error!(runner = %runner_id, %error, "Failed to persist runner state");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(SetRunnerStateResponse {
+                    success: false,
+                    state: request.state,
+                    message: "Failed to persist runner state".to_string(),
+                }),
+            )
+        })?;
+    if !persisted && !connected {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(SetRunnerStateResponse {
+                success: false,
+                state: request.state,
+                message: "Runner not found".to_string(),
+            }),
+        ));
+    }
+
+    state
+        .runner_registry
+        .set_state(&runner_id, request.state)
+        .await;
+    if request.state != RunnerState::Enabled {
+        state.runner_registry.enforce_runner_state(&runner_id);
+    }
+    tracing::info!(
+        runner = %runner_id,
+        state = %request.state,
+        "Administrator changed runner state"
+    );
+    Ok(Json(SetRunnerStateResponse {
+        success: true,
+        state: request.state,
+        message: format!("Runner {} is now {}", runner_id, request.state),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -1579,6 +1731,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let admin_routes = Router::new()
         .route("/runners", get(list_runners))
         .route("/runners/{id}/wake", post(wake_runner))
+        .route("/runners/{id}/state", put(set_runner_state))
         .route("/runners/{id}/drain", post(drain_runner))
         .route("/runners/{id}/load-model", post(load_model))
         .route("/runners/{id}/unload-model", post(unload_model))

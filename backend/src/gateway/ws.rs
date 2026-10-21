@@ -16,6 +16,7 @@ use simple_ai_common::{GatewayMessage, RunnerMessage, RunnerRegistration, PROTOC
 
 use super::{BatchDispatcher, RunnerRegistry};
 use crate::audit::AuditLogger;
+use crate::runner_state::RunnerState;
 
 /// Shared state for WebSocket connections.
 pub struct WsState {
@@ -186,6 +187,12 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
 
     let runner_id = registration.runner_id.clone();
 
+    // A disabled or draining runner must not keep models loaded, including
+    // after a reconnect or restart.
+    if state.registry.state_of(&runner_id).await != RunnerState::Enabled {
+        state.registry.enforce_runner_state(&runner_id);
+    }
+
     // Main message loop
     loop {
         tokio::select! {
@@ -203,6 +210,9 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
                     Ok(Message::Text(text)) => {
                         if let Err(e) = handle_runner_message(&text, &runner_id, &state.registry).await {
                             tracing::error!("Error handling message from {}: {}", runner_id, e);
+                        }
+                        if state.registry.state_of(&runner_id).await != RunnerState::Enabled {
+                            state.registry.enforce_runner_state(&runner_id);
                         }
                     }
                     Ok(Message::Ping(data)) => {

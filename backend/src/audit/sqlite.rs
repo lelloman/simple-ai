@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 use crate::models::request::{Request, Response};
 use crate::models::user::User;
+use crate::runner_state::RunnerState;
 use simple_ai_common::InferenceMetrics;
 
 /// SQLite-based audit logger with user management.
@@ -138,6 +139,13 @@ impl AuditLogger {
 
         // Migration: add available_models column if it doesn't exist
         let _ = conn.execute("ALTER TABLE runners ADD COLUMN available_models TEXT", []); // Ignore error if column already exists
+                                                                                          // Migration: persist the per-runner dispatch state. Existing runners
+                                                                                          // keep their historical behaviour (enabled) until an administrator
+                                                                                          // changes them.
+        let _ = conn.execute(
+            "ALTER TABLE runners ADD COLUMN state TEXT NOT NULL DEFAULT 'enabled'",
+            [],
+        );
 
         // Migration: add model_class column to responses
         let _ = conn.execute("ALTER TABLE responses ADD COLUMN model_class TEXT", []);
@@ -1237,6 +1245,12 @@ pub struct ApiKey {
     pub secret_available: bool,
 }
 
+fn parse_runner_state(value: Option<String>) -> RunnerState {
+    value
+        .and_then(|state| state.parse().ok())
+        .unwrap_or_default()
+}
+
 /// Persistent runner record for WOL and offline tracking.
 #[derive(Debug, Clone)]
 pub struct RunnerRecord {
@@ -1247,6 +1261,8 @@ pub struct RunnerRecord {
     pub last_seen_at: String,
     /// Available models on this runner (JSON array of model IDs).
     pub available_models: Vec<String>,
+    /// Persisted dispatch state chosen by an administrator.
+    pub state: RunnerState,
 }
 
 /// Runner metrics for boot time or inference latency.
@@ -1336,7 +1352,7 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let result = conn.query_row(
-            "SELECT id, name, mac_address, machine_type, last_seen_at, available_models FROM runners WHERE id = ?1",
+            "SELECT id, name, mac_address, machine_type, last_seen_at, available_models, state FROM runners WHERE id = ?1",
             params![id],
             |row| {
                 let models_json: Option<String> = row.get(5)?;
@@ -1350,6 +1366,7 @@ impl AuditLogger {
                     machine_type: row.get(3)?,
                     last_seen_at: row.get(4)?,
                     available_models,
+                    state: parse_runner_state(row.get::<_, Option<String>>(6)?),
                 })
             },
         );
@@ -1369,7 +1386,7 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, name, mac_address, machine_type, last_seen_at, available_models FROM runners ORDER BY last_seen_at DESC"
+            "SELECT id, name, mac_address, machine_type, last_seen_at, available_models, state FROM runners ORDER BY last_seen_at DESC"
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         let rows = stmt
@@ -1385,6 +1402,7 @@ impl AuditLogger {
                     machine_type: row.get(3)?,
                     last_seen_at: row.get(4)?,
                     available_models,
+                    state: parse_runner_state(row.get::<_, Option<String>>(6)?),
                 })
             })
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
@@ -1394,6 +1412,22 @@ impl AuditLogger {
             runners.push(row.map_err(|e| AuditError::DatabaseError(e.to_string()))?);
         }
         Ok(runners)
+    }
+
+    /// Persist a runner's dispatch state. Returns false when the runner is
+    /// unknown.
+    pub fn set_runner_state(&self, id: &str, state: RunnerState) -> Result<bool, AuditError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let changed = conn
+            .execute(
+                "UPDATE runners SET state = ?1 WHERE id = ?2",
+                params![state.as_str(), id],
+            )
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        Ok(changed > 0)
     }
 
     /// Get runners that have a model of the specified class.
@@ -2435,6 +2469,53 @@ mod tests {
     }
 
     #[test]
+    fn runner_state_defaults_to_enabled_and_is_preserved_on_upsert() {
+        let logger = create_test_logger();
+        logger
+            .upsert_runner("runner-1", "Runner 1", None, None, None)
+            .unwrap();
+        assert_eq!(
+            logger.get_runner("runner-1").unwrap().unwrap().state,
+            RunnerState::Enabled
+        );
+
+        assert!(logger
+            .set_runner_state("runner-1", RunnerState::Disabled)
+            .unwrap());
+        logger
+            .upsert_runner("runner-1", "Runner 1 renamed", None, None, None)
+            .unwrap();
+        assert_eq!(
+            logger.get_runner("runner-1").unwrap().unwrap().state,
+            RunnerState::Disabled
+        );
+        assert!(!logger
+            .set_runner_state("missing", RunnerState::Draining)
+            .unwrap());
+    }
+
+    #[test]
+    fn runner_state_survives_reopening_the_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner-state.sqlite");
+        let path = path.to_str().unwrap();
+        {
+            let logger = AuditLogger::new(path).unwrap();
+            logger
+                .upsert_runner("runner-1", "Runner 1", None, None, None)
+                .unwrap();
+            logger
+                .set_runner_state("runner-1", RunnerState::Draining)
+                .unwrap();
+        }
+        let logger = AuditLogger::new(path).unwrap();
+        assert_eq!(
+            logger.get_runner("runner-1").unwrap().unwrap().state,
+            RunnerState::Draining
+        );
+    }
+
+    #[test]
     fn test_runner_record_struct() {
         let record = RunnerRecord {
             id: "runner-1".to_string(),
@@ -2443,6 +2524,7 @@ mod tests {
             machine_type: Some("gpu-server".to_string()),
             last_seen_at: "2024-01-01T00:00:00Z".to_string(),
             available_models: vec!["llama3:8b".to_string()],
+            state: RunnerState::Enabled,
         };
         assert_eq!(record.id, "runner-1");
         assert!(record.mac_address.is_some());

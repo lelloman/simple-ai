@@ -8,7 +8,7 @@ use simple_ai_backend::{
     routes, AppState, Config, InferenceRouter, RequestScheduler, RouterTelemetry, RunnerRegistry,
     WakeService,
 };
-use simple_ai_common::{CommandResponse, RunnerHealth, RunnerStatus};
+use simple_ai_common::{CommandResponse, EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
 use simple_server::web::{
     http::{Request, StatusCode},
     Body,
@@ -178,6 +178,37 @@ fn status(health: RunnerHealth) -> RunnerStatus {
         health,
         capabilities: vec![],
         engines: vec![],
+        metrics: None,
+        model_aliases: Default::default(),
+    }
+}
+fn status_with_available_models(models: &[&str]) -> RunnerStatus {
+    RunnerStatus {
+        health: RunnerHealth::Healthy,
+        capabilities: vec![],
+        engines: vec![EngineStatus {
+            engine_type: "test".into(),
+            resource_group: None,
+            is_healthy: true,
+            version: None,
+            loaded_models: vec![],
+            available_models: models
+                .iter()
+                .map(|id| ModelInfo {
+                    id: (*id).into(),
+                    name: (*id).into(),
+                    size_bytes: None,
+                    parameter_count: None,
+                    context_length: None,
+                    quantization: None,
+                    modified_at: None,
+                    reasoning: None,
+                })
+                .collect(),
+            error: None,
+            batch_size: 1,
+            prompt_cache: None,
+        }],
         metrics: None,
         model_aliases: Default::default(),
     }
@@ -421,4 +452,234 @@ async fn admin_drain_requires_admin_and_queues_typed_command() {
         .update_status("drain-test", status(RunnerHealth::Draining))
         .await;
     assert!(state.runner_registry.operational().await.is_empty());
+}
+
+#[tokio::test]
+async fn admin_runner_state_is_persisted_and_controls_dispatch() {
+    use simple_ai_backend::runner_state::RunnerState;
+
+    let state = create_test_state().await.unwrap();
+    let (tx, _rx) = tokio::sync::mpsc::channel(4);
+    state
+        .runner_registry
+        .register(
+            "strix-halo-01".into(),
+            "Halo 1".into(),
+            Some("halo".into()),
+            status(RunnerHealth::Healthy),
+            None,
+            tx,
+            Some("AA:BB:CC:DD:EE:01".into()),
+        )
+        .await;
+    state
+        .audit_logger
+        .upsert_runner(
+            "strix-halo-01",
+            "Halo 1",
+            Some("AA:BB:CC:DD:EE:01"),
+            Some("halo"),
+            Some(&["fast-model".to_string()]),
+        )
+        .unwrap();
+
+    let app = routes::admin::router(state.clone());
+    for (roles, expected) in [
+        (&["user"][..], StatusCode::FORBIDDEN),
+        (&["admin"][..], StatusCode::OK),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/runners/strix-halo-01/state")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", token(&state, roles, "test")),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"state":"disabled"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+        if expected == StatusCode::FORBIDDEN {
+            assert_eq!(
+                state.runner_registry.state_of("strix-halo-01").await,
+                RunnerState::Enabled
+            );
+        }
+    }
+
+    assert_eq!(
+        state.runner_registry.state_of("strix-halo-01").await,
+        RunnerState::Disabled
+    );
+    assert!(state.runner_registry.operational().await.is_empty());
+    assert_eq!(
+        state
+            .audit_logger
+            .get_runner("strix-halo-01")
+            .unwrap()
+            .unwrap()
+            .state,
+        RunnerState::Disabled
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runners")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", token(&state, &["admin"], "test")),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = simple_server::web::body::to_bytes(response.into_body(), 8192)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["runners"][0]["state"], "disabled");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/runners/strix-halo-01/wake")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", token(&state, &["admin"], "test")),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/runners/strix-halo-01/state")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", token(&state, &["admin"], "test")),
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"state":"always"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn admin_load_is_rejected_when_state_changes_while_waiting_for_queue_capacity() {
+    use simple_ai_backend::runner_state::RunnerState;
+    use simple_ai_common::GatewayMessage;
+
+    let state = create_test_state().await.unwrap();
+    let app = routes::admin::router(state.clone());
+    let auth = format!("Bearer {}", token(&state, &["admin"], "test"));
+
+    for (target, target_json, id) in [
+        (RunnerState::Draining, "draining", "load-race-draining"),
+        (RunnerState::Disabled, "disabled", "load-race-disabled"),
+    ] {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        state
+            .runner_registry
+            .register(
+                id.into(),
+                id.into(),
+                None,
+                status_with_available_models(&["large-model"]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let runner = state.runner_registry.get(id).await.unwrap();
+        runner
+            .tx
+            .try_send(GatewayMessage::UnloadModel {
+                model_id: "queued".into(),
+                request_id: "queued".into(),
+            })
+            .expect("fill the runner queue");
+
+        let pending = {
+            let app = app.clone();
+            let auth = auth.clone();
+            let id = id.to_string();
+            tokio::spawn(async move {
+                app.oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/runners/{id}/load-model"))
+                        .header("authorization", auth)
+                        .header("content-type", "application/json")
+                        .body(Body::from(r#"{"model_id":"large-model"}"#))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+            })
+        };
+        // Let the request reach the wait for channel capacity.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(
+            !pending.is_finished(),
+            "admin load should wait for runner queue capacity"
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/runners/{id}/state"))
+                    .header("authorization", auth.clone())
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"state":"{target_json}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(state.runner_registry.state_of(id).await, target);
+
+        // Free the queue slot. The waiting load must re-check state and give
+        // up instead of sending LoadModel to a non-enabled runner.
+        match rx.recv().await.expect("queued command") {
+            GatewayMessage::UnloadModel { model_id, .. } => assert_eq!(model_id, "queued"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let response = tokio::time::timeout(Duration::from_secs(2), pending)
+            .await
+            .expect("pending admin load finishes")
+            .expect("request task");
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = simple_server::web::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["success"], false);
+        assert!(
+            rx.try_recv().is_err(),
+            "no LoadModel may be queued for a {target} runner"
+        );
+    }
 }
