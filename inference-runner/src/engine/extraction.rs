@@ -9,7 +9,7 @@ use reqwest::Client;
 use simple_ai_common::{
     ChatCompletionRequest, ChatCompletionResponse, ExtractionRequest, ExtractionResponse,
 };
-use std::{process::Stdio, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::{
     net::TcpListener,
     process::{Child, Command},
@@ -141,59 +141,22 @@ impl InferenceEngine for ExtractionEngine {
         if let Some(path) = &self.config.model_path {
             command.args(["--model-path", path]);
         }
-        let mut child = command
-            .kill_on_drop(true)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| Error::LoadFailed(e.to_string()))?;
-        let url = format!("http://127.0.0.1:{port}/health");
-        let ready = async {
-            loop {
-                if child
-                    .try_wait()
-                    .map_err(|e| Error::LoadFailed(e.to_string()))?
-                    .is_some()
-                {
-                    return Err(Error::LoadFailed(
-                        "extraction provider exited during startup".into(),
-                    ));
-                }
-                if let Ok(r) = self
-                    .client
-                    .get(&url)
-                    .timeout(Duration::from_secs(2))
-                    .send()
-                    .await
-                {
-                    if r.status().is_success() {
-                        return Ok(());
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-        };
-        match tokio::time::timeout(Duration::from_secs(self.config.startup_timeout_secs), ready)
-            .await
-        {
-            Ok(Ok(())) => {
-                *guard = Some(Server {
-                    port,
-                    process: Mutex::new(child),
-                });
-                Ok(())
-            }
-            result => {
-                let _ = child.kill().await;
-                match result {
-                    Ok(Err(e)) => Err(e),
-                    _ => Err(Error::LoadFailed(
-                        "extraction provider startup timed out".into(),
-                    )),
-                }
-            }
-        }
+        let child = super::provider::start(
+            &mut command,
+            &self.client,
+            "extraction",
+            id,
+            port,
+            self.config.startup_timeout_secs,
+        )
+        .await?;
+        *guard = Some(Server {
+            port,
+            process: Mutex::new(child),
+        });
+        Ok(())
     }
+
     async fn unload_model(&self, id: &str) -> Result<()> {
         self.check_model(id)?;
         if let Some(server) = self.server.write().await.take() {

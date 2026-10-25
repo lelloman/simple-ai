@@ -1,7 +1,6 @@
 //! Managed process-backed Hugging Face NLI classification engine.
 
 use std::collections::HashMap;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -107,27 +106,8 @@ impl ClassificationEngine {
             .arg("--batch-size")
             .arg(batch_size.to_string())
             .arg("--max-length")
-            .arg(max_length.to_string())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
+            .arg(max_length.to_string());
         Ok(command)
-    }
-
-    async fn wait_until_ready(&self, model_id: &str, port: u16) -> Result<()> {
-        let deadline =
-            tokio::time::Instant::now() + Duration::from_secs(self.config.startup_timeout_secs);
-        let url = format!("http://127.0.0.1:{port}/health");
-        loop {
-            if tokio::time::Instant::now() >= deadline {
-                return Err(Error::LoadFailed(format!(
-                    "classification provider timed out while loading {model_id}"
-                )));
-            }
-            match self.http_client.get(&url).send().await {
-                Ok(response) if response.status().is_success() => return Ok(()),
-                _ => tokio::time::sleep(Duration::from_millis(250)).await,
-            }
-        }
     }
 
     async fn loaded_usage(&self) -> Vec<(String, Instant)> {
@@ -231,20 +211,21 @@ impl InferenceEngine for ClassificationEngine {
             .ok_or_else(|| Error::ModelNotFound(model_id.to_string()))?;
         self.ensure_capacity(model_id).await?;
         let port = Self::allocate_port().await?;
-        let process = self
-            .build_command(model_id, port)?
-            .spawn()
-            .map_err(|error| Error::LoadFailed(error.to_string()))?;
+        let mut command = self.build_command(model_id, port)?;
+        let process = super::provider::start(
+            &mut command,
+            &self.http_client,
+            "classification",
+            model_id,
+            port,
+            self.config.startup_timeout_secs,
+        )
+        .await?;
         let server = Arc::new(ClassificationServer::new(port, process));
         self.servers
             .write()
             .await
-            .insert(model_id.to_string(), server.clone());
-        if let Err(error) = self.wait_until_ready(model_id, port).await {
-            server.terminate(self.config.shutdown_timeout_secs).await;
-            self.servers.write().await.remove(model_id);
-            return Err(error);
-        }
+            .insert(model_id.to_string(), server);
         Ok(())
     }
 
