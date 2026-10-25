@@ -356,7 +356,12 @@ mod tests {
             _: &str,
             _: &simple_ai_common::ChatCompletionRequest,
         ) -> crate::error::Result<simple_ai_common::ChatCompletionResponse> {
-            unimplemented!()
+            Ok(serde_json::from_value(serde_json::json!({
+                "id": "mock", "object": "chat.completion", "created": 0, "model": "model",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "served"},
+                    "finish_reason": "stop"}]
+            }))
+            .unwrap())
         }
         async fn chat_completion_stream(
             &self,
@@ -456,6 +461,88 @@ mod tests {
         let gate = registry.resource_gates.read().await["gpu"].clone();
         assert!(!gate.is_owner("slow\0model"));
         assert!(registry.acquire_model("model").await.is_err(), "must retry cleanup instead of using stale owner");
+    }
+
+    #[tokio::test]
+    async fn dead_provider_releases_gpu_for_following_model_request() {
+        use crate::config::ClassificationEngineConfig;
+        let registry = EngineRegistry::new();
+        let config = ClassificationEngineConfig {
+            command: vec![
+                "sh".into(),
+                "-c".into(),
+                "echo provider-broken >&2; exit 42".into(),
+            ],
+            models: serde_json::from_value(serde_json::json!([{"id": "broken"}])).unwrap(),
+            startup_timeout_secs: 600,
+            ..Default::default()
+        };
+        let classification = Arc::new(super::super::ClassificationEngine::new(config));
+        registry.register(classification.clone()).await;
+        registry
+            .register(Arc::new(SlowEngine {
+                kind: "slow",
+                quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                started: Arc::new(tokio::sync::Notify::new()),
+                finish: Arc::new(tokio::sync::Notify::new()),
+                loaded: std::sync::atomic::AtomicBool::new(true),
+            }))
+            .await;
+        registry
+            .set_engine_resources(HashMap::from([
+                ("classification".into(), "gpu".into()),
+                ("slow".into(), "gpu".into()),
+            ]))
+            .await;
+        registry
+            .configure_routes(HashMap::from([
+                (
+                    "broken".into(),
+                    ModelRouteConfig {
+                        engine: "classification".into(),
+                        engine_model: "broken".into(),
+                        aliases: vec![],
+                    },
+                ),
+                (
+                    "model".into(),
+                    ModelRouteConfig {
+                        engine: "slow".into(),
+                        engine_model: "model".into(),
+                        aliases: vec![],
+                    },
+                ),
+            ]))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            let error = match registry.acquire_model("broken").await {
+                Err(error) => error,
+                Ok(_) => panic!("broken provider must fail"),
+            };
+            assert!(error.to_string().contains("exit status: 42"), "{error}");
+            assert!(error.to_string().contains("provider-broken"), "{error}");
+            assert!(classification
+                .health_check()
+                .await
+                .unwrap()
+                .models_loaded
+                .is_empty());
+            // A following request acquires the same GPU and its serving model immediately.
+            let lease = registry.acquire_model("model").await.unwrap();
+            let request = serde_json::from_value(serde_json::json!({
+                "model": "model", "messages": [{"role": "user", "content": "hello"}]
+            }))
+            .unwrap();
+            let response = lease
+                .engine
+                .chat_completion(&lease.engine_model, &request)
+                .await
+                .unwrap();
+            assert_eq!(response.id, "mock");
+        })
+        .await
+        .expect("failed provider must release GPU without the 600s timeout");
     }
 
     fn route(engine_model: &str, aliases: &[&str]) -> ModelRouteConfig {

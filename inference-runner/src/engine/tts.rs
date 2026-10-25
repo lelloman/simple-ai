@@ -1,7 +1,6 @@
 //! Process-backed text-to-speech engine.
 
 use std::collections::HashMap;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -106,24 +105,6 @@ impl TtsEngine {
         Ok(port)
     }
 
-    async fn wait_until_ready(&self, model_id: &str, port: u16) -> Result<()> {
-        let deadline =
-            tokio::time::Instant::now() + Duration::from_secs(self.config.startup_timeout_secs);
-        let url = format!("http://127.0.0.1:{}/health", port);
-        loop {
-            if tokio::time::Instant::now() >= deadline {
-                return Err(Error::LoadFailed(format!(
-                    "TTS provider timed out while loading {}",
-                    model_id
-                )));
-            }
-            match self.http_client.get(&url).send().await {
-                Ok(response) if response.status().is_success() => return Ok(()),
-                _ => tokio::time::sleep(Duration::from_millis(250)).await,
-            }
-        }
-    }
-
     fn build_command(&self, model_id: &str, port: u16) -> Result<Command> {
         let model = self
             .model_config(model_id)
@@ -142,9 +123,7 @@ impl TtsEngine {
             .arg("--model")
             .arg(model_id)
             .arg("--port")
-            .arg(port.to_string())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .arg(port.to_string());
         Ok(command)
     }
 
@@ -352,19 +331,20 @@ impl InferenceEngine for TtsEngine {
 
         let port = Self::allocate_port().await?;
         let mut command = self.build_command(model_id, port)?;
-        let process = command
-            .spawn()
-            .map_err(|e| Error::LoadFailed(format!("failed to start TTS provider: {}", e)))?;
+        let process = super::provider::start(
+            &mut command,
+            &self.http_client,
+            "tts",
+            model_id,
+            port,
+            self.config.startup_timeout_secs,
+        )
+        .await?;
         let server = Arc::new(TtsServer::new(port, process));
         self.servers
             .write()
             .await
-            .insert(model_id.to_string(), server.clone());
-        if let Err(e) = self.wait_until_ready(model_id, port).await {
-            server.terminate(self.config.shutdown_timeout_secs).await;
-            self.servers.write().await.remove(model_id);
-            return Err(e);
-        }
+            .insert(model_id.to_string(), server);
         Ok(())
     }
 

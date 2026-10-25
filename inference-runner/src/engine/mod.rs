@@ -3,6 +3,7 @@
 //! This module defines the `InferenceEngine` trait that abstracts different
 //! inference backends (Ollama, llama.cpp, etc.) behind a common interface.
 
+mod provider;
 mod audio_embeddings;
 mod classification;
 mod extraction;

@@ -496,3 +496,9 @@ the attribution patch, excluding pending routing/runner changes. Audit/database
 and proxy configuration backups were retained before deployment. The homelab
 monitoring repository contains the credential-origin and host-security alert
 collectors; alerts use the existing Alertmanager Telegram route.
+
+Managed classification, audio embedding, TTS and extraction providers start with
+`HF_HUB_OFFLINE=1`. Download their models into the service account's Hugging Face
+cache (or configure the provider's existing local model path) before loading them.
+Startup logs identify the engine/model and readiness or failure; an early exit
+fails immediately with its exit status and the last 8 KiB of stderr.
