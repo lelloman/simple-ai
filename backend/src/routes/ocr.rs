@@ -10,7 +10,7 @@ use simple_server::web::{
     Json, Router,
 };
 
-use super::auth_helpers::{authenticate_inference_request};
+use super::auth_helpers::authenticate_inference_request;
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
 
@@ -25,10 +25,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 async fn ocr(
     State(state): State<Arc<AppState>>,
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<OcrResponse>, (StatusCode, String)> {
@@ -85,7 +82,10 @@ async fn ocr(
     let mut req_log = Request::new(user.id.clone(), "/v1/ocr".to_string());
     req_log.model = Some("ocr".to_string());
     super::auth_helpers::attribute_request(
-        &mut req_log, &auth_user, &headers, connect_info.as_ref().ok().map(|c| c.0),
+        &mut req_log,
+        &auth_user,
+        &headers,
+        connect_info.as_ref().ok().map(|c| c.0),
         &state.config.trusted_proxies,
     );
     req_log.request_body = options_json.clone();

@@ -122,7 +122,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         issuer: format!("{}/", mock_server.uri()),
         audience: "test".to_string(),
         additional_audiences: vec![],
-            android_client_id: None,
+        android_client_id: None,
         role_claim_path: "roles".to_string(),
         admin_role: "admin".to_string(),
         admin_users: vec![],
@@ -379,7 +379,8 @@ async fn test_speech_requires_auth() {
 #[tokio::test]
 async fn test_audio_embeddings_requires_auth() {
     let state = create_test_state().await.unwrap();
-    let app = simple_server::web::Router::new().nest("/v1", routes::audio_embeddings::router(state));
+    let app =
+        simple_server::web::Router::new().nest("/v1", routes::audio_embeddings::router(state));
 
     let req = http::Request::builder()
         .method(http::Method::POST)
@@ -407,18 +408,34 @@ async fn gateway_metadata_exposes_only_public_login_configuration() {
     config.android_client_id = Some("gateway-client".into());
     let expected_issuer = config.issuer.clone();
     let app = routes::gateway_auth::router(state);
-    let response = app.oneshot(http::Request::builder().uri("/.well-known/simple-ai").body(simple_server::web::body::Body::empty()).unwrap()).await.unwrap();
+    let response = app
+        .oneshot(
+            http::Request::builder()
+                .uri("/.well-known/simple-ai")
+                .body(simple_server::web::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    let bytes = simple_server::web::body::to_bytes(response.into_body(), 4096).await.unwrap();
+    let bytes = simple_server::web::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
     let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(value, json!({"issuer":expected_issuer,"client_id":"gateway-client"}));
+    assert_eq!(
+        value,
+        json!({"issuer":expected_issuer,"client_id":"gateway-client"})
+    );
 }
 
 #[tokio::test]
 async fn source_app_header_does_not_authenticate_a_caller() {
     let state = create_test_state().await.unwrap();
     let mut headers = HeaderMap::new();
-    headers.insert("x-simpleai-source-app", HeaderValue::from_static("com.lelloman.pezzottify"));
+    headers.insert(
+        "x-simpleai-source-app",
+        HeaderValue::from_static("com.lelloman.pezzottify"),
+    );
     let result = routes::auth_helpers::authenticate_request(&state, &headers).await;
     assert_eq!(result.err().unwrap().0, StatusCode::UNAUTHORIZED);
 }

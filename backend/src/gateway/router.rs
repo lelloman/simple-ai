@@ -1415,10 +1415,6 @@ impl InferenceRouter {
         class: ModelClass,
     ) -> usize {
         let class_name = class.as_str();
-        // Ensure pref_weight is non-negative even if queue_weight + latency_weight > 1.0
-        let pref_weight =
-            (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
-
         // Get class preferences (ordered list of preferred machine types)
         let preferences = self.routing_config.class_preferences.get(class_name);
         let all_operational = self.registry.operational().await;
@@ -1437,7 +1433,6 @@ impl InferenceRouter {
                     preferences,
                     &all_metrics,
                     &all_operational,
-                    pref_weight,
                 );
                 (idx, score)
             })
@@ -1470,8 +1465,10 @@ impl InferenceRouter {
         preferences: Option<&Vec<String>>,
         all_metrics: &[RunnerMetricRow],
         all_operational: &[ConnectedRunner],
-        pref_weight: f64,
     ) -> f64 {
+        // Ensure pref_weight is non-negative even if queue_weight + latency_weight > 1.0
+        let pref_weight =
+            (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
         // 1. Machine preference score (0.0 = first choice, 1.0 = second choice, etc.)
         let pref_score = if let Some(prefs) = preferences {
             if let Some(machine_type) = &runner.machine_type {
@@ -1802,7 +1799,7 @@ mod tests {
 
     fn create_test_router(registry: Arc<RunnerRegistry>) -> InferenceRouter {
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         InferenceRouter::with_strategy(
             registry,
             LoadBalanceStrategy::RoundRobin,
@@ -2069,7 +2066,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Smart routing should prefer gpu-server
@@ -2171,7 +2168,7 @@ mod tests {
             registry,
             models_config,
             routing_config,
-            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+            Arc::new(AuditLogger::new(test_db_path).unwrap()),
         );
 
         let result = router
@@ -2233,7 +2230,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Smart routing should prefer runner-2 (fewer active requests)
@@ -2298,7 +2295,7 @@ mod tests {
             registry,
             models_config,
             routing_config,
-            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+            Arc::new(AuditLogger::new(test_db_path).unwrap()),
         );
 
         let result = router
@@ -2342,7 +2339,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Should not panic and should still work
@@ -2387,7 +2384,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(
             registry,
             models_config,
@@ -2426,7 +2423,7 @@ mod tests {
             LoadBalanceStrategy::SmartRouting,
             crate::config::ModelsConfig::default(),
             crate::config::RoutingConfig::default(),
-            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+            Arc::new(AuditLogger::new(test_db_path).unwrap()),
         );
         let affinity = router
             .derive_affinity_context("user-1", "model-a", " conversation ".to_string())
@@ -2482,7 +2479,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut request = [0; 4096];
-            socket.read(&mut request).await.unwrap();
+            assert_ne!(socket.read(&mut request).await.unwrap(), 0);
             socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n3\r\none\r\n").await.unwrap();
             released.await.unwrap();
             socket.write_all(b"3\r\ntwo\r\n").await.unwrap();

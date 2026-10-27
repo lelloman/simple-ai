@@ -1,4 +1,3 @@
-use simple_server::web::body::{to_bytes, Body, Bytes};
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -10,6 +9,7 @@ use simple_ai_backend::{
     ResponseCreateRequest, ResponseInput, ResponseInputItem, ResponseTypedInputItem,
     RouterTelemetry, RunnerRegistry, WakeService,
 };
+use simple_server::web::body::{to_bytes, Body, Bytes};
 use std::sync::Arc;
 use tower::ServiceExt;
 use wiremock::matchers::{body_json, header, method, path};
@@ -87,7 +87,7 @@ async fn create_test_state(
         issuer: format!("{}/", mock_server.uri()),
         audience: "test".to_string(),
         additional_audiences: vec![],
-            android_client_id: None,
+        android_client_id: None,
         role_claim_path: "roles".to_string(),
         admin_role: "admin".to_string(),
         admin_users: vec![],
@@ -778,7 +778,9 @@ mod lan_local_tests {
         let ollama = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/chat"))
-            .and(wiremock::matchers::body_partial_json(json!({"model":"llama3"})))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"model":"llama3"}),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "message": {"role":"assistant", "content":"Hello LAN"},
                 "done":true, "prompt_eval_count":1, "eval_count":2
@@ -817,8 +819,7 @@ mod lan_local_tests {
                 .oneshot(
                     request
                         .body(Body::from(
-                            json!({"model":"llama3", "input":"Hello", "stream":false})
-                                .to_string(),
+                            json!({"model":"llama3", "input":"Hello", "stream":false}).to_string(),
                         ))
                         .unwrap(),
                 )

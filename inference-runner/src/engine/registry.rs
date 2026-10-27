@@ -310,8 +310,13 @@ mod tests {
             self.kind
         }
         async fn quiesce(&self) -> crate::error::Result<()> {
-            if self.kind == "failing" { return Err(crate::error::Error::EngineNotAvailable("cannot stop".into())); }
-            self.quiesced.store(true, std::sync::atomic::Ordering::SeqCst);
+            if self.kind == "failing" {
+                return Err(crate::error::Error::EngineNotAvailable(
+                    "cannot stop".into(),
+                ));
+            }
+            self.quiesced
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             Ok(())
         }
         async fn health_check(&self) -> crate::error::Result<super::super::EngineHealth> {
@@ -328,7 +333,9 @@ mod tests {
             &self,
             _: &str,
         ) -> crate::error::Result<Option<super::super::ModelInfo>> {
-            if self.kind != "slow" { return Ok(None); }
+            if self.kind != "slow" {
+                return Ok(None);
+            }
             Ok(Some(super::super::ModelInfo {
                 id: "model".into(),
                 name: "model".into(),
@@ -375,7 +382,8 @@ mod tests {
     async fn cancelled_load_retains_resource_until_external_startup_finishes() {
         let registry = Arc::new(EngineRegistry::new());
         let engine = Arc::new(SlowEngine {
-            kind: "slow", quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            kind: "slow",
+            quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             started: Arc::new(tokio::sync::Notify::new()),
             finish: Arc::new(tokio::sync::Notify::new()),
             loaded: std::sync::atomic::AtomicBool::new(false),
@@ -405,7 +413,8 @@ mod tests {
     async fn same_owner_revalidates_after_backend_crash() {
         let registry = Arc::new(EngineRegistry::new());
         let engine = Arc::new(SlowEngine {
-            kind: "slow", quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            kind: "slow",
+            quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             started: Arc::new(tokio::sync::Notify::new()),
             finish: Arc::new(tokio::sync::Notify::new()),
             loaded: std::sync::atomic::AtomicBool::new(true),
@@ -434,13 +443,22 @@ mod tests {
         let registry = EngineRegistry::new();
         let quiesced = Arc::new(std::sync::atomic::AtomicBool::new(false));
         for kind in ["slow", "warming"] {
-            registry.register(Arc::new(SlowEngine {
-                kind, quiesced:quiesced.clone(),
-                started:Arc::new(tokio::sync::Notify::new()), finish:Arc::new(tokio::sync::Notify::new()),
-                loaded:std::sync::atomic::AtomicBool::new(true),
-            })).await;
+            registry
+                .register(Arc::new(SlowEngine {
+                    kind,
+                    quiesced: quiesced.clone(),
+                    started: Arc::new(tokio::sync::Notify::new()),
+                    finish: Arc::new(tokio::sync::Notify::new()),
+                    loaded: std::sync::atomic::AtomicBool::new(true),
+                }))
+                .await;
         }
-        registry.set_engine_resources(HashMap::from([("slow".into(),"gpu".into()),("warming".into(),"gpu".into())])).await;
+        registry
+            .set_engine_resources(HashMap::from([
+                ("slow".into(), "gpu".into()),
+                ("warming".into(), "gpu".into()),
+            ]))
+            .await;
         let _lease = registry.acquire_model("model").await.unwrap();
         assert!(quiesced.load(std::sync::atomic::Ordering::SeqCst));
     }
@@ -448,19 +466,33 @@ mod tests {
     #[tokio::test]
     async fn failed_switch_clears_owner_so_next_request_cannot_bypass_cleanup() {
         let registry = EngineRegistry::new();
-        registry.set_engine_resources(HashMap::from([("slow".into(),"gpu".into()),("failing".into(),"gpu".into())])).await;
+        registry
+            .set_engine_resources(HashMap::from([
+                ("slow".into(), "gpu".into()),
+                ("failing".into(), "gpu".into()),
+            ]))
+            .await;
         for kind in ["slow", "failing"] {
-            registry.register(Arc::new(SlowEngine {
-                kind, quiesced:Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                started:Arc::new(tokio::sync::Notify::new()), finish:Arc::new(tokio::sync::Notify::new()),
-                loaded:std::sync::atomic::AtomicBool::new(true),
-            })).await;
-            if kind == "slow" { drop(registry.acquire_model("model").await.unwrap()); }
+            registry
+                .register(Arc::new(SlowEngine {
+                    kind,
+                    quiesced: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    started: Arc::new(tokio::sync::Notify::new()),
+                    finish: Arc::new(tokio::sync::Notify::new()),
+                    loaded: std::sync::atomic::AtomicBool::new(true),
+                }))
+                .await;
+            if kind == "slow" {
+                drop(registry.acquire_model("model").await.unwrap());
+            }
         }
         assert!(registry.acquire_model("other").await.is_err());
         let gate = registry.resource_gates.read().await["gpu"].clone();
         assert!(!gate.is_owner("slow\0model"));
-        assert!(registry.acquire_model("model").await.is_err(), "must retry cleanup instead of using stale owner");
+        assert!(
+            registry.acquire_model("model").await.is_err(),
+            "must retry cleanup instead of using stale owner"
+        );
     }
 
     #[tokio::test]

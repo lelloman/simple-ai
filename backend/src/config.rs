@@ -90,7 +90,10 @@ fn default_pressure_groups() -> std::collections::BTreeMap<String, Vec<String>> 
     [
         ("fast", &["fast"][..]),
         ("big", &["big"]),
-        ("embeddings", &["embed_small", "embed_large", "audio_embeddings"]),
+        (
+            "embeddings",
+            &["embed_small", "embed_large", "audio_embeddings"],
+        ),
         ("tts", &["tts"]),
         ("decisions", &["semantic_decisions", "text_classification"]),
         ("extraction", &["information_extraction"]),
@@ -243,7 +246,8 @@ pub struct WolConfig {
 /// - `tts`: Text-to-speech models exposed through `/v1/audio/speech`
 ///
 /// Models not listed in either list are not available for class-based requests.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
+
 pub struct ModelsConfig {
     /// Models classified as "big" (large/capable).
     /// Exact model IDs (case-insensitive).
@@ -278,23 +282,6 @@ pub struct ModelsConfig {
     pub translate: Vec<String>,
     #[serde(default)]
     pub semantic_decisions: Vec<String>,
-}
-
-impl Default for ModelsConfig {
-    fn default() -> Self {
-        Self {
-            big: vec![],
-            fast: vec![],
-            embed_small: vec![],
-            embed_large: vec![],
-            audio_embeddings: vec![],
-            tts: vec![],
-            text_classification: vec![],
-            information_extraction: vec![],
-            translate: vec![],
-            semantic_decisions: vec![],
-        }
-    }
 }
 
 impl ModelsConfig {
@@ -367,7 +354,9 @@ impl ModelsConfig {
             }
         }
         for id in &self.semantic_decisions {
-            if lower == id.to_lowercase() { return Some("semantic_decisions"); }
+            if lower == id.to_lowercase() {
+                return Some("semantic_decisions");
+            }
         }
         for id in &self.information_extraction {
             if lower == id.to_lowercase() {
@@ -652,8 +641,8 @@ impl Config {
                 default_batch_saturation_timeout_ms() as i64,
             )?
             .set_default("gateway.min_batch_size", default_min_batch_size() as i64)?
-            .set_default("gateway.rate_limit_rpm", 0 as i64)?
-            .set_default("gateway.circuit_breaker_threshold", 0 as i64)?
+            .set_default("gateway.rate_limit_rpm", 0_i64)?
+            .set_default("gateway.circuit_breaker_threshold", 0_i64)?
             .set_default(
                 "gateway.circuit_breaker_recovery_secs",
                 default_circuit_breaker_recovery_secs() as i64,

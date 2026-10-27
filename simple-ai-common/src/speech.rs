@@ -22,21 +22,16 @@ impl SpeechVoice {
 }
 
 /// Audio container/codec requested by the client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SpeechResponseFormat {
+    #[default]
     Mp3,
     Opus,
     Aac,
     Flac,
     Wav,
     Pcm,
-}
-
-impl Default for SpeechResponseFormat {
-    fn default() -> Self {
-        Self::Mp3
-    }
 }
 
 impl SpeechResponseFormat {
@@ -53,17 +48,12 @@ impl SpeechResponseFormat {
 }
 
 /// Streaming envelope requested by the client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SpeechStreamFormat {
+    #[default]
     Audio,
     Sse,
-}
-
-impl Default for SpeechStreamFormat {
-    fn default() -> Self {
-        Self::Audio
-    }
 }
 
 /// OpenAI-compatible speech generation request.

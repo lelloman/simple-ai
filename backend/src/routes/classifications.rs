@@ -4,15 +4,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
+use simple_ai_common::{ClassificationRequest, ClassificationResponse};
 use simple_server::web::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
 };
-use simple_ai_common::{ClassificationRequest, ClassificationResponse};
 
-use super::auth_helpers::{authenticate_inference_request};
+use super::auth_helpers::authenticate_inference_request;
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
@@ -62,17 +62,15 @@ fn validate(request: &ClassificationRequest) -> Result<(), (StatusCode, String)>
 
 async fn create_classifications(
     State(state): State<Arc<AppState>>,
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(request): Json<ClassificationRequest>,
 ) -> Result<Json<ClassificationResponse>, (StatusCode, String)> {
     let start = Instant::now();
     validate(&request)?;
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
     let model_request = ModelRequest::parse(&request.model);
     if !can_request_model(&auth_user.roles, &model_request) {
         return Err((
@@ -108,8 +106,13 @@ async fn create_classifications(
 
     let mut req_log = Request::new(user.id.clone(), "/v1/classifications".to_string());
     req_log.model = Some(model.clone());
-    super::auth_helpers::attribute_request(&mut req_log, &auth_user, &headers,
-        connect_info.as_ref().ok().map(|info| info.0), &state.config.trusted_proxies);
+    super::auth_helpers::attribute_request(
+        &mut req_log,
+        &auth_user,
+        &headers,
+        connect_info.as_ref().ok().map(|info| info.0),
+        &state.config.trusted_proxies,
+    );
     let request_id = state
         .audit_logger
         .log_request(&req_log)

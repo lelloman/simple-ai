@@ -14,7 +14,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::auth_helpers::{authenticate_inference_request};
+use super::auth_helpers::authenticate_inference_request;
 use crate::gateway::{
     can_request_model, CapacityReservation, ModelRequest, RoutedStream, SchedulerError,
 };
@@ -70,13 +70,19 @@ impl StreamOutcome {
         match self {
             Self::Completed => (200, "[stream]".into(), "request_completed", "completed"),
             Self::Interrupted => (
-                499, "[downstream stream closed before completion]".into(),
-                "request_cancelled", "cancelled",
+                499,
+                "[downstream stream closed before completion]".into(),
+                "request_cancelled",
+                "cancelled",
             ),
             Self::UpstreamFailed { timeout, message } => (
                 if *timeout { 504 } else { 502 },
-                format!("[upstream stream {}] {message}", if *timeout { "timeout" } else { "error" }),
-                "request_failed", "failed",
+                format!(
+                    "[upstream stream {}] {message}",
+                    if *timeout { "timeout" } else { "error" }
+                ),
+                "request_failed",
+                "failed",
             ),
         }
     }
@@ -113,7 +119,8 @@ fn filter_gateway_stream(routed: RoutedStream, log_context: StreamLogContext) ->
                                 timeout: error.is_timeout(),
                                 message: error.to_string(),
                             },
-                        ).await;
+                        )
+                        .await;
                     }
                     return Err(std::io::Error::other(error.to_string()));
                 }
@@ -245,10 +252,7 @@ async fn finalize_stream_response(
 /// POST /v1/chat/completions - OpenAI-compatible chat endpoint
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(mut request): Json<ChatCompletionRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
@@ -319,7 +323,10 @@ async fn chat_completions(
         })
         .map(str::to_owned);
     super::auth_helpers::attribute_request(
-        &mut req_log, &auth_user, &headers, connect_info.as_ref().ok().map(|c| c.0),
+        &mut req_log,
+        &auth_user,
+        &headers,
+        connect_info.as_ref().ok().map(|c| c.0),
         &state.config.trusted_proxies,
     );
 
@@ -464,7 +471,11 @@ async fn chat_completions(
             }
         };
 
-        let stream_body = crate::audit::capture_response(stream_body, state.audit_logger.clone(), req_log.id.clone());
+        let stream_body = crate::audit::capture_response(
+            stream_body,
+            state.audit_logger.clone(),
+            req_log.id.clone(),
+        );
         let mut response = AxumResponse::new(stream_body);
         *response.status_mut() = StatusCode::OK;
         response.headers_mut().insert(
@@ -693,8 +704,8 @@ mod tests {
     #[tokio::test]
     async fn gateway_stream_audit_distinguishes_timeout_upstream_error_and_downstream_drop() {
         use super::*;
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use std::time::Duration;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         for (expected_status, client_timeout, drop_body) in [
             (502, None, false),
@@ -702,14 +713,26 @@ mod tests {
             (499, None, true),
         ] {
             let oidc = wiremock::MockServer::start().await;
-            wiremock::Mock::given(wiremock::matchers::path("/.well-known/openid-configuration"))
-                .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
-                    serde_json::json!({"jwks_uri":format!("{}/jwks", oidc.uri())})))
-                .mount(&oidc).await;
+            wiremock::Mock::given(wiremock::matchers::path(
+                "/.well-known/openid-configuration",
+            ))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"jwks_uri":format!("{}/jwks", oidc.uri())})),
+            )
+            .mount(&oidc)
+            .await;
             wiremock::Mock::given(wiremock::matchers::path("/jwks"))
-                .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
-                    serde_json::from_str::<serde_json::Value>(include_str!("../../tests/fixtures/test-oidc-jwks.json")).unwrap()))
-                .mount(&oidc).await;
+                .respond_with(
+                    wiremock::ResponseTemplate::new(200).set_body_json(
+                        serde_json::from_str::<serde_json::Value>(include_str!(
+                            "../../tests/fixtures/test-oidc-jwks.json"
+                        ))
+                        .unwrap(),
+                    ),
+                )
+                .mount(&oidc)
+                .await;
             let mut config = crate::test_util::test_config();
             config.oidc.issuer = oidc.uri();
             let state = Arc::new(crate::test_util::create_test_state_with_config(config).await);
@@ -717,9 +740,12 @@ mod tests {
             let (tx, _rx) = tokio::sync::mpsc::channel(1);
             let status = serde_json::from_value(serde_json::json!({
                 "health":"healthy", "capabilities":[], "engines":[]
-            })).unwrap();
-            state.runner_registry.register("test".into(), "test".into(), None,
-                status, None, tx, None).await;
+            }))
+            .unwrap();
+            state
+                .runner_registry
+                .register("test".into(), "test".into(), None, status, None, tx, None)
+                .await;
             let runner = state.runner_registry.get("test").await.unwrap();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let address = listener.local_addr().unwrap();
@@ -727,36 +753,62 @@ mod tests {
             let server = tokio::spawn(async move {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let mut request = [0; 2048];
-                socket.read(&mut request).await.unwrap();
+                assert_ne!(socket.read(&mut request).await.unwrap(), 0);
                 socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 999\r\n\r\ndata: {}\n\n").await.unwrap();
                 let _ = released.await;
                 // Truncate the declared body to simulate an upstream failure.
             });
             let mut builder = reqwest::Client::builder();
-            if let Some(timeout) = client_timeout { builder = builder.timeout(timeout); }
-            let response = builder.build().unwrap().get(format!("http://{address}"))
-                .send().await.unwrap();
+            if let Some(timeout) = client_timeout {
+                builder = builder.timeout(timeout);
+            }
+            let response = builder
+                .build()
+                .unwrap()
+                .get(format!("http://{address}"))
+                .send()
+                .await
+                .unwrap();
             let req_log = Request::new("test-user".into(), "/v1/chat/completions".into());
             let context = StreamLogContext {
-                state: state.clone(), request_id: req_log.id.clone(), req_log,
-                user_email: None, start: Instant::now(), runner_id: Some("test".into()),
-                wol_sent: false, model_class: None,
+                state: state.clone(),
+                request_id: req_log.id.clone(),
+                req_log,
+                user_email: None,
+                start: Instant::now(),
+                runner_id: Some("test".into()),
+                wol_sent: false,
+                model_class: None,
             };
-            let body = filter_gateway_stream(RoutedStream {
-                response, runner_id: "test".into(), resolved_model: "model".into(),
-                reservation: state.runner_registry.reserve(&runner, "model"),
-            }, context);
+            let body = filter_gateway_stream(
+                RoutedStream {
+                    response,
+                    runner_id: "test".into(),
+                    resolved_model: "model".into(),
+                    reservation: state.runner_registry.reserve(&runner, "model"),
+                },
+                context,
+            );
             let mut release = Some(release);
             if drop_body {
                 drop(body);
             } else {
-                if client_timeout.is_none() { release.take().unwrap().send(()).unwrap(); }
-                assert!(simple_server::web::body::to_bytes(body, usize::MAX).await.is_err());
+                if client_timeout.is_none() {
+                    release.take().unwrap().send(()).unwrap();
+                }
+                assert!(simple_server::web::body::to_bytes(body, usize::MAX)
+                    .await
+                    .is_err());
             }
             let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
-                .await.unwrap().unwrap();
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(event.status, Some(expected_status));
-            assert!(events.try_recv().is_err(), "must finalize the audit exactly once");
+            assert!(
+                events.try_recv().is_err(),
+                "must finalize the audit exactly once"
+            );
             assert_eq!(state.runner_registry.get_active_requests("test").await, 0);
             drop(release);
             server.await.unwrap();

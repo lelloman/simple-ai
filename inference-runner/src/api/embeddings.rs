@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use simple_server::web::extract::State;
 use simple_server::web::routing::post;
 use simple_server::web::{Json, Router};
-use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use crate::state::AppState;

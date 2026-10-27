@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 use std::{collections::VecDeque, io::Cursor, net::SocketAddr};
 
 use async_trait::async_trait;
-use simple_server::web::body::Bytes;
 use base64::Engine as _;
 use futures_util::{stream, Stream, StreamExt};
 use serde_json::{json, Value};
@@ -15,6 +14,7 @@ use simple_ai_common::{
     format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, InferenceMetrics,
     ReasoningCapabilities, ReasoningEffort,
 };
+use simple_server::web::body::Bytes;
 use tokio::process::Command;
 use tokio::sync::{Mutex, RwLock};
 
