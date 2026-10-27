@@ -94,6 +94,7 @@ fn default_pressure_groups() -> std::collections::BTreeMap<String, Vec<String>> 
         ("tts", &["tts"]),
         ("decisions", &["semantic_decisions", "text_classification"]),
         ("extraction", &["information_extraction"]),
+        ("translation", &["translate"]),
     ]
     .into_iter()
     .map(|(group, classes)| {
@@ -274,6 +275,8 @@ pub struct ModelsConfig {
     #[serde(default)]
     pub information_extraction: Vec<String>,
     #[serde(default)]
+    pub translate: Vec<String>,
+    #[serde(default)]
     pub semantic_decisions: Vec<String>,
 }
 
@@ -288,6 +291,7 @@ impl Default for ModelsConfig {
             tts: vec![],
             text_classification: vec![],
             information_extraction: vec![],
+            translate: vec![],
             semantic_decisions: vec![],
         }
     }
@@ -297,6 +301,7 @@ impl ModelsConfig {
     /// Configured model IDs for a class name, or an empty slice for unknown classes.
     pub fn models_for_class(&self, class: &str) -> &[String] {
         match class {
+            "translate" => &self.translate,
             "big" => &self.big,
             "fast" => &self.fast,
             "embed_small" => &self.embed_small,
@@ -316,6 +321,9 @@ impl ModelsConfig {
     /// or None if the model is not configured in either list.
     pub fn classify(&self, model_id: &str) -> Option<&'static str> {
         let lower = model_id.to_lowercase();
+        if self.translate.iter().any(|id| id.to_lowercase() == lower) {
+            return Some("translate");
+        }
 
         for id in &self.big {
             if lower == id.to_lowercase() {

@@ -7,6 +7,8 @@ mod provider;
 mod audio_embeddings;
 mod classification;
 mod extraction;
+mod translation;
+pub use translation::TranslationEngine;
 mod decisions;
 pub use decisions::DecisionEngine;
 pub use extraction::ExtractionEngine;
@@ -158,6 +160,16 @@ pub trait InferenceEngine: Send + Sync {
             "Text classification not supported by {} engine",
             self.engine_type()
         )))
+    }
+
+    async fn translate(
+        &self,
+        _model_id: &str,
+        _request: &simple_ai_common::TranslationRequest,
+    ) -> Result<simple_ai_common::TranslationResponse> {
+        Err(crate::error::Error::NotSupported(
+            "translation not supported by this engine".into(),
+        ))
     }
 
     /// Extract entities, records, relations and classification labels.

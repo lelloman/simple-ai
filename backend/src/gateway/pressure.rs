@@ -27,7 +27,7 @@ use super::registry::RunnerRegistry;
 use super::telemetry::RouterTelemetry;
 
 /// Class names in `ModelsConfig`, in display order.
-const CLASSES: [&str; 9] = [
+const CLASSES: [&str; 10] = [
     "big",
     "fast",
     "embed_small",
@@ -37,6 +37,7 @@ const CLASSES: [&str; 9] = [
     "text_classification",
     "information_extraction",
     "semantic_decisions",
+    "translate",
 ];
 
 /// Capability engines serve their class whatever model ids they advertise.
@@ -46,6 +47,7 @@ fn class_for_engine_type(engine_type: &str) -> Option<&'static str> {
         "audio_embeddings" => Some("audio_embeddings"),
         "classification" => Some("text_classification"),
         "extraction" => Some("information_extraction"),
+        "translation" => Some("translate"),
         "decisions" => Some("semantic_decisions"),
         _ => None,
     }

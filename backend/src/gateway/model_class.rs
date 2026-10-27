@@ -27,6 +27,7 @@ pub enum ModelClass {
     /// NLI models exposed through `/v1/classifications`
     TextClassification,
     InformationExtraction,
+    Translate,
     SemanticDecisions,
 }
 
@@ -34,6 +35,7 @@ impl ModelClass {
     /// Parse a model class from a string.
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().replace('-', "_").as_str() {
+            "translate" => Some(Self::Translate),
             "big" => Some(Self::Big),
             "fast" => Some(Self::Fast),
             "embed_small" => Some(Self::EmbedSmall),
@@ -50,6 +52,7 @@ impl ModelClass {
     /// Get the string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Translate => "translate",
             Self::Big => "big",
             Self::Fast => "fast",
             Self::EmbedSmall => "embed_small",
@@ -74,6 +77,7 @@ impl std::fmt::Display for ModelClass {
 /// Returns None if the model is not configured in either list.
 pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClass> {
     match config.classify(model_id) {
+        Some("translate") => Some(ModelClass::Translate),
         Some("big") => Some(ModelClass::Big),
         Some("fast") => Some(ModelClass::Fast),
         Some("embed_small") => Some(ModelClass::EmbedSmall),

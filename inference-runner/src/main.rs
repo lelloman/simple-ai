@@ -174,6 +174,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Registered semantic decisions engine");
     }
 
+    if config.engines.translation.enabled {
+        if config.engines.translation.device != "cpu"
+            && !config.engine_resources.contains_key("translation")
+        {
+            return Err("GPU/auto translation requires engine_resources.translation to name the shared GPU resource group".into());
+        }
+        registry
+            .register(Arc::new(engine::TranslationEngine::new(
+                config.engines.translation.clone(),
+            )?))
+            .await;
+        tracing::info!("Registered translation engine");
+    }
+
     if config.engines.extraction.enabled {
         let engine = Arc::new(ExtractionEngine::new(config.engines.extraction.clone())?);
         registry.register(engine).await;

@@ -3,6 +3,7 @@ pub mod audio_embeddings;
 pub mod auth_helpers;
 pub mod chat;
 pub mod classifications;
+pub mod translations;
 pub mod embeddings;
 pub mod extract;
 pub mod extractions;

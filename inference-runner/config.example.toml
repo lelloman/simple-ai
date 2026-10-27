@@ -361,3 +361,15 @@ shutdown_timeout_secs = 60
 # [model_routes."qwen3.8-flash-next-uncensored-iq4xs"]
 # engine = "halogen"
 # engine_model = "qwen3.8-flash-next-uncensored-iq4xs"
+
+# Batched MADLAD translation. Model/revision are fixed by the runner.
+# Prepare the offline environment first; see docs/translations.md.
+[engines.translation]
+enabled = false
+command = ["/home/lelloman/.simple-ai-translation/venv/bin/python", "/home/lelloman/simple-ai-translation-provider.py"]
+model_path = "/home/lelloman/.simple-ai-translation/model"
+device = "auto"
+batch_size = 32
+num_threads = 4
+# When enabling auto/cuda mode, also add translation = "cuda:0" to the
+# existing [engine_resources] table, matching other GPU engines on this host.

@@ -1,0 +1,13 @@
+# Merge these tables into halo-02's existing runner config; this is an overlay,
+# not a complete replacement (runner ID, gateway token and other engines retained).
+[engines.translation]
+enabled = true
+command = ["/home/lelloman/.simple-ai-translation/venv/bin/python", "/home/lelloman/simple-ai-translation-provider.py"]
+model_path = "/home/lelloman/.simple-ai-translation/model"
+batch_size = 32
+num_threads = 4
+device = "cuda"
+
+[engine_resources]
+# Use the SAME resource group as all other GPU users on this host.
+translation = "cuda:0"

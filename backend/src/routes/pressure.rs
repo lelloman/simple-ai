@@ -44,6 +44,7 @@ fn class_for_path(path: &str) -> Option<ModelClass> {
         ("/classifications", ModelClass::TextClassification),
         ("/decisions", ModelClass::SemanticDecisions),
         ("/extractions", ModelClass::InformationExtraction),
+        ("/translations", ModelClass::Translate),
     ]
     .into_iter()
     .find(|(suffix, _)| path.ends_with(suffix))
