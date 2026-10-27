@@ -3,13 +3,14 @@
 pub mod audio_embeddings;
 pub mod chat;
 pub mod classifications;
+pub mod decisions;
 pub mod embeddings;
 pub mod extractions;
-pub mod decisions;
 pub mod health;
 pub mod models;
 pub mod ocr;
 pub mod speech;
+pub mod translations;
 
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ pub fn router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .merge(audio_embeddings::router())
         .merge(chat::router())
         .merge(classifications::router())
+        .merge(translations::router())
         .merge(extractions::router())
         .merge(decisions::router())
         .merge(embeddings::router())

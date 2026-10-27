@@ -301,6 +301,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .merge(simple_ai_backend::routes::extractions::router(
             state.clone(),
         ))
+        .merge(simple_ai_backend::routes::translations::router(
+            state.clone(),
+        ))
         .merge(simple_ai_backend::routes::classifications::router(
             state.clone(),
         ))

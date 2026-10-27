@@ -231,6 +231,31 @@ impl RequestScheduler {
         })
     }
 
+    pub async fn translation(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        request: &simple_ai_common::TranslationRequest,
+    ) -> Result<ScheduledResponse<simple_ai_common::TranslationResponse>, SchedulerError> {
+        let prepared = self
+            .prepare_for_request(request_id, model, model_request, None)
+            .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
+        let routed = self
+            .inference_router
+            .translation::<simple_ai_common::TranslationRequest, simple_ai_common::TranslationResponse>(model, request)
+            .await?;
+        Ok(ScheduledResponse {
+            response: routed.response,
+            runner_id: routed.runner_id,
+            resolved_model: routed.resolved_model,
+            wol_sent: prepared.wol_sent,
+        })
+    }
+
     pub async fn classification(
         &self,
         request_id: &str,

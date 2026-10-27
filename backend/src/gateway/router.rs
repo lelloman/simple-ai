@@ -316,6 +316,51 @@ impl InferenceRouter {
         })
     }
 
+    /// Route a batch translation request to a model-capable runner.
+    pub async fn translation<Req, Resp>(
+        &self,
+        model: &str,
+        request: &Req,
+    ) -> Result<RoutedResponse<Resp>, RouterError>
+    where
+        Req: Serialize + Clone,
+        Resp: DeserializeOwned,
+    {
+        let selection = self.select_runner_for_model(model).await?;
+        let resolved_model = selection.resolved_model.clone();
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
+        if let Some(object) = request_value.as_object_mut() {
+            object.insert("model".to_string(), serde_json::Value::String(local_model));
+        }
+        let response = self
+            .proxy_request_value(&runner, "/v1/translations", request_value)
+            .await;
+        drop(reservation);
+        if let Some(breaker) = &self.circuit_breaker {
+            if response.is_ok() {
+                breaker.record_success(&runner_id);
+            } else {
+                breaker.record_failure(&runner_id);
+            }
+        }
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model,
+        })
+    }
+
     /// Route a zero-shot text classification request to a model-capable runner.
     pub async fn classification<Req, Resp>(
         &self,
@@ -1257,6 +1302,7 @@ impl InferenceRouter {
                 ModelClass::EmbedLarge => self.models_config.embed_large.first(),
                 ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
                 ModelClass::Tts => self.models_config.tts.first(),
+                ModelClass::Translate => self.models_config.translate.first(),
                 ModelClass::TextClassification => self.models_config.text_classification.first(),
                 ModelClass::SemanticDecisions => self.models_config.semantic_decisions.first(),
                 ModelClass::InformationExtraction => {
@@ -1369,10 +1415,6 @@ impl InferenceRouter {
         class: ModelClass,
     ) -> usize {
         let class_name = class.as_str();
-        // Ensure pref_weight is non-negative even if queue_weight + latency_weight > 1.0
-        let pref_weight =
-            (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
-
         // Get class preferences (ordered list of preferred machine types)
         let preferences = self.routing_config.class_preferences.get(class_name);
         let all_operational = self.registry.operational().await;
@@ -1391,7 +1433,6 @@ impl InferenceRouter {
                     preferences,
                     &all_metrics,
                     &all_operational,
-                    pref_weight,
                 );
                 (idx, score)
             })
@@ -1424,8 +1465,10 @@ impl InferenceRouter {
         preferences: Option<&Vec<String>>,
         all_metrics: &[RunnerMetricRow],
         all_operational: &[ConnectedRunner],
-        pref_weight: f64,
     ) -> f64 {
+        // Ensure pref_weight is non-negative even if queue_weight + latency_weight > 1.0
+        let pref_weight =
+            (1.0 - self.routing_config.queue_weight - self.routing_config.latency_weight).max(0.0);
         // 1. Machine preference score (0.0 = first choice, 1.0 = second choice, etc.)
         let pref_score = if let Some(prefs) = preferences {
             if let Some(machine_type) = &runner.machine_type {
@@ -1756,7 +1799,7 @@ mod tests {
 
     fn create_test_router(registry: Arc<RunnerRegistry>) -> InferenceRouter {
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         InferenceRouter::with_strategy(
             registry,
             LoadBalanceStrategy::RoundRobin,
@@ -2023,7 +2066,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Smart routing should prefer gpu-server
@@ -2125,7 +2168,7 @@ mod tests {
             registry,
             models_config,
             routing_config,
-            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+            Arc::new(AuditLogger::new(test_db_path).unwrap()),
         );
 
         let result = router
@@ -2187,7 +2230,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Smart routing should prefer runner-2 (fewer active requests)
@@ -2252,7 +2295,7 @@ mod tests {
             registry,
             models_config,
             routing_config,
-            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+            Arc::new(AuditLogger::new(test_db_path).unwrap()),
         );
 
         let result = router
@@ -2296,7 +2339,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(registry, models_config, routing_config, audit_logger);
 
         // Should not panic and should still work
@@ -2341,7 +2384,7 @@ mod tests {
         };
 
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(AuditLogger::new(test_db_path).unwrap());
         let router = InferenceRouter::new(
             registry,
             models_config,
@@ -2380,7 +2423,7 @@ mod tests {
             LoadBalanceStrategy::SmartRouting,
             crate::config::ModelsConfig::default(),
             crate::config::RoutingConfig::default(),
-            Arc::new(AuditLogger::new(&test_db_path).unwrap()),
+            Arc::new(AuditLogger::new(test_db_path).unwrap()),
         );
         let affinity = router
             .derive_affinity_context("user-1", "model-a", " conversation ".to_string())
@@ -2436,7 +2479,7 @@ mod tests {
         let server = tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut request = [0; 4096];
-            socket.read(&mut request).await.unwrap();
+            assert_ne!(socket.read(&mut request).await.unwrap(), 0);
             socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n3\r\none\r\n").await.unwrap();
             released.await.unwrap();
             socket.write_all(b"3\r\ntwo\r\n").await.unwrap();
@@ -2553,5 +2596,80 @@ mod tests {
         assert_eq!(body["prompt_cache_key"], expected_scoped);
         assert!(!body.to_string().contains(raw_key));
         assert_eq!(expected_scoped.len(), 64);
+    }
+    #[tokio::test]
+    async fn translation_class_routes_to_translation_endpoint_and_lists_model() {
+        use simple_ai_common::{TranslationRequest, TranslationResponse};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/v1/translations",
+            post(|Json(body): Json<TranslationRequest>| async move {
+                assert_eq!(body.model, "google/madlad400-3b-mt");
+                assert_eq!(body.target, "en");
+                Json(TranslationResponse {
+                    model: body.model,
+                    data: body
+                        .input
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, text)| simple_ai_common::TranslationResult {
+                            index,
+                            translation: format!("translated {text}"),
+                        })
+                        .collect(),
+                })
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _rx) = mpsc::channel(32);
+        registry
+            .register(
+                "translator".into(),
+                "Halo 2".into(),
+                Some("halo".into()),
+                create_test_status(vec!["google/madlad400-3b-mt".into()]),
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = InferenceRouter::new(
+            registry.clone(),
+            crate::config::ModelsConfig {
+                translate: vec!["google/madlad400-3b-mt".into()],
+                ..Default::default()
+            },
+            Default::default(),
+            Arc::new(AuditLogger::new(":memory:").unwrap()),
+        );
+        assert!(router
+            .list_models()
+            .await
+            .unwrap()
+            .iter()
+            .any(|m| m.id == "google/madlad400-3b-mt"));
+        let request = TranslationRequest {
+            model: "class:translate".into(),
+            input: vec!["uno".into(), "due".into()],
+            target: "en".into(),
+            source: None,
+            max_tokens: None,
+        };
+        let result = router
+            .translation::<_, TranslationResponse>("class:translate", &request)
+            .await
+            .unwrap();
+        assert_eq!(result.runner_id, "translator");
+        assert_eq!(result.resolved_model, "google/madlad400-3b-mt");
+        assert_eq!(result.response.data[0].translation, "translated uno");
+        assert_eq!(result.response.data[1].index, 1);
+        assert_eq!(result.response.data[1].translation, "translated due");
+        server.abort();
     }
 }

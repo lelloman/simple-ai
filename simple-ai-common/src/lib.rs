@@ -14,6 +14,8 @@ pub mod ocr;
 pub mod protocol;
 pub mod responses;
 pub mod speech;
+pub mod translation;
+pub use translation::*;
 
 pub use audio_embeddings::{
     AudioEmbeddingModelInfo, AudioEmbeddingNamespaceInfo, AudioEmbeddingOptions,

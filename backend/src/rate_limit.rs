@@ -1,10 +1,10 @@
+use simple_server::rate_limit::{KeyedLimiter, Quota, StoreConfig};
 use simple_server::web::{
     extract::Request,
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use simple_server::rate_limit::{KeyedLimiter, Quota, StoreConfig};
 use std::{num::NonZeroU32, sync::Arc, time::Duration};
 
 /// Shared GCRA budgets; identity and response policy remain application-owned.
@@ -180,8 +180,11 @@ mod contract_tests {
             .route("/public", post(|| async { "public" }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let task =
-            tokio::spawn(async move { simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new()).await.unwrap() });
+        let task = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap()
+        });
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let url = format!("http://{addr}/v1/test");
         let ok = client

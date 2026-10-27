@@ -3,19 +3,21 @@
 //! This module defines the `InferenceEngine` trait that abstracts different
 //! inference backends (Ollama, llama.cpp, etc.) behind a common interface.
 
-mod provider;
 mod audio_embeddings;
 mod classification;
 mod extraction;
+mod provider;
+mod translation;
+pub use translation::TranslationEngine;
 mod decisions;
 pub use decisions::DecisionEngine;
 pub use extraction::ExtractionEngine;
+mod halogen;
 mod llama_cpp;
 mod ollama;
 mod registry;
 mod tts;
 mod vllm;
-mod halogen;
 pub use halogen::HalogenEngine;
 
 pub use audio_embeddings::AudioEmbeddingEngine;
@@ -27,7 +29,6 @@ pub use tts::TtsEngine;
 pub use vllm::VllmEngine;
 
 use async_trait::async_trait;
-use simple_server::web::body::Bytes;
 use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{
@@ -35,6 +36,7 @@ use simple_ai_common::{
     ClassificationRequest, ClassificationResponse, ExtractionRequest, ExtractionResponse,
     ReasoningCapabilities, SpeechRequest,
 };
+use simple_server::web::body::Bytes;
 use std::pin::Pin;
 
 use crate::error::Result;
@@ -160,6 +162,16 @@ pub trait InferenceEngine: Send + Sync {
         )))
     }
 
+    async fn translate(
+        &self,
+        _model_id: &str,
+        _request: &simple_ai_common::TranslationRequest,
+    ) -> Result<simple_ai_common::TranslationResponse> {
+        Err(crate::error::Error::NotSupported(
+            "translation not supported by this engine".into(),
+        ))
+    }
+
     /// Extract entities, records, relations and classification labels.
     async fn extract(
         &self,
@@ -172,8 +184,14 @@ pub trait InferenceEngine: Send + Sync {
         )))
     }
 
-    async fn decide(&self, _model_id: &str, _request: &simple_ai_common::DecisionRequest) -> Result<simple_ai_common::DecisionResponse> {
-        Err(crate::error::Error::NotSupported("semantic decisions not supported by this engine".into()))
+    async fn decide(
+        &self,
+        _model_id: &str,
+        _request: &simple_ai_common::DecisionRequest,
+    ) -> Result<simple_ai_common::DecisionResponse> {
+        Err(crate::error::Error::NotSupported(
+            "semantic decisions not supported by this engine".into(),
+        ))
     }
 
     /// Generate one audio embedding for an uploaded audio file.

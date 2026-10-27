@@ -1,10 +1,10 @@
+use serde::{Deserialize, Serialize};
 use simple_server::web::{
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::AppState;

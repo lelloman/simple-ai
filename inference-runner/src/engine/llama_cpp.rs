@@ -15,7 +15,6 @@ const HEALTH_CHECK_INTERVAL_MS: u64 = 200;
 const SERVER_STARTING_POLL_MS: u64 = 100;
 
 use async_trait::async_trait;
-use simple_server::web::body::Bytes;
 use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -24,6 +23,7 @@ use simple_ai_common::{
     format_sse_metrics, ChatCompletionRequest, ChatCompletionResponse, ChatContent, ChatMessage,
     InferenceMetrics, ReasoningCapabilities, ReasoningEffort, ToolCall, ToolFunction,
 };
+use simple_server::web::body::Bytes;
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
 use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
@@ -256,7 +256,7 @@ impl LlamaCppEngine {
                 self.scan_directory_recursive(&path, models);
             } else if path
                 .extension()
-                .map_or(false, |ext| ext.eq_ignore_ascii_case("gguf"))
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"))
             {
                 let filename = match path.file_name().and_then(|s| s.to_str()) {
                     Some(f) => f,
@@ -1091,7 +1091,7 @@ fn skip_gguf_value(reader: &mut impl Read, value_type: u32) -> io::Result<()> {
     match value_type {
         0 | 1 | 7 => skip_exact(reader, 1),
         2 | 3 => skip_exact(reader, 2),
-        4 | 5 | 6 => skip_exact(reader, 4),
+        4..=6 => skip_exact(reader, 4),
         8 => {
             let len = read_u64(reader)?;
             skip_exact(reader, len)
@@ -1104,7 +1104,7 @@ fn skip_gguf_value(reader: &mut impl Read, value_type: u32) -> io::Result<()> {
             }
             Ok(())
         }
-        10 | 11 | 12 => skip_exact(reader, 8),
+        10..=12 => skip_exact(reader, 8),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown GGUF metadata value type {}", value_type),
@@ -1773,7 +1773,7 @@ impl InferenceEngine for LlamaCppEngine {
                 }
             }
 
-            Ok(Some((Bytes::from(chunk), state)))
+            Ok(Some((chunk, state)))
         });
 
         Ok(Box::pin(stream))

@@ -1,9 +1,9 @@
 //! Error types for the inference runner.
 
+use serde_json::json;
 use simple_server::web::http::StatusCode;
 use simple_server::web::response::{IntoResponse, Response};
 use simple_server::web::Json;
-use serde_json::json;
 
 /// Error types for inference operations.
 ///

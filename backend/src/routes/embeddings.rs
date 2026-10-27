@@ -2,15 +2,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
 use simple_server::web::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
     routing::post,
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
 
-use super::auth_helpers::{authenticate_inference_request};
+use super::auth_helpers::authenticate_inference_request;
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
 use crate::models::request::{Request, Response};
 use crate::{AppState, RequestEvent};
@@ -66,17 +66,15 @@ pub struct EmbeddingUsage {
 /// POST /v1/embeddings - OpenAI-compatible embeddings endpoint
 async fn create_embeddings(
     State(state): State<Arc<AppState>>,
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(request): Json<EmbeddingRequest>,
 ) -> Result<Json<EmbeddingResponse>, (StatusCode, String)> {
     let start = Instant::now();
 
     let (auth_user, user) =
-        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0)).await?;
+        authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
+            .await?;
 
     // Parse and validate model request
     let model_request = ModelRequest::parse(&request.model);
@@ -101,7 +99,10 @@ async fn create_embeddings(
     let mut req_log = Request::new(user.id.clone(), "/v1/embeddings".to_string());
     req_log.model = Some(model.clone());
     super::auth_helpers::attribute_request(
-        &mut req_log, &auth_user, &headers, connect_info.as_ref().ok().map(|c| c.0),
+        &mut req_log,
+        &auth_user,
+        &headers,
+        connect_info.as_ref().ok().map(|c| c.0),
         &state.config.trusted_proxies,
     );
 

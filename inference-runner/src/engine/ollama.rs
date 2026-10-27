@@ -1,7 +1,6 @@
 //! Ollama inference engine implementation.
 
 use async_trait::async_trait;
-use simple_server::web::body::Bytes;
 use futures_util::stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -10,6 +9,7 @@ use simple_ai_common::{
     ChatCompletionRequest, ChatCompletionResponse, ChatMessage, InferenceMetrics, ToolCall,
     ToolFunction,
 };
+use simple_server::web::body::Bytes;
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::RwLock;
 

@@ -27,12 +27,12 @@ pub use affinity::{
 pub use batch_dispatcher::BatchDispatcher;
 pub use batch_queue::{BatchQueue, BatchQueueConfig, BatchedResponse, ModelQueueStats};
 pub use model_class::{can_request_model, classify_model, ModelClass, ModelRequest};
+pub use pressure::{PressureLevel, PressureSnapshot, PressureTracker};
 pub use registry::{CapacityReservation, ConnectedRunner, RunnerEvent, RunnerRegistry};
 pub use router::{
     AffinityDecision, InferenceRouter, ReservedRoute, RoutePlan, RoutedResponse, RoutedStream,
     RouterError,
 };
-pub use pressure::{PressureLevel, PressureSnapshot, PressureTracker};
 pub use scheduler::{RequestScheduler, ScheduledResponse, SchedulerError};
 pub use telemetry::{RouterAffinityState, RouterEventRecord, RouterStateSnapshot, RouterTelemetry};
 pub use ws::{ws_handler, WsState};

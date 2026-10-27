@@ -495,6 +495,8 @@ impl RunnerRegistry {
     }
 
     /// Register a new runner.
+    // Preserve the public registration API used by gateway callers.
+    #[allow(clippy::too_many_arguments)]
     pub async fn register(
         &self,
         id: String,

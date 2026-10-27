@@ -12,6 +12,9 @@ use simple_ai_common::InferenceMetrics;
 /// Called after every response is persisted, e.g. to track runner failures.
 pub type ResponseObserver = Box<dyn Fn(&Response) + Send + Sync>;
 
+/// User ID, optional email, and roles returned by API-key validation.
+pub type ApiKeyUserInfo = (String, Option<String>, Vec<String>);
+
 pub struct AuditLogger {
     conn: Mutex<Connection>,
     response_observer: std::sync::OnceLock<ResponseObserver>,
@@ -74,11 +77,7 @@ pub struct RequestBodies {
 impl AuditLogger {
     pub fn new(database_url: &str) -> Result<Self, AuditError> {
         // Parse sqlite: prefix if present
-        let path = if database_url.starts_with("sqlite:") {
-            &database_url[7..]
-        } else {
-            database_url
-        };
+        let path = database_url.strip_prefix("sqlite:").unwrap_or(database_url);
 
         // Create parent directories if needed
         if let Some(parent) = Path::new(path).parent() {
@@ -742,6 +741,8 @@ impl AuditLogger {
                 .map_err(|e| AuditError::DatabaseError(e.to_string()))?
         };
 
+        // Preserve the existing overflow behavior of pagination arithmetic.
+        #[allow(clippy::manual_div_ceil)]
         let total_pages = ((total as u32) + per_page - 1) / per_page;
         let offset = u64::from(page.saturating_sub(1)) * u64::from(per_page);
 
@@ -991,7 +992,7 @@ impl AuditLogger {
     pub fn validate_api_key(
         &self,
         plaintext_key: &str,
-    ) -> Result<Option<(String, Option<String>, Vec<String>)>, AuditError> {
+    ) -> Result<Option<ApiKeyUserInfo>, AuditError> {
         Ok(self
             .validate_api_key_with_identity(plaintext_key)?
             .map(|key| (key.user_id, key.email, key.roles)))
@@ -1600,7 +1601,7 @@ mod tests {
 
     fn create_test_logger() -> AuditLogger {
         let test_db_path = ":memory:";
-        AuditLogger::new(&test_db_path).unwrap()
+        AuditLogger::new(test_db_path).unwrap()
     }
 
     #[test]

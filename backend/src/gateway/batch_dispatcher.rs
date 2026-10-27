@@ -320,7 +320,7 @@ mod tests {
 
     fn create_test_router(registry: Arc<RunnerRegistry>) -> Arc<InferenceRouter> {
         let test_db_path = ":memory:";
-        let audit_logger = Arc::new(crate::audit::AuditLogger::new(&test_db_path).unwrap());
+        let audit_logger = Arc::new(crate::audit::AuditLogger::new(test_db_path).unwrap());
         Arc::new(InferenceRouter::new(
             registry,
             crate::config::ModelsConfig::default(),
@@ -490,7 +490,9 @@ mod tests {
             .with_state(counter);
 
         tokio::spawn(async move {
-            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new()).await.unwrap();
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
         });
 
         format!("http://{}", addr)

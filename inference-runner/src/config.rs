@@ -108,6 +108,8 @@ pub struct EnginesConfig {
     #[serde(default)]
     pub extraction: ExtractionEngineConfig,
     #[serde(default)]
+    pub translation: TranslationEngineConfig,
+    #[serde(default)]
     pub decisions: DecisionEngineConfig,
 }
 
@@ -131,7 +133,9 @@ pub struct HalogenEngineConfig {
     pub shutdown_timeout_secs: u64,
 }
 
-fn default_halogen_slots() -> u32 { 4 }
+fn default_halogen_slots() -> u32 {
+    4
+}
 
 /// Process-backed Hugging Face NLI classification engine configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -1010,7 +1014,6 @@ impl Default for ExtractionEngineConfig {
     }
 }
 
-
 /// Managed JEV runtime, disabled unless explicitly prepared on the runner.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -1026,7 +1029,41 @@ pub struct DecisionEngineConfig {
 }
 impl Default for DecisionEngineConfig {
     fn default() -> Self {
-        Self { enabled: false, compose_command: vec!["docker".into(), "compose".into()], compose_dir: String::new(), base_url: "http://127.0.0.1:18040".into(),
-               startup_timeout_secs: 600, request_timeout_secs: 180, shutdown_timeout_secs: 60 }
+        Self {
+            enabled: false,
+            compose_command: vec!["docker".into(), "compose".into()],
+            compose_dir: String::new(),
+            base_url: "http://127.0.0.1:18040".into(),
+            startup_timeout_secs: 600,
+            request_timeout_secs: 180,
+            shutdown_timeout_secs: 60,
+        }
+    }
+}
+/// Process-backed MADLAD provider with automatic GPU selection.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TranslationEngineConfig {
+    pub enabled: bool,
+    pub command: Vec<String>,
+    pub model_path: Option<String>,
+    pub device: String,
+    pub batch_size: u32,
+    pub num_threads: u32,
+    pub startup_timeout_secs: u64,
+    pub request_timeout_secs: u64,
+}
+impl Default for TranslationEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            command: vec![],
+            model_path: None,
+            device: "auto".into(),
+            batch_size: 32,
+            num_threads: 4,
+            startup_timeout_secs: 600,
+            request_timeout_secs: 180,
+        }
     }
 }

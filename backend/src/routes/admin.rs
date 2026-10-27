@@ -922,6 +922,8 @@ enum AdminClientMessage {
 /// Messages sent from server to admin client.
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+// Keep snapshots inline; boxing would add an allocation to every snapshot.
+#[allow(clippy::large_enum_variant)]
 enum AdminServerMessage {
     /// Authentication succeeded.
     AuthOk,

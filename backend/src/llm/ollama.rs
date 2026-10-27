@@ -1,8 +1,8 @@
-use simple_server::web::body::Bytes;
 use futures_util::stream::{self, Stream};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use simple_ai_common::{format_sse_chunk, format_sse_done, ChatCompletionChunk, InferenceMetrics};
+use simple_server::web::body::Bytes;
 use std::collections::VecDeque;
 use std::pin::Pin;
 
@@ -633,7 +633,10 @@ mod tests {
             status: 400,
             message: "context length exceeded".to_string(),
         };
-        assert_eq!(error.client_status(), simple_server::web::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.client_status(),
+            simple_server::web::http::StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]

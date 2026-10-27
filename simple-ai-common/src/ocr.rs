@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// OCR output depth requested by a client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OcrMode {
     /// Plain text only.
@@ -11,13 +11,8 @@ pub enum OcrMode {
     /// Text blocks with bounding boxes and confidence.
     Layout,
     /// Full document structure when available, including tables.
+    #[default]
     Document,
-}
-
-impl Default for OcrMode {
-    fn default() -> Self {
-        Self::Document
-    }
 }
 
 /// Feature advertised by an OCR provider.
