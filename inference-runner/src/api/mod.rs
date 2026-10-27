@@ -3,6 +3,7 @@
 pub mod audio_embeddings;
 pub mod chat;
 pub mod classifications;
+pub mod translations;
 pub mod embeddings;
 pub mod extractions;
 pub mod decisions;
@@ -23,6 +24,7 @@ pub fn router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .merge(audio_embeddings::router())
         .merge(chat::router())
         .merge(classifications::router())
+        .merge(translations::router())
         .merge(extractions::router())
         .merge(decisions::router())
         .merge(embeddings::router())

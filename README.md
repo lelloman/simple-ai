@@ -77,6 +77,7 @@ Rust-based API gateway that provides OpenAI-compatible endpoints with authentica
 **Key Features:**
 - OpenAI-compatible `/v1/chat/completions` endpoint
 - Batched zero-shot NLI through `/v1/classifications`
+- Batched MADLAD translation through `/v1/translations` ([API and rollout](docs/translations.md))
 - OIDC JWT authentication via JWKS
 - Language detection (176 languages via FastText)
 - Full audit logging to SQLite
@@ -429,6 +430,7 @@ cargo build --locked --release -p inference-runner
 | `/v1/audio/speech` | POST | Yes | OpenAI-compatible text-to-speech |
 | `/v1/audio/voices` | GET | Yes | List available text-to-speech voices |
 | `/v1/detect-language` | POST | Yes | Language detection |
+| `/v1/translations` | POST | Yes | Batched translation (`class:translate`) |
 | `/ws/runners` | WebSocket | Token | Runner registration |
 | `/admin/runners` | GET | Yes | List connected runners |
 
@@ -439,6 +441,7 @@ cargo build --locked --release -p inference-runner
 | `/health` | GET | Runner health |
 | `/v1/chat/completions` | POST | Chat completion |
 | `/v1/audio/speech` | POST | Text-to-speech |
+| `/v1/translations` | POST | Batched translation |
 
 ---
 

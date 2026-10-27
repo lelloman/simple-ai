@@ -316,6 +316,51 @@ impl InferenceRouter {
         })
     }
 
+    /// Route a batch translation request to a model-capable runner.
+    pub async fn translation<Req, Resp>(
+        &self,
+        model: &str,
+        request: &Req,
+    ) -> Result<RoutedResponse<Resp>, RouterError>
+    where
+        Req: Serialize + Clone,
+        Resp: DeserializeOwned,
+    {
+        let selection = self.select_runner_for_model(model).await?;
+        let resolved_model = selection.resolved_model.clone();
+        let (runner, reservation) = self
+            .reserve_current(
+                &selection.runner.id,
+                selection.runner.generation,
+                Some(&resolved_model),
+                false,
+            )
+            .await?;
+        let runner_id = runner.id.clone();
+        let local_model = runner.resolve_model_alias(&resolved_model);
+        let mut request_value = serde_json::to_value(request)
+            .map_err(|error| RouterError::ConnectionFailed(error.to_string()))?;
+        if let Some(object) = request_value.as_object_mut() {
+            object.insert("model".to_string(), serde_json::Value::String(local_model));
+        }
+        let response = self
+            .proxy_request_value(&runner, "/v1/translations", request_value)
+            .await;
+        drop(reservation);
+        if let Some(breaker) = &self.circuit_breaker {
+            if response.is_ok() {
+                breaker.record_success(&runner_id);
+            } else {
+                breaker.record_failure(&runner_id);
+            }
+        }
+        Ok(RoutedResponse {
+            response: response?,
+            runner_id,
+            resolved_model,
+        })
+    }
+
     /// Route a zero-shot text classification request to a model-capable runner.
     pub async fn classification<Req, Resp>(
         &self,
@@ -1257,6 +1302,7 @@ impl InferenceRouter {
                 ModelClass::EmbedLarge => self.models_config.embed_large.first(),
                 ModelClass::AudioEmbeddings => self.models_config.audio_embeddings.first(),
                 ModelClass::Tts => self.models_config.tts.first(),
+                ModelClass::Translate => self.models_config.translate.first(),
                 ModelClass::TextClassification => self.models_config.text_classification.first(),
                 ModelClass::SemanticDecisions => self.models_config.semantic_decisions.first(),
                 ModelClass::InformationExtraction => {
@@ -2553,5 +2599,80 @@ mod tests {
         assert_eq!(body["prompt_cache_key"], expected_scoped);
         assert!(!body.to_string().contains(raw_key));
         assert_eq!(expected_scoped.len(), 64);
+    }
+    #[tokio::test]
+    async fn translation_class_routes_to_translation_endpoint_and_lists_model() {
+        use simple_ai_common::{TranslationRequest, TranslationResponse};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/v1/translations",
+            post(|Json(body): Json<TranslationRequest>| async move {
+                assert_eq!(body.model, "google/madlad400-3b-mt");
+                assert_eq!(body.target, "en");
+                Json(TranslationResponse {
+                    model: body.model,
+                    data: body
+                        .input
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, text)| simple_ai_common::TranslationResult {
+                            index,
+                            translation: format!("translated {text}"),
+                        })
+                        .collect(),
+                })
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _rx) = mpsc::channel(32);
+        registry
+            .register(
+                "translator".into(),
+                "Halo 2".into(),
+                Some("halo".into()),
+                create_test_status(vec!["google/madlad400-3b-mt".into()]),
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = InferenceRouter::new(
+            registry.clone(),
+            crate::config::ModelsConfig {
+                translate: vec!["google/madlad400-3b-mt".into()],
+                ..Default::default()
+            },
+            Default::default(),
+            Arc::new(AuditLogger::new(":memory:").unwrap()),
+        );
+        assert!(router
+            .list_models()
+            .await
+            .unwrap()
+            .iter()
+            .any(|m| m.id == "google/madlad400-3b-mt"));
+        let request = TranslationRequest {
+            model: "class:translate".into(),
+            input: vec!["uno".into(), "due".into()],
+            target: "en".into(),
+            source: None,
+            max_tokens: None,
+        };
+        let result = router
+            .translation::<_, TranslationResponse>("class:translate", &request)
+            .await
+            .unwrap();
+        assert_eq!(result.runner_id, "translator");
+        assert_eq!(result.resolved_model, "google/madlad400-3b-mt");
+        assert_eq!(result.response.data[0].translation, "translated uno");
+        assert_eq!(result.response.data[1].index, 1);
+        assert_eq!(result.response.data[1].translation, "translated due");
+        server.abort();
     }
 }
