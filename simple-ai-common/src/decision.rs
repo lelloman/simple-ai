@@ -100,10 +100,10 @@ impl DecisionRequest {
                         );
                     }
                 }
-                DecisionQuestion::Rating { levels, .. } => {
-                    if levels.len() != 6 || levels.iter().any(|s| !valid_text(s)) {
-                        return Err("rating requires exactly six nonempty levels".into());
-                    }
+                DecisionQuestion::Rating { levels, .. }
+                    if (levels.len() != 6 || levels.iter().any(|s| !valid_text(s))) =>
+                {
+                    return Err("rating requires exactly six nonempty levels".into());
                 }
                 _ => {}
             }

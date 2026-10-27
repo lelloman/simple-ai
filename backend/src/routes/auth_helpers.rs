@@ -19,13 +19,15 @@ pub fn attribute_request(
     request.api_key_id = user.api_key_id.clone();
     request.api_key_name = user.api_key_name.clone();
     request.peer_ip = peer.map(|p| p.ip().to_string());
-    request.proxy_request_id = peer.filter(|p| trusted_proxies.iter().any(|net| net.contains(&p.ip())))
+    request.proxy_request_id = peer
+        .filter(|p| trusted_proxies.iter().any(|net| net.contains(&p.ip())))
         .and_then(|_| headers.get("x-request-id"))
         .and_then(|value| value.to_str().ok())
         .and_then(|value| uuid::Uuid::parse_str(value).ok())
         .map(|id| id.to_string());
     request.client_ip = verified_client_ip(headers, peer, trusted_proxies);
-    request.user_agent = headers.get("user-agent")
+    request.user_agent = headers
+        .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .filter(|v| v.len() <= 1024 && !v.chars().any(char::is_control))
         .map(str::to_owned);
@@ -39,14 +41,21 @@ fn verified_client_ip(
 ) -> Option<String> {
     let mut current = peer?.ip();
     let trusted = |ip: &std::net::IpAddr| trusted_proxies.iter().any(|net| net.contains(ip));
-    if !trusted(&current) { return Some(current.to_string()); }
-    let hops: Result<Vec<std::net::IpAddr>, _> = headers.get_all("x-forwarded-for")
-        .iter().flat_map(|v| v.to_str().unwrap_or("").split(','))
-        .map(|v| v.trim().parse()).collect();
+    if !trusted(&current) {
+        return Some(current.to_string());
+    }
+    let hops: Result<Vec<std::net::IpAddr>, _> = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .flat_map(|v| v.to_str().unwrap_or("").split(','))
+        .map(|v| v.trim().parse())
+        .collect();
     // Malformed chains cannot assert a client identity.
     if let Ok(hops) = hops {
         for hop in hops.into_iter().rev() {
-            if !trusted(&current) { break; }
+            if !trusted(&current) {
+                break;
+            }
             current = hop;
         }
     }
@@ -142,7 +151,13 @@ async fn authenticate_with_context(
                 if token.starts_with("sk-") {
                     return match state.audit_logger.validate_api_key_with_identity(token) {
                         Ok(Some(identity)) => {
-                            let crate::audit::ValidatedApiKey { user_id, email, roles, key_id, key_name } = identity;
+                            let crate::audit::ValidatedApiKey {
+                                user_id,
+                                email,
+                                roles,
+                                key_id,
+                                key_name,
+                            } = identity;
                             let user = state
                                 .audit_logger
                                 .find_or_create_user(&user_id, email.as_deref())
@@ -197,14 +212,44 @@ mod tests {
 
     #[test]
     fn origin_metadata_requires_a_trusted_socket_peer() {
-        let trusted = vec!["172.20.0.19/32".parse().unwrap(), "10.77.0.1/32".parse().unwrap()];
+        let trusted = vec![
+            "172.20.0.19/32".parse().unwrap(),
+            "10.77.0.1/32".parse().unwrap(),
+        ];
         let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4, 203.0.113.8, 10.77.0.1".parse().unwrap());
-        assert_eq!(verified_client_ip(&headers, Some("172.20.0.19:4444".parse().unwrap()), &trusted).as_deref(), Some("203.0.113.8"));
-        assert_eq!(verified_client_ip(&headers, Some("192.168.1.21:4444".parse().unwrap()), &trusted).as_deref(), Some("192.168.1.21"));
+        headers.insert(
+            "x-forwarded-for",
+            "1.2.3.4, 203.0.113.8, 10.77.0.1".parse().unwrap(),
+        );
+        assert_eq!(
+            verified_client_ip(
+                &headers,
+                Some("172.20.0.19:4444".parse().unwrap()),
+                &trusted
+            )
+            .as_deref(),
+            Some("203.0.113.8")
+        );
+        assert_eq!(
+            verified_client_ip(
+                &headers,
+                Some("192.168.1.21:4444".parse().unwrap()),
+                &trusted
+            )
+            .as_deref(),
+            Some("192.168.1.21")
+        );
         assert_eq!(verified_client_ip(&headers, None, &trusted), None);
         headers.insert("x-forwarded-for", "bogus, 203.0.113.8".parse().unwrap());
-        assert_eq!(verified_client_ip(&headers, Some("172.20.0.19:4444".parse().unwrap()), &trusted).as_deref(), Some("172.20.0.19"));
+        assert_eq!(
+            verified_client_ip(
+                &headers,
+                Some("172.20.0.19:4444".parse().unwrap()),
+                &trusted
+            )
+            .as_deref(),
+            Some("172.20.0.19")
+        );
     }
 
     #[test]
@@ -217,12 +262,21 @@ mod tests {
         headers.insert("authorization", "Bearer SECRET-NOT-LOGGED".parse().unwrap());
         headers.insert("x-api-key-name", "forged".parse().unwrap());
         headers.insert("user-agent", "probe-client/1".parse().unwrap());
-        let mut request = crate::models::request::Request::new("owner".into(), "/v1/chat/completions".into());
-        attribute_request(&mut request, &user, &headers, Some("192.168.1.21:8888".parse().unwrap()), &[]);
+        let mut request =
+            crate::models::request::Request::new("owner".into(), "/v1/chat/completions".into());
+        attribute_request(
+            &mut request,
+            &user,
+            &headers,
+            Some("192.168.1.21:8888".parse().unwrap()),
+            &[],
+        );
         assert_eq!(request.api_key_name.as_deref(), Some("qwencode"));
         assert_eq!(request.api_key_id.as_deref(), Some("verified-id"));
         assert_eq!(request.user_agent.as_deref(), Some("probe-client/1"));
-        assert!(!serde_json::to_string(&request).unwrap().contains("SECRET-NOT-LOGGED"));
+        assert!(!serde_json::to_string(&request)
+            .unwrap()
+            .contains("SECRET-NOT-LOGGED"));
     }
 
     #[test]

@@ -30,6 +30,8 @@ pub struct GatewayClient {
 }
 
 impl GatewayClient {
+    // Preserve the constructor API without introducing a parameter object.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: GatewayConfig,
         runner_id: String,
@@ -300,7 +302,11 @@ impl GatewayClient {
         &self,
         model_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let _work = self.engine_registry.drain.admit().ok_or("Runner is draining")?;
+        let _work = self
+            .engine_registry
+            .drain
+            .admit()
+            .ok_or("Runner is draining")?;
         // Resolve canonical name to local engine name if aliased
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();
@@ -365,7 +371,11 @@ impl GatewayClient {
         &self,
         model_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let _work = self.engine_registry.drain.admit().ok_or("Runner is draining")?;
+        let _work = self
+            .engine_registry
+            .drain
+            .admit()
+            .ok_or("Runner is draining")?;
         // Resolve canonical name to local engine name if aliased
         let local_id = self.status_collector.resolve_to_local(model_id);
         let local_id = local_id.as_str();

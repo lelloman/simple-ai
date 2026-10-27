@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use simple_server::web::{extract::State, routing::post, Json, Router};
 use simple_ai_common::{ClassificationRequest, ClassificationResponse};
+use simple_server::web::{extract::State, routing::post, Json, Router};
 
 use crate::error::{Error, Result};
 use crate::state::AppState;

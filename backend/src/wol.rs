@@ -355,10 +355,7 @@ impl WakeService {
 
         // Further filter by model request if specified
         if let Some(request) = model_request {
-            wakeable = wakeable
-                .into_iter()
-                .filter(|r| self.runner_matches_request(r, request))
-                .collect();
+            wakeable.retain(|r| self.runner_matches_request(r, request));
         }
 
         // Sort by last_seen_at descending (most recently seen first)
@@ -488,10 +485,10 @@ impl WakeService {
         let mut result = Vec::new();
         for target_machine in targets {
             for runner in wakeable {
-                if runner.machine_type.as_deref() == Some(target_machine) {
-                    if !result.iter().any(|r: &RunnerRecord| r.id == runner.id) {
-                        result.push(runner.clone());
-                    }
+                if runner.machine_type.as_deref() == Some(target_machine)
+                    && !result.iter().any(|r: &RunnerRecord| r.id == runner.id)
+                {
+                    result.push(runner.clone());
                 }
             }
         }

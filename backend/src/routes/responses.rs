@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::auth_helpers::{authenticate_inference_request};
+use super::auth_helpers::authenticate_inference_request;
 use crate::gateway::{can_request_model, ModelRequest, SchedulerError};
 use crate::gateway::{CapacityReservation, RoutedStream};
 use crate::models::request::{Request, Response as AuditResponse};
@@ -430,10 +430,7 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
 /// POST /v1/responses - OpenAI-compatible responses endpoint.
 async fn create_response(
     State(state): State<Arc<AppState>>,
-    connect_info: Result<
-        ConnectInfo<SocketAddr>,
-        simple_server::extract::RejectionResponse,
-    >,
+    connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(request): Json<ResponseCreateRequest>,
 ) -> Result<AxumResponse, (StatusCode, String)> {
@@ -479,7 +476,10 @@ async fn create_response(
     req_log.request_body = serde_json::to_string(&chat_request).unwrap_or_default();
     req_log.model = Some(model.clone());
     super::auth_helpers::attribute_request(
-        &mut req_log, &auth_user, &headers, connect_info.as_ref().ok().map(|c| c.0),
+        &mut req_log,
+        &auth_user,
+        &headers,
+        connect_info.as_ref().ok().map(|c| c.0),
         &state.config.trusted_proxies,
     );
 
@@ -622,7 +622,11 @@ async fn create_response(
             }
         };
 
-        let stream_body = crate::audit::capture_response(stream_body, state.audit_logger.clone(), req_log.id.clone());
+        let stream_body = crate::audit::capture_response(
+            stream_body,
+            state.audit_logger.clone(),
+            req_log.id.clone(),
+        );
         let mut response = AxumResponse::new(stream_body);
         *response.status_mut() = StatusCode::OK;
         response.headers_mut().insert(
