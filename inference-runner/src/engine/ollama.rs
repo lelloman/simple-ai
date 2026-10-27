@@ -36,6 +36,52 @@ impl OllamaEngine {
         }
     }
 
+    // Keep the completion warmup for existing chat models. Embedding-only
+    // models reject generate before Ollama's empty-prompt lifecycle handling.
+    async fn set_model_keep_alive(&self, model_id: &str, keep_alive: &str) -> Result<()> {
+        let response = self
+            .http_client
+            .post(format!("{}/api/generate", self.base_url))
+            .json(&OllamaGenerateRequest {
+                model: model_id.to_string(),
+                prompt: String::new(),
+                stream: false,
+                keep_alive: Some(keep_alive.to_string()),
+            })
+            .send()
+            .await
+            .map_err(|e| Error::Communication(e.to_string()))?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        let unsupported = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("error")?.as_str().map(str::to_owned))
+            .is_some_and(|error| error.ends_with("does not support generate"));
+        if status != reqwest::StatusCode::BAD_REQUEST || !unsupported {
+            return Err(Error::LoadFailed(format!("Ollama generate lifecycle model={model_id} keep_alive={keep_alive}: {status}: {body}")));
+        }
+        // Empty input loads without computing a vector; keep_alive=0 unloads.
+        // Do not cache capability or success: a failed load must be retryable.
+        let response = self
+            .http_client
+            .post(format!("{}/api/embed", self.base_url))
+            .json(&serde_json::json!({"model": model_id, "input": [], "keep_alive": keep_alive}))
+            .send()
+            .await
+            .map_err(|e| Error::Communication(e.to_string()))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::LoadFailed(format!(
+                "Ollama embed lifecycle model={model_id} keep_alive={keep_alive}: {status}: {body}"
+            )));
+        }
+        Ok(())
+    }
+
     fn build_chat_request(
         &self,
         model_id: &str,
@@ -373,64 +419,13 @@ impl InferenceEngine for OllamaEngine {
     }
 
     async fn load_model(&self, model_id: &str) -> Result<()> {
-        // Ollama loads models lazily, but we can "warm" them by sending
-        // a minimal request with keep_alive to ensure they stay loaded.
-        let url = format!("{}/api/generate", self.base_url);
-
-        let request = OllamaGenerateRequest {
-            model: model_id.to_string(),
-            prompt: "".to_string(),
-            stream: false,
-            keep_alive: Some("10m".to_string()),
-        };
-
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::Communication(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(Error::LoadFailed(format!(
-                "Failed to load model {}: {}",
-                model_id, body
-            )));
-        }
-
+        self.set_model_keep_alive(model_id, "10m").await?;
         tracing::info!("Model {} loaded/warmed", model_id);
         Ok(())
     }
 
     async fn unload_model(&self, model_id: &str) -> Result<()> {
-        // Ollama unloads models by setting keep_alive to 0
-        let url = format!("{}/api/generate", self.base_url);
-
-        let request = OllamaGenerateRequest {
-            model: model_id.to_string(),
-            prompt: "".to_string(),
-            stream: false,
-            keep_alive: Some("0".to_string()),
-        };
-
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::Communication(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(Error::Communication(format!(
-                "Failed to unload model {}: {}",
-                model_id, body
-            )));
-        }
-
+        self.set_model_keep_alive(model_id, "0").await?;
         tracing::info!("Model {} unloaded", model_id);
         Ok(())
     }
@@ -802,6 +797,135 @@ fn extract_ollama_context_length(model_info: &HashMap<String, serde_json::Value>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use wiremock::matchers::{body_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn embedding_only_registry_acquisition_retry_and_unload() {
+        use crate::engine::registry::EngineRegistry;
+        use std::sync::Arc;
+        for model in ["qwen3-embedding:0.6b", "bge-m3:567m"] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/api/tags"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "models": [{"name": model}]
+                })))
+                .mount(&server)
+                .await;
+            Mock::given(path("/api/generate"))
+                .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": format!("{model} does not support generate")
+                })))
+                .expect(4)
+                .mount(&server)
+                .await;
+            let engine = Arc::new(OllamaEngine::with_batch_size(&server.uri(), 8));
+            let registry = EngineRegistry::new();
+            registry.register(engine.clone()).await;
+            registry
+                .set_engine_resources(HashMap::from([("ollama".into(), "gpu:0".into())]))
+                .await;
+            let warmup = serde_json::json!({"model": model, "input": [], "keep_alive": "10m"});
+            let failed = Mock::given(path("/api/embed"))
+                .and(body_json(warmup.clone()))
+                .respond_with(ResponseTemplate::new(500).set_body_string("out of memory"))
+                .expect(1)
+                .mount_as_scoped(&server)
+                .await;
+            let error = registry
+                .acquire_model(model)
+                .await
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(error.contains(model) && error.contains("out of memory"));
+            drop(failed);
+            Mock::given(path("/api/embed"))
+                .and(body_json(warmup))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({"embeddings": []})),
+                )
+                .expect(2)
+                .mount(&server)
+                .await;
+            Mock::given(path("/api/embed"))
+                .and(body_json(
+                    serde_json::json!({"model": model, "input": ["profile"]}),
+                ))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({"embeddings": [vec![0.5; 1024]]})),
+                )
+                .expect(1)
+                .mount(&server)
+                .await;
+            let lease = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                registry.acquire_model(model),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            let vectors = lease
+                .engine
+                .embed(&lease.engine_model, &["profile".into()])
+                .await
+                .unwrap();
+            assert_eq!(vectors, vec![vec![0.5; 1024]]);
+            drop(lease);
+            // Reacquisition also runs warmup under the shared resource lease.
+            drop(registry.acquire_model(model).await.unwrap());
+            Mock::given(path("/api/embed"))
+                .and(body_json(
+                    serde_json::json!({"model": model, "input": [], "keep_alive": "0"}),
+                ))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1)
+                .mount(&server)
+                .await;
+            engine.unload_model(model).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn chat_lifecycle_retains_generate_and_other_errors_do_not_fallback() {
+        let server = MockServer::start().await;
+        let engine = OllamaEngine::with_batch_size(&server.uri(), 1);
+        Mock::given(path("/api/generate"))
+            .and(body_json(serde_json::json!({
+                "model": "chat", "prompt": "", "stream": false, "keep_alive": "10m"
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/api/generate"))
+            .and(body_json(serde_json::json!({
+                "model": "chat", "prompt": "", "stream": false, "keep_alive": "0"
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/api/generate"))
+            .and(body_json(serde_json::json!({
+                "model": "missing", "prompt": "", "stream": false, "keep_alive": "10m"
+            })))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/api/embed"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        engine.load_model("chat").await.unwrap();
+        engine.unload_model("chat").await.unwrap();
+        assert!(engine.load_model("missing").await.is_err());
+    }
 
     #[test]
     fn test_parse_parameter_size() {
