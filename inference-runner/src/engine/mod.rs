@@ -216,3 +216,6 @@ pub trait InferenceEngine: Send + Sync {
         )))
     }
 }
+
+mod text_embeddings;
+pub use text_embeddings::TextEmbeddingEngine;

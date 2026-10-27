@@ -2672,4 +2672,59 @@ mod tests {
         assert_eq!(result.response.data[1].translation, "translated due");
         server.abort();
     }
+    #[tokio::test]
+    async fn qwen_embedding_explicit_id_routes_to_embedding_endpoint_and_lists_model() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/v1/embeddings",
+            post(|Json(body): Json<serde_json::Value>| async move {
+                assert_eq!(body["model"], simple_ai_common::text_embeddings::MODEL_ID);
+                assert_eq!(body["input"], serde_json::json!(["uno", "due"]));
+                Json(serde_json::json!({"data": [{"index": 0}, {"index": 1}]}))
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _rx) = mpsc::channel(32);
+        registry
+            .register(
+                "gpu-server-rtx".into(),
+                "RTX".into(),
+                Some("gpu-server".into()),
+                create_test_status(vec!["Qwen/Qwen3-Embedding-0.6B".into()]),
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = InferenceRouter::new(
+            registry.clone(),
+            crate::config::ModelsConfig::default(),
+            Default::default(),
+            Arc::new(AuditLogger::new(":memory:").unwrap()),
+        );
+        assert!(router
+            .list_models()
+            .await
+            .unwrap()
+            .iter()
+            .any(|m| m.id == "Qwen/Qwen3-Embedding-0.6B"));
+        let request = serde_json::json!({"model": simple_ai_common::text_embeddings::MODEL_ID, "input": ["uno", "due"]});
+        let result = router
+            .embed::<_, serde_json::Value>(simple_ai_common::text_embeddings::MODEL_ID, &request)
+            .await
+            .unwrap();
+        assert_eq!(result.runner_id, "gpu-server-rtx");
+        assert_eq!(
+            result.resolved_model,
+            simple_ai_common::text_embeddings::MODEL_ID
+        );
+        assert_eq!(result.response["data"][1]["index"], 1);
+        server.abort();
+    }
 }

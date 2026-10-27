@@ -51,3 +51,5 @@ pub use speech::{
     SpeechModelInfo, SpeechProviderInfo, SpeechRequest, SpeechResponseFormat, SpeechStreamFormat,
     SpeechVoice,
 };
+
+pub mod text_embeddings;
