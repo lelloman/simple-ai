@@ -108,6 +108,8 @@ pub struct EnginesConfig {
     #[serde(default)]
     pub extraction: ExtractionEngineConfig,
     #[serde(default)]
+    pub text_embeddings: TextEmbeddingEngineConfig,
+    #[serde(default)]
     pub translation: TranslationEngineConfig,
     #[serde(default)]
     pub decisions: DecisionEngineConfig,
@@ -1064,6 +1066,26 @@ impl Default for TranslationEngineConfig {
             num_threads: 4,
             startup_timeout_secs: 600,
             request_timeout_secs: 180,
+        }
+    }
+}
+
+/// Dedicated CUDA Qwen embedding process; model semantics are fixed.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TextEmbeddingEngineConfig {
+    pub enabled: bool,
+    pub command: Vec<String>,
+    pub model_path: Option<String>,
+    pub batch_size: u32,
+}
+impl Default for TextEmbeddingEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            command: vec![],
+            model_path: None,
+            batch_size: 64,
         }
     }
 }

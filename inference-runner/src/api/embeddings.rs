@@ -85,6 +85,10 @@ async fn create_embeddings(
 
     let inputs = request.input.into_vec();
 
+    if resolved_model == simple_ai_common::text_embeddings::MODEL_ID {
+        simple_ai_common::text_embeddings::validate(&inputs)
+            .map_err(crate::error::Error::InvalidRequest)?;
+    }
     let lease = state.engine_registry.acquire_model(resolved_model).await?;
     let embeddings = lease.engine.embed(&lease.engine_model, &inputs).await?;
 

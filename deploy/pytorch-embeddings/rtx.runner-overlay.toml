@@ -1,0 +1,14 @@
+# Merge these tables into gpu-server-rtx's existing config. Preserve every GPU member.
+[engines.text_embeddings]
+enabled = true
+command = ["/home/lelloman/.simple-ai-embedding/venv/bin/python", "/home/lelloman/simple-ai-embedding-provider.py"]
+model_path = "/home/lelloman/.simple-ai-embedding/model"
+batch_size = 64
+
+[engine_resources]
+text_embeddings = "cuda:0"
+
+[model_routes."Qwen/Qwen3-Embedding-0.6B"]
+engine = "text_embeddings"
+engine_model = "Qwen/Qwen3-Embedding-0.6B"
+# No alias or embed class mapping changes.

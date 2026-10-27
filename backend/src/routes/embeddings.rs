@@ -95,6 +95,11 @@ async fn create_embeddings(
 
     let inputs = request.input.clone().into_vec();
 
+    if model == simple_ai_common::text_embeddings::MODEL_ID {
+        simple_ai_common::text_embeddings::validate(&inputs)
+            .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    }
+
     // Log request
     let mut req_log = Request::new(user.id.clone(), "/v1/embeddings".to_string());
     req_log.model = Some(model.clone());

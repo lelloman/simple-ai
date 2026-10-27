@@ -202,6 +202,31 @@ impl StatusCollector {
 
         for engine in engines
             .iter()
+            .filter(|e| e.engine_type == "text_embeddings")
+        {
+            for model in &engine.available_models {
+                if !capabilities
+                    .iter()
+                    .any(|c| c.capability == Capability::Embeddings && c.model_id == model.id)
+                {
+                    capabilities.push(CapabilityInfo {
+                        capability: Capability::Embeddings,
+                        status: if engine.loaded_models.contains(&model.id) {
+                            CapabilityStatus::Loaded
+                        } else {
+                            CapabilityStatus::Unloaded
+                        },
+                        model_id: model.id.clone(),
+                        active_requests: 0,
+                        avg_latency_ms: None,
+                        metadata: None,
+                    });
+                }
+            }
+        }
+
+        for engine in engines
+            .iter()
             .filter(|engine| engine.engine_type == "classification")
         {
             for model in &engine.available_models {

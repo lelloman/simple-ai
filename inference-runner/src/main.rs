@@ -198,6 +198,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Registered translation engine");
     }
 
+    if config.engines.text_embeddings.enabled {
+        if !config.engine_resources.contains_key("text_embeddings") {
+            return Err("text_embeddings requires the shared CUDA engine resource group".into());
+        }
+        registry
+            .register(Arc::new(engine::TextEmbeddingEngine::new(
+                config.engines.text_embeddings.clone(),
+            )?))
+            .await;
+        tracing::info!("Registered text embedding engine");
+    }
+
     if config.engines.extraction.enabled {
         let engine = Arc::new(ExtractionEngine::new(config.engines.extraction.clone())?);
         registry.register(engine).await;
