@@ -1,0 +1,23 @@
+# Merge into Halo 2's existing runner config; do not replace that config.
+# Operator: prepare GPU-enabled Ollama and pull the two fixed tags first.
+# Preserve every existing resource-group member (including AI-56 translation).
+[engines.ollama]
+enabled = true
+base_url = "http://127.0.0.1:11434"
+
+[engine_resources]
+ollama = "gpu:0" # Must equal Halo 2's existing llama_cpp/classification/translation group.
+
+[aliases.mappings]
+"Qwen/Qwen3-Embedding-0.6B" = "qwen3-embedding:0.6b"
+"BAAI/bge-m3" = "bge-m3:567m"
+
+[model_routes."Qwen/Qwen3-Embedding-0.6B"]
+engine = "ollama"
+engine_model = "qwen3-embedding:0.6b"
+
+[model_routes."BAAI/bge-m3"]
+engine = "ollama"
+engine_model = "bge-m3:567m"
+
+# Deliberately no class mappings or changes to embedding:large.
