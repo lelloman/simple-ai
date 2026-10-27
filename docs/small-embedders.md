@@ -2,7 +2,12 @@
 
 This is an operator rollout and qualification plan, not a production result.
 The existing Ollama engine already supports batched dense embeddings. No
-backend, runner binary or protocol change is needed for these candidates.
+backend or protocol change is needed. Upgrade the runner binary from this PR:
+its Ollama lifecycle handling falls back to empty-input `/api/embed` when an
+embedding-only model rejects `/api/generate`, for both loading and unloading.
+The fallback is limited to Ollama’s HTTP 400 unsupported-generate error; other
+errors still fail acquisition. Failed warmups are not cached. See the upstream
+[empty-input embedding load handler](https://github.com/ollama/ollama/blob/v0.12.0/server/routes.go#L544-L579).
 `class:embed_large` and its current Qwen3 8B mapping stay unchanged.
 
 ## Placement and artifacts
@@ -49,10 +54,10 @@ Operator steps (do not run these from an agent session):
    `gpu:0`. Do not add candidates to gateway embed class lists or change the
    `embedding:large` alias. Existing explicit-model permissions apply:
    use a client key with `model:specific` for this qualification.
-3. Have the operator restart the runner with the merged config. No backend or
-   other runner rollout is required for AI-57. AI-56 has its own backend-first
-   rollout and is currently blocked/unmerged; qualify coexistence again after
-   its rollout. Do not substitute its unmerged changes into this branch.
+3. Have the operator install this PR’s runner binary, then restart the runner
+   with the merged config. No backend or other runner rollout is required for AI-57. AI-56 has its own backend-first
+   rollout and has landed separately; qualify coexistence again after
+   its operator-managed rollout.
 4. Verify both public ids in gateway `/v1/models`; call each via
    `/v1/embeddings` with one text and a batch, checking 1024 finite nonzero
    values per text. Check `ollama ps` during inference for GPU residency and
@@ -140,8 +145,9 @@ Gateway latency alone cannot prove which runner served a probe or whether
 weights remained resident. Correlate the run time window with gateway audit
 runner ids, `ollama ps`, GPU/system memory and runner logs. Keep AI-56 MADLAD
 loaded/active for a second qualification run once available, recording its
-request timings as well. The harness does not drive translation because that
-endpoint has not landed yet. Synthetic profile text is for throughput only;
+request timings as well. Translation qualification remains a separate operator
+check; the harness does not drive that endpoint. Synthetic profile text is for
+throughput only;
 the operator's SanCerchino multilingual retrieval evaluation remains separate.
 
 Rollback: the operator removes only these two aliases/routes, restores the
