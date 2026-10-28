@@ -145,7 +145,9 @@ concurrent provider calls get 429. The runner advertises one request slot.
 Startup budget is 600 seconds, inference budget 180 seconds. Cancellation retains
 resource/lifecycle barriers through detached inference. Unload waits for active
 inference; transport/body failures terminate the provider before releasing the
-barrier; a crashed provider can reload.
+barrier. Internal HTTP 5xx inference failures also reap the provider before
+releasing the barrier, clearing sticky CUDA/vLLM failures for the next load;
+ordinary 400/429 responses keep the provider loaded. A crashed provider can reload.
 
 1. After review/merge, operator deploys backend and merges
    `deploy/summaries/backend-overlay.toml` into existing configuration.

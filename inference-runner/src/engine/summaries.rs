@@ -169,9 +169,21 @@ impl InferenceEngine for SummaryEngine {
                 }
             };
             if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                if status.is_server_error() {
+                    // A live HTTP server can contain a dead vLLM/CUDA engine.
+                    // Reap it while holding the lifecycle barrier so the next
+                    // load starts fresh and another engine cannot race CUDA cleanup.
+                    tracing::warn!(model = %request.model, %status, %body, "Summary inference failed; terminating provider");
+                    server.process.lock().await.kill().await.map_err(|error| {
+                        tracing::error!(model = %request.model, %error, "Failed to reap summary provider");
+                        Error::Internal(error.to_string())
+                    })?;
+                }
                 return Err(Error::UpstreamResponse {
-                    status: response.status().as_u16(),
-                    body: response.text().await.unwrap_or_default(),
+                    status: status.as_u16(),
+                    body,
                 });
             }
             let reply: SummaryResponse = match response.json().await {
@@ -321,6 +333,66 @@ mod tests {
         assert_eq!(response.data[1].index, 1);
         assert_eq!(response.data[1].summary, "due");
         engine.unload_model(&id).await.unwrap();
+    }
+    #[tokio::test]
+    async fn internal_failure_reaps_provider_and_reload_recovers() {
+        let engine = SummaryEngine::new(SummaryEngineConfig {
+            command: vec![
+                "python3".into(),
+                format!(
+                    "{}/../tests/fixtures/summaries-provider.py",
+                    env!("CARGO_MANIFEST_DIR")
+                ),
+            ],
+            model_path: "fixture".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        engine.load_model(SUMMARY_MODEL).await.unwrap();
+        let request = |text: &str| SummaryRequest {
+            model: SUMMARY_MODEL.into(),
+            input: vec![text.into()],
+            max_tokens: None,
+        };
+        // Ordinary caller errors must preserve the loaded provider.
+        for (text, status) in [("invalid", 400), ("busy", 429)] {
+            assert!(
+                matches!(engine.summarize(SUMMARY_MODEL, &request(text)).await,
+                Err(Error::UpstreamResponse { status: actual, .. }) if actual == status)
+            );
+            assert_eq!(
+                engine.health_check().await.unwrap().models_loaded,
+                vec![SUMMARY_MODEL]
+            );
+        }
+        assert!(matches!(
+            engine.summarize(SUMMARY_MODEL, &request("poison")).await,
+            Err(Error::UpstreamResponse { status: 500, .. })
+        ));
+        let guard = engine.server.read().await;
+        assert!(guard
+            .as_ref()
+            .unwrap()
+            .process
+            .lock()
+            .await
+            .try_wait()
+            .unwrap()
+            .is_some());
+        drop(guard);
+        assert!(engine
+            .health_check()
+            .await
+            .unwrap()
+            .models_loaded
+            .is_empty());
+        engine.load_model(SUMMARY_MODEL).await.unwrap();
+        let reply = engine
+            .summarize(SUMMARY_MODEL, &request("recovered"))
+            .await
+            .unwrap();
+        assert_eq!(reply.data[0].summary, "recovered");
+        engine.unload_model(SUMMARY_MODEL).await.unwrap();
     }
     #[tokio::test]
     async fn timeout_reaps_provider_and_reload_recovers() {
