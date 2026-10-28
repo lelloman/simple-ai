@@ -1,0 +1,15 @@
+# Qualified offline W8A8 INT8 winner; live gateway acceptance is operator-owned.
+# Merge into RTX only; retain every existing cuda:0 resource group member.
+[engines.summaries]
+enabled = true
+command = ["/home/lelloman/.simple-ai-summary/venv/bin/python", "/home/lelloman/simple-ai-summary-provider.py"]
+model_path = "/home/lelloman/.simple-ai-summary/model"
+
+[engine_resources]
+summaries = "cuda:0"
+
+[model_routes."qwen/qwen3-4b-instruct-2507"]
+engine = "summaries"
+engine_model = "Qwen/Qwen3-4B-Instruct-2507"
+
+aliases = ["Qwen/Qwen3-4B-Instruct-2507"]

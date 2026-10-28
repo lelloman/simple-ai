@@ -319,6 +319,7 @@ fn compute_protected_classes(
         ModelClass::TextClassification,
         ModelClass::InformationExtraction,
         ModelClass::Translate,
+        ModelClass::Summarize,
         ModelClass::SemanticDecisions,
     ] {
         let has_class = models

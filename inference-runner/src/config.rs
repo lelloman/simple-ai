@@ -112,6 +112,8 @@ pub struct EnginesConfig {
     #[serde(default)]
     pub translation: TranslationEngineConfig,
     #[serde(default)]
+    pub summaries: SummaryEngineConfig,
+    #[serde(default)]
     pub decisions: DecisionEngineConfig,
 }
 
@@ -948,6 +950,30 @@ mod tests {
     }
 
     #[test]
+    fn summary_overlay_uses_rtx_shared_gpu_group() {
+        let source = include_str!("../../deploy/summaries/rtx.runner-overlay.toml");
+        let loaded = ConfigLoader::builder()
+            .add_source(File::from_str(
+                r#"[runner]
+id = "gpu-server-rtx"
+name = "RTX"
+[api]
+"#,
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(source, FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config: Config = loaded.try_deserialize().unwrap();
+        assert!(config.engines.summaries.enabled);
+        assert_eq!(config.engine_resources["summaries"], "cuda:0");
+        let id = simple_ai_common::SUMMARY_MODEL;
+        assert_eq!(config.model_routes[&id.to_lowercase()].engine, "summaries");
+        assert_eq!(config.model_routes[&id.to_lowercase()].aliases, vec![id]);
+        assert!(config.aliases.mappings.is_empty());
+    }
+
+    #[test]
     fn rtx_deployment_config_deserializes() {
         let source = include_str!("../../deploy/qwen38-rtx3090/runner.example.toml");
         let loaded = ConfigLoader::builder()
@@ -1088,4 +1114,13 @@ impl Default for TextEmbeddingEngineConfig {
             batch_size: 64,
         }
     }
+}
+
+/// Dedicated offline CUDA vLLM site summarizer. Runtime limits are fixed.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SummaryEngineConfig {
+    pub enabled: bool,
+    pub command: Vec<String>,
+    pub model_path: String,
 }

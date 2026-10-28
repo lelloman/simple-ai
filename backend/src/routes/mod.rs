@@ -14,6 +14,7 @@ pub mod ocr;
 pub mod pressure;
 pub mod responses;
 pub mod speech;
+pub mod summaries;
 pub mod translations;
 
 pub mod gateway_auth;

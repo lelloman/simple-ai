@@ -392,6 +392,7 @@ impl WakeService {
                             self.models_config.information_extraction.first()
                         }
                         ModelClass::Translate => self.models_config.translate.first(),
+                        ModelClass::Summarize => self.models_config.summarize.first(),
                         ModelClass::TextClassification => {
                             self.models_config.text_classification.first()
                         }

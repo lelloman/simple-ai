@@ -53,3 +53,6 @@ pub use speech::{
 };
 
 pub mod text_embeddings;
+
+pub mod summaries;
+pub use summaries::*;

@@ -256,6 +256,33 @@ impl RequestScheduler {
         })
     }
 
+    pub async fn summarize(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        request: &simple_ai_common::SummaryRequest,
+    ) -> Result<ScheduledResponse<simple_ai_common::SummaryResponse>, SchedulerError> {
+        let prepared = self
+            .prepare_for_request(request_id, model, model_request, None)
+            .await?;
+        let _activity = self
+            .wake_service
+            .keep_runner_awake(prepared.plan.runner.id.clone());
+        let routed = self
+            .inference_router
+            .summarize::<simple_ai_common::SummaryRequest, simple_ai_common::SummaryResponse>(
+                model, request,
+            )
+            .await?;
+        Ok(ScheduledResponse {
+            response: routed.response,
+            runner_id: routed.runner_id,
+            resolved_model: routed.resolved_model,
+            wol_sent: prepared.wol_sent,
+        })
+    }
+
     pub async fn classification(
         &self,
         request_id: &str,

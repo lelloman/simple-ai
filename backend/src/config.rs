@@ -98,6 +98,7 @@ fn default_pressure_groups() -> std::collections::BTreeMap<String, Vec<String>> 
         ("decisions", &["semantic_decisions", "text_classification"]),
         ("extraction", &["information_extraction"]),
         ("translation", &["translate"]),
+        ("summaries", &["summarize"]),
     ]
     .into_iter()
     .map(|(group, classes)| {
@@ -281,6 +282,8 @@ pub struct ModelsConfig {
     #[serde(default)]
     pub translate: Vec<String>,
     #[serde(default)]
+    pub summarize: Vec<String>,
+    #[serde(default)]
     pub semantic_decisions: Vec<String>,
 }
 
@@ -289,6 +292,7 @@ impl ModelsConfig {
     pub fn models_for_class(&self, class: &str) -> &[String] {
         match class {
             "translate" => &self.translate,
+            "summarize" => &self.summarize,
             "big" => &self.big,
             "fast" => &self.fast,
             "embed_small" => &self.embed_small,
@@ -308,6 +312,9 @@ impl ModelsConfig {
     /// or None if the model is not configured in either list.
     pub fn classify(&self, model_id: &str) -> Option<&'static str> {
         let lower = model_id.to_lowercase();
+        if self.summarize.iter().any(|id| id.to_lowercase() == lower) {
+            return Some("summarize");
+        }
         if self.translate.iter().any(|id| id.to_lowercase() == lower) {
             return Some("translate");
         }
