@@ -14,7 +14,7 @@ PY
 mkdir -p "$install_dir"
 export HF_HOME="$install_dir/cache" HF_HUB_DISABLE_IMPLICIT_TOKEN=1 HF_HUB_OFFLINE=1
 python3 -m venv "$install_dir/venv"
-"$install_dir/venv/bin/pip" install --no-cache-dir 'vllm==0.29.0' 'compressed-tensors==0.20.1'
+"$install_dir/venv/bin/pip" install --no-cache-dir 'vllm==0.29.0'
 # Reuse local weights; neither downloads nor the default HF cache are consulted.
 if [[ -e "$install_dir/model" || -L "$install_dir/model" ]]; then
   [[ "$(realpath "$install_dir/model")" == "$model_source" ]] || {

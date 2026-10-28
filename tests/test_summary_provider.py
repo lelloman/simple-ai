@@ -35,8 +35,36 @@ class SummaryTests(unittest.TestCase):
         self.assertIn('Never infer a location from the domain, TLD, language or names', tokenizer.messages[0]['content'])
         self.assertEqual(tokenizer.messages[1]['content'], 'x' * 964)
         self.assertTrue(tokenizer.kwargs['add_generation_prompt'])
+        self.assertIs(tokenizer.kwargs['return_dict'], False)
         with self.assertRaises(ValueError):
             m.prompts(tokenizer, ['x' * 965], 60)
+
+    def test_installed_transformers_returns_integer_token_ids(self):
+        try:
+            from tokenizers import Tokenizer
+            from tokenizers.models import WordLevel
+            from transformers import PreTrainedTokenizerFast
+        except ImportError:
+            self.skipTest('install transformers==5.15.0 for tokenizer integration check')
+        tokenizer = PreTrainedTokenizerFast(
+            tokenizer_object=Tokenizer(WordLevel({'[UNK]': 0, 'hello': 1}, unk_token='[UNK]')),
+            unk_token='[UNK]', chat_template="{% for message in messages %}{{ message['content'] }} {% endfor %}")
+        ids = m.prompts(tokenizer, ['hello'], 60)[0]['prompt_token_ids']
+        self.assertIsInstance(ids, list)
+        self.assertTrue(ids)
+        self.assertTrue(all(type(token) is int for token in ids))
+
+    def test_main_disables_flashinfer_before_provider_load(self):
+        import os
+        def provider(path):
+            self.assertEqual(os.environ['VLLM_USE_FLASHINFER_SAMPLER'], '0')
+            return object()
+        with patch.object(sys, 'argv', ['provider', '--model', m.MODEL,
+                                       '--model-path', '/local/model', '--port', '8000']), \
+             patch.dict(os.environ, {'VLLM_USE_FLASHINFER_SAMPLER': '1'}), \
+             patch.object(m, 'check_checkpoint'), patch.object(m, 'Provider', side_effect=provider), \
+             patch.object(m, 'serve'):
+            m.main()
 
     def test_order_usage_busy_and_error_recovery(self):
         provider = m.Provider.__new__(m.Provider)
