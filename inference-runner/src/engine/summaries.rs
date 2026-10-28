@@ -55,7 +55,7 @@ impl SummaryEngine {
             size_bytes: None,
             parameter_count: Some(4_000_000_000),
             context_length: Some(1024),
-            quantization: Some("F16".into()),
+            quantization: Some("W8A8-INT8".into()),
             modified_at: None,
             reasoning: None,
         }
@@ -211,6 +211,18 @@ impl InferenceEngine for SummaryEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn advertises_selected_int8_model() {
+        let engine = SummaryEngine::new(SummaryEngineConfig {
+            command: vec!["python3".into()],
+            model_path: "/local/Qwen3-4B-W8A8".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(engine.info().quantization.as_deref(), Some("W8A8-INT8"));
+        assert_eq!(engine.info().id, SUMMARY_MODEL);
+    }
 
     #[tokio::test]
     async fn unload_waits_for_cancelled_caller_and_provider_can_reload() {

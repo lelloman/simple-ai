@@ -1,4 +1,4 @@
-# PROVISIONAL fp16 baseline: do not enable before RTX qualification.
+# Qualified offline W8A8 INT8 winner; live gateway acceptance is operator-owned.
 # Merge into RTX only; retain every existing cuda:0 resource group member.
 [engines.summaries]
 enabled = true

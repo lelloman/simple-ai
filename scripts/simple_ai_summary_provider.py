@@ -9,9 +9,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL = 'Qwen/Qwen3-4B-Instruct-2507'
 PROMPT = ('Write 2–3 English sentences summarizing this website: who runs it, '
-          'what it does, and where. Use facts only from the supplied text. '
-          'Keep names as written. Do not infer missing names or locations. No preamble.')
+          'what it does, and where. Use facts only from the supplied website card. '
+          'Keep names as written. If the card gives no place, omit the location. '
+          'Never infer a location from the domain, TLD, language or names. '
+          'Do not infer missing names. No preamble.')
 MAX_BODY = 2 * 1024 * 1024
+
+
+def check_checkpoint(path):
+    """Reject accidental fp16/FP8 substitutions for the qualified INT8 recipe."""
+    with open(os.path.join(path, 'config.json')) as handle:
+        config = json.load(handle).get('quantization_config', {})
+    groups = config.get('config_groups', {}).values()
+    linear = [g for g in groups if 'Linear' in g.get('targets', [])]
+    if (config.get('quant_method') != 'compressed-tensors' or not linear
+            or any(any(g.get(k, {}).get('num_bits') != 8
+                       or g.get(k, {}).get('type') != 'int'
+                       for k in ('weights', 'input_activations')) for g in linear)):
+        raise ValueError('expected the qualified compressed-tensors W8A8 INT8 checkpoint')
 
 
 def validate(payload):
@@ -44,11 +59,11 @@ def prompts(tokenizer, texts, max_tokens):
 
 
 class Provider:
-    def __init__(self, path, *, max_num_seqs=256, ngram=False):
+    def __init__(self, path, *, max_num_seqs=512, ngram=False):
         from vllm import LLM
         speculation = ({"method": "ngram", "num_speculative_tokens": 3,
                         "prompt_lookup_min": 2, "prompt_lookup_max": 5} if ngram else None)
-        self.llm = LLM(model=path, dtype='half', trust_remote_code=False,
+        self.llm = LLM(model=path, dtype='bfloat16', trust_remote_code=False,
                        enable_prefix_caching=True, max_model_len=1024,
                        max_num_batched_tokens=16384, max_num_seqs=max_num_seqs,
                        speculative_config=speculation, distributed_executor_backend="uni",
@@ -132,6 +147,7 @@ def main():
     os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENABLE_V1_MULTIPROCESSING'] = '0'
+    check_checkpoint(args.model_path)
     serve(Provider(args.model_path), args.port)
 
 
