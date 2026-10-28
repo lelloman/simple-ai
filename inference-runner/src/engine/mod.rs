@@ -172,6 +172,16 @@ pub trait InferenceEngine: Send + Sync {
         ))
     }
 
+    async fn summarize(
+        &self,
+        _model_id: &str,
+        _request: &simple_ai_common::SummaryRequest,
+    ) -> Result<simple_ai_common::SummaryResponse> {
+        Err(crate::error::Error::NotSupported(
+            "summarize not supported by this engine".into(),
+        ))
+    }
+
     /// Extract entities, records, relations and classification labels.
     async fn extract(
         &self,
@@ -219,3 +229,6 @@ pub trait InferenceEngine: Send + Sync {
 
 mod text_embeddings;
 pub use text_embeddings::TextEmbeddingEngine;
+
+mod summaries;
+pub use summaries::SummaryEngine;

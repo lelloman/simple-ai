@@ -458,6 +458,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn summaries_advertise_unloaded_model_without_rewriting_it_to_a_class_alias() {
+        let config = test_config();
+        let registry = Arc::new(EngineRegistry::new());
+        registry
+            .register(Arc::new(
+                crate::engine::SummaryEngine::new(crate::config::SummaryEngineConfig {
+                    command: vec!["python3".into()],
+                    model_path: "fixture".into(),
+                    ..Default::default()
+                })
+                .unwrap(),
+            ))
+            .await;
+        let status = StatusCollector::new(config, registry, false)
+            .collect()
+            .await;
+        assert_eq!(
+            status.engines[0].available_models[0].id,
+            simple_ai_common::SUMMARY_MODEL
+        );
+        assert!(status.engines[0].loaded_models.is_empty());
+        assert_eq!(status.engines[0].batch_size, 1);
+        assert!(!status.model_aliases.contains_key("class:summarize"));
+    }
+
+    #[tokio::test]
     async fn halogen_only_runner_advertises_loaded_chat_capability() {
         let collector = StatusCollector::new(test_config(), Arc::new(EngineRegistry::new()), false);
         let engines = vec![EngineStatus {

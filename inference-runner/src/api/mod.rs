@@ -10,6 +10,7 @@ pub mod health;
 pub mod models;
 pub mod ocr;
 pub mod speech;
+pub mod summaries;
 pub mod translations;
 
 use std::sync::Arc;
@@ -25,6 +26,7 @@ pub fn router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .merge(chat::router())
         .merge(classifications::router())
         .merge(translations::router())
+        .merge(summaries::router())
         .merge(extractions::router())
         .merge(decisions::router())
         .merge(embeddings::router())

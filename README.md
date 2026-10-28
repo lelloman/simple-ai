@@ -78,6 +78,7 @@ Rust-based API gateway that provides OpenAI-compatible endpoints with authentica
 - OpenAI-compatible `/v1/chat/completions` endpoint
 - Batched zero-shot NLI through `/v1/classifications`
 - [PyTorch Qwen3 embeddings and operator qualification](docs/small-embedders.md) through `/v1/embeddings`
+- [Site summary API and pending RTX qualification](docs/summaries.md) through `/v1/summaries`
 - Batched MADLAD translation through `/v1/translations` ([API and rollout](docs/translations.md))
 - OIDC JWT authentication via JWKS
 - Language detection (176 languages via FastText)

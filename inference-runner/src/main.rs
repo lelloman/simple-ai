@@ -184,6 +184,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Registered semantic decisions engine");
     }
 
+    if config.engines.summaries.enabled {
+        if !config.engine_resources.contains_key("summaries") {
+            return Err("summaries requires the shared CUDA engine resource group".into());
+        }
+        registry
+            .register(Arc::new(engine::SummaryEngine::new(
+                config.engines.summaries.clone(),
+            )?))
+            .await;
+        tracing::info!("Registered summaries engine");
+    }
+
     if config.engines.translation.enabled {
         if config.engines.translation.device != "cpu"
             && !config.engine_resources.contains_key("translation")

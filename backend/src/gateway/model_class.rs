@@ -28,6 +28,7 @@ pub enum ModelClass {
     TextClassification,
     InformationExtraction,
     Translate,
+    Summarize,
     SemanticDecisions,
 }
 
@@ -38,6 +39,7 @@ impl ModelClass {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().replace('-', "_").as_str() {
             "translate" => Some(Self::Translate),
+            "summarize" => Some(Self::Summarize),
             "big" => Some(Self::Big),
             "fast" => Some(Self::Fast),
             "embed_small" => Some(Self::EmbedSmall),
@@ -55,6 +57,7 @@ impl ModelClass {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Translate => "translate",
+            Self::Summarize => "summarize",
             Self::Big => "big",
             Self::Fast => "fast",
             Self::EmbedSmall => "embed_small",
@@ -80,6 +83,7 @@ impl std::fmt::Display for ModelClass {
 pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClass> {
     match config.classify(model_id) {
         Some("translate") => Some(ModelClass::Translate),
+        Some("summarize") => Some(ModelClass::Summarize),
         Some("big") => Some(ModelClass::Big),
         Some("fast") => Some(ModelClass::Fast),
         Some("embed_small") => Some(ModelClass::EmbedSmall),

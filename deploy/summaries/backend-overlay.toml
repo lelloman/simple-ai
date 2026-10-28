@@ -1,0 +1,9 @@
+# Merge into the existing tables. Only RTX advertises this model.
+[models]
+summarize = ["Qwen/Qwen3-4B-Instruct-2507"]
+
+[routing.class_preferences]
+summarize = ["rtx"]
+
+[routing.speculative_wake_targets]
+summarize = ["rtx"]
