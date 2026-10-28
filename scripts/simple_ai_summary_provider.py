@@ -52,10 +52,15 @@ def filter_nationality(text, summary):
     """
     leaks = set(place_leaks(text, summary))
     if 'Italian' in leaks:
-        summary = re.sub(r'\b([Aa]n) Italian\s+(?=[A-Za-z])',
-                         lambda m: (m[1] if summary[m.end()].lower() in 'aeiou'
-                                    else m[1][:-1]) + ' ', summary)
-        summary = re.sub(r'\bItalian\s+', '', summary, flags=re.I)
+        # Only article + nationality + known entity noun. In particular,
+        # "support in Italian and English" describes a language, not an entity.
+        summary = re.sub(
+            r'\b(a|an) Italian\s+(?=(?:academy|association|business|company|'
+            r'institution|organization|organisation|service|shop)\b)',
+            lambda match: (('An' if match[1][0].isupper() else 'an')
+                           if summary[match.end()].lower() in 'aeiou'
+                           else ('A' if match[1][0].isupper() else 'a')) + ' ',
+            summary, flags=re.I)
     if 'Italy' in leaks:
         # Only sentence edges, preserving other facts and punctuation.
         summary = re.sub(r'^(?:Based|Located|Operating) in Italy,?\s+', '',

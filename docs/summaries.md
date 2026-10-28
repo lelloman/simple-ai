@@ -239,8 +239,11 @@ must remain unchanged for comparison.
 `PROMPT` now contains the **v2 candidate**: the prior facts-only instruction plus
 an explicit ban on unsupported countries/nationalities and one short Devia
 example. The provider also applies `filter_nationality` after generation. It
-removes an unsupported English `Italian` adjective (adjusting `an` before a
-consonant), a leading `Based/Located/Operating in Italy,` clause, a trailing
+removes unsupported `Italian` only between `a`/`an` and a fixed entity noun
+(academy, association, business, company, institution, organization/organisation,
+service or shop), adjusting the article case-insensitively. Language phrases
+such as `support in Italian and English` and unrecognized noun contexts remain
+unchanged for the independent metric to flag. It also removes a leading `Based/Located/Operating in Italy,` clause, a trailing
 comma-delimited `in Italy` / `based/located/operating/operates in Italy` clause,
 and a trailing `, Italy`. Support means the same whole word occurs anywhere in
 the source, case-insensitively. This is a deterministic text edit, not a model

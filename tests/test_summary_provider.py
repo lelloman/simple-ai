@@ -90,6 +90,13 @@ class SummaryTests(unittest.TestCase):
     def test_nationality_filter_preserves_supported_facts(self):
         cases = [
             ('Devia', 'Devia is an Italian organization.', 'Devia is an organization.'),
+            ('Devia', 'Devia is an italian company.', 'Devia is a company.'),
+            ('Devia', 'AN ITALIAN ORGANIZATION.', 'An ORGANIZATION.'),
+            ('Devia', 'A Italian academy.', 'An academy.'),
+            ('Devia', 'Devia offers support in Italian and English.',
+             'Devia offers support in Italian and English.'),
+            ('Devia', 'Devia offers Italian lessons.', 'Devia offers Italian lessons.'),
+            ('Devia', 'An Italian language course.', 'An Italian language course.'),
             ('Arona', 'A shop in Arona, Italy.', 'A shop in Arona.'),
             ('Devia', 'Based in Italy, Devia blocks calls.', 'Devia blocks calls.'),
             ('Devia', 'Devia blocks calls, based in Italy.', 'Devia blocks calls.'),
