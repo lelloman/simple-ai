@@ -227,3 +227,93 @@ Rust tests cover routing/discovery, bounds, lifecycle cancellation, timeout and
 crash/reload. Python fakes check prompt, context, order, usage, busy/error
 recovery, selected settings and checkpoint metadata; they establish no GPU speed
 or grounding claims. Quantization calibration checks also run without GPU.
+
+## AI-61: nationality/place leaks and prompt v2 candidate
+
+The operator's 2026-10-28 live gate on 1,000 cards reported 37.5 sites/s and
+94.0% ground.py grounding, but 243/1,000 summaries added Italy/Italian absent
+from the card. That **24.3% is an Italy/Italian-only live diagnostic**, not the
+expanded vocabulary metric below. ground.py excludes these words; its score
+must remain unchanged for comparison.
+
+`PROMPT` now contains the **v2 candidate**: the prior facts-only instruction plus
+an explicit ban on unsupported countries/nationalities and one short Devia
+example. The provider also applies `filter_nationality` after generation. It
+removes unsupported `Italian` only between `a`/`an` and a fixed entity noun
+(academy, association, business, company, institution, organization/organisation,
+service or shop), adjusting the article case-insensitively. Language phrases
+such as `support in Italian and English` and unrecognized noun contexts remain
+unchanged for the independent metric to flag. It also removes a leading `Based/Located/Operating in Italy,` clause, a trailing
+comma-delimited `in Italy` / `based/located/operating/operates in Italy` clause,
+and a trailing `, Italy`. Support means the same whole word occurs anywhere in
+the source, case-insensitively. This is a deterministic text edit, not a model
+change. It does not remove arbitrary location sentences, translate exonyms,
+resolve names, or guarantee zero leaks. Usage still counts the original model
+tokens, including words removed by the filter.
+
+The candidate is **not yet a measured winner and must not be rolled out on the
+strength of local tests**. Agents cannot run on RTX or access the operator's
+1,000-card assets. The operator must run the fixed matrix below, post the
+measured table to LLPR/AI-61, and select a variant with >=30 sites/s and <3%
+expanded place leaks. Record that winner here and set `PROMPT` and the provider's
+filter call to the selected combination before final production acceptance.
+Do not regenerate weights, change max_tokens, enable ngram, or change sequences.
+
+| Same 1,000 cards, W8A8, seqs 512, max_tokens 60 | Sites/s | ground.py % | Expanded leak % |
+|---|---:|---:|---:|
+| baseline: shipped v1 prompt, no filter | pending RTX | pending RTX | pending RTX |
+| negative: v1 + negative instruction/example | pending RTX | pending RTX | pending RTX |
+| place-field: v1 + location sentence only for nonblank Place field | pending RTX | pending RTX | pending RTX |
+| postfilter: negative + deterministic filter (v2 candidate) | pending RTX | pending RTX | pending RTX |
+
+Copy `benchmark-summaries.py`, `score-summaries.py` and
+`simple_ai_summary_provider.py` together to `/w` in the existing isolated RTX
+vLLM container. Ask the operator to copy
+`homelab:~/sancerchino-eval/ai60-live-input.jsonl` there unchanged (canonical
+`{id,text}`, exactly 1,000 distinct IDs). Run each cell in a separate process
+with exclusive GPU ownership, preserving production services:
+
+```bash
+for variant in baseline negative place-field postfilter; do
+  /app/venv/bin/python /w/benchmark-summaries.py \
+    --model-path /w/Qwen3-4B-W8A8 --input /w/ai60-live-input.jsonl \
+    --max-num-seqs 512 --prompt-variant "$variant" \
+    --output "/w/ai61-$variant.json"
+done
+```
+
+The AI-61 mode verifies W8A8 checkpoint metadata and rejects ngram/seqs 256.
+All cells use the same input hash, a synthetic warmup with their own prompt,
+and greedy 60-token decoding. Timed work includes generation and filtering.
+Reports retain the exact prompt/command, leak counts and affected IDs alongside
+sites/s and a `grounding_score: null` slot. The old 1,500-site matrix remains
+available by omitting `--prompt-variant` (now uses the v2 candidate).
+
+Run the operator's **existing, unchanged** ground.py on each
+`ai61-VARIANT.json.outputs.jsonl` using its actual local CLI/schema. ground.py
+is not in this repository; no substitute implementation or guessed invocation
+is supplied. Put its percentages into the table. To bundle that score with the
+independent leak diagnostic, run (94.0 is illustrative, replace per cell):
+
+```bash
+python3 scripts/score-summaries.py --input ai61-negative.json.outputs.jsonl \
+  --grounding-score 94.0 > ai61-negative.quality.json
+# Also accepts the operator's saved live {input,summary} records:
+python3 scripts/score-summaries.py --input ai60-live-outputs.jsonl \
+  --grounding-score 94.0 > ai60-live.quality.json
+```
+
+`place_leak_rate` is a fraction: summaries with **at least one** unsupported
+vocabulary token / all summaries, not leaked words / all words. Vocabulary is
+fixed in `PLACE_TOKENS`: Italy/Italian/Italia and Italian gender/plural forms,
+a small set of Italian regions and cities with common English spellings.
+Matching uses case-insensitive Unicode word boundaries, without stemming or
+geographic equivalence: Arona does not license Italy, nor Milano license Milan.
+The metric intentionally has limited recall; inspect 30 fixed-ID outputs too.
+Empty/malformed source or summary records fail scoring rather than improve the
+rate by disappearing from its denominator.
+
+After operator qualification and review, copy only the selected provider script
+to the existing RTX provider path and let the operator drain/reload summaries.
+No backend, runner binary, weights or configuration rollout is needed for this
+change. Agents do not deploy or restart anything.

@@ -4,15 +4,73 @@ import argparse
 import json
 import logging
 import os
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL = 'Qwen/Qwen3-4B-Instruct-2507'
-PROMPT = ('Write 2–3 English sentences summarizing this website: who runs it, '
+PROMPT_V1 = ('Write 2–3 English sentences summarizing this website: who runs it, '
           'what it does, and where. Use facts only from the supplied website card. '
           'Keep names as written. If the card gives no place, omit the location. '
           'Never infer a location from the domain, TLD, language or names. '
           'Do not infer missing names. No preamble.')
+# Candidate v2; qualify against the same-card RTX matrix before rollout.
+PROMPT = (PROMPT_V1 + " If the card has no place, do not write 'Italian', 'in Italy' "
+          "or any country or nationality. Example: 'Name: Devia | Description: "
+          "Il tuo scudo contro le chiamate indesiderate' -> 'Devia provides "
+          "protection against unwanted calls.'")
+PROMPT_PLACE_FIELD = (PROMPT_V1 + ' Write a location sentence only when an explicit '
+                      'Place: field has a nonblank value. Copy only the place '
+                      'written in that field; otherwise omit all location and nationality.')
+
+# Deliberately bounded diagnostic vocabulary, not a geographic knowledge base.
+# Each spelling is checked independently: Arona never licenses Italy.
+PLACE_TOKENS = (
+    'Italy', 'Italian', 'Italia', 'Italiano', 'Italiana', 'Italiani', 'Italiane',
+    'Lombardia', 'Lombardy', 'Piemonte', 'Piedmont', 'Lazio', 'Toscana', 'Tuscany',
+    'Veneto', 'Sicilia', 'Sicily', 'Sardegna', 'Sardinia', 'Campania', 'Puglia',
+    'Liguria', 'Emilia Romagna', 'Emilia-Romagna',
+    'Roma', 'Rome', 'Milano', 'Milan', 'Torino', 'Turin', 'Napoli', 'Naples',
+    'Firenze', 'Florence', 'Bologna', 'Venezia', 'Venice', 'Genova', 'Genoa',
+    'Palermo', 'Bari', 'Arona',
+)
+PLACE_PATTERNS = {token: re.compile(r'(?<!\w)' + re.escape(token) + r'(?!\w)', re.I)
+                  for token in PLACE_TOKENS}
+
+
+def place_leaks(text, summary):
+    """Return literal place spellings in summary but absent from source card."""
+    return [token for token, pattern in PLACE_PATTERNS.items()
+            if pattern.search(summary) and not pattern.search(text)]
+
+
+def filter_nationality(text, summary):
+    """Drop only unsupported Italian adjectives and edge Italy clauses.
+
+    This intentionally does not rewrite arbitrary geography or internal clauses.
+    The independent leak metric still catches unhandled mentions.
+    """
+    leaks = set(place_leaks(text, summary))
+    if 'Italian' in leaks:
+        # Only article + nationality + known entity noun. In particular,
+        # "support in Italian and English" describes a language, not an entity.
+        summary = re.sub(
+            r'\b(a|an) Italian\s+(?=(?:academy|association|business|company|'
+            r'institution|organization|organisation|service|shop)\b)',
+            lambda match: (('An' if match[1][0].isupper() else 'an')
+                           if summary[match.end()].lower() in 'aeiou'
+                           else ('A' if match[1][0].isupper() else 'a')) + ' ',
+            summary, flags=re.I)
+    if 'Italy' in leaks:
+        # Only sentence edges, preserving other facts and punctuation.
+        summary = re.sub(r'^(?:Based|Located|Operating) in Italy,?\s+', '',
+                         summary, flags=re.I)
+        summary = re.sub(r',\s+(?:(?:based|located|operating|operates)\s+)?in Italy(?=[.!?]|$)',
+                         '', summary, flags=re.I)
+        summary = re.sub(r', Italy(?=[.!?]|$)', '', summary, flags=re.I)
+    return summary.strip()
+
+
 MAX_BODY = 2 * 1024 * 1024
 
 
@@ -46,11 +104,11 @@ def validate(payload):
     return texts, tokens
 
 
-def prompts(tokenizer, texts, max_tokens):
+def prompts(tokenizer, texts, max_tokens, *, prompt=PROMPT):
     result = []
     for text in texts:
         ids = tokenizer.apply_chat_template(
-            [{'role': 'system', 'content': PROMPT}, {'role': 'user', 'content': text}],
+            [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': text}],
             tokenize=True, add_generation_prompt=True)
         if len(ids) + max_tokens > 1024:
             raise ValueError('input plus requested output exceeds 1024 model tokens')
@@ -85,7 +143,8 @@ class Provider:
             for i, output in enumerate(outputs):
                 if len(output.outputs) != 1 or not output.outputs[0].text.strip():
                     raise RuntimeError('empty or invalid vLLM output')
-                data.append({'index': i, 'summary': output.outputs[0].text.strip()})
+                data.append({'index': i, 'summary': filter_nationality(
+                    texts[i], output.outputs[0].text.strip())})
                 prompt_tokens += len(output.prompt_token_ids)
                 completion_tokens += len(output.outputs[0].token_ids)
             return {'model': MODEL, 'data': data, 'usage': {

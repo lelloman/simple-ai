@@ -79,6 +79,113 @@ class SummaryTests(unittest.TestCase):
             'speculative_config': None, 'distributed_executor_backend': 'uni',
             'gpu_memory_utilization': 0.92})
 
+    def test_literal_place_metric(self):
+        self.assertEqual(m.place_leaks('Name: Arona', 'Based in Arona, Italy.'), ['Italy'])
+        self.assertEqual(m.place_leaks('Place: ITALY', 'An Italian shop in Italy.'), ['Italian'])
+        self.assertEqual(m.place_leaks('Name: Devia.it', 'An Italian service.'), ['Italian'])
+        self.assertEqual(m.place_leaks('Milano', 'A shop in Milan.'), ['Milan'])
+        self.assertEqual(m.place_leaks('Roma', 'Roman history and Italianate art.'), [])
+        self.assertEqual(m.place_leaks('Place: Roma', 'A shop in Roma.'), [])
+
+    def test_nationality_filter_preserves_supported_facts(self):
+        cases = [
+            ('Devia', 'Devia is an Italian organization.', 'Devia is an organization.'),
+            ('Devia', 'Devia is an italian company.', 'Devia is a company.'),
+            ('Devia', 'AN ITALIAN ORGANIZATION.', 'An ORGANIZATION.'),
+            ('Devia', 'A Italian academy.', 'An academy.'),
+            ('Devia', 'Devia offers support in Italian and English.',
+             'Devia offers support in Italian and English.'),
+            ('Devia', 'Devia offers Italian lessons.', 'Devia offers Italian lessons.'),
+            ('Devia', 'An Italian language course.', 'An Italian language course.'),
+            ('Arona', 'A shop in Arona, Italy.', 'A shop in Arona.'),
+            ('Devia', 'Based in Italy, Devia blocks calls.', 'Devia blocks calls.'),
+            ('Devia', 'Devia blocks calls, based in Italy.', 'Devia blocks calls.'),
+            ('Italian Italy', 'An Italian shop in Italy.', 'An Italian shop in Italy.'),
+            # Unrecognized clauses remain visible to the independent metric.
+            ('Devia', 'Devia is based in Italy.', 'Devia is based in Italy.'),
+            ('Devia', 'Devia has offices in Rome.', 'Devia has offices in Rome.'),
+        ]
+        for text, summary, expected in cases:
+            with self.subTest(summary=summary):
+                self.assertEqual(m.filter_nationality(text, summary), expected)
+
+    def test_provider_applies_filter_and_keeps_raw_token_usage(self):
+        provider = m.Provider.__new__(m.Provider)
+        provider.lock = threading.Lock()
+        provider.tokenizer = types.SimpleNamespace(apply_chat_template=lambda *a, **kw: [1])
+        provider.llm = types.SimpleNamespace(generate=lambda *a, **kw: [
+            types.SimpleNamespace(prompt_token_ids=[1], outputs=[
+                types.SimpleNamespace(text='Devia is an Italian organization.', token_ids=[2, 3, 4])])])
+        with patch.dict(sys.modules, {'vllm': types.SimpleNamespace(SamplingParams=lambda **kw: kw)}):
+            result = provider.summarize({'model': m.MODEL, 'input': ['Name: Devia']})
+        self.assertEqual(result['data'][0]['summary'], 'Devia is an organization.')
+        self.assertEqual(result['usage']['completion_tokens'], 3)
+
+    def test_saved_output_scoring(self):
+        sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
+        try:
+            score_spec = importlib.util.spec_from_file_location(
+                'score_summaries', Path(__file__).parents[1] / 'scripts/score-summaries.py')
+            scorer = importlib.util.module_from_spec(score_spec)
+            score_spec.loader.exec_module(scorer)
+        finally:
+            sys.path.pop(0)
+        report = scorer.score([
+            {'input': 'Devia', 'summary': 'Italian Devia in Italy.'},
+            {'id': 'ok', 'text': 'Arona', 'summary': 'Shop in Arona.'}])
+        self.assertEqual(report['place_leak_count'], 1)
+        self.assertEqual(report['place_leak_rate'], .5)
+        self.assertEqual(report['place_leaks_by_id'][0]['tokens'], ['Italy', 'Italian'])
+        for rows in [[], [{'input': 'x', 'summary': ''}], [{'summary': 'Italy'}]]:
+            with self.assertRaises(ValueError):
+                scorer.score(rows)
+
+    def test_matrix_cells_with_fake_gpu(self):
+        bench_spec = importlib.util.spec_from_file_location(
+            'summary_bench', Path(__file__).parents[1] / 'scripts/benchmark-summaries.py')
+        bench = importlib.util.module_from_spec(bench_spec)
+        bench_spec.loader.exec_module(bench)
+        ready = threading.Event()
+        seen_prompts = []
+        class LLM:
+            def __init__(self, **kwargs):
+                pass
+            def get_tokenizer(self):
+                def template(messages, **kwargs):
+                    seen_prompts.append(messages[0]['content'])
+                    return [1]
+                return types.SimpleNamespace(apply_chat_template=template)
+            def generate(self, inputs, *args, **kwargs):
+                if not ready.wait(5):
+                    raise RuntimeError('sampler did not start')
+                return [types.SimpleNamespace(outputs=[types.SimpleNamespace(
+                    text='Devia is an Italian organization.')]) for _ in inputs]
+        def nvidia(*args, **kwargs):
+            ready.set()
+            return types.SimpleNamespace(stdout='1000')
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            source = root / 'cards.jsonl'
+            source.write_text(''.join(json.dumps({'id': str(i), 'text': 'Name: Devia'}) + '\n'
+                                      for i in range(1000)))
+            for variant, expected_prompt in [('baseline', m.PROMPT_V1), ('negative', m.PROMPT),
+                                             ('place-field', m.PROMPT_PLACE_FIELD), ('postfilter', m.PROMPT)]:
+                target = root / (variant + '.json')
+                argv = ['benchmark', '--input', str(source), '--model-path', path,
+                        '--max-num-seqs', '512', '--prompt-variant', variant, '--output', str(target)]
+                with patch.object(sys, 'argv', argv), patch.dict(sys.modules, {
+                    'simple_ai_summary_provider': m,
+                    'vllm': types.SimpleNamespace(LLM=LLM, SamplingParams=lambda **kw: kw, __version__='fake')
+                }), patch.object(bench.subprocess, 'run', side_effect=nvidia), patch.object(m, 'check_checkpoint'):
+                    bench.main()
+                report = json.loads(target.read_text())
+                self.assertEqual(report['sites'], 1000)
+                self.assertEqual(report['prompt'], expected_prompt)
+                self.assertEqual(seen_prompts[-1], expected_prompt)
+                self.assertEqual(report['place_leak_rate'], 0 if variant == 'postfilter' else 1)
+                self.assertIsNone(report['grounding_score'])
+                self.assertEqual(len(Path(str(target) + '.outputs.jsonl').read_text().splitlines()), 1000)
+
     def test_only_int8_checkpoint_is_accepted(self):
         group = {'targets': ['Linear'], 'weights': {'type': 'int', 'num_bits': 8},
                  'input_activations': {'type': 'int', 'num_bits': 8}}
