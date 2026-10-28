@@ -109,7 +109,7 @@ def prompts(tokenizer, texts, max_tokens, *, prompt=PROMPT):
     for text in texts:
         ids = tokenizer.apply_chat_template(
             [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': text}],
-            tokenize=True, add_generation_prompt=True)
+            tokenize=True, add_generation_prompt=True, return_dict=False)
         if len(ids) + max_tokens > 1024:
             raise ValueError('input plus requested output exceeds 1024 model tokens')
         result.append({'prompt_token_ids': ids})
@@ -202,6 +202,8 @@ def main():
     args = parser.parse_args()
     # Never consult the service user's default Hugging Face token/cache.
     os.environ['HF_HOME'] = os.path.join(os.path.dirname(os.path.abspath(args.model_path)), 'cache')
+    # Avoid FlashInfer sampler JIT requiring a newer nvcc than RTX's CUDA 12.2.
+    os.environ['VLLM_USE_FLASHINFER_SAMPLER'] = '0'
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'

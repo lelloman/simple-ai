@@ -3,7 +3,7 @@
 summarize = ["Qwen/Qwen3-4B-Instruct-2507"]
 
 [routing.class_preferences]
-summarize = ["rtx"]
+summarize = ["gpu-server"]
 
 [routing.speculative_wake_targets]
-summarize = ["rtx"]
+summarize = ["gpu-server"]

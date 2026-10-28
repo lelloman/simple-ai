@@ -68,18 +68,33 @@ winner exceeds the owner's ~30 sites/s distillation trigger, so no student or
 20 sites/s/0.6B stretch). 43.8 sites/s is about five times the old 8.8 baseline,
 roughly 2.5 GPU hours for 400k sites, excluding loading/transport.
 
-Operator spot-checked **8** fp16/INT8 pairs, not the requested 30; 135/1500
-outputs were byte-identical. They saw an occasional invented “based in Italy”
-in both precisions. The shipped prompt explicitly addresses that issue; its
-quality and live throughput must be rechecked, rather than claiming the old
-scores establish the changed prompt's performance.
+Operator comment 4971 records live acceptance through `https://ai.lelloman.com`
+with the SanCerchino key: 1,000 distinct cards in 26.7 seconds (**37.5 sites/s**),
+94.0% grounding versus fp16 card 94.8%, 28-second cold first request and
+0.64-second warm single card. Three embedding reloads took 7.7/5.5/5.5 seconds;
+summary reloads took 24.5/24.5/24.1 seconds, sharing cuda:0 cleanly. Inspection
+of 30+ outputs found unsupported Italy/Italian in 243/1000; the owner tracks
+that separately in AI-61 (see below), accepting AI-60's live gates.
 
-Exact original command lines, `bench.py`, `quant.py`, Dockerfile, outputs and
-logs remain on RTX in `~/emb-test/llm/` (`quantimg/`, `out-*.jsonl`, `run-*.log`).
-The comment does not include the original invocations; agents cannot access
-RTX by design. Do not label the reproduction commands below as those measured
-commands. Operator must attach them and the remaining quality evidence before
-final acceptance.
+Original operator invocations (comment 4971, from `~/emb-test/llm`):
+`run-cells.sh "<name>|<model dir>|<text|card>|<seqs>|<ngram>"` ran:
+
+```bash
+docker run --rm --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=all --ipc=host \
+  -v ~/emb-test/llm:/w -e HF_HUB_OFFLINE=1 -e HF_HOME=/w/cache \
+  -e HF_HUB_DISABLE_IMPLICIT_TOKEN=1 -e PATH=/app/venv/bin:… \
+  --entrypoint /app/venv/bin/python simple-ai-qwen38-cyber:7759002 \
+  /w/bench.py --model /w/<model> --input <text|card> --seqs <N> \
+  --ngram <k> --out /w/out-<name>.jsonl
+```
+
+The PATH suffix is abbreviated as reported by the operator. Cells:
+fp16-text-256, fp16-card-256, fp16-card-512, fp16-card-512-ng3,
+w8a8-text-256, w8a8-card-256, w8a8-card-512. bench.py defaults were
+max_tokens 60, context 1024, utilization .92, prefix caching, batched tokens
+16384, n 1500. Quantization used `chain.sh` then `docker run … ai60-quant
+/w/quant.py w8a8 /w/Qwen3-4B-W8A8`. Original scripts/logs/checkpoints remain
+on RTX; these are reported invocations, not agent executions.
 
 ## Quantization and setup (operator, RTX only)
 
@@ -126,8 +141,14 @@ bash scripts/setup-summary.sh /home/lelloman/.simple-ai-summary \
 ```
 
 Setup validates the INT8 metadata before installation, installs vLLM 0.29.0 and
-compressed-tensors 0.20.1 in a dedicated venv, symlinks the existing checkpoint
+its required compressed-tensors 0.17.0 in a dedicated venv (no conflicting
+serving pin; 0.20.1 is used only in the quantization Dockerfile), symlinks the existing checkpoint
 to `model/`, and writes pip freeze. It does not touch another engine environment.
+The checkpoint files and parent directories must be readable/traversable by the
+service user; the quantization container may leave root-owned files.
+The provider sets `VLLM_USE_FLASHINFER_SAMPLER=0` before importing vLLM to avoid
+FlashInfer sampler JIT requiring nvcc >=12.8 on RTX's CUDA 12.2 toolkit. Greedy
+decoding is unchanged; no service-unit environment override is needed.
 Ensure `/home/lelloman/.simple-ai-summary/venv/bin` is on the runner service PATH
 for ninja. The runner overlay points at that venv and local checkpoint symlink.
 
@@ -209,8 +230,8 @@ warms a synthetic input, times 1000 cards in ordered batches <=64, fails below
 15 sites/s, saves all summaries and alternates probe/summary three times for
 reload timing. Score saved outputs against same-input fp16 within two points,
 inspect 30 outputs, compare other-engine latency/output to pre-rollout evidence,
-and confirm via the gateway/audit logs with user 2. **Live throughput, tightened
-prompt quality, reload timings and SanCerchino-key confirmation remain pending.**
+and confirm via the gateway/audit logs with user 2. The original live gates passed per operator comment 4971 above. AI-61 candidate
+prompt/filter qualification remains separate.
 
 ## Local checks
 
@@ -219,7 +240,8 @@ export CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace -- --test-threads=4
-python3 -m unittest discover -s tests -p test_summary_provider.py
+# Use the serving venv (transformers 5.15 + jinja2) for the real tokenizer test.
+/home/lelloman/.simple-ai-summary/venv/bin/python -m unittest discover -s tests -p test_summary_provider.py
 bash -n scripts/setup-summary.sh
 ```
 
