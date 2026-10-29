@@ -7,6 +7,7 @@ mod audio_embeddings;
 mod classification;
 mod extraction;
 mod provider;
+mod revision;
 mod translation;
 pub use translation::TranslationEngine;
 mod decisions;
@@ -46,6 +47,9 @@ pub type ChatCompletionStream = Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>
 /// Information about an available model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
+    /// Exact weight identity; absent on older runners.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
     /// Model identifier (e.g., "llama3.2:3b")
     pub id: String,
     /// Human-readable name

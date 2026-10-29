@@ -91,6 +91,7 @@ impl StatusCollector {
                                 let canonical_id = self.resolve_to_canonical(&m.id);
                                 let canonical_name = self.resolve_to_canonical(&m.name);
                                 ModelInfo {
+                                    revision: m.revision,
                                     id: canonical_id,
                                     name: canonical_name,
                                     size_bytes: m.size_bytes,
@@ -656,6 +657,7 @@ mod tests {
             version: None,
             loaded_models: vec![model_id.clone()],
             available_models: vec![simple_ai_common::ModelInfo {
+                revision: None,
                 id: model_id.clone(),
                 name: "BGE-M3 Zero-shot".to_string(),
                 size_bytes: Some(1_140_000_000),
@@ -690,6 +692,7 @@ mod tests {
             version: None,
             loaded_models: vec![model_id.clone()],
             available_models: vec![simple_ai_common::ModelInfo {
+                revision: None,
                 id: model_id.clone(),
                 name: "BGE-M3 Zero-shot".to_string(),
                 size_bytes: Some(1_140_000_000),
@@ -727,6 +730,7 @@ mod tests {
             version: None,
             loaded_models: vec![model_id.clone()],
             available_models: vec![simple_ai_common::ModelInfo {
+                revision: None,
                 id: model_id.clone(),
                 name: "BGE-M3 Zero-shot".to_string(),
                 size_bytes: Some(1_140_000_000),

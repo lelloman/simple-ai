@@ -18,3 +18,5 @@ pub mod summaries;
 pub mod translations;
 
 pub mod gateway_auth;
+
+pub mod model_identity;

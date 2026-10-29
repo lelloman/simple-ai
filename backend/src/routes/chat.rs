@@ -354,6 +354,8 @@ async fn chat_completions(
 
     // Track routing metadata
     let mut runner_id: Option<String> = None;
+    let mut identity_headers = HeaderMap::new();
+    let mut model_revision = None;
     let mut wol_sent = false;
     let is_streaming = request.stream.unwrap_or(false);
     // Check if batching should be used (enabled, non-streaming, has batch queue)
@@ -419,6 +421,10 @@ async fn chat_completions(
                 )
                 .await;
 
+            identity_headers = super::model_identity::headers(
+                &scheduled.runner_id,
+                scheduled.model_revision.as_deref(),
+            );
             filter_gateway_stream(
                 scheduled.response,
                 StreamLogContext {
@@ -490,6 +496,7 @@ async fn chat_completions(
         response
             .headers_mut()
             .insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
+        response.headers_mut().extend(identity_headers);
         return Ok(response);
     }
 
@@ -511,6 +518,11 @@ async fn chat_completions(
                     .await
                 {
                     Ok(scheduled) => {
+                        identity_headers = super::model_identity::headers(
+                            &scheduled.runner_id,
+                            scheduled.model_revision.as_deref(),
+                        );
+                        model_revision = scheduled.model_revision.clone();
                         runner_id = Some(scheduled.runner_id.clone());
                         wol_sent = scheduled.wol_sent;
                         state
@@ -685,7 +697,14 @@ async fn chat_completions(
         wol_sent: resp_log.wol_sent,
     });
 
-    Ok(Json(response).into_response())
+    let mut body = serde_json::to_value(response)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if let Some(revision) = model_revision {
+        body["model_revision"] = revision.into();
+    }
+    let mut response = Json(body).into_response();
+    response.headers_mut().extend(identity_headers);
+    Ok(response)
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -782,6 +801,7 @@ mod tests {
             };
             let body = filter_gateway_stream(
                 RoutedStream {
+                    model_revision: None,
                     response,
                     runner_id: "test".into(),
                     resolved_model: "model".into(),

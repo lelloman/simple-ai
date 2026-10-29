@@ -382,6 +382,8 @@ fn cors_policy() -> simple_server::cors::CorsLayer {
         .allow_any_method()
         .allow_any_header()
         .expose_headers([
+            simple_server::web::http::HeaderName::from_static("x-model-revision"),
+            simple_server::web::http::HeaderName::from_static("x-runner-id"),
             simple_server::web::http::HeaderName::from_static(
                 simple_ai_backend::routes::pressure::PRESSURE_HEADER,
             ),
@@ -453,7 +455,7 @@ mod cors_tests {
                     // Browser clients may read the advisory pressure headers.
                     assert_eq!(
                         response.headers()["access-control-expose-headers"],
-                        "x-simpleai-pressure,x-simpleai-pressure-group"
+                        "x-model-revision,x-runner-id,x-simpleai-pressure,x-simpleai-pressure-group"
                     );
                 }
                 assert_eq!(

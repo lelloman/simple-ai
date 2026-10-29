@@ -120,6 +120,9 @@ pub struct EnginesConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HalogenEngineConfig {
+    /// Host-visible path to the exact served weights, for revision reporting.
+    #[serde(default)]
+    pub model_path: Option<String>,
     #[serde(default)]
     pub enabled: bool,
     pub base_url: String,
@@ -228,6 +231,9 @@ pub struct VllmEngineConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct VllmModelConfig {
+    /// Host-visible path to the exact served weights, for revision reporting.
+    #[serde(default)]
+    pub model_path: Option<String>,
     pub served_model: String,
     pub profile: String,
     pub env_file: String,

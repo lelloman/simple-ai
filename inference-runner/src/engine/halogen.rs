@@ -21,6 +21,7 @@ use std::{
 use tokio::{process::Command, sync::Mutex};
 
 pub struct HalogenEngine {
+    revisions: super::revision::Revisions,
     config: HalogenEngineConfig,
     client: reqwest::Client,
     lifecycle: Mutex<()>,
@@ -51,6 +52,7 @@ impl HalogenEngine {
             ));
         }
         Ok(Self {
+            revisions: Default::default(),
             config,
             client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
@@ -217,7 +219,15 @@ impl InferenceEngine for HalogenEngine {
         self.config.batch_size
     }
     async fn health_check(&self) -> Result<EngineHealth> {
+        let _guard = self.lifecycle.lock().await;
         let ready = self.ready().await;
+        if ready && !self.revisions.attempted(&self.config.model_id) {
+            if let Some(path) = &self.config.model_path {
+                self.revisions
+                    .load(&self.config.model_id, std::path::Path::new(path))
+                    .await;
+            }
+        }
         if ready {
             self.expected_running.store(true, Ordering::SeqCst);
         }
@@ -233,6 +243,7 @@ impl InferenceEngine for HalogenEngine {
     }
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         Ok(vec![ModelInfo {
+            revision: self.revisions.get(&self.config.model_id),
             id: self.config.model_id.clone(),
             name: "Qwen3.8 Flash Next Uncensored (Halogen)".into(),
             size_bytes: None,
@@ -260,8 +271,16 @@ impl InferenceEngine for HalogenEngine {
         self.check_model(id)?;
         let _guard = self.lifecycle.lock().await;
         if self.ready().await {
+            if !self.revisions.attempted(id) {
+                if let Some(path) = &self.config.model_path {
+                    self.revisions.load(id, std::path::Path::new(path)).await;
+                }
+            }
             self.expected_running.store(true, Ordering::SeqCst);
             return Ok(());
+        }
+        if let Some(path) = &self.config.model_path {
+            self.revisions.load(id, std::path::Path::new(path)).await;
         }
         self.expected_running.store(true, Ordering::SeqCst);
         // Starting an already active unit preserves its in-flight requests.
@@ -292,6 +311,7 @@ impl InferenceEngine for HalogenEngine {
         self.control("stop", self.config.shutdown_timeout_secs)
             .await?;
         self.expected_running.store(false, Ordering::SeqCst);
+        self.revisions.clear(&self.config.model_id);
         Ok(())
     }
     async fn chat_completion(
@@ -473,6 +493,7 @@ mod tests {
     fn config(url: String) -> HalogenEngineConfig {
         HalogenEngineConfig {
             enabled: true,
+            model_path: None,
             base_url: url,
             service: "simple-ai-halogen.service".into(),
             model_id: "uncensored-iq4xs".into(),

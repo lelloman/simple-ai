@@ -195,6 +195,7 @@ fn status_with_available_models(models: &[&str]) -> RunnerStatus {
             available_models: models
                 .iter()
                 .map(|id| ModelInfo {
+                    revision: None,
                     id: (*id).into(),
                     name: (*id).into(),
                     size_bytes: None,

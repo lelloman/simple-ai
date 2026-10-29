@@ -69,7 +69,7 @@ async fn create_embeddings(
     connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(request): Json<EmbeddingRequest>,
-) -> Result<Json<EmbeddingResponse>, (StatusCode, String)> {
+) -> Result<(HeaderMap, Json<EmbeddingResponse>), (StatusCode, String)> {
     let start = Instant::now();
 
     let (auth_user, user) =
@@ -124,6 +124,7 @@ async fn create_embeddings(
 
     // Track routing metadata
     let mut runner_id: Option<String> = None;
+    let mut identity_headers = HeaderMap::new();
     let mut wol_sent = false;
 
     // Forward to appropriate backend (gateway or direct Ollama)
@@ -134,6 +135,10 @@ async fn create_embeddings(
             .await
         {
             Ok(scheduled) => {
+                identity_headers = super::model_identity::headers(
+                    &scheduled.runner_id,
+                    scheduled.model_revision.as_deref(),
+                );
                 runner_id = Some(scheduled.runner_id.clone());
                 wol_sent = scheduled.wol_sent;
                 state
@@ -279,7 +284,7 @@ async fn create_embeddings(
         wol_sent: resp_log.wol_sent,
     });
 
-    Ok(Json(response))
+    Ok((identity_headers, Json(response)))
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

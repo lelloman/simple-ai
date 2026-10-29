@@ -129,6 +129,7 @@ shutdown_timeout_secs = 60
 
 # Dedicated checkpoint; other engines remain available under the same GPU lease.
 [engines.halogen]
+model_path = "/home/lelloman/halogen-benchmark/models/Qwen3.8-Flash-Next-Uncensored.IQ4_XS.gguf"
 enabled = true
 base_url = "http://127.0.0.1:8731"
 service = "simple-ai-halogen.service"

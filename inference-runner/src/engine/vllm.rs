@@ -24,6 +24,7 @@ use crate::error::{Error, Result};
 use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
 
 pub struct VllmEngine {
+    revisions: super::revision::Revisions,
     config: VllmEngineConfig,
     client: reqwest::Client,
     api_key: String,
@@ -44,6 +45,7 @@ impl VllmEngine {
             return Err(Error::Internal("vLLM API key is empty".to_string()));
         }
         Ok(Self {
+            revisions: Default::default(),
             config,
             client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(10))
@@ -144,6 +146,9 @@ impl VllmEngine {
             .collect();
         candidates.sort();
         let adopted = (*candidates.first()?).clone();
+        if let Some(path) = &self.model(&adopted).ok()?.model_path {
+            self.revisions.load(&adopted, Path::new(path)).await;
+        }
         let mut loaded = self.loaded.write().await;
         if loaded.is_none() {
             tracing::info!(
@@ -516,6 +521,7 @@ impl InferenceEngine for VllmEngine {
             .models
             .iter()
             .map(|(id, model)| ModelInfo {
+                revision: self.revisions.get(id),
                 id: id.clone(),
                 name: format!("{} ({})", id, model.profile),
                 size_bytes: None,
@@ -553,6 +559,9 @@ impl InferenceEngine for VllmEngine {
             return Ok(());
         }
         let model = self.model(model_id)?.clone();
+        if let Some(path) = &model.model_path {
+            self.revisions.load(model_id, Path::new(path)).await;
+        }
         if !Path::new(&self.config.compose_dir).is_dir() {
             return Err(Error::LoadFailed(format!(
                 "compose directory does not exist: {}",

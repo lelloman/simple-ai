@@ -778,6 +778,7 @@ mod tests {
                     available_models: models
                         .iter()
                         .map(|id| ModelInfo {
+                            revision: None,
                             id: id.to_string(),
                             name: id.to_string(),
                             size_bytes: None,

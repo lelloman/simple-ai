@@ -278,6 +278,7 @@ impl BatchDispatcher {
 
                 let response = match result {
                     Ok(routed) => Ok(BatchedResponse {
+                        model_revision: routed.model_revision.clone(),
                         response: routed.response,
                         runner_id: routed.runner_id,
                         resolved_model: routed.resolved_model,
@@ -367,6 +368,7 @@ mod tests {
                     vec![]
                 },
                 available_models: vec![ModelInfo {
+                    revision: None,
                     id: model.to_string(),
                     name: model.to_string(),
                     size_bytes: None,
@@ -393,6 +395,7 @@ mod tests {
             version: None,
             loaded_models: vec![model.to_string()],
             available_models: vec![ModelInfo {
+                revision: None,
                 id: model.to_string(),
                 name: model.to_string(),
                 size_bytes: None,

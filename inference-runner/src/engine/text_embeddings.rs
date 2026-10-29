@@ -19,6 +19,7 @@ struct Server {
     process: Mutex<Child>,
 }
 pub struct TextEmbeddingEngine {
+    revisions: super::revision::Revisions,
     config: TextEmbeddingEngineConfig,
     client: Client,
     server: Arc<RwLock<Option<Server>>>,
@@ -35,6 +36,7 @@ impl TextEmbeddingEngine {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
         Ok(Self {
+            revisions: Default::default(),
             config,
             client,
             server: Arc::new(RwLock::new(None)),
@@ -48,6 +50,15 @@ impl TextEmbeddingEngine {
     }
     fn info(&self) -> ModelInfo {
         ModelInfo {
+            revision: self
+                .revisions
+                .get(simple_ai_common::text_embeddings::MODEL_ID)
+                .or_else(|| {
+                    self.config
+                        .model_path
+                        .is_none()
+                        .then(|| simple_ai_common::text_embeddings::REVISION.into())
+                }),
             id: simple_ai_common::text_embeddings::MODEL_ID.to_string(),
             name: "Qwen3 Embedding 0.6B".into(),
             size_bytes: None,
@@ -100,6 +111,9 @@ impl InferenceEngine for TextEmbeddingEngine {
             }
         }
         *guard = None;
+        if let Some(path) = &self.config.model_path {
+            self.revisions.load(id, std::path::Path::new(path)).await;
+        }
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;

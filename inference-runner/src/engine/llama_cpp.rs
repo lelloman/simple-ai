@@ -178,6 +178,7 @@ impl ServerInstance {
 /// Manages llama-server subprocesses to provide inference capabilities.
 /// Each loaded model runs in its own llama-server process.
 pub struct LlamaCppEngine {
+    revisions: super::revision::Revisions,
     config: LlamaCppEngineConfig,
     http_client: Client,
     /// Map of model_id -> running server instance
@@ -195,6 +196,7 @@ pub struct LlamaCppEngine {
 impl LlamaCppEngine {
     pub fn new(config: LlamaCppEngineConfig) -> Self {
         Self {
+            revisions: Default::default(),
             startup_semaphore: Semaphore::new(1), // Only one server startup at a time
             inference_semaphores: RwLock::new(HashMap::new()),
             config,
@@ -868,6 +870,7 @@ impl LlamaCppEngine {
         }
 
         // Spawn process
+        self.revisions.load(model_id, &model_path).await;
         let process = cmd.spawn().map_err(|e| {
             Error::LoadFailed(format!(
                 "Failed to spawn llama-server for {}: {}. Binary: {}",
@@ -1351,6 +1354,7 @@ impl InferenceEngine for LlamaCppEngine {
             let context_length = self.effective_context_size(model_id, path);
 
             models.push(ModelInfo {
+                revision: self.revisions.get(model_id),
                 id: model_id.clone(),
                 name: model_id.clone(),
                 size_bytes,

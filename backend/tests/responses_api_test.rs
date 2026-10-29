@@ -829,3 +829,117 @@ mod lan_local_tests {
         }
     }
 }
+
+#[tokio::test]
+async fn gateway_model_identity_on_chat_stream_embeddings_and_summaries() {
+    use simple_ai_common::RunnerStatus;
+    use simple_server::web::{http::Request, Router};
+    for revision in [Some("weight-sha256"), None] {
+        let upstream = MockServer::start().await;
+        let mut state = create_test_state(&upstream.uri()).await.unwrap();
+        Arc::get_mut(&mut state).unwrap().config.gateway.enabled = true;
+        state
+            .audit_logger
+            .find_or_create_user("provenance-user", None)
+            .unwrap();
+        let (_, token) = state
+            .audit_logger
+            .create_api_key("provenance-user", "provenance", &["model:specific".into()])
+            .unwrap();
+        let status: RunnerStatus = serde_json::from_value(json!({
+            "health":"healthy", "capabilities":[],
+            "engines":[{"engine_type":"test", "is_healthy":true,
+                "loaded_models":["local-model"],
+                "available_models":[{"id":"local-model", "name":"local-model", "revision":revision}]}],
+            "model_aliases":{"public-model":"local-model"}
+        })).unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(8);
+        state
+            .runner_registry
+            .register(
+                "halo-test".into(),
+                "Halo".into(),
+                None,
+                status,
+                Some(upstream.uri()),
+                tx,
+                None,
+            )
+            .await;
+        let app = Router::new().nest(
+            "/v1",
+            routes::chat::router(state.clone())
+                .merge(routes::embeddings::router(state.clone()))
+                .merge(routes::summaries::router(state)),
+        );
+        for (endpoint, request, expected) in [
+            (
+                "chat/completions",
+                json!({"model":"public-model","messages":[{"role":"user","content":"hi"}]}),
+                json!({"id":"test","object":"chat.completion","created":0,"model":"public-model","choices":[]}),
+            ),
+            (
+                "embeddings",
+                json!({"model":"public-model","input":["hi"]}),
+                json!({"object":"list","model":"public-model","data":[{"object":"embedding","embedding":[1.0],"index":0}],"usage":{"prompt_tokens":1,"total_tokens":1}}),
+            ),
+            (
+                "summaries",
+                json!({"model":"public-model","input":["hi"]}),
+                json!({"model":"public-model","data":[{"index":0,"summary":"hello"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}),
+            ),
+            (
+                "chat/completions",
+                json!({"model":"public-model","messages":[{"role":"user","content":"hi"}],"stream":true}),
+                json!(null),
+            ),
+        ] {
+            upstream.reset().await;
+            let stream = request["stream"] == true;
+            let template = if stream {
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string("data: [DONE]\n\n")
+            } else {
+                ResponseTemplate::new(200).set_body_json(expected)
+            };
+            Mock::given(method("POST"))
+                .and(path(format!("/v1/{endpoint}")))
+                .respond_with(template)
+                .mount(&upstream)
+                .await;
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/v1/{endpoint}"))
+                        .header("authorization", format!("Bearer {token}"))
+                        .header("content-type", "application/json")
+                        .body(Body::from(request.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{endpoint}");
+            assert_eq!(response.headers()["x-runner-id"], "halo-test");
+            assert_eq!(
+                response
+                    .headers()
+                    .get("x-model-revision")
+                    .map(|h| h.to_str().unwrap()),
+                revision
+            );
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            if stream {
+                assert_eq!(body, "data: [DONE]\n\n");
+            } else if endpoint == "chat/completions" {
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(
+                    body.get("model_revision").and_then(|v| v.as_str()),
+                    revision
+                );
+            }
+        }
+    }
+}
