@@ -21,6 +21,7 @@ struct Server {
     process: Mutex<Child>,
 }
 pub struct ExtractionEngine {
+    revisions: super::revision::Revisions,
     config: ExtractionEngineConfig,
     client: Client,
     server: Arc<RwLock<Option<Server>>>,
@@ -43,6 +44,7 @@ impl ExtractionEngine {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
         Ok(Self {
+            revisions: Default::default(),
             config,
             client,
             server: Arc::new(RwLock::new(None)),
@@ -56,6 +58,12 @@ impl ExtractionEngine {
     }
     fn info(&self) -> ModelInfo {
         ModelInfo {
+            revision: self.revisions.get(&self.config.model_id).or_else(|| {
+                self.config
+                    .model_path
+                    .is_none()
+                    .then(|| self.config.revision.clone())
+            }),
             id: self.config.model_id.clone(),
             name: "GLiNER2.5 Multilingual".into(),
             size_bytes: None,
@@ -115,6 +123,9 @@ impl InferenceEngine for ExtractionEngine {
             }
         }
         *guard = None;
+        if let Some(path) = &self.config.model_path {
+            self.revisions.load(id, std::path::Path::new(path)).await;
+        }
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;

@@ -52,6 +52,7 @@ base_url = "http://localhost:11434"
 # The prepared base profile is the tested shortest path: text-only, 49k context,
 # no checkpoint-specific calibration required.
 # [engines.vllm.models.qwen38-base]
+# model_path = "/home/lelloman/qwen38-serving/models/Qwen3.8-27B-abliterated-AWQ-MTP"
 # served_model = "qwen3.8-27b"
 # profile = "base"
 # env_file = "profiles/base.env"
@@ -339,6 +340,7 @@ shutdown_timeout_secs = 60
 # Optional dedicated Halogen checkpoint (systemd user unit; loopback-only API).
 # Install deploy/halogen/simple-ai-halogen.service and stage its weights first.
 # [engines.halogen]
+# model_path = "/home/lelloman/halogen-benchmark/models/Qwen3.8-Flash-Next-Uncensored.IQ4_XS.gguf"
 # enabled = true
 # base_url = "http://127.0.0.1:8731"
 # service = "simple-ai-halogen.service"

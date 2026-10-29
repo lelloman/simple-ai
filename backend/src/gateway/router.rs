@@ -133,6 +133,7 @@ pub struct ReservedRoute {
 }
 
 pub struct RoutedStream {
+    pub model_revision: Option<String>,
     pub response: reqwest::Response,
     pub runner_id: String,
     pub resolved_model: String,
@@ -142,6 +143,7 @@ pub struct RoutedStream {
 /// Result of a routed request, includes metadata about routing.
 #[derive(Debug)]
 pub struct RoutedResponse<T> {
+    pub model_revision: Option<String>,
     /// The response from the runner.
     pub response: T,
     /// ID of the runner that handled the request.
@@ -310,6 +312,7 @@ impl InferenceRouter {
         }
 
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -355,6 +358,7 @@ impl InferenceRouter {
             }
         }
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -400,6 +404,7 @@ impl InferenceRouter {
             }
         }
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -445,6 +450,7 @@ impl InferenceRouter {
             }
         }
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -490,6 +496,7 @@ impl InferenceRouter {
             }
         }
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -530,6 +537,7 @@ impl InferenceRouter {
             }
         }
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -570,6 +578,7 @@ impl InferenceRouter {
         }
 
         Ok(RoutedResponse {
+            model_revision: None,
             response: response?,
             runner_id,
             resolved_model: "ocr".to_string(),
@@ -619,6 +628,7 @@ impl InferenceRouter {
         }
 
         Ok(RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -664,6 +674,7 @@ impl InferenceRouter {
         }
 
         response.map(|response| RoutedResponse {
+            model_revision: runner.model_revision(&resolved_model),
             response,
             runner_id,
             resolved_model,
@@ -1191,6 +1202,7 @@ impl InferenceRouter {
         self.record_chat_result(&plan, response.is_ok());
         drop(_reservation);
         Ok(RoutedResponse {
+            model_revision: plan.runner.model_revision(&resolved_model),
             response: response?,
             runner_id,
             resolved_model,
@@ -1228,6 +1240,7 @@ impl InferenceRouter {
             .await;
         self.record_chat_result(&plan, response.is_ok());
         Ok(RoutedStream {
+            model_revision: plan.runner.model_revision(&plan.resolved_model),
             response: response?,
             runner_id: plan.runner.id,
             resolved_model: plan.resolved_model,
@@ -1824,6 +1837,7 @@ mod tests {
                 available_models: models
                     .into_iter()
                     .map(|id| ModelInfo {
+                        revision: None,
                         id: id.clone(),
                         name: id.clone(),
                         size_bytes: None,
@@ -2127,6 +2141,7 @@ mod tests {
     async fn test_smart_routing_prefers_free_accelerator_over_machine_type() {
         fn model(id: &str) -> ModelInfo {
             ModelInfo {
+                revision: None,
                 id: id.to_string(),
                 name: id.to_string(),
                 size_bytes: None,

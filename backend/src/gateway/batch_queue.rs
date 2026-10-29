@@ -75,6 +75,7 @@ pub struct QueuedRequest {
 /// Response from a batched request.
 #[derive(Debug, Clone)]
 pub struct BatchedResponse {
+    pub model_revision: Option<String>,
     /// The chat completion response.
     pub response: simple_ai_common::ChatCompletionResponse,
     /// ID of the runner that handled the request.

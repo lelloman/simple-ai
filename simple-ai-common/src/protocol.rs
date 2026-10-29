@@ -154,6 +154,9 @@ pub enum RunnerHealth {
 /// Information about an available model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
+    /// Exact weight identity; absent on older runners.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
     /// Model identifier (e.g., "llama3.2:3b")
     pub id: String,
     /// Human-readable name
@@ -508,5 +511,24 @@ mod tests {
         assert!(!RunnerHealth::ShuttingDown.is_operational());
         assert!(!RunnerHealth::Draining.is_operational());
         assert!(!RunnerHealth::Drained.is_operational());
+    }
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::*;
+    #[test]
+    fn model_revision_is_optional_and_round_trips() {
+        let old = serde_json::json!({"id":"model", "name":"model"});
+        let mut model: ModelInfo = serde_json::from_value(old).unwrap();
+        assert_eq!(model.revision, None);
+        assert!(serde_json::to_value(&model)
+            .unwrap()
+            .get("revision")
+            .is_none());
+        model.revision = Some("0123456789abcdef".into());
+        let round_trip: ModelInfo =
+            serde_json::from_value(serde_json::to_value(&model).unwrap()).unwrap();
+        assert_eq!(round_trip.revision, model.revision);
     }
 }

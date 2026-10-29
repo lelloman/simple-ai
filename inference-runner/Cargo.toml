@@ -40,6 +40,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 tempfile = "3.8"
+sha2 = "0.10"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 

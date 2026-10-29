@@ -20,6 +20,7 @@ use simple_ai_common::{
 
 #[derive(Debug)]
 pub struct ScheduledResponse<T> {
+    pub model_revision: Option<String>,
     pub response: T,
     pub runner_id: String,
     pub resolved_model: String,
@@ -126,6 +127,7 @@ impl RequestScheduler {
                 RouterError::ConnectionFailed("Batch queue response channel closed".to_string())
             })??;
             super::RoutedResponse {
+                model_revision: batched.model_revision,
                 response: batched.response,
                 runner_id: batched.runner_id,
                 resolved_model: batched.resolved_model,
@@ -156,6 +158,7 @@ impl RequestScheduler {
                 .await?
         };
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -199,6 +202,7 @@ impl RequestScheduler {
             .execute_chat_stream_plan(reserved, request)
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             runner_id: routed.runner_id.clone(),
             resolved_model: routed.resolved_model.clone(),
             response: routed,
@@ -224,6 +228,7 @@ impl RequestScheduler {
             .embed::<EmbeddingRequest, EmbeddingResponse>(model, request)
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -249,6 +254,7 @@ impl RequestScheduler {
             .translation::<simple_ai_common::TranslationRequest, simple_ai_common::TranslationResponse>(model, request)
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -276,6 +282,7 @@ impl RequestScheduler {
             )
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -301,6 +308,7 @@ impl RequestScheduler {
             .classification::<ClassificationRequest, ClassificationResponse>(model, request)
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -326,6 +334,7 @@ impl RequestScheduler {
             .extraction::<ExtractionRequest, ExtractionResponse>(model, request)
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -368,6 +377,7 @@ impl RequestScheduler {
             other => other?,
         };
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -395,6 +405,7 @@ impl RequestScheduler {
             .audio_embedding_multipart(model, file_name, file_bytes, options_json)
             .await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -417,6 +428,7 @@ impl RequestScheduler {
             .keep_runner_awake(prepared.plan.runner.id.clone());
         let routed = self.inference_router.speech_raw(model, request).await?;
         Ok(ScheduledResponse {
+            model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
@@ -1188,6 +1200,7 @@ mod decision_race_tests {
                     vec![]
                 },
                 available_models: vec![ModelInfo {
+                    revision: None,
                     id: DECISION_MODEL.into(),
                     name: "JEV".into(),
                     size_bytes: None,

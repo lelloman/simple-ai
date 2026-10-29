@@ -337,6 +337,7 @@ mod tests {
                 return Ok(None);
             }
             Ok(Some(super::super::ModelInfo {
+                revision: None,
                 id: "model".into(),
                 name: "model".into(),
                 size_bytes: None,

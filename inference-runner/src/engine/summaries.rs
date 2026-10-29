@@ -21,6 +21,7 @@ struct Server {
     process: Mutex<Child>,
 }
 pub struct SummaryEngine {
+    revisions: super::revision::Revisions,
     config: SummaryEngineConfig,
     client: Client,
     server: Arc<RwLock<Option<Server>>>,
@@ -37,6 +38,7 @@ impl SummaryEngine {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
         Ok(Self {
+            revisions: Default::default(),
             config,
             client,
             server: Arc::new(RwLock::new(None)),
@@ -50,6 +52,7 @@ impl SummaryEngine {
     }
     fn info(&self) -> ModelInfo {
         ModelInfo {
+            revision: self.revisions.get(SUMMARY_MODEL),
             id: SUMMARY_MODEL.to_string(),
             name: "Qwen3 4B Site Summaries".into(),
             size_bytes: None,
@@ -102,6 +105,9 @@ impl InferenceEngine for SummaryEngine {
             }
         }
         *guard = None;
+        self.revisions
+            .load(id, std::path::Path::new(&self.config.model_path))
+            .await;
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;

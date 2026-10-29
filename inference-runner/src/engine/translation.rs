@@ -22,6 +22,7 @@ struct Server {
     process: Mutex<Child>,
 }
 pub struct TranslationEngine {
+    revisions: super::revision::Revisions,
     config: TranslationEngineConfig,
     client: Client,
     server: Arc<RwLock<Option<Server>>>,
@@ -42,6 +43,7 @@ impl TranslationEngine {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
         Ok(Self {
+            revisions: Default::default(),
             config,
             client,
             server: Arc::new(RwLock::new(None)),
@@ -55,6 +57,12 @@ impl TranslationEngine {
     }
     fn info(&self) -> ModelInfo {
         ModelInfo {
+            revision: self.revisions.get(TRANSLATION_MODEL).or_else(|| {
+                self.config
+                    .model_path
+                    .is_none()
+                    .then(|| TRANSLATION_REVISION.into())
+            }),
             id: TRANSLATION_MODEL.to_string(),
             name: "MADLAD-400-3B-MT".into(),
             size_bytes: None,
@@ -111,6 +119,9 @@ impl InferenceEngine for TranslationEngine {
             }
         }
         *guard = None;
+        if let Some(path) = &self.config.model_path {
+            self.revisions.load(id, std::path::Path::new(path)).await;
+        }
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .map_err(|e| Error::Internal(e.to_string()))?;

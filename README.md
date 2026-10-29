@@ -420,6 +420,8 @@ cargo build --locked --release -p inference-runner
 
 ---
 
+See [model revision and runner response metadata](docs/model-revisions.md).
+
 ## API Endpoints
 
 ### Backend API

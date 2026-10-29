@@ -22,7 +22,7 @@ async fn create_summaries(
     connect_info: Result<ConnectInfo<SocketAddr>, simple_server::extract::RejectionResponse>,
     headers: HeaderMap,
     Json(request): Json<SummaryRequest>,
-) -> Result<Json<SummaryResponse>, (StatusCode, String)> {
+) -> Result<(HeaderMap, Json<SummaryResponse>), (StatusCode, String)> {
     let start = Instant::now();
     request
         .validate()
@@ -73,8 +73,11 @@ async fn create_summaries(
         .request_scheduler
         .summarize(&req_log.id, &model, &model_request, &request)
         .await;
+    let identity_headers;
     let (response, runner_id, wol_sent) = match scheduled {
         Ok(mut result) => {
+            identity_headers =
+                super::model_identity::headers(&result.runner_id, result.model_revision.as_deref());
             result.response.model = result.resolved_model;
             (result.response, Some(result.runner_id), result.wol_sent)
         }
@@ -117,7 +120,7 @@ async fn create_summaries(
         runner_id,
         wol_sent,
     });
-    Ok(Json(response))
+    Ok((identity_headers, Json(response)))
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

@@ -72,6 +72,7 @@ fn select_eviction_candidate(
 
 /// Audio embedding models are loaded as long-lived local provider processes.
 pub struct AudioEmbeddingEngine {
+    revisions: super::revision::Revisions,
     config: AudioEmbeddingEngineConfig,
     http_client: Client,
     servers: RwLock<HashMap<String, Arc<AudioEmbeddingServer>>>,
@@ -81,6 +82,7 @@ pub struct AudioEmbeddingEngine {
 impl AudioEmbeddingEngine {
     pub fn new(config: AudioEmbeddingEngineConfig) -> Self {
         Self {
+            revisions: Default::default(),
             config,
             http_client: Client::new(),
             servers: RwLock::new(HashMap::new()),
@@ -219,6 +221,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
             .models
             .iter()
             .map(|model| ModelInfo {
+                revision: self.revisions.get(&model.id),
                 id: model.id.clone(),
                 name: model.name.clone().unwrap_or_else(|| model.id.clone()),
                 size_bytes: model.size_bytes,
@@ -233,6 +236,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
 
     async fn get_model(&self, model_id: &str) -> Result<Option<ModelInfo>> {
         Ok(self.model_config(model_id).map(|model| ModelInfo {
+            revision: self.revisions.get(&model.id),
             id: model.id.clone(),
             name: model.name.clone().unwrap_or_else(|| model.id.clone()),
             size_bytes: model.size_bytes,
@@ -258,6 +262,7 @@ impl InferenceEngine for AudioEmbeddingEngine {
         self.ensure_capacity(model_id).await?;
 
         let port = Self::allocate_port().await?;
+        self.revisions.load_hf(model_id).await;
         let mut command = self.build_command(model_id, port)?;
         let process = super::provider::start(
             &mut command,

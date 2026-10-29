@@ -53,6 +53,7 @@ impl ClassificationServer {
 }
 
 pub struct ClassificationEngine {
+    revisions: super::revision::Revisions,
     config: ClassificationEngineConfig,
     http_client: Client,
     servers: RwLock<HashMap<String, Arc<ClassificationServer>>>,
@@ -62,6 +63,7 @@ pub struct ClassificationEngine {
 impl ClassificationEngine {
     pub fn new(config: ClassificationEngineConfig) -> Self {
         Self {
+            revisions: Default::default(),
             config,
             http_client: Client::new(),
             servers: RwLock::new(HashMap::new()),
@@ -150,8 +152,9 @@ impl ClassificationEngine {
         self.unload_model(&candidate).await
     }
 
-    fn model_info(model: &ClassificationModelConfig) -> ModelInfo {
+    fn model_info(&self, model: &ClassificationModelConfig) -> ModelInfo {
         ModelInfo {
+            revision: self.revisions.get(&model.id),
             id: model.id.clone(),
             name: model.name.clone().unwrap_or_else(|| model.id.clone()),
             size_bytes: model.size_bytes,
@@ -188,11 +191,18 @@ impl InferenceEngine for ClassificationEngine {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        Ok(self.config.models.iter().map(Self::model_info).collect())
+        Ok(self
+            .config
+            .models
+            .iter()
+            .map(|model| self.model_info(model))
+            .collect())
     }
 
     async fn get_model(&self, model_id: &str) -> Result<Option<ModelInfo>> {
-        Ok(self.model_config(model_id).map(Self::model_info))
+        Ok(self
+            .model_config(model_id)
+            .map(|model| self.model_info(model)))
     }
 
     async fn load_model(&self, model_id: &str) -> Result<()> {
@@ -211,6 +221,7 @@ impl InferenceEngine for ClassificationEngine {
             .ok_or_else(|| Error::ModelNotFound(model_id.to_string()))?;
         self.ensure_capacity(model_id).await?;
         let port = Self::allocate_port().await?;
+        self.revisions.load_hf(model_id).await;
         let mut command = self.build_command(model_id, port)?;
         let process = super::provider::start(
             &mut command,

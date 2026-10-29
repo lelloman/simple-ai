@@ -291,6 +291,8 @@ struct OllamaTagsResponse {
 
 #[derive(Debug, Deserialize)]
 struct OllamaModelInfo {
+    #[serde(default)]
+    digest: Option<String>,
     name: String,
     #[serde(default)]
     size: Option<u64>,
@@ -399,6 +401,7 @@ impl InferenceEngine for OllamaEngine {
             let context_length = self.cached_model_context_length(&m.name).await;
 
             models.push(ModelInfo {
+                revision: m.digest,
                 id: m.name.clone(),
                 name: m.name,
                 size_bytes: m.size,

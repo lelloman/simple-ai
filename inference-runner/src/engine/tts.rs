@@ -73,6 +73,7 @@ fn select_eviction_candidate(
 
 /// TTS models are loaded as long-lived local provider processes.
 pub struct TtsEngine {
+    revisions: super::revision::Revisions,
     config: TtsEngineConfig,
     http_client: Client,
     servers: RwLock<HashMap<String, Arc<TtsServer>>>,
@@ -82,6 +83,7 @@ pub struct TtsEngine {
 impl TtsEngine {
     pub fn new(config: TtsEngineConfig) -> Self {
         Self {
+            revisions: Default::default(),
             config,
             http_client: Client::new(),
             servers: RwLock::new(HashMap::new()),
@@ -288,6 +290,7 @@ impl InferenceEngine for TtsEngine {
             .models
             .iter()
             .map(|model| ModelInfo {
+                revision: self.revisions.get(&model.id),
                 id: model.id.clone(),
                 name: model.name.clone().unwrap_or_else(|| model.id.clone()),
                 size_bytes: model.size_bytes,
@@ -302,6 +305,7 @@ impl InferenceEngine for TtsEngine {
 
     async fn get_model(&self, model_id: &str) -> Result<Option<ModelInfo>> {
         Ok(self.model_config(model_id).map(|model| ModelInfo {
+            revision: self.revisions.get(&model.id),
             id: model.id.clone(),
             name: model.name.clone().unwrap_or_else(|| model.id.clone()),
             size_bytes: model.size_bytes,
@@ -330,6 +334,7 @@ impl InferenceEngine for TtsEngine {
         self.ensure_capacity(model_id).await?;
 
         let port = Self::allocate_port().await?;
+        self.revisions.load_hf(model_id).await;
         let mut command = self.build_command(model_id, port)?;
         let process = super::provider::start(
             &mut command,

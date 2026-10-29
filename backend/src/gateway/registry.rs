@@ -146,6 +146,16 @@ impl Drop for CapacityReservation {
 }
 
 impl ConnectedRunner {
+    pub fn model_revision(&self, model: &str) -> Option<String> {
+        let local = self.resolve_model_alias(model);
+        self.status
+            .engines
+            .iter()
+            .flat_map(|e| &e.available_models)
+            .find(|m| self.resolve_model_alias(&m.id).eq_ignore_ascii_case(&local))
+            .and_then(|m| m.revision.clone())
+    }
+
     /// Check if the runner is healthy and operational.
     pub fn is_operational(&self) -> bool {
         self.status.health.is_operational()
@@ -1023,6 +1033,7 @@ mod tests {
                 available_models: models
                     .into_iter()
                     .map(|id| ProtocolModelInfo {
+                        revision: None,
                         id: id.clone(),
                         name: id.clone(),
                         size_bytes: None,
@@ -1053,6 +1064,7 @@ mod tests {
                 ("qwen3.8-flash-next".into(), "local-qwen".into()),
             ]);
             status.engines[0].batch_size = 4;
+            status.engines[0].available_models[0].revision = Some("weight-identity".into());
             registry
                 .register(
                     "runner".into(),
@@ -1069,6 +1081,10 @@ mod tests {
                 assert_eq!(registry.with_available_model(requested).await.len(), 1);
                 let mut runner = registry.get("runner").await.unwrap();
                 assert_eq!(runner.batch_size_for_model(requested), 4);
+                assert_eq!(
+                    runner.model_revision(requested).as_deref(),
+                    Some("weight-identity")
+                );
                 runner.status.engines[0].loaded_models.clear();
                 assert!(!runner.has_model_or_alias(requested));
                 assert!(runner.has_available_model_or_alias(requested));

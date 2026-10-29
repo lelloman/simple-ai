@@ -118,6 +118,7 @@ impl DecisionEngine {
     }
     fn info(&self) -> ModelInfo {
         ModelInfo {
+            revision: Some(DECISION_REVISION.into()),
             id: DECISION_MODEL.into(),
             name: "JEV-9B semantic decisions".into(),
             size_bytes: None,
