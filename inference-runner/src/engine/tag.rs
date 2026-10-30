@@ -162,7 +162,13 @@ impl InferenceEngine for TagEngine {
 
     async fn unload_model(&self, id: &str) -> Result<()> {
         self.check_model(id)?;
-        if let Some(server) = self.server.write().await.take() {
+        self.quiesce().await
+    }
+    async fn quiesce(&self) -> Result<()> {
+        // A dead parent can leave engine-core descendants holding GPU memory.
+        // Keep the lifecycle barrier through cleanup, regardless of health.
+        let mut guard = self.server.write().await;
+        if let Some(server) = guard.take() {
             server
                 .process
                 .lock()
@@ -400,6 +406,66 @@ mod tests {
                 .model,
             id
         );
+        engine.unload_model(&id).await.unwrap();
+    }
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn quiesce_cleans_descendants_after_parent_exit() {
+        use nix::{
+            sys::signal::{kill, Signal},
+            unistd::Pid,
+        };
+        let engine = fixture();
+        let id = engine.config.model.clone();
+        engine.load_model(&id).await.unwrap();
+        let (parent, child) = {
+            let guard = engine.server.read().await;
+            let server = guard.as_ref().unwrap();
+            let health: serde_json::Value = engine
+                .client
+                .get(format!("http://127.0.0.1:{}/health", server.port))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let parent = server.process.lock().await.child.id().unwrap();
+            (parent, health["child"].as_u64().unwrap())
+        };
+        kill(Pid::from_raw(parent as i32), Signal::SIGKILL).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !engine
+                .health_check()
+                .await
+                .unwrap()
+                .models_loaded
+                .is_empty()
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let descendant_alive = || {
+            std::fs::read_to_string(format!("/proc/{child}/status")).is_ok_and(|status| {
+                !status
+                    .lines()
+                    .any(|line| line.starts_with("State:") && line.contains('Z'))
+            })
+        };
+        assert!(descendant_alive(), "fixture child must survive parent exit");
+        engine.quiesce().await.unwrap();
+        assert!(engine.server.read().await.is_none());
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while descendant_alive() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("quiesce must terminate the orphan engine-core child");
+        engine.quiesce().await.unwrap();
+        engine.load_model(&id).await.unwrap();
         engine.unload_model(&id).await.unwrap();
     }
     #[tokio::test]

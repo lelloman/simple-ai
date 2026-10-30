@@ -49,7 +49,9 @@ Each active tag request retains the provider lifecycle read lock through its
 response, even when its caller disconnects. Unload waits for them. Transport,
 body parsing and HTTP 5xx failures kill the provider process group (including
 vLLM's engine-core child); the next request reloads it. Ordinary 400/429 errors
-retain the healthy engine. Startup cancellation/failure also kills descendants.
+retain the healthy engine. Quiesce cleans up the cached process group even when
+the provider parent has already exited, before another GPU engine can load.
+Startup cancellation/failure also kills descendants.
 There is a 600-second startup and 180-second inference timeout. A fatal engine
 failure can fail concurrent tag requests; callers may retry after reload.
 
