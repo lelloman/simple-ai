@@ -1,0 +1,9 @@
+# Merge into existing tables. Only the RTX runner advertises this model.
+[models]
+tag = ["qwen3-4b-tag-w8a8"]
+
+[routing.class_preferences]
+tag = ["gpu-server"]
+
+[routing.speculative_wake_targets]
+tag = ["gpu-server"]

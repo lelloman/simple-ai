@@ -195,6 +195,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .await;
         tracing::info!("Registered summaries engine");
     }
+    if config.engines.tag.enabled {
+        if !config.engine_resources.contains_key("tag") {
+            return Err("tag requires the shared CUDA engine resource group".into());
+        }
+        registry
+            .register(Arc::new(engine::TagEngine::new(
+                config.engines.tag.clone(),
+            )?))
+            .await;
+        tracing::info!("Registered tag engine");
+    }
 
     if config.engines.translation.enabled {
         if config.engines.translation.device != "cpu"

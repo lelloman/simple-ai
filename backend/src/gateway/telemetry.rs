@@ -320,6 +320,7 @@ fn compute_protected_classes(
         ModelClass::InformationExtraction,
         ModelClass::Translate,
         ModelClass::Summarize,
+        ModelClass::Tag,
         ModelClass::SemanticDecisions,
     ] {
         let has_class = models

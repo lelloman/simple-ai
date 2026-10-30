@@ -324,6 +324,7 @@ mod tests {
 
     fn create_test_request() -> ChatCompletionRequest {
         ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("Hello".into()),

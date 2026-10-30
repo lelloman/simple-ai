@@ -1362,6 +1362,7 @@ impl InferenceRouter {
                 ModelClass::Tts => self.models_config.tts.first(),
                 ModelClass::Translate => self.models_config.translate.first(),
                 ModelClass::Summarize => self.models_config.summarize.first(),
+                ModelClass::Tag => self.models_config.tag.first(),
                 ModelClass::TextClassification => self.models_config.text_classification.first(),
                 ModelClass::SemanticDecisions => self.models_config.semantic_decisions.first(),
                 ModelClass::InformationExtraction => {
@@ -1675,6 +1676,50 @@ impl InferenceRouter {
         }
     }
 
+    fn validate_chat_format(
+        runner: &ConnectedRunner,
+        path: &str,
+        request: &serde_json::Value,
+    ) -> Result<(), RouterError> {
+        if path != "/v1/chat/completions"
+            || request
+                .get("response_format")
+                .is_none_or(serde_json::Value::is_null)
+        {
+            return Ok(());
+        }
+        let model = request
+            .get("model")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let engines: Vec<_> = runner
+            .status
+            .engines
+            .iter()
+            .filter(|engine| {
+                engine
+                    .available_models
+                    .iter()
+                    .any(|m| m.id.eq_ignore_ascii_case(model))
+                    || engine
+                        .loaded_models
+                        .iter()
+                        .any(|m| m.eq_ignore_ascii_case(model))
+            })
+            .collect();
+        if engines.is_empty()
+            || engines
+                .iter()
+                .any(|engine| !matches!(engine.engine_type.as_str(), "vllm" | "tag"))
+        {
+            return Err(RouterError::RunnerError {
+                status: 400,
+                body: "response_format requires a vLLM-backed chat model".into(),
+            });
+        }
+        Ok(())
+    }
+
     /// Proxy a request with a JSON Value body and deserialize the response.
     async fn proxy_request_value<Resp>(
         &self,
@@ -1685,6 +1730,7 @@ impl InferenceRouter {
     where
         Resp: DeserializeOwned,
     {
+        Self::validate_chat_format(runner, path, &request)?;
         let base_url = runner
             .http_base_url
             .as_ref()
@@ -1725,6 +1771,7 @@ impl InferenceRouter {
         path: &str,
         request: serde_json::Value,
     ) -> Result<reqwest::Response, RouterError> {
+        Self::validate_chat_format(runner, path, &request)?;
         let base_url = runner
             .http_base_url
             .as_ref()
@@ -2633,6 +2680,7 @@ mod tests {
             .unwrap();
         let reserved = router.reserve_plan(plan).await.unwrap();
         let request = ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("hello".into()),
@@ -2863,6 +2911,81 @@ mod tests {
             simple_ai_common::text_embeddings::MODEL_ID
         );
         assert_eq!(result.response["data"][1]["index"], 1);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn tag_class_routes_and_retains_schema_and_rejects_other_engines() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let schema = serde_json::json!({"type":"json_schema", "json_schema":{"name":"tags", "strict":true, "schema":{"type":"object", "properties":{"tag":{"type":"string"}}, "required":["tag"], "additionalProperties":false}}});
+        let expected = schema.clone();
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let expected = expected.clone();
+                async move {
+                    assert_eq!(body["response_format"], expected);
+                    assert_eq!(body["model"], "qwen3-4b-tag-w8a8");
+                    Json(serde_json::json!({"ok":true}))
+                }
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let mut status = create_test_status(vec!["qwen3-4b-tag-w8a8".into()]);
+        status.engines[0].engine_type = "tag".into();
+        let (tx, _rx) = mpsc::channel(32);
+        registry
+            .register(
+                "gpu-server".into(),
+                "RTX".into(),
+                None,
+                status,
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = InferenceRouter::new(
+            registry,
+            crate::config::ModelsConfig {
+                tag: vec!["qwen3-4b-tag-w8a8".into()],
+                ..Default::default()
+            },
+            Default::default(),
+            Arc::new(AuditLogger::new(":memory:").unwrap()),
+        );
+        assert_eq!(
+            ModelRequest::parse("class:tag"),
+            ModelRequest::Class(ModelClass::Tag)
+        );
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model":"class:tag", "messages":[{"role":"user","content":"tag this"}], "response_format":schema
+        })).unwrap();
+        let plan = router.plan_chat_request("class:tag", None).await.unwrap();
+        assert_eq!(plan.runner.id, "gpu-server");
+        let mut old_runner = plan.runner.clone();
+        let body = serde_json::json!({"model":"qwen3-4b-tag-w8a8", "response_format":request.response_format});
+        for engine in ["ollama", "llama_cpp", "halogen", "summaries"] {
+            old_runner.status.engines[0].engine_type = engine.into();
+            let error =
+                InferenceRouter::validate_chat_format(&old_runner, "/v1/chat/completions", &body)
+                    .unwrap_err();
+            assert_eq!(
+                error.client_status(),
+                simple_server::web::http::StatusCode::BAD_REQUEST
+            );
+        }
+        let reserved = router.reserve_plan(plan).await.unwrap();
+        let result = router
+            .execute_chat_plan::<_, serde_json::Value>(reserved, &request)
+            .await
+            .unwrap();
+        assert_eq!(result.response["ok"], true);
         server.abort();
     }
 }

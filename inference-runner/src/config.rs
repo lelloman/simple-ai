@@ -114,6 +114,8 @@ pub struct EnginesConfig {
     #[serde(default)]
     pub summaries: SummaryEngineConfig,
     #[serde(default)]
+    pub tag: TagEngineConfig,
+    #[serde(default)]
     pub decisions: DecisionEngineConfig,
 }
 
@@ -870,6 +872,34 @@ mod tests {
     use config::FileFormat;
 
     #[test]
+    fn tag_overlay_shares_rtx_gpu_and_summary_environment() {
+        let loaded = ConfigLoader::builder()
+            .add_source(File::from_str(
+                r#"[runner]
+id = "gpu-server"
+name = "RTX"
+[api]
+"#,
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(
+                include_str!("../../deploy/tag/rtx.runner-overlay.toml"),
+                FileFormat::Toml,
+            ))
+            .build()
+            .unwrap();
+        let config: Config = loaded.try_deserialize().unwrap();
+        assert!(config.engines.tag.enabled);
+        assert_eq!(config.engines.tag.model, "qwen3-4b-tag-w8a8");
+        assert!(config.engines.tag.command[0].contains(".simple-ai-summary/venv"));
+        assert_eq!(
+            config.engine_resources.get("tag").map(String::as_str),
+            Some("cuda:0")
+        );
+        assert_eq!(config.model_routes["qwen3-4b-tag-w8a8"].engine, "tag");
+    }
+
+    #[test]
     fn test_default_api_config() {
         let api = ApiConfig::default();
         assert_eq!(api.host, "0.0.0.0");
@@ -1129,4 +1159,24 @@ pub struct SummaryEngineConfig {
     pub enabled: bool,
     pub command: Vec<String>,
     pub model_path: String,
+}
+
+/// Async vLLM chat provider, sharing the summary environment/checkpoint.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TagEngineConfig {
+    pub enabled: bool,
+    pub command: Vec<String>,
+    pub model_path: String,
+    pub model: String,
+}
+impl Default for TagEngineConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            command: vec![],
+            model_path: String::new(),
+            model: "qwen3-4b-tag-w8a8".into(),
+        }
+    }
 }
