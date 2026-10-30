@@ -57,6 +57,21 @@ impl TagEngine {
             server: Arc::new(RwLock::new(None)),
         })
     }
+    fn provider_command(&self, id: &str, port: u16) -> Command {
+        let mut command = Command::new(&self.config.command[0]);
+        command.args(&self.config.command[1..]).args([
+            "--model",
+            id,
+            "--port",
+            &port.to_string(),
+            "--model-path",
+            &self.config.model_path,
+        ]);
+        if let Some(args) = &self.config.vllm_args {
+            command.arg("--").args(args);
+        }
+        command
+    }
     fn check_model(&self, id: &str) -> Result<()> {
         if id != self.config.model {
             return Err(Error::ModelNotFound(id.into()));
@@ -67,11 +82,11 @@ impl TagEngine {
         ModelInfo {
             revision: self.revisions.get(&self.config.model),
             id: self.config.model.clone(),
-            name: "Qwen3 4B Site Tags".into(),
+            name: self.config.model.clone(),
             size_bytes: None,
-            parameter_count: Some(4_000_000_000),
+            parameter_count: None,
             context_length: Some(2048),
-            quantization: Some("W8A8-INT8".into()),
+            quantization: None,
             modified_at: None,
             reasoning: None,
         }
@@ -139,15 +154,7 @@ impl InferenceEngine for TagEngine {
             .map_err(|e| Error::Internal(e.to_string()))?
             .port();
         drop(listener);
-        let mut command = Command::new(&self.config.command[0]);
-        command.args(&self.config.command[1..]).args([
-            "--model",
-            id,
-            "--port",
-            &port.to_string(),
-            "--model-path",
-            &self.config.model_path,
-        ]);
+        let mut command = self.provider_command(id, port);
         let child =
             super::provider::start(&mut command, &self.client, "tag", id, port, 600).await?;
         *guard = Some(Server {
@@ -281,6 +288,33 @@ fn normalized_request(request: &ChatCompletionRequest) -> Result<serde_json::Val
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn configured_vllm_args_reach_provider_command() {
+        let mut engine = fixture();
+        let defaults: Vec<_> = engine
+            .provider_command("tag", 1234)
+            .as_std()
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        assert!(!defaults.iter().any(|s| s == "--"));
+        engine.config.vllm_args = Some(vec!["--max-num-seqs".into(), "16".into()]);
+        let args: Vec<_> = engine
+            .provider_command("tag", 1234)
+            .as_std()
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(&args[defaults.len()..], ["--", "--max-num-seqs", "16"]);
+        engine.config.vllm_args = Some(vec![]);
+        let args: Vec<_> = engine
+            .provider_command("tag", 1234)
+            .as_std()
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(&args[defaults.len()..], ["--"]);
+    }
     #[test]
     fn schema_forwarded_and_thinking_always_disabled() {
         let schema = serde_json::json!({"type":"json_schema", "json_schema":{"name":"tags","schema":{"type":"object"}}});

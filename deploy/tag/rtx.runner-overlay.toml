@@ -2,12 +2,14 @@
 [engines.tag]
 enabled = true
 command = ["/home/lelloman/.simple-ai-summary/venv/bin/python", "/home/lelloman/simple-ai-tag-provider.py"]
-model = "qwen3-4b-tag-w8a8"
-model_path = "/home/lelloman/.simple-ai-summary/model"
+model = "qwen3.6-35b-a3b-tag-awq"
+model_path = "/home/lelloman/simple-ai-models/Qwen3.6-35B-A3B-AWQ"
+
+vllm_args = ["--max-model-len", "2048", "--max-num-seqs", "16", "--max-num-batched-tokens", "4096", "--gpu-memory-utilization", "0.90", "--enable-prefix-caching", "--language-model-only"]
 
 [engine_resources]
 tag = "cuda:0"
 
-[model_routes."qwen3-4b-tag-w8a8"]
+[model_routes."qwen3.6-35b-a3b-tag-awq"]
 engine = "tag"
-engine_model = "qwen3-4b-tag-w8a8"
+engine_model = "qwen3.6-35b-a3b-tag-awq"
