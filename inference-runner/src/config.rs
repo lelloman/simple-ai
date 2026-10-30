@@ -872,6 +872,14 @@ mod tests {
     use config::FileFormat;
 
     #[test]
+    fn tag_vllm_defaults_are_only_used_when_args_are_absent() {
+        let absent: TagEngineConfig = serde_json::from_str("{}").unwrap();
+        assert!(absent.vllm_args.is_none());
+        let empty: TagEngineConfig = serde_json::from_str(r#"{"vllm_args":[]}"#).unwrap();
+        assert_eq!(empty.vllm_args, Some(vec![]));
+    }
+
+    #[test]
     fn tag_overlay_shares_rtx_gpu_and_summary_environment() {
         let loaded = ConfigLoader::builder()
             .add_source(File::from_str(
@@ -890,13 +898,14 @@ name = "RTX"
             .unwrap();
         let config: Config = loaded.try_deserialize().unwrap();
         assert!(config.engines.tag.enabled);
-        assert_eq!(config.engines.tag.model, "qwen3-4b-tag-w8a8");
+        assert_eq!(config.engines.tag.model, "qwen3.6-35b-a3b-tag-awq");
+        assert_eq!(config.engines.tag.vllm_args.as_ref().unwrap()[3], "16");
         assert!(config.engines.tag.command[0].contains(".simple-ai-summary/venv"));
         assert_eq!(
             config.engine_resources.get("tag").map(String::as_str),
             Some("cuda:0")
         );
-        assert_eq!(config.model_routes["qwen3-4b-tag-w8a8"].engine, "tag");
+        assert_eq!(config.model_routes["qwen3.6-35b-a3b-tag-awq"].engine, "tag");
     }
 
     #[test]
@@ -1161,10 +1170,12 @@ pub struct SummaryEngineConfig {
     pub model_path: String,
 }
 
-/// Async vLLM chat provider, sharing the summary environment/checkpoint.
+/// Async vLLM chat provider, using a configured local checkpoint.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TagEngineConfig {
+    /// Replaces provider tuning defaults when present (even when empty).
+    pub vllm_args: Option<Vec<String>>,
     pub enabled: bool,
     pub command: Vec<String>,
     pub model_path: String,
@@ -1173,6 +1184,7 @@ pub struct TagEngineConfig {
 impl Default for TagEngineConfig {
     fn default() -> Self {
         Self {
+            vllm_args: None,
             enabled: false,
             command: vec![],
             model_path: String::new(),

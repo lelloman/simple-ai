@@ -9,6 +9,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
+from unittest.mock import patch
 
 SCRIPTS = pathlib.Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
@@ -28,7 +29,32 @@ class LaunchContract(unittest.TestCase):
             self.assertEqual(args[args.index(flag) + 1], value)
         self.assertIn('--enable-prefix-caching', args)
 
-    def test_live_probe_uses_32_requests_and_keeps_aligned_outputs(self):
+    def test_defaults_unchanged_and_explicit_empty_replaces_them(self):
+        base = ['vllm.entrypoints.openai.api_server', '--model', '/local/model',
+                '--served-model-name', 'tag', '--host', '127.0.0.1', '--port', '1234']
+        defaults = ['--dtype', 'bfloat16', '--max-model-len', '2048',
+                    '--max-num-batched-tokens', '16384', '--max-num-seqs', '32',
+                    '--gpu-memory-utilization', '0.92', '--enable-prefix-caching',
+                    '--distributed-executor-backend', 'uni']
+        self.assertEqual(provider.server_args('tag', '/local/model', 1234), base + defaults)
+        self.assertEqual(provider.server_args('tag', '/local/model', 1234, []), base)
+
+    def test_main_forwards_awq_args_without_summary_checkpoint_dependency(self):
+        tuning = ['--max-model-len', '2048', '--max-num-seqs', '16',
+                  '--max-num-batched-tokens', '4096', '--gpu-memory-utilization', '0.90',
+                  '--enable-prefix-caching', '--language-model-only']
+        # The path need not exist: vLLM, rather than the W8A8-only summary
+        # validator, owns checkpoint loading for tag models.
+        with patch.object(sys, 'argv', ['provider', '--model', 'awq-tag',
+                                      '--model-path', '/local/AWQ', '--port', '1234',
+                                      '--'] + tuning), patch.dict(os.environ), \
+                patch.object(provider.runpy, 'run_module') as run:
+            provider.main()
+            self.assertEqual(sys.argv, provider.server_args('awq-tag', '/local/AWQ', 1234, tuning))
+            self.assertNotIn('--dtype', sys.argv)
+            run.assert_called_once_with('vllm.entrypoints.openai.api_server', run_name='__main__')
+
+    def test_live_probe_uses_16_requests_and_keeps_aligned_outputs(self):
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -62,7 +88,7 @@ class LaunchContract(unittest.TestCase):
                                                  SIMPLE_AI_API_KEY='fixture'), capture_output=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stderr.decode())
                 report = json.loads(output.read_text())
-                self.assertEqual(report['concurrency'], 32)
+                self.assertEqual(report['concurrency'], 16)
                 self.assertEqual([row['id'] for row in report['outputs']], [str(i) for i in range(32)])
                 self.assertTrue(all(row['runner_id'] == 'gpu-server' for row in report['outputs']))
         finally:
