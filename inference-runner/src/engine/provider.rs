@@ -21,6 +21,11 @@ pub(super) async fn start(
     port: u16,
     timeout_secs: u64,
 ) -> Result<Child> {
+    // Async vLLM chat has a separate engine-core child, unlike offline providers.
+    #[cfg(unix)]
+    if engine == "tag" {
+        command.process_group(0);
+    }
     tracing::info!(engine, model, port, "Spawning provider (HF_HUB_OFFLINE=1)");
     let mut child = command
         .env("HF_HUB_OFFLINE", "1")
@@ -32,6 +37,7 @@ pub(super) async fn start(
             tracing::warn!(engine, model, %error, "Provider spawn failed");
             Error::LoadFailed(format!("{engine} provider for {model}: {error}"))
         })?;
+    let mut startup_group = ProcessGroup(if engine == "tag" { child.id() } else { None });
     let mut stderr = child.stderr.take().expect("piped stderr");
     let tail = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BYTES)));
     let captured = tail.clone();
@@ -84,6 +90,7 @@ pub(super) async fn start(
         Ok(Ok(())) => {
             // Keep draining stderr for the lifetime of the healthy process.
             tracing::info!(engine, model, port, "Provider ready");
+            startup_group.0 = None;
             Ok(child)
         }
         result => {
@@ -104,6 +111,33 @@ pub(super) async fn start(
             let message = format!("{engine} provider for {model} {reason}; stderr tail:\n{stderr}");
             tracing::warn!(engine, model, error = %message, "Provider startup failed");
             Err(Error::LoadFailed(message))
+        }
+    }
+}
+
+/// Kill all descendants of the async vLLM server, including on startup cancellation.
+pub(super) struct ProcessGroup(pub Option<u32>);
+impl ProcessGroup {
+    pub fn terminate(&self) -> std::io::Result<()> {
+        #[cfg(unix)]
+        if let Some(pid) = self.0 {
+            use nix::{
+                errno::Errno,
+                sys::signal::{kill, Signal},
+                unistd::Pid,
+            };
+            match kill(Pid::from_raw(-(pid as i32)), Signal::SIGKILL) {
+                Ok(()) | Err(Errno::ESRCH) => {}
+                Err(error) => return Err(std::io::Error::from_raw_os_error(error as i32)),
+            }
+        }
+        Ok(())
+    }
+}
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        if let Err(error) = self.terminate() {
+            tracing::error!(%error, "Failed to terminate tag provider group");
         }
     }
 }

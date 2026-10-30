@@ -263,6 +263,13 @@ async fn chat_completions(
         authenticate_inference_request(&state, &headers, connect_info.as_ref().ok().map(|c| c.0))
             .await?;
 
+    if request.response_format.is_some() && !state.config.gateway.enabled {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "response_format requires a vLLM-backed chat model".into(),
+        ));
+    }
+
     // Parse and validate model request
     let model_request = match &request.model {
         Some(model_str) => ModelRequest::parse(model_str),
@@ -837,6 +844,7 @@ mod tests {
 
     fn create_test_request() -> ChatCompletionRequest {
         ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("Hello".into()),
@@ -865,6 +873,7 @@ mod tests {
     #[tokio::test]
     async fn test_chat_completion_request_default_values() {
         let req = ChatCompletionRequest {
+            response_format: None,
             messages: vec![],
             model: None,
             temperature: None,
@@ -894,6 +903,7 @@ mod tests {
     #[tokio::test]
     async fn test_chat_request_with_model_override() {
         let req = ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("Hi".into()),

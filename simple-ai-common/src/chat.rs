@@ -109,6 +109,8 @@ impl InferenceMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionRequest {
     pub messages: Vec<ChatMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<serde_json::Value>,
     #[serde(default)]
     pub tools: Option<Vec<serde_json::Value>>,
     #[serde(default)]
@@ -395,6 +397,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn structured_output_schema_roundtrip_and_legacy_omission() {
+        let schema = serde_json::json!({"type":"json_schema", "json_schema":{"name":"tags", "strict":true, "schema":{"type":"object", "properties":{"tags":{"type":"array", "items":{"type":"string"}}}}}});
+        let request: ChatCompletionRequest =
+            serde_json::from_value(serde_json::json!({"messages":[], "response_format":schema}))
+                .unwrap();
+        assert_eq!(request.response_format, Some(schema.clone()));
+        assert_eq!(
+            serde_json::to_value(request).unwrap()["response_format"],
+            schema
+        );
+        let legacy: ChatCompletionRequest = serde_json::from_str(r#"{"messages":[]}"#).unwrap();
+        assert!(serde_json::to_value(legacy)
+            .unwrap()
+            .get("response_format")
+            .is_none());
+    }
+
+    #[test]
     fn test_chat_completion_request_defaults() {
         let json = r#"{"messages": [{"role": "user", "content": "Hello"}]}"#;
         let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
@@ -440,6 +460,7 @@ mod tests {
     #[test]
     fn test_chat_completion_request_with_all_fields() {
         let req = ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("Hello".into()),
@@ -634,6 +655,7 @@ mod tests {
     #[test]
     fn test_request_serde_roundtrip() {
         let original = ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("What is 2+2?".into()),

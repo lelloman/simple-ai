@@ -216,6 +216,7 @@ async fn test_chat_completions_requires_auth() {
     let app = simple_server::web::Router::new().nest("/v1", routes::chat::router(state));
 
     let request = ChatCompletionRequest {
+        response_format: None,
         messages: vec![ChatMessage {
             role: "user".to_string(),
             content: Some("Hello".into()),

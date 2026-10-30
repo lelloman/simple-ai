@@ -412,6 +412,7 @@ fn build_chat_request(request: ResponseCreateRequest) -> ChatCompletionRequest {
     } = request;
 
     ChatCompletionRequest {
+        response_format: None,
         messages: match input {
             ResponseInput::Text(text) => ResponseInput::Text(text).into_chat_messages(),
             ResponseInput::Items(items) => ResponseInput::Items(items).into_chat_messages(),

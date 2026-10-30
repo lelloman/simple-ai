@@ -236,3 +236,6 @@ pub use text_embeddings::TextEmbeddingEngine;
 
 mod summaries;
 pub use summaries::SummaryEngine;
+
+mod tag;
+pub use tag::TagEngine;

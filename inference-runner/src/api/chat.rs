@@ -45,6 +45,14 @@ async fn chat_completions(
         resolved_model
     );
 
+    if request.response_format.is_some() {
+        let (engine, _) = state
+            .engine_registry
+            .resolve_engine_for_model(resolved_model)
+            .await
+            .ok_or_else(|| Error::ModelNotFound(resolved_model.into()))?;
+        validate_response_format_backend(engine.engine_type(), &request)?;
+    }
     let lease = state.engine_registry.acquire_model(resolved_model).await?;
 
     if request.stream.unwrap_or(false) {
@@ -76,5 +84,32 @@ async fn chat_completions(
             .chat_completion(&lease.engine_model, &request)
             .await?;
         Ok(Json(response.strip_internal_metrics()).into_response())
+    }
+}
+
+fn validate_response_format_backend(engine: &str, request: &ChatCompletionRequest) -> Result<()> {
+    if request.response_format.is_some() && !matches!(engine, "vllm" | "tag") {
+        return Err(Error::InvalidRequest(
+            "response_format requires a vLLM-backed chat model".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn structured_output_requires_vllm() {
+        let request = serde_json::from_value(serde_json::json!({"messages":[], "response_format":{"type":"json_schema","json_schema":{"name":"tags","schema":{"type":"object"}}}})).unwrap();
+        for engine in ["ollama", "llama_cpp", "halogen", "summaries"] {
+            assert!(matches!(
+                validate_response_format_backend(engine, &request),
+                Err(Error::InvalidRequest(_))
+            ));
+        }
+        for engine in ["vllm", "tag"] {
+            validate_response_format_backend(engine, &request).unwrap();
+        }
     }
 }

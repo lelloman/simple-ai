@@ -2047,6 +2047,7 @@ mod tests {
         );
         let engine = LlamaCppEngine::new(config);
         let request = ChatCompletionRequest {
+            response_format: None,
             messages: Vec::new(),
             tools: None,
             model: None,
@@ -2143,6 +2144,7 @@ mod tests {
         );
         let engine = LlamaCppEngine::new(config);
         let base_request = ChatCompletionRequest {
+            response_format: None,
             messages: Vec::new(),
             tools: None,
             model: Some("qwen3.8".to_string()),

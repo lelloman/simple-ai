@@ -29,6 +29,7 @@ pub enum ModelClass {
     InformationExtraction,
     Translate,
     Summarize,
+    Tag,
     SemanticDecisions,
 }
 
@@ -40,6 +41,7 @@ impl ModelClass {
         match s.to_lowercase().replace('-', "_").as_str() {
             "translate" => Some(Self::Translate),
             "summarize" => Some(Self::Summarize),
+            "tag" => Some(Self::Tag),
             "big" => Some(Self::Big),
             "fast" => Some(Self::Fast),
             "embed_small" => Some(Self::EmbedSmall),
@@ -58,6 +60,7 @@ impl ModelClass {
         match self {
             Self::Translate => "translate",
             Self::Summarize => "summarize",
+            Self::Tag => "tag",
             Self::Big => "big",
             Self::Fast => "fast",
             Self::EmbedSmall => "embed_small",
@@ -84,6 +87,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
     match config.classify(model_id) {
         Some("translate") => Some(ModelClass::Translate),
         Some("summarize") => Some(ModelClass::Summarize),
+        Some("tag") => Some(ModelClass::Tag),
         Some("big") => Some(ModelClass::Big),
         Some("fast") => Some(ModelClass::Fast),
         Some("embed_small") => Some(ModelClass::EmbedSmall),

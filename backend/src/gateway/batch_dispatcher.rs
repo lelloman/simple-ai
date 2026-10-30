@@ -332,6 +332,7 @@ mod tests {
 
     fn create_test_request() -> simple_ai_common::ChatCompletionRequest {
         simple_ai_common::ChatCompletionRequest {
+            response_format: None,
             messages: vec![ChatMessage {
                 role: "user".to_string(),
                 content: Some("Hello".into()),

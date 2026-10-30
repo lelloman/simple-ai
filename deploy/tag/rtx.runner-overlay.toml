@@ -1,0 +1,13 @@
+# Merge into RTX only, preserving all existing cuda:0 members (including summaries).
+[engines.tag]
+enabled = true
+command = ["/home/lelloman/.simple-ai-summary/venv/bin/python", "/home/lelloman/simple-ai-tag-provider.py"]
+model = "qwen3-4b-tag-w8a8"
+model_path = "/home/lelloman/.simple-ai-summary/model"
+
+[engine_resources]
+tag = "cuda:0"
+
+[model_routes."qwen3-4b-tag-w8a8"]
+engine = "tag"
+engine_model = "qwen3-4b-tag-w8a8"
