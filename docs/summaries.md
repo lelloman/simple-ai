@@ -104,7 +104,7 @@ checkpoint for rollout; rebuilding it is optional. Never access
 loading and `HF_HUB_DISABLE_IMPLICIT_TOKEN=1`.
 
 The repository reproduction of the **reported recipe** is
-`scripts/summary-quantization/quant.py` and its Dockerfile: llmcompressor 0.14.0,
+`scripts/summary-quantization/quant.py` and its Dockerfile: llmcompressor 0.14.0.1,
 compressed-tensors 0.20.1 on the local vLLM 0.29 image, SmoothQuant(0.8), GPTQ
 W8A8 on Linear, ignoring lm_head. It follows the upstream
 [INT8 example](https://github.com/vllm-project/llm-compressor/blob/main/examples/quantization_w8a8_int8/llama3_example.py).
@@ -117,11 +117,16 @@ from separate site texts/cards, and `heldout.jsonl` with the evaluation sites
 in the same shape. The script rejects overlapping site IDs/texts and overlength
 prompts, never trains on evaluation records, refuses an existing output path,
 and records the prompt, input hashes and installed versions alongside weights.
-No model or data downloads occur. From repository root on RTX:
+No model or data downloads occur. Before quantization, the operator must drain
+and stop the RTX runner and ensure its engine processes have exited: the resident
+35B tag engine holds about 22.6 of the GPU's 24 GB. Keep the runner stopped until
+quantization finishes, then restore it. From repository root on RTX:
 
 ```bash
 docker build -f scripts/summary-quantization/Dockerfile -t ai60-quant-repro .
+mkdir -p "$HOME/emb-test/llm/summary-quant-home"
 docker run --rm --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=all --ipc=host \
+  --user "$(id -u):$(id -g)" -e HOME=/w/summary-quant-home \
   -v "$HOME/emb-test/llm:/w" ai60-quant-repro \
   --model /w/Qwen3-4B-Instruct-2507 --calibration /w/calibration.jsonl \
   --evaluation /w/heldout.jsonl --output /w/Qwen3-4B-W8A8-reproduced
@@ -145,7 +150,8 @@ its required compressed-tensors 0.17.0 in a dedicated venv (no conflicting
 serving pin; 0.20.1 is used only in the quantization Dockerfile), symlinks the existing checkpoint
 to `model/`, and writes pip freeze. It does not touch another engine environment.
 The checkpoint files and parent directories must be readable/traversable by the
-service user; the quantization container may leave root-owned files.
+service user. The quantization command above uses the invoking UID/GID and a
+writable HOME under /w to avoid root-owned output and caches.
 The provider sets `VLLM_USE_FLASHINFER_SAMPLER=0` before importing vLLM to avoid
 FlashInfer sampler JIT requiring nvcc >=12.8 on RTX's CUDA 12.2 toolkit. Greedy
 decoding is unchanged; no service-unit environment override is needed.

@@ -251,6 +251,24 @@ class CalibrationTests(unittest.TestCase):
             write(calibration, rows)
             write(heldout, [{'id': 'eval', 'text': 'Evaluation site'}])
             self.assertEqual(quant.calibration_rows(calibration, heldout), rows)
+            class DictDefaultTokenizer:
+                def apply_chat_template(self, messages, *, tokenize, add_generation_prompt,
+                                        return_dict=True):
+                    self_messages.append(messages)
+                    self_flags.append((tokenize, add_generation_prompt))
+                    ids = [11, 22, 33]
+                    return {'input_ids': ids} if return_dict else ids
+            self_messages, self_flags = [], []
+            samples = quant.calibration_samples(
+                quant.calibration_rows(calibration, heldout), DictDefaultTokenizer(), m.PROMPT)
+            self.assertEqual(len(samples), 512)
+            for sample in samples:
+                self.assertEqual(sample, {'input_ids': [11, 22, 33], 'attention_mask': [1, 1, 1]})
+                self.assertIsInstance(sample['input_ids'], list)
+                self.assertTrue(all(isinstance(token, int) for token in sample['input_ids']))
+            self.assertEqual(self_messages[0], [
+                {'role': 'system', 'content': m.PROMPT}, {'role': 'user', 'content': 'Card 0'}])
+            self.assertEqual(self_flags, [(True, True)] * 512)
             for records in [[rows[0]], [{'id': 'other-id', 'text': rows[0]['text']}], []]:
                 write(heldout, records)
                 with self.assertRaises(ValueError):
