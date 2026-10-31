@@ -254,6 +254,8 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 For Qwen3.6 candidate setup and 24GB VRAM test commands, see [docs/qwen36-local-eval.md](docs/qwen36-local-eval.md).
 
+Shared-GPU queue cancellation and swap policy: [engine swaps](docs/engine-swaps.md).
+
 ### Load-driven runner wake-up
 
 Streaming chat proxy requests have a 30-second connection timeout and no total

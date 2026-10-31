@@ -6,7 +6,7 @@ use futures_util::{stream, StreamExt};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
 use simple_server::web::body::Body;
 use simple_server::web::extract::State;
-use simple_server::web::http::{header, HeaderValue, StatusCode};
+use simple_server::web::http::{header, HeaderMap, HeaderValue, StatusCode};
 use simple_server::web::response::{IntoResponse, Response};
 use simple_server::web::routing::post;
 use simple_server::web::{Json, Router};
@@ -22,6 +22,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// POST /v1/chat/completions - OpenAI-compatible chat completion.
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<Response> {
     // Get the model from request, or use default
@@ -53,7 +54,32 @@ async fn chat_completions(
             .ok_or_else(|| Error::ModelNotFound(resolved_model.into()))?;
         validate_response_format_backend(engine.engine_type(), &request)?;
     }
-    let lease = state.engine_registry.acquire_model(resolved_model).await?;
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let acquire = state
+        .engine_registry
+        .acquire_model_for_request(resolved_model, &request_id);
+    let lease = if let Some(deadline) = headers
+        .get("x-simple-ai-deadline")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<i64>().ok())
+    {
+        let remaining = deadline.saturating_sub(chrono::Utc::now().timestamp_millis());
+        if remaining <= 0 {
+            return Ok(StatusCode::GATEWAY_TIMEOUT.into_response());
+        }
+        match tokio::time::timeout(std::time::Duration::from_millis(remaining as u64), acquire)
+            .await
+        {
+            Ok(result) => result?,
+            Err(_) => return Ok(StatusCode::GATEWAY_TIMEOUT.into_response()),
+        }
+    } else {
+        acquire.await?
+    };
 
     if request.stream.unwrap_or(false) {
         let upstream = lease

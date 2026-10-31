@@ -1,6 +1,6 @@
 //! Engine registry for managing multiple inference engines.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
@@ -24,6 +24,33 @@ pub struct EngineRegistry {
 struct ResourceGate {
     lock: Arc<RwLock<()>>,
     owner: StdRwLock<Option<String>>,
+    batches: std::sync::Mutex<BatchQueue>,
+    changed: tokio::sync::Notify,
+}
+
+#[derive(Default)]
+struct BatchQueue {
+    next_id: u64,
+    waiting: VecDeque<(u64, String, bool)>,
+}
+
+// A reservation stays in the queue through startup AND inference. Dropping a
+// waiting caller removes it, while detached external operations retain it.
+struct BatchPermit {
+    gate: Arc<ResourceGate>,
+    id: u64,
+}
+
+impl Drop for BatchPermit {
+    fn drop(&mut self) {
+        self.gate
+            .batches
+            .lock()
+            .unwrap()
+            .waiting
+            .retain(|entry| entry.0 != self.id);
+        self.gate.changed.notify_waiters();
+    }
 }
 
 enum ResourceAccess {
@@ -36,6 +63,45 @@ impl ResourceGate {
         Self {
             lock: Arc::new(RwLock::new(())),
             owner: StdRwLock::new(None),
+            batches: Default::default(),
+            changed: tokio::sync::Notify::new(),
+        }
+    }
+
+    async fn batch(self: &Arc<Self>, owner_key: &str) -> BatchPermit {
+        let id = {
+            let mut queue = self.batches.lock().unwrap();
+            let id = queue.next_id;
+            queue.next_id += 1;
+            queue.waiting.push_back((id, owner_key.to_owned(), false));
+            id
+        };
+        let permit = BatchPermit {
+            gate: self.clone(),
+            id,
+        };
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            {
+                let mut queue = self.batches.lock().unwrap();
+                if !queue.waiting.iter().any(|entry| entry.2) {
+                    let owner = queue.waiting.front().unwrap().1.clone();
+                    // Snapshot the waiting cohort: new arrivals cannot starve
+                    // another engine already waiting for its turn.
+                    for entry in &mut queue.waiting {
+                        if entry.1 == owner {
+                            entry.2 = true;
+                        }
+                    }
+                    self.changed.notify_waiters();
+                }
+                if queue.waiting.iter().any(|entry| entry.0 == id && entry.2) {
+                    return permit;
+                }
+            }
+            changed.await;
         }
     }
 
@@ -49,6 +115,7 @@ impl ResourceGate {
 
     fn set_owner(&self, owner_key: String) {
         *self.owner.write().expect("resource owner lock poisoned") = Some(owner_key);
+        self.changed.notify_waiters();
     }
 
     fn clear_owner(&self) {
@@ -57,6 +124,9 @@ impl ResourceGate {
 
     async fn acquire(&self, owner_key: &str) -> ResourceAccess {
         loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             if self.is_owner(owner_key) {
                 let guard = self.lock.clone().read_owned().await;
                 if self.is_owner(owner_key) {
@@ -66,7 +136,11 @@ impl ResourceGate {
                 continue;
             }
 
-            let guard = self.lock.clone().write_owned().await;
+            let guard = tokio::select! {
+                biased;
+                _ = &mut changed => continue,
+                guard = self.lock.clone().write_owned() => guard,
+            };
             if self.is_owner(owner_key) {
                 return ResourceAccess::Shared(OwnedRwLockWriteGuard::downgrade(guard));
             }
@@ -81,6 +155,7 @@ pub struct ModelLease {
     pub engine: Arc<dyn InferenceEngine>,
     pub engine_model: String,
     _resource_guard: Option<OwnedRwLockReadGuard<()>>,
+    _batch: Option<BatchPermit>,
 }
 
 impl EngineRegistry {
@@ -191,11 +266,16 @@ impl EngineRegistry {
         *self.resource_gates.write().await = gates;
     }
 
-    pub async fn load_model(&self, model_id: &str) -> crate::error::Result<()> {
-        self.acquire_model(model_id).await.map(|_| ())
+    pub async fn acquire_model(&self, model_id: &str) -> crate::error::Result<ModelLease> {
+        self.acquire_model_for_request(model_id, &uuid::Uuid::new_v4().to_string())
+            .await
     }
 
-    pub async fn acquire_model(&self, model_id: &str) -> crate::error::Result<ModelLease> {
+    pub async fn acquire_model_for_request(
+        &self,
+        model_id: &str,
+        request_id: &str,
+    ) -> crate::error::Result<ModelLease> {
         let (target, engine_model) = self
             .resolve_engine_for_model(model_id)
             .await
@@ -217,22 +297,39 @@ impl EngineRegistry {
         let engines = self.all().await;
         let owned_target = target.clone();
         let owned_model = engine_model.clone();
+        let request_id = request_id.to_owned();
+        // Queue in the caller's future, not in a detached task. Cancellation
+        // before ownership is granted must never start an engine.
+        let batch = match &gate {
+            Some(gate) => Some(gate.batch(&owner_key).await),
+            None => None,
+        };
+        let access = match &gate {
+            Some(gate) => Some(gate.acquire(&owner_key).await),
+            None => None,
+        };
         // An abandoned HTTP/WebSocket task must not release the gate while an
         // external process is still starting or stopping.
         let work = self.drain.track_existing();
-        let resource_guard = tokio::spawn(async move {
+        let (resource_guard, batch) = tokio::spawn(async move {
+            let batch = batch;
             let _work = work;
             let target = owned_target;
             let engine_model = owned_model;
-            let guard = match gate {
-                Some(gate) => match gate.acquire(&owner_key).await {
+            let guard = match access {
+                Some(access) => match access {
                     ResourceAccess::Shared(guard) => {
-                        target.load_model(&engine_model).await?;
+                        tracing::info!(%request_id, model = %engine_model, engine = %target_type, "Request triggering model load/revalidation");
+                        target.load_model(&engine_model).await.inspect_err(|error| {
+                            tracing::error!(%request_id, model = %engine_model, engine = %target_type, %error, "Model load failed");
+                        })?;
                         Some(guard)
                     }
                     ResourceAccess::Exclusive(write_guard) => {
                         // A failed stop/start must not leave a stale shared-owner
                         // shortcut that bypasses cleanup on the next request.
+                        let gate = gate.as_ref().unwrap();
+                        let previous_owner = gate.owner.read().unwrap().clone();
                         gate.clear_owner();
                         if let Some(group) = group {
                             for engine in engines {
@@ -241,20 +338,37 @@ impl EngineRegistry {
                                 {
                                     continue;
                                 }
-                                engine.quiesce().await?;
+                                tracing::info!(%request_id, model = %engine_model, engine = %target_type,
+                                    evicted_engine = engine.engine_type(),
+                                    evicted_model = previous_owner.as_deref()
+                                        .and_then(|owner| owner.split_once('\0'))
+                                        .filter(|(kind, _)| *kind == engine.engine_type())
+                                        .map(|(_, model)| model),
+                                    "Request triggering engine unload");
+                                engine.quiesce().await.inspect_err(|error| {
+                                    tracing::error!(%request_id, model = %engine_model, engine = engine.engine_type(), %error, "Engine unload failed");
+                                })?;
                             }
                         }
-                        target.load_model(&engine_model).await?;
+                        tracing::info!(%request_id, model = %engine_model, engine = %target_type, "Request triggering model load/revalidation");
+                        target.load_model(&engine_model).await.inspect_err(|error| {
+                            tracing::error!(%request_id, model = %engine_model, engine = %target_type, %error, "Model load failed");
+                        })?;
+                        tracing::info!(%request_id, model = %engine_model, engine = %target_type,
+                            previous_owner = ?previous_owner, "Model resource transition complete");
                         gate.set_owner(owner_key);
                         Some(OwnedRwLockWriteGuard::downgrade(write_guard))
                     }
                 },
                 None => {
-                    target.load_model(&engine_model).await?;
+                    tracing::info!(%request_id, model = %engine_model, engine = %target_type, "Request triggering model load/revalidation");
+                    target.load_model(&engine_model).await.inspect_err(|error| {
+                            tracing::error!(%request_id, model = %engine_model, engine = %target_type, %error, "Model load failed");
+                        })?;
                     None
                 }
             };
-            Ok::<_, crate::error::Error>(guard)
+            Ok::<_, crate::error::Error>((guard, batch))
         })
         .await
         .map_err(|e| crate::error::Error::Internal(e.to_string()))??;
@@ -262,6 +376,7 @@ impl EngineRegistry {
             engine: target,
             engine_model,
             _resource_guard: resource_guard,
+            _batch: batch,
         })
     }
 
@@ -296,6 +411,228 @@ impl Default for EngineRegistry {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    struct FakeEngine {
+        kind: &'static str,
+        loaded: std::sync::atomic::AtomicBool,
+        events: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl InferenceEngine for FakeEngine {
+        fn engine_type(&self) -> &'static str {
+            self.kind
+        }
+        async fn health_check(&self) -> crate::error::Result<super::super::EngineHealth> {
+            Ok(super::super::EngineHealth {
+                is_healthy: true,
+                version: None,
+                models_loaded: vec![],
+            })
+        }
+        async fn list_models(&self) -> crate::error::Result<Vec<super::super::ModelInfo>> {
+            Ok(vec![])
+        }
+        async fn get_model(
+            &self,
+            id: &str,
+        ) -> crate::error::Result<Option<super::super::ModelInfo>> {
+            Ok((id == self.kind).then(|| super::super::ModelInfo {
+                id: id.into(),
+                name: id.into(),
+                revision: None,
+                size_bytes: None,
+                parameter_count: None,
+                context_length: None,
+                quantization: None,
+                modified_at: None,
+                reasoning: None,
+            }))
+        }
+        async fn load_model(&self, _: &str) -> crate::error::Result<()> {
+            if !self.loaded.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                self.events
+                    .lock()
+                    .unwrap()
+                    .push(format!("load {}", self.kind));
+                tokio::task::yield_now().await;
+            }
+            Ok(())
+        }
+        async fn unload_model(&self, _: &str) -> crate::error::Result<()> {
+            self.quiesce().await
+        }
+        async fn quiesce(&self) -> crate::error::Result<()> {
+            if self.loaded.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                self.events
+                    .lock()
+                    .unwrap()
+                    .push(format!("unload {}", self.kind));
+            }
+            Ok(())
+        }
+        async fn chat_completion(
+            &self,
+            _: &str,
+            _: &simple_ai_common::ChatCompletionRequest,
+        ) -> crate::error::Result<simple_ai_common::ChatCompletionResponse> {
+            assert!(self.loaded.load(std::sync::atomic::Ordering::SeqCst));
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("serve {}", self.kind));
+            Ok(serde_json::from_value(serde_json::json!({
+                "id":"fake", "object":"chat.completion", "created":0, "model": self.kind, "choices":[]
+            })).unwrap())
+        }
+        async fn chat_completion_stream(
+            &self,
+            _: &str,
+            _: &simple_ai_common::ChatCompletionRequest,
+        ) -> crate::error::Result<super::super::ChatCompletionStream> {
+            unimplemented!()
+        }
+    }
+
+    async fn fake_registry() -> (Arc<EngineRegistry>, Arc<std::sync::Mutex<Vec<String>>>) {
+        let registry = Arc::new(EngineRegistry::new());
+        let events = Arc::new(std::sync::Mutex::new(vec![]));
+        for kind in ["tag", "code"] {
+            registry
+                .register(Arc::new(FakeEngine {
+                    kind,
+                    loaded: std::sync::atomic::AtomicBool::new(false),
+                    events: events.clone(),
+                }))
+                .await;
+        }
+        registry
+            .set_engine_resources(HashMap::from([
+                ("tag".into(), "gpu".into()),
+                ("code".into(), "gpu".into()),
+            ]))
+            .await;
+        (registry, events)
+    }
+
+    async fn wait_for_queue(registry: &EngineRegistry, count: usize) {
+        let gate = registry.resource_gates.read().await["gpu"].clone();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if gate.batches.lock().unwrap().waiting.len() == count {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("queue did not reach expected size");
+    }
+
+    #[tokio::test]
+    async fn alternating_engines_drain_finite_batches_before_switching() {
+        let (registry, events) = fake_registry().await;
+        let first = registry.acquire_model("tag").await.unwrap();
+        let mut callers = vec![];
+        for (index, model) in ["code", "tag", "code", "tag"].into_iter().enumerate() {
+            let registry_copy = registry.clone();
+            callers.push(tokio::spawn(async move {
+                let lease = registry_copy.acquire_model(model).await.unwrap();
+                lease
+                    .engine
+                    .chat_completion(
+                        &lease.engine_model,
+                        &serde_json::from_value(serde_json::json!({"messages":[]})).unwrap(),
+                    )
+                    .await
+                    .unwrap();
+            }));
+            wait_for_queue(&registry, index + 2).await;
+        }
+        drop(first);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            for caller in callers {
+                caller.await.unwrap();
+            }
+        })
+        .await
+        .expect("alternating requests must make progress");
+        assert_eq!(
+            *events.lock().unwrap(),
+            [
+                "load tag",
+                "unload tag",
+                "load code",
+                "serve code",
+                "serve code",
+                "unload code",
+                "load tag",
+                "serve tag",
+                "serve tag",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelled_waiters_never_load_or_unload_an_engine() {
+        let (registry, events) = fake_registry().await;
+        let lease = registry.acquire_model("tag").await.unwrap();
+        for model in ["code", "tag", "code"] {
+            let r = registry.clone();
+            let caller = tokio::spawn(async move { r.acquire_model(model).await });
+            wait_for_queue(&registry, 2).await;
+            caller.abort();
+            assert!(matches!(caller.await, Err(error) if error.is_cancelled()));
+            wait_for_queue(&registry, 1).await;
+        }
+        drop(lease);
+        drop(registry.acquire_model("tag").await.unwrap());
+        assert_eq!(*events.lock().unwrap(), ["load tag"]);
+    }
+
+    #[tokio::test]
+    async fn disconnected_http_client_and_expired_deadline_remove_waiters() {
+        use simple_server::lifecycle::{Lifecycle, ShutdownOptions};
+        use tokio::io::AsyncWriteExt;
+        let (registry, events) = fake_registry().await;
+        let held = registry.acquire_model("tag").await.unwrap();
+        let config = serde_json::from_value(serde_json::json!({
+            "runner":{"id":"test", "name":"test"}, "api":{}
+        }))
+        .unwrap();
+        let state = Arc::new(crate::state::AppState::new(config, registry.clone(), None));
+        let app = crate::api::chat::router().with_state(state);
+        let listener = simple_server::http::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let lifecycle = Lifecycle::new(ShutdownOptions {
+            grace_period: Duration::from_secs(1),
+        });
+        let shutdown = lifecycle.shutdown();
+        let server = tokio::spawn(simple_server::web::serve(listener, app, shutdown));
+        let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let body = r#"{"model":"code","messages":[]}"#;
+        socket.write_all(format!("POST /chat/completions HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}", body.len(), body).as_bytes()).await.unwrap();
+        wait_for_queue(&registry, 2).await;
+        drop(socket);
+        wait_for_queue(&registry, 1).await;
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/chat/completions"))
+            .header(
+                "x-simple-ai-deadline",
+                (chrono::Utc::now().timestamp_millis() + 50).to_string(),
+            )
+            .json(&serde_json::json!({"model":"code", "messages":[]}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 504);
+        wait_for_queue(&registry, 1).await;
+        drop(held);
+        drop(registry.acquire_model("tag").await.unwrap());
+        assert_eq!(*events.lock().unwrap(), ["load tag"]);
+        server.abort();
+        let _ = server.await;
+    }
 
     struct SlowEngine {
         kind: &'static str,
