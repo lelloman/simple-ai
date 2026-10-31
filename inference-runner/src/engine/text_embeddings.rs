@@ -1,4 +1,4 @@
-//! Managed CUDA Qwen embedding process. Loading/unloading is exclusive with in-flight requests.
+//! Managed CPU/CUDA Qwen embedding process. Loading/unloading is exclusive with in-flight requests.
 use super::{ChatCompletionStream, EngineHealth, InferenceEngine, ModelInfo};
 use crate::{
     config::TextEmbeddingEngineConfig,
@@ -29,6 +29,11 @@ impl TextEmbeddingEngine {
         if config.command.is_empty() || config.batch_size == 0 || config.batch_size > 256 {
             return Err(Error::InvalidRequest(
                 "embedding command and batch size 1–256 required".into(),
+            ));
+        }
+        if !matches!(config.device.as_str(), "cpu" | "cuda") {
+            return Err(Error::InvalidRequest(
+                "embedding device must be cpu or cuda".into(),
             ));
         }
         let client = Client::builder()
@@ -64,7 +69,14 @@ impl TextEmbeddingEngine {
             size_bytes: None,
             parameter_count: Some(600_000_000),
             context_length: Some(512),
-            quantization: Some("F16".into()),
+            quantization: Some(
+                if self.config.device == "cpu" {
+                    "F32"
+                } else {
+                    "F16"
+                }
+                .into(),
+            ),
             modified_at: None,
             reasoning: None,
         }
@@ -129,7 +141,7 @@ impl InferenceEngine for TextEmbeddingEngine {
             "--revision",
             simple_ai_common::text_embeddings::REVISION,
             "--device",
-            "cuda",
+            &self.config.device,
             "--port",
             &port.to_string(),
             "--batch-size",
@@ -241,6 +253,28 @@ impl InferenceEngine for TextEmbeddingEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_metadata_and_device_validation() {
+        let config = TextEmbeddingEngineConfig {
+            command: vec!["python3".into()],
+            device: "cpu".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            TextEmbeddingEngine::new(config.clone())
+                .unwrap()
+                .info()
+                .quantization
+                .as_deref(),
+            Some("F32")
+        );
+        let invalid = TextEmbeddingEngineConfig {
+            device: "rocm".into(),
+            ..config
+        };
+        assert!(TextEmbeddingEngine::new(invalid).is_err());
+    }
 
     #[tokio::test]
     async fn unload_waits_for_cancelled_caller_and_provider_can_reload() {

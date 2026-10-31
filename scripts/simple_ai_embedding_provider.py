@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline CUDA Qwen3 embeddings. Raw texts; no implicit instruction prefix."""
+"""Offline CPU/CUDA Qwen3 embeddings. Raw texts; no implicit instruction prefix."""
 from __future__ import annotations
 import argparse
 import json
@@ -46,22 +46,23 @@ class Provider:
         import torch
         from transformers import AutoModel, AutoTokenizer
         from huggingface_hub import snapshot_download
-        if args.model != MODEL_ID or args.revision != REVISION or args.device != "cuda":
-            raise ValueError("only the pinned Qwen CUDA model is supported")
-        if not torch.cuda.is_available():
+        if args.model != MODEL_ID or args.revision != REVISION or args.device not in ("cpu", "cuda"):
+            raise ValueError("only the pinned Qwen CPU/CUDA model is supported")
+        if args.device == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA requested but unavailable")
         self.torch, self.batch_size = torch, args.batch_size
+        self.device = args.device
         self.lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(8)
         torch.set_num_threads(args.num_threads)
         torch.set_num_interop_threads(1)
         path = args.model_path or snapshot_download(MODEL_ID, revision=REVISION, local_files_only=True)
         self.tokenizer = AutoTokenizer.from_pretrained(path, padding_side="left", local_files_only=True)
-        self.model = AutoModel.from_pretrained(path, torch_dtype=torch.float16,
-                                              attn_implementation="sdpa", local_files_only=True).to("cuda").eval()
+        self.model = AutoModel.from_pretrained(path, torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                                              attn_implementation="sdpa", local_files_only=True).to(self.device).eval()
 
     def health(self):
-        return {"status": "ok", "model": MODEL_ID, "revision": REVISION, "device": "cuda"}
+        return {"status": "ok", "model": MODEL_ID, "revision": REVISION, "device": self.device}
 
     def embed(self, payload):
         texts = validate(payload)
@@ -73,7 +74,7 @@ class Provider:
                 data, tokens = [], 0
                 for start in range(0, len(texts), self.batch_size):
                     encoded = self.tokenizer(texts[start:start+self.batch_size], padding=True,
-                                             truncation=True, max_length=512, return_tensors="pt").to("cuda")
+                                             truncation=True, max_length=512, return_tensors="pt").to(self.device)
                     tokens += int(encoded["attention_mask"].sum().item())
                     hidden = self.model(**encoded).last_hidden_state
                     for vector in vectors(self.torch, hidden, encoded["attention_mask"]):
@@ -129,7 +130,7 @@ def main():
     parser.add_argument("--revision", default=REVISION)
     parser.add_argument("--model-path")
     parser.add_argument("--port", type=int, required=True)
-    parser.add_argument("--device", choices=["cuda"], default="cuda")
+    parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-threads", type=int, default=4)
     args = parser.parse_args()

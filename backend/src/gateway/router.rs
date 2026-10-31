@@ -1328,6 +1328,20 @@ impl InferenceRouter {
         &self,
         model_id: &str,
     ) -> Result<ConnectedRunner, RouterError> {
+        // Interactive query embeddings must never evict RTX batch engines, even
+        // when Halo is offline or its model is cold. Deliberately no RTX fallback.
+        if model_id.eq_ignore_ascii_case(simple_ai_common::text_embeddings::MODEL_ID) {
+            let candidates = self
+                .filter_available(self.registry.with_available_model(model_id).await)
+                .into_iter()
+                .filter(|runner| runner.id == "strix-halo-02")
+                .collect::<Vec<_>>();
+            return if candidates.is_empty() {
+                Err(RouterError::NoRunners)
+            } else {
+                Ok(self.select_from_candidates(&candidates))
+            };
+        }
         let with_model = self.filter_available(self.registry.with_model(model_id).await);
         if with_model.is_empty() {
             let compatible =
@@ -2859,6 +2873,53 @@ mod tests {
         server.abort();
     }
     #[tokio::test]
+    async fn small_embeddings_choose_busy_cold_halo_over_loaded_rtx_and_never_fall_back() {
+        let registry = Arc::new(RunnerRegistry::new());
+        let model = simple_ai_common::text_embeddings::MODEL_ID;
+        let mut senders = Vec::new();
+        for (id, loaded) in [("gpu-server-rtx", true), ("strix-halo-02", false)] {
+            let (tx, rx) = mpsc::channel(32);
+            senders.push(rx);
+            let mut status = create_test_status(vec![model.into()]);
+            if !loaded {
+                status.engines[0].loaded_models.clear();
+            }
+            registry
+                .register(
+                    id.into(),
+                    id.into(),
+                    None,
+                    status,
+                    Some("http://localhost:8080".into()),
+                    tx,
+                    None,
+                )
+                .await;
+        }
+        registry
+            .get("strix-halo-02")
+            .await
+            .unwrap()
+            .active_requests
+            .store(100, Ordering::SeqCst);
+        let router = create_test_router(registry.clone());
+        for selector in [model.to_string(), model.to_lowercase()]
+            .iter()
+            .cycle()
+            .take(10)
+        {
+            let selected = router.select_runner_for_model(selector).await.unwrap();
+            assert_eq!(selected.runner.id, "strix-halo-02");
+            assert!(!selected.is_loaded);
+        }
+        registry.unregister("strix-halo-02").await;
+        assert!(matches!(
+            router.select_runner_for_model(model).await,
+            Err(RouterError::NoRunners)
+        ));
+    }
+
+    #[tokio::test]
     async fn qwen_embedding_explicit_id_routes_to_embedding_endpoint_and_lists_model() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -2879,9 +2940,9 @@ mod tests {
         let (tx, _rx) = mpsc::channel(32);
         registry
             .register(
-                "gpu-server-rtx".into(),
-                "RTX".into(),
-                Some("gpu-server".into()),
+                "strix-halo-02".into(),
+                "Halo 2".into(),
+                Some("halo".into()),
                 create_test_status(vec!["Qwen/Qwen3-Embedding-0.6B".into()]),
                 Some(format!("http://{addr}")),
                 tx,
@@ -2905,7 +2966,7 @@ mod tests {
             .embed::<_, serde_json::Value>(simple_ai_common::text_embeddings::MODEL_ID, &request)
             .await
             .unwrap();
-        assert_eq!(result.runner_id, "gpu-server-rtx");
+        assert_eq!(result.runner_id, "strix-halo-02");
         assert_eq!(
             result.resolved_model,
             simple_ai_common::text_embeddings::MODEL_ID

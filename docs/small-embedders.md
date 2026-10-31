@@ -1,5 +1,9 @@
 # Qwen3 PyTorch embeddings (AI-59)
 
+For the staged Halo2 replacement and its mandatory parity gate, see
+[AI-65 operator rollout](halo2-embeddings.md). The RTX rollout below describes
+the original deployment; the AI-65 backend routes this checkpoint only to Halo2.
+
 Serve **Qwen/Qwen3-Embedding-0.6B** on **gpu-server-rtx** through
 `POST /v1/embeddings`. It is discovered through `GET /v1/models` once the
 updated RTX runner registers. Selecting this explicit id requires the existing

@@ -872,6 +872,34 @@ mod tests {
     use config::FileFormat;
 
     #[test]
+    fn halo_embedding_overlay_is_independent_and_rtx_stays_cuda() {
+        let halo: Config = ConfigLoader::builder()
+            .add_source(File::from_str(
+                include_str!("../../deploy/halogen/halo2.runner.example.toml"),
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(
+                include_str!("../../deploy/pytorch-embeddings/halo2.runner-overlay.toml"),
+                FileFormat::Toml,
+            ))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+        assert_eq!(halo.engines.text_embeddings.device, "cpu");
+        assert_eq!(halo.engines.text_embeddings.batch_size, 8);
+        let group = &halo.engine_resources["text_embeddings"];
+        for peer in ["halogen", "decisions", "llama_cpp"] {
+            assert_ne!(group, &halo.engine_resources[peer]);
+        }
+        assert_eq!(
+            halo.model_routes[&simple_ai_common::text_embeddings::MODEL_ID.to_lowercase()].engine,
+            "text_embeddings"
+        );
+        assert_eq!(TextEmbeddingEngineConfig::default().device, "cuda");
+    }
+
+    #[test]
     fn tag_vllm_defaults_are_only_used_when_args_are_absent() {
         let absent: TagEngineConfig = serde_json::from_str("{}").unwrap();
         assert!(absent.vllm_args.is_none());
@@ -1149,6 +1177,7 @@ pub struct TextEmbeddingEngineConfig {
     pub command: Vec<String>,
     pub model_path: Option<String>,
     pub batch_size: u32,
+    pub device: String,
 }
 impl Default for TextEmbeddingEngineConfig {
     fn default() -> Self {
@@ -1157,6 +1186,7 @@ impl Default for TextEmbeddingEngineConfig {
             command: vec![],
             model_path: None,
             batch_size: 64,
+            device: "cuda".into(),
         }
     }
 }

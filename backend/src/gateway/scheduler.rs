@@ -668,6 +668,18 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         affinity: Option<AffinityContext>,
     ) -> Result<PreparedRequest, SchedulerError> {
+        // The small query embedder has one dedicated host. Never prepare an
+        // RTX fallback, speculative target, or extra capacity for this model.
+        if model.eq_ignore_ascii_case(simple_ai_common::text_embeddings::MODEL_ID) {
+            let plan = self.inference_router.plan_request(model).await?;
+            if !plan.is_loaded {
+                self.prepare_runner_model(request_id, &plan).await?;
+            }
+            return Ok(PreparedRequest {
+                plan,
+                wol_sent: false,
+            });
+        }
         let prepared = self
             .prepare_for_request_inner(request_id, model, model_request, affinity)
             .await?;
@@ -1326,6 +1338,53 @@ mod decision_race_tests {
             }
         });
         count
+    }
+
+    #[tokio::test]
+    async fn small_embeddings_never_prepare_rtx_or_expand_capacity() {
+        let (s, audit) = setup();
+        let model = simple_ai_common::text_embeddings::MODEL_ID;
+        audit
+            .upsert_runner(
+                "gpu-server-rtx",
+                "RTX",
+                Some("00:11:22:33:44:55"),
+                Some("gpu-server"),
+                Some(&[model.into()]),
+            )
+            .unwrap();
+        let request = ModelRequest::parse(model);
+        assert!(matches!(
+            timeout(
+                Duration::from_millis(200),
+                s.prepare_for_request("offline", model, &request, None)
+            )
+            .await
+            .unwrap(),
+            Err(SchedulerError::Router(RouterError::NoRunners))
+        ));
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let mut halo_status = status(true);
+        halo_status.engines[0].loaded_models = vec![model.into()];
+        halo_status.engines[0].available_models[0].id = model.into();
+        s.runner_registry
+            .register(
+                "strix-halo-02".into(),
+                "Halo".into(),
+                Some("halo".into()),
+                halo_status,
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let prepared = s
+            .prepare_for_request("online", model, &request, None)
+            .await
+            .unwrap();
+        assert_eq!(prepared.plan.runner.id, "strix-halo-02");
+        assert!(!prepared.wol_sent);
+        assert!(s.capacity_monitors.lock().await.is_empty());
     }
 
     #[tokio::test]
