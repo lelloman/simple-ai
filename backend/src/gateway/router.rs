@@ -1085,7 +1085,8 @@ impl InferenceRouter {
             .ok_or(RouterError::StalePlan)?;
         if current.generation != plan.runner.generation
             || !current.is_dispatchable()
-            || !current.has_model_or_alias(&plan.resolved_model)
+            || !(current.has_model_or_alias(&plan.resolved_model)
+                || current.has_available_model_or_alias(&plan.resolved_model))
             || self
                 .circuit_breaker
                 .as_ref()
@@ -1149,7 +1150,7 @@ impl InferenceRouter {
                 &current.id,
                 current.generation,
                 Some(&plan.resolved_model),
-                true,
+                false,
             )
             .await
         else {
@@ -1739,9 +1740,22 @@ impl InferenceRouter {
         let url = format!("{}{}", base_url, path);
         tracing::debug!("Proxying request to {} (runner: {})", url, runner.id);
 
+        let proxy_request_id = uuid::Uuid::new_v4().to_string();
+        tracing::info!(%proxy_request_id, runner_id = %runner.id, model = ?request.get("model"), "Dispatching runner request");
         let response = self
             .http_client
             .post(&url)
+            .header("x-request-id", &proxy_request_id)
+            .header(
+                "x-simple-ai-deadline",
+                (chrono::Utc::now().timestamp_millis()
+                    + if path == "/v1/decisions" {
+                        960_000
+                    } else {
+                        300_000
+                    })
+                .to_string(),
+            )
             .timeout(std::time::Duration::from_secs(if path == "/v1/decisions" {
                 960
             } else {
@@ -1784,9 +1798,12 @@ impl InferenceRouter {
             runner.id
         );
 
+        let proxy_request_id = uuid::Uuid::new_v4().to_string();
+        tracing::info!(%proxy_request_id, runner_id = %runner.id, model = ?request.get("model"), "Dispatching runner stream");
         let response = self
             .streaming_http_client
             .post(&url)
+            .header("x-request-id", &proxy_request_id)
             .json(&request)
             .send()
             .await
