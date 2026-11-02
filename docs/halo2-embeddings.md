@@ -91,11 +91,19 @@ application-specific rule. Class/alias resolution still uses existing mappings.
   ineligible. Busy runners are skipped using the dispatcher's existing
   runner-wide active count and model batch capacity; this may reject while an
   independent CPU engine could theoretically take more work.
-- If neither is possible, return **HTTP 503**, with a message explaining that
-  no runner can serve without an engine swap. Do not wake, prepare or expand
-  capacity in the background. Halo down + RTX cold with another engine loaded
-  therefore fails immediately. RTX warm with capacity can still serve during
-  a Halo outage.
+- If no online runner can serve safely, use the existing wake preference to
+  wake compatible enabled offline runners when auto-wake is enabled, then plan
+  again with swaps disabled. Unrelated runner registrations do not complete
+  this wait: it continues within the same wake deadline until a safe plan exists.
+  The runner HTTP request cold-loads under its live no-swap admission check;
+  waking never authorizes eviction on an online runner. If nothing qualifies,
+  return **HTTP 503** explaining that no runner can serve without an engine swap.
+  No speculative capacity expansion is started after dispatch.
+- Wake/registration has the existing 480-second default budget, followed by a
+  separate 300-second HTTP load/inference budget. Halo2's expected first-query
+  latency is roughly 64–94 seconds (60–90 seconds boot plus about four seconds
+  load), plus inference. Explicit shorter wake overrides and caller/proxy
+  deadlines can still expire sooner.
 - Bulk callers explicitly send **`"allow_engine_swap": true`** to prefer an
   online GPU runner even if its embedder is cold or another engine must be
   swapped. The normal resource queue drains other engines' in-flight work
@@ -218,8 +226,8 @@ embedding requests during this maintenance window.
    - Both embedders warm/idle: default requests prefer RTX.
    - Drained bulk maintenance window: opt-in requests load on RTX and permit
      a swap after other in-flight work drains.
-   - Halo unavailable + RTX cold/another engine resident: default requests
-     return 503 promptly and leave RTX untouched. Opt-in retains ordinary
+   - Halo asleep + RTX cold/another engine resident: default requests wake
+     Halo and serve without disturbing RTX. If Halo cannot qualify, return 503. Opt-in retains ordinary
      queue/load/wake behavior. Restore Halo before resuming interactive use.
    - RTX embedder saturated: default requests use safe halo2 capacity, or 503
      if no safe capacity is available. A stale selection may also return 503;

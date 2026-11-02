@@ -229,6 +229,52 @@ impl RequestScheduler {
                     prepared.wol_sent,
                 )
             }
+            Err(error @ RouterError::NoNonEvictingRunner(_)) if !request.allow_engine_swap => {
+                // Wake only offline capacity for the resolved model. Never use chat
+                // preparation here: it could select and evict an online engine.
+                let resolved_request = self
+                    .inference_router
+                    .plan_request(model)
+                    .await
+                    .ok()
+                    .map(|plan| ModelRequest::Specific(plan.resolved_model));
+                let wake_request = resolved_request.as_ref().unwrap_or(model_request);
+                if !self.wake_service.is_enabled()
+                    || self
+                        .wake_service
+                        .find_wakeable_runners(Some(wake_request))
+                        .await?
+                        .is_empty()
+                {
+                    return Err(error.into());
+                }
+                // The shared wake helper may finish on an unrelated connection.
+                // Subscribe before waking and retain one deadline until safe capacity
+                // actually exists, including registrations during the wake call.
+                let mut events = self.runner_registry.subscribe_events();
+                let wake_timeout = self.wake_service.wake_timeout();
+                let plan = timeout(wake_timeout, async {
+                    self.wake_service
+                        .speculative_wake_and_wait(wake_request)
+                        .await?;
+                    loop {
+                        match self.inference_router.plan_embeddings(model, false).await {
+                            Ok(plan) => return Ok(plan),
+                            Err(RouterError::NoNonEvictingRunner(_)) => {}
+                            Err(error) => return Err(SchedulerError::Router(error)),
+                        }
+                        match events.recv().await {
+                            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                return Err(SchedulerError::Router(error));
+                            }
+                        }
+                    }
+                })
+                .await
+                .map_err(|_| WakeError::Timeout(wake_timeout.as_secs()))??;
+                (plan, true)
+            }
             Err(error) => return Err(error.into()),
         };
         let _activity = self.wake_service.keep_runner_awake(plan.runner.id.clone());
@@ -1458,6 +1504,157 @@ mod decision_race_tests {
     }
 
     #[tokio::test]
+    async fn default_embeddings_without_matching_offline_capacity_return_503() {
+        let (mut s, audit) = setup();
+        let socket = capacity_wake_setup(&mut s, &audit).await;
+        let request = serde_json::from_value(
+            serde_json::json!({"model":"unavailable-embedder","input":"query"}),
+        )
+        .unwrap();
+        let result = s
+            .embeddings(
+                "no-capacity",
+                "unavailable-embedder",
+                &ModelRequest::Specific("unavailable-embedder".into()),
+                &request,
+            )
+            .await;
+        assert!(matches!(
+            result,
+            Err(SchedulerError::Router(RouterError::NoNonEvictingRunner(_)))
+        ));
+        let mut packet = [0; 1024];
+        assert!(timeout(Duration::from_millis(50), socket.recv(&mut packet))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn default_embeddings_wake_offline_capacity_without_swapping() {
+        use simple_server::web::{routing::post, Json, Router};
+        for (busy_online, speculative) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let (mut s, audit) = setup();
+            s.routing_config.speculative_wake_enabled = speculative;
+            let socket = capacity_wake_setup(&mut s, &audit).await;
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let app = Router::new().route("/v1/embeddings", post(|Json(body): Json<serde_json::Value>| async move {
+                assert_eq!(body["allow_engine_swap"], false);
+                Json(serde_json::json!({"object":"list", "model":DECISION_MODEL, "data":[], "usage":{"prompt_tokens":1,"total_tokens":1}}))
+            }));
+            let server = tokio::spawn(async move {
+                simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                    .await
+                    .unwrap();
+            });
+            let busy_loads = if busy_online {
+                let loads = runner(
+                    &s,
+                    &audit,
+                    "busy",
+                    "gpu-server",
+                    false,
+                    Duration::ZERO,
+                    false,
+                )
+                .await;
+                let mut conflict = status(false);
+                let mut peer = conflict.engines[0].clone();
+                peer.engine_type = "tag".into();
+                peer.loaded_models = vec!["tag-model".into()];
+                peer.available_models.clear();
+                conflict.engines.push(peer);
+                s.runner_registry.update_status("busy", conflict).await;
+                Some(loads)
+            } else {
+                None
+            };
+            let request =
+                serde_json::from_value(serde_json::json!({"model":DECISION_MODEL,"input":"query"}))
+                    .unwrap();
+            let register = async {
+                let mut packet = [0; 1024];
+                timeout(Duration::from_secs(1), socket.recv(&mut packet))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                // An unrelated reconnect must not end the embedding wake wait.
+                let (unrelated_tx, _unrelated_rx) = tokio::sync::mpsc::channel(4);
+                let mut unrelated = status(false);
+                unrelated.engines[0].available_models.clear();
+                s.runner_registry
+                    .register(
+                        "unrelated".into(),
+                        "unrelated".into(),
+                        None,
+                        unrelated,
+                        None,
+                        unrelated_tx,
+                        None,
+                    )
+                    .await;
+                sleep(Duration::from_millis(50)).await;
+                let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+                let mut independent = status(false);
+                independent.engines[0].resource_group = Some("cpu:embed".into());
+                s.runner_registry
+                    .register(
+                        "offline".into(),
+                        "offline".into(),
+                        Some("halo".into()),
+                        independent,
+                        Some(url),
+                        tx,
+                        None,
+                    )
+                    .await;
+                // HTTP owns cold loading; no detached WebSocket preparation.
+                sleep(Duration::from_millis(50)).await;
+                assert!(rx.try_recv().is_err());
+            };
+            let model_request = ModelRequest::Specific(DECISION_MODEL.into());
+            let (response, ()) = tokio::join!(
+                s.embeddings("wake-embed", DECISION_MODEL, &model_request, &request),
+                register
+            );
+            let response = response.unwrap();
+            assert_eq!(response.runner_id, "offline");
+            assert!(response.wol_sent);
+            audit
+                .upsert_runner(
+                    "spare-offline",
+                    "spare",
+                    Some("00:11:22:33:44:77"),
+                    Some("halo"),
+                    Some(&[DECISION_MODEL.into()]),
+                )
+                .unwrap();
+            let response = s
+                .embeddings("online-safe", DECISION_MODEL, &model_request, &request)
+                .await
+                .unwrap();
+            assert_eq!(response.runner_id, "offline");
+            assert!(!response.wol_sent);
+            let mut packet = [0; 1024];
+            assert!(timeout(Duration::from_millis(50), socket.recv(&mut packet))
+                .await
+                .is_err());
+            if let Some(loads) = busy_loads {
+                assert_eq!(loads.load(Ordering::SeqCst), 0);
+                assert!(s
+                    .runner_registry
+                    .get("busy")
+                    .await
+                    .unwrap()
+                    .has_model_or_alias("tag-model"));
+            }
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
     async fn online_chat_reserves_cold_model_without_detached_load_command() {
         let (scheduler, audit) = setup_with_fast(true);
         let loads = runner(
@@ -1605,7 +1802,10 @@ mod decision_race_tests {
                 port: socket.local_addr().unwrap().port(),
                 ..Default::default()
             },
-            ModelsConfig::default(),
+            ModelsConfig {
+                semantic_decisions: vec![DECISION_MODEL.into()],
+                ..Default::default()
+            },
             s.routing_config.clone(),
         ));
         audit
