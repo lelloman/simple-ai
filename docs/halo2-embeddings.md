@@ -1,6 +1,6 @@
 # Halo2 query embeddings (AI-65)
 
-Status: staged, **not qualified for rollout**. No parity or live headroom result
+Status: branch ready for operator staging, **not qualified for rollout**. No parity or live headroom result
 has been collected by the agent. Do not enable the new backend routing until
 the operator records the checks below.
 
@@ -23,14 +23,60 @@ Live free memory under the largest supported Halogen workload has **not**
 been established; the operator must measure it, including CPU providers.
 Do not infer headroom from nominal host RAM or the small checkpoint alone.
 
-Routing is deliberately fixed to runner ID strix-halo-02 for this explicit
-checkpoint. There is **no RTX fallback**, including when Halo is cold, offline,
-draining, disabled, or circuit-broken. Selection fails with the existing
-no-runner error when Halo is unavailable. This protects RTX batches through
-outages as well as normal operation. Automatic wake, speculative preparation and capacity expansion are skipped for
-this model; halo2 must already be connected. Other embedding model IDs/classes keep
-their routes. No gateway API or wire protocol changes are needed; older RTX
-runners continue to work. The new halo2 config requires the updated runner.
+## Generic embedding routing
+
+This policy applies to **all gateway embedding requests**, whether selected by
+concrete model, alias or embedding class; it has no checkpoint, host-ID or
+application-specific rule. Class/alias resolution still uses existing mappings.
+
+- With `allow_engine_swap` omitted or `false`, use a runner with the resolved
+  embedding model already loaded and spare advertised capacity. Prefer the
+  existing `gpu-server` machine type when multiple warm runners qualify.
+- If no warm runner has capacity, allow a cold load only when the advertised
+  resource group has no conflicting loaded engine or other model. For this
+  deployment that normally means halo2's independent CPU group, while RTX tags
+  or summarizes. A cold runner missing resource metadata is conservatively
+  ineligible. Busy runners are skipped using the dispatcher's existing
+  runner-wide active count and model batch capacity; this may reject while an
+  independent CPU engine could theoretically take more work.
+- If neither is possible, return **HTTP 503**, with a message explaining that
+  no runner can serve without an engine swap. Do not wake, prepare or expand
+  capacity in the background. Halo down + RTX cold with another engine loaded
+  therefore fails immediately. RTX warm with capacity can still serve during
+  a Halo outage.
+- Bulk callers explicitly send **`"allow_engine_swap": true`** to prefer an
+  online GPU runner even if its embedder is cold or another engine must be
+  swapped. The normal resource queue drains other engines' in-flight work
+  before loading. If no compatible runner is online, this opt-in retains the
+  existing configured wake/preparation path. Without an online GPU, another
+  compatible online runner may serve, as before; opt-in does not require a
+  particular host. No speculative/capacity expansion is started by embeddings.
+
+Example request bodies for `POST /v1/embeddings`:
+
+```json
+{"model":"Qwen/Qwen3-Embedding-0.6B","input":"interactive query"}
+```
+
+```json
+{"model":"Qwen/Qwen3-Embedding-0.6B","input":["bulk document"],"allow_engine_swap":true}
+```
+
+The boolean defaults to false and is forwarded to the runner. Upgraded runners
+recheck live engine state under the existing resource gate, keeping the lease
+through inference. If another engine wins after gateway selection, the default
+request is rejected with 503 rather than retried on a swapping route. Default
+acquisition does not call peer unload/quiesce, queue behind a conflicting engine,
+or switch models inside the same engine. Ungrouped engines require opt-in at
+the runner because independence cannot be established. Direct legacy Ollama mode
+(`gateway.enabled=false`) similarly requires opt-in: it has no registry state.
+
+There is no new gateway configuration, class, permission or WebSocket protocol
+field. The optional HTTP field is backward compatible for opt-in requests, but
+old runners cannot enforce the new no-swap policy after a stale selection.
+**Upgrade both embedding runners before the backend.** Other engine APIs keep
+their existing acquisition behavior. Both runners must use this checkpoint's
+qualified tokenizer/pooling/normalisation/dimension before mixed routing starts.
 
 ## Exact configuration changes
 
@@ -41,12 +87,15 @@ engines, aliases, routes and credentials.
 
 Backend config.toml diff: **empty**. Routing policy is in the backend, with
 no new preference settings or class mappings. RTX config diff: **empty**;
-keep its engine and cuda:0 group for rollback and direct parity measurements.
+keep its engine and cuda:0 group for GPU bulk work and direct parity measurements.
 
 ## Operator installation and gate
 
 Agents do not perform these steps. Back up halo2's runner binary/config,
-provider files and backend image reference first.
+provider files, RTX runner binary and backend image reference first. Pause
+embedding callers until qualification and backend rollout finish: the previous
+backend strips the opt-in field, so upgraded runners may safely reject its
+embedding requests during this maintenance window.
 
 1. On halo2, create an isolated CPU environment (do not run the CUDA-only
    setup-embedding.sh there). Copy embedding-requirements.txt and
@@ -67,7 +116,11 @@ provider files and backend image reference first.
 2. Build the runner using
    `CARGO_BUILD_JOBS=4 CARGO_INCREMENTAL=0 cargo build --locked --release -p inference-runner`.
    Drain halo2 work, install the binary and overlay, then restart its runner
-   using the existing service procedure. Keep the previous backend running.
+   using the existing service procedure. Also drain RTX work and install/restart
+   the same updated runner binary on RTX, preserving its provider/environment,
+   engine config and cuda:0 group. This runner update supplies the live no-swap
+   admission check; it does not change RTX's embedding engine or numeric settings.
+   Keep the previous backend running throughout staging/qualification.
 3. In an operator maintenance window, pause RTX batch callers. Export exactly
    200 distinct real multilingual production texts, including multilingual
    queries and documents, to /tmp/ai65-texts.json as
@@ -84,6 +137,7 @@ provider files and backend image reference first.
      --output /tmp/ai65-parity.json
    ```
 
+   The harness explicitly sends `allow_engine_swap=true` to both direct runners.
    These calls load the embedding engines: RTX may evict its active engine.
    Run only after batch work drains. Attach input hash, both dependency locks,
    model checksums, and report (200 pair cosines, minimum and mean).
@@ -96,16 +150,31 @@ provider files and backend image reference first.
    eviction, and record interactive latency under concurrent chat/extraction.
    Confirm all previously loaded engines stay loaded via runner status and logs.
    If headroom is inadequate, stop and report measurements.
-5. Only after parity and headroom pass, deploy the new backend image. No config
-   changes are needed. Resume callers. Issue repeated query embeddings while RTX
-   tags; gateway audit records must show only strix-halo-02 and RTX's tag engine
-   must remain resident with no tag failures. Test Halo unavailable in maintenance:
-   embeddings must fail instead of reaching RTX.
+5. Only after parity and headroom pass **and both runners are upgraded**, deploy
+   the new backend image. Backend `config.toml` diff is empty. Resume callers.
+   Qualify these cases using response `X-Runner-Id`, audit records, loaded-engine
+   status and correlated runner logs:
+   - RTX embedder warm/idle: default requests use RTX.
+   - RTX tagging with embedder cold: repeated default requests use halo2; tag
+     residency and successful tag completions continue without unload/swap.
+   - Both embedders warm/idle: default requests prefer RTX.
+   - Drained bulk maintenance window: opt-in requests load on RTX and permit
+     a swap after other in-flight work drains.
+   - Halo unavailable + RTX cold/another engine resident: default requests
+     return 503 promptly and leave RTX untouched. Opt-in retains ordinary
+     queue/load/wake behavior. Restore Halo before resuming interactive use.
+   - RTX embedder saturated: default requests use safe halo2 capacity, or 503
+     if no safe capacity is available. A stale selection may also return 503;
+     retry defaults later rather than automatically enabling swaps.
 
 ## Rollback
 
-Restore the previous backend image first to restore old routing (embedding
-traffic may again evict RTX engines; pause interactive embeddings during rollback).
+Pause embedding callers, then restore the previous backend image first.
+An older gateway does not forward the opt-in: an upgraded runner safely defaults
+it to false and may reject requests. Restoring the old RTX runner afterward
+restores its prior loading behavior, including possible RTX evictions; keep
+interactive embeddings paused until the operator deliberately restores service.
 Drain halo2, remove only the overlay's engine, resource and route entries, restore
-its previous runner binary/config and restart. Existing RTX and halo2 engines
-and resource groups remain intact; no vectors or databases are migrated.
+its previous runner binary/config and restart. Restore the prior RTX runner
+binary after draining, without changing its config/provider/environment. Existing
+RTX and halo2 engines and resource groups remain intact; no vectors or databases are migrated.

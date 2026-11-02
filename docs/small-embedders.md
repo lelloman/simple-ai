@@ -1,8 +1,11 @@
 # Qwen3 PyTorch embeddings (AI-59)
 
-For the staged Halo2 replacement and its mandatory parity gate, see
+For the staged Halo2 addition, generic no-swap default routing, explicit bulk
+`allow_engine_swap` opt-in and mandatory parity gate, see
 [AI-65 operator rollout](halo2-embeddings.md). The RTX rollout below describes
-the original deployment; the AI-65 backend routes this checkpoint only to Halo2.
+the original deployment. After AI-65 qualification, warm embeddings prefer RTX;
+cold defaults use safe Halo2 capacity while RTX serves another engine.
+Bulk throughput/swap qualification requests must send `"allow_engine_swap":true`.
 
 Serve **Qwen/Qwen3-Embedding-0.6B** on **gpu-server-rtx** through
 `POST /v1/embeddings`. It is discovered through `GET /v1/models` once the

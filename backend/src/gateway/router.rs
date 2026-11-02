@@ -31,6 +31,8 @@ pub enum RouterError {
     NoRunners,
     #[error("No enabled runner for class {0}")]
     NoEnabledRunner(String),
+    #[error("No embedding runner can serve {0} without an engine swap; retry when capacity is available or explicitly set allow_engine_swap=true for bulk work")]
+    NoNonEvictingRunner(String),
     #[error("Unknown model: {0}")]
     UnknownModel(String),
     #[error("No runners have model '{0}' loaded")]
@@ -58,7 +60,10 @@ impl RouterError {
                 simple_server::web::http::StatusCode::from_u16(*status)
                     .unwrap_or(simple_server::web::http::StatusCode::BAD_REQUEST)
             }
-            Self::NoRunners | Self::NoModelsOfClass(_) | Self::NoEnabledRunner(_) => {
+            Self::NoRunners
+            | Self::NoModelsOfClass(_)
+            | Self::NoEnabledRunner(_)
+            | Self::NoNonEvictingRunner(_) => {
                 simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE
             }
             _ => simple_server::web::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -268,17 +273,17 @@ impl InferenceRouter {
 
     /// Route an embedding request to an appropriate runner.
     ///
-    /// Identical to `chat_completion()` except it proxies to `/v1/embeddings`.
+    /// Execute the scheduler's selected embedding plan without re-selecting a host.
     pub async fn embed<Req, Resp>(
         &self,
-        model: &str,
+        plan: RoutePlan,
         request: &Req,
     ) -> Result<RoutedResponse<Resp>, RouterError>
     where
         Req: Serialize + Clone,
         Resp: DeserializeOwned,
     {
-        let selection = self.select_runner_for_model(model).await?;
+        let selection = plan;
         let resolved_model = selection.resolved_model.clone();
         let (runner, reservation) = self
             .reserve_current(
@@ -304,10 +309,11 @@ impl InferenceRouter {
         drop(reservation);
 
         if let Some(cb) = &self.circuit_breaker {
-            if response.is_ok() {
-                cb.record_success(&runner_id);
-            } else {
-                cb.record_failure(&runner_id);
+            match &response {
+                Ok(_) => cb.record_success(&runner_id),
+                // Capacity/no-swap rejection is not evidence of a broken runner.
+                Err(RouterError::RunnerError { status: 503, .. }) => {}
+                Err(_) => cb.record_failure(&runner_id),
             }
         }
 
@@ -715,6 +721,65 @@ impl InferenceRouter {
             affinity_decision: AffinityDecision::Unkeyed,
             observed_binding: None,
         })
+    }
+
+    /// Embeddings default to warm capacity, then a load that cannot evict.
+    /// Bulk callers may explicitly prefer GPU throughput even when a swap is needed.
+    pub async fn plan_embeddings(
+        &self,
+        selector: &str,
+        allow_engine_swap: bool,
+    ) -> Result<RoutePlan, RouterError> {
+        let mut plan = self.plan_request(selector).await.map_err(|error| {
+            if !allow_engine_swap
+                && matches!(
+                    error,
+                    RouterError::NoRunners | RouterError::NoModelsOfClass(_)
+                )
+            {
+                RouterError::NoNonEvictingRunner(selector.into())
+            } else {
+                error
+            }
+        })?;
+        let model = &plan.resolved_model;
+        let candidates = self.filter_available(self.registry.with_available_model(model).await);
+        let has_capacity = |runner: &ConnectedRunner| {
+            runner.active_requests.load(Ordering::SeqCst)
+                < runner.batch_size_for_model(model).max(1) as usize
+        };
+        let mut eligible: Vec<_> = if allow_engine_swap {
+            candidates
+        } else {
+            let warm: Vec<_> = candidates
+                .iter()
+                .filter(|r| r.has_model_or_alias(model) && has_capacity(r))
+                .cloned()
+                .collect();
+            if warm.is_empty() {
+                candidates
+                    .into_iter()
+                    .filter(|r| has_capacity(r) && r.can_load_without_eviction(model))
+                    .collect()
+            } else {
+                warm
+            }
+        };
+        // Use the existing GPU machine type; no host IDs or application rules.
+        let gpu: Vec<_> = eligible
+            .iter()
+            .filter(|r| r.machine_type.as_deref() == Some("gpu-server"))
+            .cloned()
+            .collect();
+        if !gpu.is_empty() {
+            eligible = gpu;
+        }
+        if eligible.is_empty() {
+            return Err(RouterError::NoNonEvictingRunner(selector.into()));
+        }
+        plan.runner = self.select_from_candidates(&eligible);
+        plan.is_loaded = plan.runner.has_model_or_alias(model);
+        Ok(plan)
     }
 
     /// Pin a speculative plan to a live, compatible runner. Used by the readiness
@@ -1329,20 +1394,6 @@ impl InferenceRouter {
         &self,
         model_id: &str,
     ) -> Result<ConnectedRunner, RouterError> {
-        // Interactive query embeddings must never evict RTX batch engines, even
-        // when Halo is offline or its model is cold. Deliberately no RTX fallback.
-        if model_id.eq_ignore_ascii_case(simple_ai_common::text_embeddings::MODEL_ID) {
-            let candidates = self
-                .filter_available(self.registry.with_available_model(model_id).await)
-                .into_iter()
-                .filter(|runner| runner.id == "strix-halo-02")
-                .collect::<Vec<_>>();
-            return if candidates.is_empty() {
-                Err(RouterError::NoRunners)
-            } else {
-                Ok(self.select_from_candidates(&candidates))
-            };
-        }
         let with_model = self.filter_available(self.registry.with_model(model_id).await);
         if with_model.is_empty() {
             let compatible =
@@ -2890,50 +2941,159 @@ mod tests {
         server.abort();
     }
     #[tokio::test]
-    async fn small_embeddings_choose_busy_cold_halo_over_loaded_rtx_and_never_fall_back() {
-        let registry = Arc::new(RunnerRegistry::new());
-        let model = simple_ai_common::text_embeddings::MODEL_ID;
-        let mut senders = Vec::new();
-        for (id, loaded) in [("gpu-server-rtx", true), ("strix-halo-02", false)] {
-            let (tx, rx) = mpsc::channel(32);
-            senders.push(rx);
-            let mut status = create_test_status(vec![model.into()]);
-            if !loaded {
-                status.engines[0].loaded_models.clear();
+    async fn embedding_routing_uses_warm_capacity_then_non_evicting_loads() {
+        // Also use an unrelated model ID: this policy must not special-case Qwen.
+        for model in [
+            simple_ai_common::text_embeddings::MODEL_ID,
+            "generic-embedder",
+        ] {
+            for (gpu_warm, gpu_other, halo_warm, halo_up, gpu_busy, opt_in, expected) in [
+                (true, false, false, true, false, false, Some("gpu")),
+                (false, true, false, true, false, false, Some("cpu")),
+                (true, false, true, true, false, false, Some("gpu")),
+                (false, true, true, true, false, true, Some("gpu")),
+                (false, true, false, false, false, false, None),
+                (false, true, false, false, false, true, Some("gpu")),
+                (true, false, true, true, true, false, Some("cpu")),
+                (true, false, false, false, true, false, None),
+            ] {
+                let registry = Arc::new(RunnerRegistry::new());
+                let mut receivers = vec![];
+                for (id, machine, warm, other, group) in [
+                    ("gpu", "gpu-server", gpu_warm, gpu_other, "cuda:0"),
+                    ("cpu", "halo", halo_warm, false, "cpu:embeddings"),
+                ] {
+                    if id == "cpu" && !halo_up {
+                        continue;
+                    }
+                    let (tx, rx) = mpsc::channel(32);
+                    receivers.push(rx);
+                    let mut status = create_test_status(vec![model.into()]);
+                    status.engines[0].resource_group = Some(group.into());
+                    if !warm {
+                        status.engines[0].loaded_models.clear();
+                    }
+                    if other {
+                        let mut peer = status.engines[0].clone();
+                        peer.engine_type = "tag".into();
+                        peer.loaded_models = vec!["tag-model".into()];
+                        peer.available_models.clear();
+                        status.engines.push(peer);
+                    }
+                    registry
+                        .register(
+                            id.into(),
+                            id.into(),
+                            Some(machine.into()),
+                            status,
+                            None,
+                            tx,
+                            None,
+                        )
+                        .await;
+                }
+                if gpu_busy {
+                    registry
+                        .get("gpu")
+                        .await
+                        .unwrap()
+                        .active_requests
+                        .store(1, Ordering::SeqCst);
+                }
+                let router = create_test_router(registry.clone());
+                let plan = router.plan_embeddings(model, opt_in).await;
+                match expected {
+                    Some(id) => assert_eq!(plan.unwrap().runner.id, id),
+                    None => {
+                        let error = plan.unwrap_err();
+                        assert!(error.to_string().contains("without an engine swap"));
+                        assert_eq!(
+                            error.client_status(),
+                            simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE
+                        );
+                    }
+                }
+                // Planning must never send a load/unload command.
+                for receiver in &mut receivers {
+                    assert!(receiver.try_recv().is_err());
+                }
             }
-            registry
-                .register(
-                    id.into(),
-                    id.into(),
-                    None,
-                    status,
-                    Some("http://localhost:8080".into()),
-                    tx,
-                    None,
+        }
+    }
+
+    #[tokio::test]
+    async fn embedding_capacity_rejection_releases_reservation_without_breaking_runner() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/v1/embeddings",
+            post(|| async {
+                (
+                    simple_server::web::http::StatusCode::SERVICE_UNAVAILABLE,
+                    "engine swap prohibited",
                 )
-                .await;
-        }
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _rx) = mpsc::channel(32);
         registry
-            .get("strix-halo-02")
-            .await
-            .unwrap()
-            .active_requests
-            .store(100, Ordering::SeqCst);
-        let router = create_test_router(registry.clone());
-        for selector in [model.to_string(), model.to_lowercase()]
-            .iter()
-            .cycle()
-            .take(10)
-        {
-            let selected = router.select_runner_for_model(selector).await.unwrap();
-            assert_eq!(selected.runner.id, "strix-halo-02");
-            assert!(!selected.is_loaded);
+            .register(
+                "embed".into(),
+                "embed".into(),
+                None,
+                create_test_status(vec!["embedder".into()]),
+                Some(url),
+                tx,
+                None,
+            )
+            .await;
+        let breaker = Arc::new(CircuitBreaker::new(1, 60));
+        let router = create_test_router(registry.clone()).with_circuit_breaker(breaker.clone());
+        for _ in 0..3 {
+            let plan = router.plan_embeddings("embedder", false).await.unwrap();
+            let result = router.embed::<_, serde_json::Value>(plan, &serde_json::json!({"model":"embedder", "input":"text", "allow_engine_swap":false})).await;
+            assert!(matches!(
+                result,
+                Err(RouterError::RunnerError { status: 503, .. })
+            ));
+            assert!(breaker.is_available("embed"));
+            let runner = registry.get("embed").await.unwrap();
+            assert_eq!(runner.active_requests.load(Ordering::SeqCst), 0);
+            assert!(runner.active_requests_by_model().is_empty());
         }
-        registry.unregister("strix-halo-02").await;
-        assert!(matches!(
-            router.select_runner_for_model(model).await,
-            Err(RouterError::NoRunners)
-        ));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn embedding_cold_admission_rejects_unknown_resources_and_same_engine_swap() {
+        let registry = Arc::new(RunnerRegistry::new());
+        let (tx, _rx) = mpsc::channel(32);
+        let mut status = create_test_status(vec!["embedder".into()]);
+        status.engines[0].loaded_models = vec!["other-model".into()];
+        registry
+            .register(
+                "any".into(),
+                "any".into(),
+                None,
+                status.clone(),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let router = create_test_router(registry.clone());
+        assert!(router.plan_embeddings("embedder", false).await.is_err());
+        status.engines[0].resource_group = Some("gpu".into());
+        registry.update_status("any", status.clone()).await;
+        assert!(router.plan_embeddings("embedder", false).await.is_err());
+        status.engines[0].loaded_models.clear();
+        registry.update_status("any", status).await;
+        assert!(router.plan_embeddings("embedder", false).await.is_ok());
     }
 
     #[tokio::test]
@@ -2980,7 +3140,13 @@ mod tests {
             .any(|m| m.id == "Qwen/Qwen3-Embedding-0.6B"));
         let request = serde_json::json!({"model": simple_ai_common::text_embeddings::MODEL_ID, "input": ["uno", "due"]});
         let result = router
-            .embed::<_, serde_json::Value>(simple_ai_common::text_embeddings::MODEL_ID, &request)
+            .embed::<_, serde_json::Value>(
+                router
+                    .plan_embeddings(simple_ai_common::text_embeddings::MODEL_ID, false)
+                    .await
+                    .unwrap(),
+                &request,
+            )
             .await
             .unwrap();
         assert_eq!(result.runner_id, "strix-halo-02");

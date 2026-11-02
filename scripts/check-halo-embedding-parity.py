@@ -32,7 +32,7 @@ def embed(url, texts):
     for start in range(0, len(texts), 8):
         batch = texts[start:start+8]
         request = urllib.request.Request(url.rstrip("/") + "/v1/embeddings",
-            data=json.dumps({"model": MODEL, "input": batch}).encode(),
+            data=json.dumps({"model": MODEL, "input": batch, "allow_engine_swap": True}).encode(),
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=600) as response:
             data = json.load(response)["data"]

@@ -276,6 +276,26 @@ impl EngineRegistry {
         model_id: &str,
         request_id: &str,
     ) -> crate::error::Result<ModelLease> {
+        self.acquire_model_with_policy(model_id, request_id, true)
+            .await
+    }
+
+    pub async fn acquire_embedding(
+        &self,
+        model_id: &str,
+        allow_engine_swap: bool,
+        request_id: &str,
+    ) -> crate::error::Result<ModelLease> {
+        self.acquire_model_with_policy(model_id, request_id, allow_engine_swap)
+            .await
+    }
+
+    async fn acquire_model_with_policy(
+        &self,
+        model_id: &str,
+        request_id: &str,
+        allow_engine_swap: bool,
+    ) -> crate::error::Result<ModelLease> {
         let (target, engine_model) = self
             .resolve_engine_for_model(model_id)
             .await
@@ -300,13 +320,73 @@ impl EngineRegistry {
         let request_id = request_id.to_owned();
         // Queue in the caller's future, not in a detached task. Cancellation
         // before ownership is granted must never start an engine.
-        let batch = match &gate {
-            Some(gate) => Some(gate.batch(&owner_key).await),
-            None => None,
-        };
-        let access = match &gate {
-            Some(gate) => Some(gate.acquire(&owner_key).await),
-            None => None,
+        let (batch, access) = if allow_engine_swap {
+            let batch = match &gate {
+                Some(gate) => Some(gate.batch(&owner_key).await),
+                None => None,
+            };
+            let access = match &gate {
+                Some(gate) => Some(gate.acquire(&owner_key).await),
+                None => None,
+            };
+            (batch, access)
+        } else {
+            // Do not queue behind a switch or wait for another engine's lease.
+            // Revalidate under the same gate used by normal acquisition: gateway
+            // status may have become stale after routing.
+            let unavailable = || {
+                crate::error::Error::EngineNotAvailable(format!(
+                "cannot serve {model_id} without an engine swap; retry or set allow_engine_swap=true for bulk work"))
+            };
+            tracing::debug!(%request_id, %model_id, "Checking non-evicting embedding admission");
+            let gate = gate.as_ref().ok_or_else(unavailable)?;
+            if gate
+                .batches
+                .lock()
+                .unwrap()
+                .waiting
+                .iter()
+                .any(|entry| entry.1 != owner_key)
+            {
+                return Err(unavailable());
+            }
+            let access = if gate.is_owner(&owner_key) {
+                let guard = gate
+                    .lock
+                    .clone()
+                    .try_read_owned()
+                    .map_err(|_| unavailable())?;
+                if !gate.is_owner(&owner_key) {
+                    return Err(unavailable());
+                }
+                ResourceAccess::Shared(guard)
+            } else {
+                ResourceAccess::Exclusive(
+                    gate.lock
+                        .clone()
+                        .try_write_owned()
+                        .map_err(|_| unavailable())?,
+                )
+            };
+            // With the gate held, a competing request cannot load between this
+            // check and inference. Even switching models in one engine is denied.
+            for engine in &engines {
+                if engine.engine_type() == target_type
+                    || group
+                        .as_ref()
+                        .is_some_and(|g| resources.get(engine.engine_type()) == Some(g))
+                {
+                    let loaded = engine.health_check().await?.models_loaded;
+                    if loaded.iter().any(|model| {
+                        engine.engine_type() != target_type
+                            || !model.eq_ignore_ascii_case(&engine_model)
+                    }) {
+                        tracing::warn!(%request_id, %model_id, engine = engine.engine_type(), "Embedding rejected: engine swap prohibited");
+                        return Err(unavailable());
+                    }
+                }
+            }
+            (None, Some(access))
         };
         // An abandoned HTTP/WebSocket task must not release the gate while an
         // external process is still starting or stopping.
@@ -331,7 +411,7 @@ impl EngineRegistry {
                         let gate = gate.as_ref().unwrap();
                         let previous_owner = gate.owner.read().unwrap().clone();
                         gate.clear_owner();
-                        if let Some(group) = group {
+                        if let Some(group) = group.filter(|_| allow_engine_swap) {
                             for engine in engines {
                                 if engine.engine_type() == target_type
                                     || resources.get(engine.engine_type()) != Some(&group)
@@ -427,7 +507,11 @@ mod tests {
             Ok(super::super::EngineHealth {
                 is_healthy: true,
                 version: None,
-                models_loaded: vec![],
+                models_loaded: if self.loaded.load(std::sync::atomic::Ordering::SeqCst) {
+                    vec![self.kind.into()]
+                } else {
+                    vec![]
+                },
             })
         }
         async fn list_models(&self) -> crate::error::Result<Vec<super::super::ModelInfo>> {
@@ -527,6 +611,76 @@ mod tests {
         })
         .await
         .expect("queue did not reach expected size");
+    }
+
+    #[tokio::test]
+    async fn default_embedding_rejects_swap_and_opt_in_permits_it() {
+        let (registry, events) = fake_registry().await;
+        let tag = registry.acquire_model("tag").await.unwrap();
+        // Busy conflicting engine: reject immediately, without queueing.
+        let result = registry.acquire_embedding("code", false, "test").await;
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::EngineNotAvailable(_))
+        ));
+        drop(tag);
+        // Even after inference finishes, its resident weights must stay intact.
+        assert!(registry
+            .acquire_embedding("code", false, "test")
+            .await
+            .is_err());
+        assert_eq!(*events.lock().unwrap(), ["load tag"]);
+        let code = registry
+            .acquire_embedding("code", true, "test")
+            .await
+            .unwrap();
+        drop(code);
+        let warm = registry
+            .acquire_embedding("code", false, "test")
+            .await
+            .unwrap();
+        drop(warm);
+        assert_eq!(
+            *events.lock().unwrap(),
+            ["load tag", "unload tag", "load code"]
+        );
+    }
+
+    #[tokio::test]
+    async fn default_embedding_loads_empty_group_without_quiescing_peers() {
+        let (registry, events) = fake_registry().await;
+        let code = registry
+            .acquire_embedding("code", false, "test")
+            .await
+            .unwrap();
+        drop(code);
+        assert_eq!(*events.lock().unwrap(), ["load code"]);
+        // A different engine wins after the gateway observed a warm embedder.
+        drop(registry.acquire_model("tag").await.unwrap());
+        assert!(registry
+            .acquire_embedding("code", false, "test")
+            .await
+            .is_err());
+        assert_eq!(
+            *events.lock().unwrap(),
+            ["load code", "unload code", "load tag"]
+        );
+        // The rejection must not poison ownership or leave a queue entry.
+        drop(
+            registry
+                .acquire_embedding("code", true, "test")
+                .await
+                .unwrap(),
+        );
+        assert_eq!(
+            registry.resource_gates.read().await["gpu"]
+                .batches
+                .lock()
+                .unwrap()
+                .waiting
+                .len(),
+            0
+        );
     }
 
     #[tokio::test]

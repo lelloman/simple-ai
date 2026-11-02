@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use simple_server::web::extract::State;
+use simple_server::web::http::HeaderMap;
 use simple_server::web::routing::post;
 use simple_server::web::{Json, Router};
 
@@ -15,6 +16,8 @@ use crate::state::AppState;
 pub struct EmbeddingRequest {
     pub input: EmbeddingInput,
     pub model: String,
+    #[serde(default)]
+    pub allow_engine_swap: bool,
 }
 
 /// Input can be a single string or an array of strings.
@@ -64,6 +67,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// POST /v1/embeddings - OpenAI-compatible embeddings.
 async fn create_embeddings(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(request): Json<EmbeddingRequest>,
 ) -> Result<Json<EmbeddingResponse>> {
     let model = &request.model;
@@ -89,7 +93,18 @@ async fn create_embeddings(
         simple_ai_common::text_embeddings::validate(&inputs)
             .map_err(crate::error::Error::InvalidRequest)?;
     }
-    let lease = state.engine_registry.acquire_model(resolved_model).await?;
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let lease = state
+        .engine_registry
+        .acquire_embedding(resolved_model, request.allow_engine_swap, &request_id)
+        .await
+        .inspect_err(|error| {
+            tracing::warn!(%request_id, %resolved_model, %error, "Embedding acquisition failed");
+        })?;
     let embeddings = lease.engine.embed(&lease.engine_model, &inputs).await?;
 
     // Approximate token count

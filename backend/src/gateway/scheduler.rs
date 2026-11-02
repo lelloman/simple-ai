@@ -211,22 +211,37 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         request: &EmbeddingRequest,
     ) -> Result<ScheduledResponse<EmbeddingResponse>, SchedulerError> {
-        let prepared = self
-            .prepare_for_request(request_id, model, model_request, None)
-            .await?;
-        let _activity = self
-            .wake_service
-            .keep_runner_awake(prepared.plan.runner.id.clone());
+        let plan = self
+            .inference_router
+            .plan_embeddings(model, request.allow_engine_swap)
+            .await;
+        let (plan, wol_sent) = match plan {
+            Ok(plan) => (plan, false),
+            Err(RouterError::NoRunners | RouterError::NoModelsOfClass(_))
+                if request.allow_engine_swap =>
+            {
+                // Preserve the existing wake path only for explicit bulk opt-in.
+                let prepared = self
+                    .prepare_for_request_inner(request_id, model, model_request, None)
+                    .await?;
+                (
+                    self.inference_router.plan_embeddings(model, true).await?,
+                    prepared.wol_sent,
+                )
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let _activity = self.wake_service.keep_runner_awake(plan.runner.id.clone());
         let routed = self
             .inference_router
-            .embed::<EmbeddingRequest, EmbeddingResponse>(model, request)
+            .embed::<EmbeddingRequest, EmbeddingResponse>(plan, request)
             .await?;
         Ok(ScheduledResponse {
             model_revision: routed.model_revision.clone(),
             response: routed.response,
             runner_id: routed.runner_id,
             resolved_model: routed.resolved_model,
-            wol_sent: prepared.wol_sent,
+            wol_sent,
         })
     }
 
@@ -685,18 +700,6 @@ impl RequestScheduler {
         model_request: &ModelRequest,
         affinity: Option<AffinityContext>,
     ) -> Result<PreparedRequest, SchedulerError> {
-        // The small query embedder has one dedicated host. Never prepare an
-        // RTX fallback, speculative target, or extra capacity for this model.
-        if model.eq_ignore_ascii_case(simple_ai_common::text_embeddings::MODEL_ID) {
-            let plan = self.inference_router.plan_request(model).await?;
-            if !plan.is_loaded {
-                self.prepare_runner_model(request_id, &plan).await?;
-            }
-            return Ok(PreparedRequest {
-                plan,
-                wol_sent: false,
-            });
-        }
         let prepared = self
             .prepare_for_request_inner(request_id, model, model_request, affinity)
             .await?;
@@ -1358,50 +1361,100 @@ mod decision_race_tests {
     }
 
     #[tokio::test]
-    async fn small_embeddings_never_prepare_rtx_or_expand_capacity() {
-        let (s, audit) = setup();
-        let model = simple_ai_common::text_embeddings::MODEL_ID;
+    async fn embeddings_dispatch_selected_http_target_without_background_preparation() {
+        use simple_server::web::{routing::post, Json, Router};
+        let (scheduler, audit) = setup();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route("/v1/embeddings", post(|Json(body): Json<serde_json::Value>| async move {
+            assert_eq!(body["model"], "generic-embedder");
+            assert!(body["allow_engine_swap"].is_boolean());
+            Json(serde_json::json!({"object":"list", "model":"generic-embedder", "data":[], "usage":{"prompt_tokens":1,"total_tokens":1}}))
+        }));
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let mut receivers = vec![];
+        for (id, machine, group, other) in [
+            ("gpu", "gpu-server", "gpu", true),
+            ("cpu", "halo", "cpu:embed", false),
+        ] {
+            let (tx, rx) = tokio::sync::mpsc::channel(16);
+            receivers.push(rx);
+            let mut status = status(false);
+            status.engines[0].available_models[0].id = "generic-embedder".into();
+            status.engines[0].resource_group = Some(group.into());
+            if other {
+                let mut peer = status.engines[0].clone();
+                peer.engine_type = "tag".into();
+                peer.loaded_models = vec!["tag-model".into()];
+                peer.available_models.clear();
+                status.engines.push(peer);
+            }
+            scheduler
+                .runner_registry
+                .register(
+                    id.into(),
+                    id.into(),
+                    Some(machine.into()),
+                    status,
+                    Some(url.clone()),
+                    tx,
+                    None,
+                )
+                .await;
+        }
+        for (allow_engine_swap, expected) in [(false, "cpu"), (true, "gpu")] {
+            let request = serde_json::from_value(serde_json::json!({"model":"generic-embedder", "input":"text", "allow_engine_swap":allow_engine_swap})).unwrap();
+            let response = scheduler
+                .embeddings(
+                    "embed",
+                    "generic-embedder",
+                    &ModelRequest::parse("generic-embedder"),
+                    &request,
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.runner_id, expected);
+            assert!(!response.wol_sent);
+        }
+        scheduler.runner_registry.unregister("cpu").await;
         audit
             .upsert_runner(
-                "gpu-server-rtx",
-                "RTX",
+                "cpu",
+                "CPU",
                 Some("00:11:22:33:44:55"),
-                Some("gpu-server"),
-                Some(&[model.into()]),
+                Some("halo"),
+                Some(&["generic-embedder".into()]),
             )
             .unwrap();
-        let request = ModelRequest::parse(model);
+        let request =
+            serde_json::from_value(serde_json::json!({"model":"generic-embedder", "input":"text"}))
+                .unwrap();
         assert!(matches!(
             timeout(
                 Duration::from_millis(200),
-                s.prepare_for_request("offline", model, &request, None)
+                scheduler.embeddings(
+                    "offline",
+                    "generic-embedder",
+                    &ModelRequest::parse("generic-embedder"),
+                    &request
+                )
             )
             .await
             .unwrap(),
-            Err(SchedulerError::Router(RouterError::NoRunners))
+            Err(SchedulerError::Router(RouterError::NoNonEvictingRunner(_)))
         ));
-        let (tx, _rx) = tokio::sync::mpsc::channel(16);
-        let mut halo_status = status(true);
-        halo_status.engines[0].loaded_models = vec![model.into()];
-        halo_status.engines[0].available_models[0].id = model.into();
-        s.runner_registry
-            .register(
-                "strix-halo-02".into(),
-                "Halo".into(),
-                Some("halo".into()),
-                halo_status,
-                None,
-                tx,
-                None,
-            )
-            .await;
-        let prepared = s
-            .prepare_for_request("online", model, &request, None)
-            .await
-            .unwrap();
-        assert_eq!(prepared.plan.runner.id, "strix-halo-02");
-        assert!(!prepared.wol_sent);
-        assert!(s.capacity_monitors.lock().await.is_empty());
+        assert!(scheduler.capacity_monitors.lock().await.is_empty());
+        for rx in &mut receivers {
+            assert!(rx.try_recv().is_err());
+        }
+        let gpu = scheduler.runner_registry.get("gpu").await.unwrap();
+        assert_eq!(gpu.active_requests.load(Ordering::SeqCst), 0);
+        assert!(gpu.active_requests_by_model().is_empty());
+        server.abort();
     }
 
     #[tokio::test]
