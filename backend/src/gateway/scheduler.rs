@@ -248,13 +248,32 @@ impl RequestScheduler {
                 {
                     return Err(error.into());
                 }
-                self.wake_service
-                    .speculative_wake_and_wait(wake_request)
-                    .await?;
-                (
-                    self.inference_router.plan_embeddings(model, false).await?,
-                    true,
-                )
+                // The shared wake helper may finish on an unrelated connection.
+                // Subscribe before waking and retain one deadline until safe capacity
+                // actually exists, including registrations during the wake call.
+                let mut events = self.runner_registry.subscribe_events();
+                let wake_timeout = self.wake_service.wake_timeout();
+                let plan = timeout(wake_timeout, async {
+                    self.wake_service
+                        .speculative_wake_and_wait(wake_request)
+                        .await?;
+                    loop {
+                        match self.inference_router.plan_embeddings(model, false).await {
+                            Ok(plan) => return Ok(plan),
+                            Err(RouterError::NoNonEvictingRunner(_)) => {}
+                            Err(error) => return Err(SchedulerError::Router(error)),
+                        }
+                        match events.recv().await {
+                            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                return Err(SchedulerError::Router(error));
+                            }
+                        }
+                    }
+                })
+                .await
+                .map_err(|_| WakeError::Timeout(wake_timeout.as_secs()))??;
+                (plan, true)
             }
             Err(error) => return Err(error.into()),
         };
@@ -1513,8 +1532,11 @@ mod decision_race_tests {
     #[tokio::test]
     async fn default_embeddings_wake_offline_capacity_without_swapping() {
         use simple_server::web::{routing::post, Json, Router};
-        for busy_online in [false, true] {
+        for (busy_online, speculative) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
             let (mut s, audit) = setup();
+            s.routing_config.speculative_wake_enabled = speculative;
             let socket = capacity_wake_setup(&mut s, &audit).await;
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let url = format!("http://{}", listener.local_addr().unwrap());
@@ -1558,6 +1580,22 @@ mod decision_race_tests {
                     .await
                     .unwrap()
                     .unwrap();
+                // An unrelated reconnect must not end the embedding wake wait.
+                let (unrelated_tx, _unrelated_rx) = tokio::sync::mpsc::channel(4);
+                let mut unrelated = status(false);
+                unrelated.engines[0].available_models.clear();
+                s.runner_registry
+                    .register(
+                        "unrelated".into(),
+                        "unrelated".into(),
+                        None,
+                        unrelated,
+                        None,
+                        unrelated_tx,
+                        None,
+                    )
+                    .await;
+                sleep(Duration::from_millis(50)).await;
                 let (tx, mut rx) = tokio::sync::mpsc::channel(4);
                 let mut independent = status(false);
                 independent.engines[0].resource_group = Some("cpu:embed".into());
@@ -1764,7 +1802,10 @@ mod decision_race_tests {
                 port: socket.local_addr().unwrap().port(),
                 ..Default::default()
             },
-            ModelsConfig::default(),
+            ModelsConfig {
+                semantic_decisions: vec![DECISION_MODEL.into()],
+                ..Default::default()
+            },
             s.routing_config.clone(),
         ));
         audit

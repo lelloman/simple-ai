@@ -93,7 +93,8 @@ application-specific rule. Class/alias resolution still uses existing mappings.
   independent CPU engine could theoretically take more work.
 - If no online runner can serve safely, use the existing wake preference to
   wake compatible enabled offline runners when auto-wake is enabled, then plan
-  again with swaps disabled.
+  again with swaps disabled. Unrelated runner registrations do not complete
+  this wait: it continues within the same wake deadline until a safe plan exists.
   The runner HTTP request cold-loads under its live no-swap admission check;
   waking never authorizes eviction on an online runner. If nothing qualifies,
   return **HTTP 503** explaining that no runner can serve without an engine swap.
