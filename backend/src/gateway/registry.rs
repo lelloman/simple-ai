@@ -308,6 +308,30 @@ impl ConnectedRunner {
             })
     }
 
+    /// Conservative cold admission, including a different model in the target
+    /// engine itself. Missing resource metadata is not proof of independence.
+    pub fn can_load_without_eviction(&self, model: &str) -> bool {
+        self.status.engines.iter().any(|target| {
+            target
+                .available_models
+                .iter()
+                .any(|m| self.same_model(&m.id, model))
+                && target.resource_group.as_ref().is_some_and(|group| {
+                    self.status.engines.iter().all(|engine| {
+                        if engine.engine_type == target.engine_type {
+                            engine
+                                .loaded_models
+                                .iter()
+                                .all(|loaded| self.same_model(loaded, model))
+                        } else {
+                            engine.resource_group.as_ref() != Some(group)
+                                || engine.loaded_models.is_empty()
+                        }
+                    })
+                })
+        })
+    }
+
     /// Check if a logical runner capability is currently ready.
     pub fn has_ready_capability(&self, capability: Capability) -> bool {
         self.status

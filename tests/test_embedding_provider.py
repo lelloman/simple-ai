@@ -8,7 +8,7 @@ from pathlib import Path
 import threading
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 spec = importlib.util.spec_from_file_location("embeddings", Path(__file__).resolve().parents[1] / "scripts/simple_ai_embedding_provider.py")
 provider = importlib.util.module_from_spec(spec)
@@ -24,6 +24,27 @@ class Validation(unittest.TestCase):
         for payload in [{"model": "other", "input": "hello"}, {"model": provider.MODEL_ID, "input": "hello", "dimensions": 512}]:
             with self.assertRaises(ValueError):
                 provider.validate(payload)
+
+    def test_load_cpu_and_cuda_preserve_checkpoint_semantics(self):
+        for device in ("cpu", "cuda"):
+            with self.subTest(device=device):
+                torch = MagicMock()
+                transformers = MagicMock()
+                hub = MagicMock()
+                args = types.SimpleNamespace(model=provider.MODEL_ID, revision=provider.REVISION,
+                    device=device, batch_size=8, num_threads=4, model_path="/pinned/model")
+                with patch.dict("sys.modules", {"torch": torch, "transformers": transformers,
+                                                "huggingface_hub": hub}):
+                    p = provider.Provider(args)
+                transformers.AutoModel.from_pretrained.assert_called_once_with(
+                    "/pinned/model",
+                    torch_dtype=torch.float32 if device == "cpu" else torch.float16,
+                    attn_implementation="sdpa", local_files_only=True)
+                transformers.AutoModel.from_pretrained.return_value.to.assert_called_once_with(device)
+                transformers.AutoTokenizer.from_pretrained.assert_called_once_with(
+                    "/pinned/model", padding_side="left", local_files_only=True)
+                hub.snapshot_download.assert_not_called()
+                self.assertEqual(p.health()["device"], device)
 
     def test_http_rejects_oversize_with_400(self):
         class FakeProvider:
@@ -80,6 +101,8 @@ class TensorContract(unittest.TestCase):
         class Encoding(dict):
             def to(self, device):
                 self.device = device
+                if device != "cpu":
+                    raise AssertionError("expected CPU encoding")
                 return self
 
         def tokenizer(texts, **kwargs):
@@ -95,6 +118,7 @@ class TensorContract(unittest.TestCase):
             return types.SimpleNamespace(last_hidden_state=hidden)
 
         p = provider.Provider.__new__(provider.Provider)
+        p.device = "cpu"
         p.torch, p.batch_size, p.tokenizer, p.model = torch, 2, tokenizer, model
         p.lock, p.slots = threading.Lock(), threading.BoundedSemaphore(8)
         request = {"model": provider.MODEL_ID, "input": ["4", "1", "7", "3", "8"]}

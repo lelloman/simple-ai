@@ -1,0 +1,15 @@
+# Merge into strix-halo-02's existing config; preserve all existing tables/members.
+[engines.text_embeddings]
+enabled = true
+command = ["/home/lelloman/.simple-ai-embedding/venv/bin/python", "/home/lelloman/simple-ai-embedding-provider.py"]
+model_path = "/home/lelloman/.simple-ai-embedding/model"
+device = "cpu"
+batch_size = 8
+
+[engine_resources]
+# Independent from halogen/decisions/llama_cpp (gpu:0); no peer evictions.
+text_embeddings = "cpu:text_embeddings"
+
+[model_routes."Qwen/Qwen3-Embedding-0.6B"]
+engine = "text_embeddings"
+engine_model = "Qwen/Qwen3-Embedding-0.6B"

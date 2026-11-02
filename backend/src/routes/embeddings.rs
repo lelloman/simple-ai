@@ -22,6 +22,9 @@ pub struct EmbeddingRequest {
     pub input: EmbeddingInput,
     /// Model to use for embedding.
     pub model: String,
+    /// Bulk opt-in: permit loading on a preferred GPU, including engine swaps.
+    #[serde(default)]
+    pub allow_engine_swap: bool,
 }
 
 /// Input can be a single string or an array of strings.
@@ -126,6 +129,7 @@ async fn create_embeddings(
     let mut runner_id: Option<String> = None;
     let mut identity_headers = HeaderMap::new();
     let mut wol_sent = false;
+    let mut failure_status = StatusCode::INTERNAL_SERVER_ERROR;
 
     // Forward to appropriate backend (gateway or direct Ollama)
     let result = if state.config.gateway.enabled {
@@ -160,11 +164,22 @@ async fn create_embeddings(
                 Ok(scheduled.response)
             }
             Err(SchedulerError::Wake(e)) => Err(format!("Failed to wake inference runners: {}", e)),
-            Err(SchedulerError::Router(e)) => Err(e.to_string()),
+            Err(SchedulerError::Router(e)) => {
+                failure_status = match &e {
+                    crate::gateway::RouterError::RunnerError { status: 503, .. } => {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    }
+                    _ => e.client_status(),
+                };
+                Err(e.to_string())
+            }
         }
     } else {
-        // Direct Ollama mode - check circuit breaker
-        if !state.circuit_breaker.is_available("ollama") {
+        // Direct mode has no resource/load state: only explicit opt-in is safe.
+        if !request.allow_engine_swap {
+            failure_status = StatusCode::SERVICE_UNAVAILABLE;
+            Err("Default embeddings require gateway routing to guarantee no engine swap; direct mode requires allow_engine_swap=true".into())
+        } else if !state.circuit_breaker.is_available("ollama") {
             Err("Circuit breaker open: Ollama backend is unavailable".to_string())
         } else {
             let result = state.ollama_client.embed(&model, &inputs).await;
@@ -228,7 +243,7 @@ async fn create_embeddings(
             (resp, resp_log)
         }
         Err(e) => {
-            let mut resp_log = Response::new(request_id, 500);
+            let mut resp_log = Response::new(request_id, failure_status.as_u16());
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.response_body = e.clone();
             resp_log.runner_id = runner_id.clone();
@@ -254,7 +269,7 @@ async fn create_embeddings(
                 request_path: req_log.request_path.clone(),
                 model: req_log.model.clone(),
                 client_ip: req_log.client_ip.clone(),
-                status: Some(500),
+                status: Some(failure_status.as_u16() as i32),
                 latency_ms: Some(resp_log.latency_ms as i64),
                 tokens_prompt: None,
                 tokens_completion: None,
@@ -262,7 +277,7 @@ async fn create_embeddings(
                 wol_sent,
             });
 
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, e));
+            return Err((failure_status, e));
         }
     };
 
@@ -318,6 +333,7 @@ mod tests {
         let json = r#"{"input": "test text", "model": "nomic-embed-text"}"#;
         let req: EmbeddingRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model, "nomic-embed-text");
+        assert!(!req.allow_engine_swap);
     }
 
     #[test]
@@ -325,6 +341,21 @@ mod tests {
         let json = r#"{"input": ["text one", "text two"], "model": "nomic-embed-text"}"#;
         let req: EmbeddingRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model, "nomic-embed-text");
+    }
+
+    #[test]
+    fn bulk_embedding_opt_in_is_explicit_and_typed() {
+        let request: EmbeddingRequest = serde_json::from_value(serde_json::json!({
+            "model": "any-model", "input": "text", "allow_engine_swap": true
+        }))
+        .unwrap();
+        assert!(request.allow_engine_swap);
+        assert!(
+            serde_json::from_value::<EmbeddingRequest>(serde_json::json!({
+                "model": "any-model", "input": "text", "allow_engine_swap": "true"
+            }))
+            .is_err()
+        );
     }
 
     #[test]

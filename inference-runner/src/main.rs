@@ -223,7 +223,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     if config.engines.text_embeddings.enabled {
         if !config.engine_resources.contains_key("text_embeddings") {
-            return Err("text_embeddings requires the shared CUDA engine resource group".into());
+            return Err("text_embeddings requires an engine resource group (shared CUDA or independent CPU)".into());
         }
         registry
             .register(Arc::new(engine::TextEmbeddingEngine::new(
