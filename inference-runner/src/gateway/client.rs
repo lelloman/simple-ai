@@ -256,7 +256,8 @@ impl GatewayClient {
                 model_id,
                 request_id,
             } => {
-                let result = self.load_model(&model_id).await;
+                tracing::info!(%request_id, model = %model_id, "Gateway command triggering model load");
+                let result = self.load_model(&model_id, &request_id).await;
                 let status = self.status_collector.collect().await;
                 let response = CommandResponse {
                     request_id,
@@ -271,6 +272,7 @@ impl GatewayClient {
                 model_id,
                 request_id,
             } => {
+                tracing::info!(%request_id, model = %model_id, "Gateway command triggering model unload");
                 let result = self.unload_model(&model_id).await;
                 let status = self.status_collector.collect().await;
                 let response = CommandResponse {
@@ -301,6 +303,7 @@ impl GatewayClient {
     async fn load_model(
         &self,
         model_id: &str,
+        request_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _work = self
             .engine_registry
@@ -320,7 +323,11 @@ impl GatewayClient {
             .await
             .is_some()
         {
-            self.engine_registry.load_model(local_id).await?;
+            drop(
+                self.engine_registry
+                    .acquire_model_for_request(local_id, request_id)
+                    .await?,
+            );
             tracing::info!("Loaded model: {} (local: {})", model_id, local_id);
             return Ok(());
         }

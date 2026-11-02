@@ -30,6 +30,18 @@ def calibration_rows(calibration, evaluation):
     return rows
 
 
+def calibration_samples(rows, tokenizer, prompt):
+    samples = []
+    for row in rows:
+        ids = tokenizer.apply_chat_template(
+            [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': row['text']}],
+            tokenize=True, add_generation_prompt=True, return_dict=False)
+        if len(ids) > 1024:
+            raise ValueError('calibration prompt exceeds 1024 tokens; supply bounded cards/profiles')
+        samples.append({'input_ids': ids, 'attention_mask': [1] * len(ids)})
+    return samples
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', required=True, help='local unquantized Qwen3-4B-Instruct-2507')
@@ -55,14 +67,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model, local_files_only=True, trust_remote_code=False)
     model = AutoModelForCausalLM.from_pretrained(
         args.model, torch_dtype=torch.bfloat16, local_files_only=True, trust_remote_code=False)
-    samples = []
-    for row in rows:
-        ids = tokenizer.apply_chat_template(
-            [{'role': 'system', 'content': PROMPT}, {'role': 'user', 'content': row['text']}],
-            tokenize=True, add_generation_prompt=True)
-        if len(ids) > 1024:
-            raise ValueError('calibration prompt exceeds 1024 tokens; supply bounded cards/profiles')
-        samples.append({'input_ids': ids, 'attention_mask': [1] * len(ids)})
+    samples = calibration_samples(rows, tokenizer, PROMPT)
     oneshot(model=model, dataset=Dataset.from_list(samples), recipe=[
         SmoothQuantModifier(smoothing_strength=0.8),
         GPTQModifier(targets='Linear', scheme='W8A8', ignore=['lm_head']),

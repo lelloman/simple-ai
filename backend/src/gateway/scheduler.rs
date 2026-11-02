@@ -100,7 +100,7 @@ impl RequestScheduler {
         use_batching: bool,
     ) -> Result<ScheduledResponse<ChatCompletionResponse>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request, affinity.clone())
+            .prepare_chat_for_request(request_id, model, model_request, affinity.clone())
             .await?;
         let _activity = self
             .wake_service
@@ -141,9 +141,6 @@ impl RequestScheduler {
                         .inference_router
                         .plan_chat_request(model, affinity.clone())
                         .await?;
-                    if !retry.is_loaded {
-                        self.prepare_runner_model(request_id, &retry).await?;
-                    }
                     self.inference_router.reserve_plan(retry).await?
                 }
                 Err(error) => return Err(error.into()),
@@ -175,7 +172,7 @@ impl RequestScheduler {
         request: &ChatCompletionRequest,
     ) -> Result<ScheduledResponse<RoutedStream>, SchedulerError> {
         let prepared = self
-            .prepare_for_request(request_id, model, model_request, affinity.clone())
+            .prepare_chat_for_request(request_id, model, model_request, affinity.clone())
             .await?;
         let _activity = self
             .wake_service
@@ -188,9 +185,6 @@ impl RequestScheduler {
                     .inference_router
                     .plan_chat_request(model, affinity.clone())
                     .await?;
-                if !retry.is_loaded {
-                    self.prepare_runner_model(request_id, &retry).await?;
-                }
                 self.inference_router.reserve_plan(retry).await?
             }
             Err(error) => return Err(error.into()),
@@ -659,6 +653,29 @@ impl RequestScheduler {
                     .remove(&target.id);
             });
         }
+    }
+
+    // Online chat is prepared by the HTTP request itself. A separate WebSocket
+    // load has no client lifetime and can evict a model before its inference
+    // arrives. Sleeping hosts retain the existing wake/prepare path.
+    async fn prepare_chat_for_request(
+        &self,
+        request_id: &str,
+        model: &str,
+        model_request: &ModelRequest,
+        affinity: Option<AffinityContext>,
+    ) -> Result<PreparedRequest, SchedulerError> {
+        if let Ok(plan) = self.plan_chat_request(model, affinity.clone()).await {
+            self.prepare_fast_targets(request_id, model_request).await;
+            self.monitor_capacity(request_id, &plan.resolved_model)
+                .await;
+            return Ok(PreparedRequest {
+                plan,
+                wol_sent: false,
+            });
+        }
+        self.prepare_for_request(request_id, model, model_request, affinity)
+            .await
     }
 
     async fn prepare_for_request(
@@ -1385,6 +1402,38 @@ mod decision_race_tests {
         assert_eq!(prepared.plan.runner.id, "strix-halo-02");
         assert!(!prepared.wol_sent);
         assert!(s.capacity_monitors.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn online_chat_reserves_cold_model_without_detached_load_command() {
+        let (scheduler, audit) = setup_with_fast(true);
+        let loads = runner(
+            &scheduler,
+            &audit,
+            "rtx",
+            "gpu-server",
+            false,
+            Duration::ZERO,
+            false,
+        )
+        .await;
+        let prepared = scheduler
+            .prepare_chat_for_request(
+                "chat",
+                "class:fast",
+                &ModelRequest::parse("class:fast"),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(!prepared.plan.is_loaded);
+        let reserved = scheduler
+            .inference_router
+            .reserve_plan(prepared.plan)
+            .await
+            .unwrap();
+        assert_eq!(reserved.plan.runner.id, "rtx");
+        assert_eq!(loads.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

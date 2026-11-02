@@ -167,7 +167,10 @@ impl BatchDispatcher {
         let model = batch.model;
         let mut first_error = None;
 
-        for queued in batch.requests {
+        for mut queued in batch.requests {
+            if queued.response_tx.is_closed() {
+                continue;
+            }
             let guard = match self
                 .tasks
                 .try_acquire(format!("batch:{}", queued.request_id))
@@ -269,12 +272,13 @@ impl BatchDispatcher {
             tokio::spawn(async move {
                 let _guard = guard;
                 let _activity = activity;
-                let result = router
-                    .execute_chat_plan::<_, simple_ai_common::ChatCompletionResponse>(
-                        reserved,
-                        &queued.request,
-                    )
-                    .await;
+                let result = tokio::select! {
+                    biased;
+                    _ = queued.response_tx.closed() => return,
+                    result = router.execute_chat_plan::<_, simple_ai_common::ChatCompletionResponse>(
+                        reserved, &queued.request,
+                    ) => result,
+                };
 
                 let response = match result {
                     Ok(routed) => Ok(BatchedResponse {
@@ -500,6 +504,84 @@ mod tests {
         });
 
         format!("http://{}", addr)
+    }
+
+    #[tokio::test]
+    async fn abandoned_batch_requests_do_not_dispatch_and_cancel_active_proxy() {
+        let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
+        let registry = Arc::new(RunnerRegistry::new());
+        let started = Arc::new(tokio::sync::Notify::new());
+        let signal = started.clone();
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(move || {
+                let signal = signal.clone();
+                async move {
+                    signal.notify_one();
+                    std::future::pending::<()>().await;
+                    Json(serde_json::json!({}))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(simple_server::web::serve(
+            listener,
+            app,
+            simple_server::lifecycle::Shutdown::new(),
+        ));
+        let (tx, mut commands) = mpsc::channel(32);
+        registry
+            .register(
+                "runner".into(),
+                "runner".into(),
+                None,
+                create_test_status_with_loaded("model-a", 4, false),
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        let dispatcher = BatchDispatcher::new(
+            queue.clone(),
+            registry.clone(),
+            create_test_router(registry.clone()),
+            Arc::new(RouterTelemetry::new()),
+        );
+        let abandoned = queue.enqueue("model-a".into(), create_test_request()).await;
+        let batch = queue.take_batch("model-a", 4).await.unwrap();
+        drop(abandoned);
+        dispatcher.dispatch_batch(batch).await.unwrap();
+        assert_eq!(registry.get_active_requests("runner").await, 0);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), started.notified())
+                .await
+                .is_err()
+        );
+
+        let active = queue.enqueue("model-a".into(), create_test_request()).await;
+        dispatcher
+            .dispatch_batch(queue.take_batch("model-a", 4).await.unwrap())
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), started.notified())
+            .await
+            .unwrap();
+        assert_eq!(registry.get_active_requests("runner").await, 1);
+        drop(active);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while registry.get_active_requests("runner").await != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("abandoned batch must cancel upstream and release capacity");
+        assert!(
+            commands.try_recv().is_err(),
+            "cold HTTP dispatch must not send LoadModel"
+        );
+        server.abort();
+        let _ = server.await;
     }
 
     #[tokio::test]
