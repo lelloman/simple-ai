@@ -121,3 +121,37 @@ async fn new_deadline_is_still_bounded_when_runner_never_connects() {
     assert!(matches!(task.await.unwrap(), Err(WakeError::Timeout(480))));
     tokio::time::resume();
 }
+
+#[tokio::test]
+async fn starting_registration_waits_for_engine_status_before_finishing_wake() {
+    let (_http, _dir, registry, task) = fixture(480).await;
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    registry
+        .register(
+            "fixture".into(),
+            "Fixture".into(),
+            None,
+            RunnerStatus::starting(),
+            None,
+            tx,
+            None,
+        )
+        .await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert!(
+        !task.is_finished(),
+        "registration alone does not advertise engine readiness"
+    );
+    let mut status = RunnerStatus::starting();
+    status.health = RunnerHealth::Healthy;
+    registry.update_status("fixture", status).await;
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap()
+            .runner_id,
+        "fixture"
+    );
+}
