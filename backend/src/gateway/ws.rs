@@ -160,30 +160,12 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
         dispatcher.invalidate_cache().await;
     }
 
-    // Extract available models from runner status
-    let mut available_models: Vec<String> = registration
-        .status
-        .engines
-        .iter()
-        .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
-        .collect();
-    // Persist public aliases too. Offline WOL matching operates on this
-    // snapshot and otherwise cannot match a canonical request to a routed
-    // engine-local model name.
-    available_models.extend(registration.status.model_aliases.keys().cloned());
-    available_models.sort();
-    available_models.dedup();
-
-    // Persist runner to database for WOL and offline tracking
-    if let Err(e) = state.audit_logger.upsert_runner(
-        &registration.runner_id,
-        &registration.runner_name,
+    persist_runner_status(
+        &state.audit_logger,
+        &registration,
         mac_address.as_deref(),
-        registration.machine_type.as_deref(),
-        Some(&available_models),
-    ) {
-        tracing::warn!("Failed to persist runner {}: {}", registration.runner_id, e);
-    }
+        &registration.status,
+    );
 
     let runner_id = registration.runner_id.clone();
 
@@ -210,6 +192,9 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
                     Ok(Message::Text(text)) => {
                         if let Err(e) = handle_runner_message(&text, &runner_id, &state.registry).await {
                             tracing::error!("Error handling message from {}: {}", runner_id, e);
+                        }
+                        if let Some(runner) = state.registry.get(&runner_id).await {
+                            persist_runner_status(&state.audit_logger, &registration, mac_address.as_deref(), &runner.status);
                         }
                         if state.registry.state_of(&runner_id).await != RunnerState::Enabled {
                             state.registry.enforce_runner_state(&runner_id);
@@ -246,6 +231,38 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     }
 
     tracing::info!("Runner {} disconnected", runner_id);
+}
+
+/// Keep the offline wake catalog once readiness arrives, rather than replacing
+/// it with the deliberately empty catalog in a prompt starting registration.
+fn persist_runner_status(
+    audit: &AuditLogger,
+    registration: &RunnerRegistration,
+    mac_address: Option<&str>,
+    status: &simple_ai_common::RunnerStatus,
+) {
+    let available_models = if status.health == simple_ai_common::RunnerHealth::Starting {
+        None
+    } else {
+        let mut models: Vec<String> = status
+            .engines
+            .iter()
+            .flat_map(|e| e.available_models.iter().map(|m| m.id.clone()))
+            .chain(status.model_aliases.keys().cloned())
+            .collect();
+        models.sort();
+        models.dedup();
+        Some(models)
+    };
+    if let Err(e) = audit.upsert_runner(
+        &registration.runner_id,
+        &registration.runner_name,
+        mac_address,
+        registration.machine_type.as_deref(),
+        available_models.as_deref(),
+    ) {
+        tracing::warn!("Failed to persist runner {}: {}", registration.runner_id, e);
+    }
 }
 
 /// Validate a runner registration.
@@ -347,6 +364,59 @@ where
 mod tests {
     use super::*;
     use simple_ai_common::RunnerStatus;
+
+    #[test]
+    fn starting_registration_preserves_catalog_until_status_reports_readiness() {
+        let audit = AuditLogger::new(":memory:").unwrap();
+        audit
+            .upsert_runner(
+                "fixture",
+                "Fixture",
+                None,
+                None,
+                Some(&["old-model".into()]),
+            )
+            .unwrap();
+        let registration = RunnerRegistration::new(
+            "fixture".into(),
+            "Fixture".into(),
+            None,
+            8080,
+            "token".into(),
+            RunnerStatus::starting(),
+        );
+        persist_runner_status(&audit, &registration, None, &registration.status);
+        assert_eq!(
+            audit
+                .get_runner("fixture")
+                .unwrap()
+                .unwrap()
+                .available_models,
+            vec!["old-model"]
+        );
+        let mut ready = RunnerStatus::starting();
+        ready.health = simple_ai_common::RunnerHealth::Healthy;
+        ready
+            .model_aliases
+            .insert("new-model".into(), "local-model".into());
+        persist_runner_status(&audit, &registration, None, &ready);
+        assert_eq!(
+            audit
+                .get_runner("fixture")
+                .unwrap()
+                .unwrap()
+                .available_models,
+            vec!["new-model"]
+        );
+        ready.model_aliases.clear();
+        persist_runner_status(&audit, &registration, None, &ready);
+        assert!(audit
+            .get_runner("fixture")
+            .unwrap()
+            .unwrap()
+            .available_models
+            .is_empty());
+    }
 
     #[test]
     fn test_validate_registration_success() {

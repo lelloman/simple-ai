@@ -8,7 +8,9 @@ use tokio::sync::mpsc;
 use tokio::time::{interval, timeout};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use simple_ai_common::{CommandResponse, GatewayMessage, RunnerMessage, RunnerRegistration};
+use simple_ai_common::{
+    CommandResponse, GatewayMessage, RunnerMessage, RunnerRegistration, RunnerStatus,
+};
 
 use crate::config::GatewayConfig;
 use crate::engine::EngineRegistry;
@@ -89,11 +91,12 @@ impl GatewayClient {
 
     /// Connect to gateway and run message loop.
     async fn connect_and_run(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let (ws_stream, _) = connect_async(&self.config.ws_url).await?;
+        let (ws_stream, _) =
+            timeout(Duration::from_secs(30), connect_async(&self.config.ws_url)).await??;
         let (mut write, mut read) = ws_stream.split();
 
-        // Send registration
-        let status = self.status_collector.collect().await;
+        // Never probe engines before registration. The first heartbeat reports readiness.
+        let status = RunnerStatus::starting();
         let mut registration = RunnerRegistration::new(
             self.runner_id.clone(),
             self.runner_name.clone(),
@@ -105,7 +108,7 @@ impl GatewayClient {
         registration.mac_address = self.mac_address.clone();
         let msg = RunnerMessage::Register(registration);
         let json = serde_json::to_string(&msg)?;
-        write.send(Message::Text(json)).await?;
+        timeout(Duration::from_secs(5), write.send(Message::Text(json))).await??;
         tracing::info!("Sent registration to gateway");
 
         // Wait for registration ack with timeout
@@ -161,53 +164,64 @@ impl GatewayClient {
         S: SinkExt<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
         R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
     {
-        let mut heartbeat = interval(Duration::from_secs(self.config.heartbeat_interval_secs));
-        loop {
-            tokio::select! {
-                _ = heartbeat.tick() => {
-                    let status = self.status_collector.collect().await;
-                    let json = serde_json::to_string(&RunnerMessage::Heartbeat(status))?;
-                    write.send(Message::Text(json)).await?;
-                }
-                // Handle outbound messages
-                Some(msg) = rx.recv() => {
-                    let json = serde_json::to_string(&msg)?;
-                    write.send(Message::Text(json)).await?;
-                    if let RunnerMessage::CommandResponse(response) = &msg {
-                        if response.success {
-                            self.engine_registry.drain.arm(Some(&response.request_id));
-                        }
-                    }
-                    tracing::debug!("Sent message to gateway: {:?}", std::mem::discriminant(&msg));
-                }
-
-                // Handle inbound messages
-                result = read.next() => {
-                    let Some(result) = result else { return Ok(()); };
-                    match result {
-                        Ok(Message::Text(text)) => {
-                            if let Err(e) = self.handle_gateway_message(&text, &tx).await {
-                                tracing::error!("Error handling gateway message: {}", e);
-                            }
-                        }
-                        Ok(Message::Ping(data)) => {
-                            write.send(Message::Pong(data)).await?;
-                        }
-                        Ok(Message::Close(_)) => {
-                            tracing::info!("Gateway sent close frame");
-                            return Ok(());
-                        }
-                        Ok(_) => {} // Ignore other message types
-                        Err(e) => {
-                            return Err(format!("WebSocket error: {}", e).into());
-                        }
-                    }
-                }
-
-                else => {
-                    return Ok(());
+        // These workers are owned by the connection future, not detached tasks.
+        // Dropping the transport cancels slow probes and pending command handling.
+        let (commands, mut pending_commands) = mpsc::channel::<String>(32);
+        let heartbeats = async {
+            let mut heartbeat = interval(Duration::from_secs(self.config.heartbeat_interval_secs));
+            loop {
+                heartbeat.tick().await;
+                let status = self.status_collector.collect().await;
+                tx.send(RunnerMessage::Heartbeat(status)).await?;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        };
+        let command_worker = async {
+            while let Some(text) = pending_commands.recv().await {
+                if let Err(e) = self.handle_gateway_message(&text, &tx).await {
+                    tracing::error!("Error handling gateway message: {}", e);
                 }
             }
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+        };
+        let transport = async {
+            loop {
+                tokio::select! {
+                    Some(msg) = rx.recv() => {
+                        let json = serde_json::to_string(&msg)?;
+                        timeout(Duration::from_secs(10), write.send(Message::Text(json))).await??;
+                        if let RunnerMessage::CommandResponse(response) = &msg {
+                            if response.success {
+                                self.engine_registry.drain.arm(Some(&response.request_id));
+                            }
+                        }
+                        tracing::debug!("Sent message to gateway: {:?}", std::mem::discriminant(&msg));
+                    }
+                    result = read.next() => {
+                        let Some(result) = result else { return Ok(()); };
+                        match result? {
+                            Message::Text(text) => {
+                                // Never stop reading the socket behind a slow command.
+                                commands.try_send(text)?;
+                            }
+                            Message::Ping(data) => {
+                                timeout(Duration::from_secs(10), write.send(Message::Pong(data))).await??;
+                            }
+                            Message::Close(_) => {
+                                tracing::info!("Gateway sent close frame");
+                                return Ok(());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        };
+        tokio::select! {
+            result = transport => result,
+            result = heartbeats => result,
+            result = command_worker => result,
         }
     }
 
@@ -442,6 +456,182 @@ mod tests {
             auth_token: "test-token".to_string(),
             reconnect_delay_secs: 5,
             heartbeat_interval_secs: 30,
+        }
+    }
+
+    async fn stalled_engine_client(ws_url: String) -> (GatewayClient, wiremock::MockServer) {
+        use wiremock::{matchers::any, Mock, MockServer, ResponseTemplate};
+
+        let engine = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(60)))
+            .mount(&engine)
+            .await;
+        let config = test_config();
+        let registry = Arc::new(EngineRegistry::new());
+        registry
+            .register(Arc::new(crate::engine::OllamaEngine::with_batch_size(
+                &engine.uri(),
+                1,
+            )))
+            .await;
+        let collector = Arc::new(StatusCollector::new(config, registry.clone(), false));
+        let mut gateway = test_gateway_config();
+        gateway.ws_url = ws_url;
+        gateway.reconnect_delay_secs = 1;
+        (
+            GatewayClient::new(
+                gateway,
+                "test-runner".into(),
+                "Test Runner".into(),
+                None,
+                None,
+                8080,
+                collector,
+                registry,
+            ),
+            engine,
+        )
+    }
+
+    async fn receive_registration<S>(socket: &mut tokio_tungstenite::WebSocketStream<S>)
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    {
+        let message = socket.next().await.unwrap().unwrap().into_text().unwrap();
+        let RunnerMessage::Register(registration) = serde_json::from_str(&message).unwrap() else {
+            panic!("expected registration");
+        };
+        assert_eq!(registration.runner_id, "test-runner");
+        assert_eq!(
+            registration.status.health,
+            simple_ai_common::RunnerHealth::Starting
+        );
+    }
+
+    #[tokio::test]
+    async fn registration_does_not_wait_for_stalled_health_endpoint() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, engine) =
+            stalled_engine_client(format!("ws://{}", listener.local_addr().unwrap())).await;
+        let server = async {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            timeout(
+                Duration::from_millis(500),
+                receive_registration(&mut socket),
+            )
+            .await
+            .expect("registration must not wait for the 60-second health endpoint");
+            assert!(engine.received_requests().await.unwrap().is_empty());
+        };
+        tokio::select! {
+            _ = client.run() => panic!("client unexpectedly stopped"),
+            result = timeout(Duration::from_secs(5), server) => result.unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn first_heartbeat_reports_readiness_after_registration_ack() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, engine) =
+            stalled_engine_client(format!("ws://{}", listener.local_addr().unwrap())).await;
+        engine.reset().await;
+        wiremock::Mock::given(wiremock::matchers::any())
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"models": []})),
+            )
+            .mount(&engine)
+            .await;
+        let server = async {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            receive_registration(&mut socket).await;
+            socket
+                .send(Message::Text(
+                    serde_json::to_string(&GatewayMessage::RegisterAck {
+                        runner_id: "test-runner".into(),
+                    })
+                    .unwrap(),
+                ))
+                .await
+                .unwrap();
+            let message = socket.next().await.unwrap().unwrap().into_text().unwrap();
+            let RunnerMessage::Heartbeat(status) = serde_json::from_str(&message).unwrap() else {
+                panic!("expected immediate heartbeat");
+            };
+            assert_eq!(status.health, simple_ai_common::RunnerHealth::Healthy);
+            assert_eq!(status.engines.len(), 1);
+            assert!(status.engines[0].is_healthy);
+        };
+        tokio::select! {
+            _ = client.run() => panic!("client unexpectedly stopped"),
+            result = timeout(Duration::from_secs(5), server) => result.unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn reconnects_after_close_before_registration_and_during_stalled_status() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, engine) =
+            stalled_engine_client(format!("ws://{}", listener.local_addr().unwrap())).await;
+        let server = async {
+            // Reproduce a gateway closing before it consumes registration.
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            socket.close(None).await.unwrap();
+            drop(socket);
+
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            receive_registration(&mut socket).await;
+            let ack = serde_json::to_string(&GatewayMessage::RegisterAck {
+                runner_id: "test-runner".into(),
+            })
+            .unwrap();
+            socket.send(Message::Text(ack.clone())).await.unwrap();
+            // Ensure status collection really is blocked in an HTTP health probe.
+            while engine.received_requests().await.unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            socket.close(None).await.unwrap();
+            drop(socket);
+
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            receive_registration(&mut socket).await;
+            socket.send(Message::Text(ack)).await.unwrap();
+            // A ping response proves the acknowledged connection is usable even
+            // with another health probe stalled.
+            socket.send(Message::Ping(vec![1, 2, 3])).await.unwrap();
+            assert_eq!(
+                socket.next().await.unwrap().unwrap(),
+                Message::Pong(vec![1, 2, 3])
+            );
+        };
+        tokio::select! {
+            _ = client.run() => panic!("client unexpectedly stopped"),
+            result = timeout(Duration::from_secs(8), server) => result.unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn reconnects_when_registration_ack_never_arrives() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, _engine) =
+            stalled_engine_client(format!("ws://{}", listener.local_addr().unwrap())).await;
+        let server = async {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut silent = tokio_tungstenite::accept_async(stream).await.unwrap();
+            receive_registration(&mut silent).await;
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            receive_registration(&mut socket).await;
+        };
+        tokio::select! {
+            _ = client.run() => panic!("client unexpectedly stopped"),
+            result = timeout(Duration::from_secs(15), server) => result.unwrap(),
         }
     }
 

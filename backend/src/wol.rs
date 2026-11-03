@@ -757,6 +757,26 @@ impl WakeService {
         Ok(())
     }
 
+    async fn wait_for_ready_connection(&self, rx: &mut broadcast::Receiver<RunnerEvent>) -> String {
+        let mut starting = std::collections::HashSet::<String>::new();
+        loop {
+            for runner_id in &starting {
+                if let Some(runner) = self.registry.get(runner_id).await {
+                    if runner.status.health != simple_ai_common::RunnerHealth::Starting {
+                        return runner_id.clone();
+                    }
+                }
+            }
+            match rx.recv().await {
+                Ok(RunnerEvent::Connected { runner_id, .. }) => {
+                    starting.insert(runner_id);
+                }
+                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => return String::new(),
+            }
+        }
+    }
+
     /// Wake a runner that can handle the model request and wait for it to connect.
     ///
     /// This is the main entry point for wake-on-demand.
@@ -796,32 +816,12 @@ impl WakeService {
             runner.id
         );
 
-        // 4. Wait for a runner to connect (filter for Connected events only)
+        // A prompt starting registration must not end preparation before
+        // the runner has advertised its engines through a status update.
         let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
-        let runner_id = timeout(timeout_duration, async {
-            loop {
-                match rx.recv().await {
-                    Ok(RunnerEvent::Connected { runner_id, .. }) => {
-                        tracing::info!("Runner {} connected after wake", runner_id);
-                        return runner_id;
-                    }
-                    Ok(_) => {
-                        // Ignore other events (Disconnected, StatusChanged)
-                        continue;
-                    }
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        // Missed some events, continue waiting
-                        continue;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        // Channel closed, shouldn't happen
-                        break String::new();
-                    }
-                }
-            }
-        })
-        .await
-        .map_err(|_| WakeError::Timeout(self.gateway_config.wake_timeout_secs))?;
+        let runner_id = timeout(timeout_duration, self.wait_for_ready_connection(&mut rx))
+            .await
+            .map_err(|_| WakeError::Timeout(self.gateway_config.wake_timeout_secs))?;
 
         if runner_id.is_empty() {
             return Err(WakeError::Timeout(self.gateway_config.wake_timeout_secs));
@@ -929,23 +929,12 @@ impl WakeService {
             wakes_sent
         );
 
-        // Wait for FIRST runner to connect
+        // A prompt starting registration must not end preparation before
+        // the runner has advertised its engines through a status update.
         let timeout_duration = Duration::from_secs(self.gateway_config.wake_timeout_secs);
-        let runner_id = timeout(timeout_duration, async {
-            loop {
-                match rx.recv().await {
-                    Ok(RunnerEvent::Connected { runner_id, .. }) => {
-                        tracing::info!("Speculative wake: runner {} connected first", runner_id);
-                        return runner_id;
-                    }
-                    Ok(_) => continue,
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => break String::new(),
-                }
-            }
-        })
-        .await
-        .map_err(|_| WakeError::Timeout(self.gateway_config.wake_timeout_secs))?;
+        let runner_id = timeout(timeout_duration, self.wait_for_ready_connection(&mut rx))
+            .await
+            .map_err(|_| WakeError::Timeout(self.gateway_config.wake_timeout_secs))?;
 
         if runner_id.is_empty() {
             return Err(WakeError::Timeout(self.gateway_config.wake_timeout_secs));

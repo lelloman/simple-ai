@@ -34,6 +34,28 @@ instead of a detached task; connection EOF also returns to the reconnect loop.
 Stopping the client drops the gateway socket, without a guaranteed WebSocket
 close handshake. Gateway commands in flight can be cancelled.
 
+Runner registration sends the existing `starting` status without engine probes;
+the first heartbeat after acknowledgment collects and reports engine readiness.
+Connection/upgrade is bounded to 30 seconds, registration send to 5 seconds,
+and acknowledgment to 10 seconds. EOF, close frames, read errors and deadline
+expiry return to the configured reconnect delay. Heartbeat probes and sequential
+gateway command handling run alongside socket processing, within the connection
+future; a closed socket cancels both. Outbound writes have a 10-second deadline.
+The command queue holds 32 messages; overflow reconnects rather than stopping
+socket reads behind slow commands. No protocol or gateway timeout change is needed.
+
+The gateway preserves the offline wake catalog during a starting registration
+and refreshes it from subsequent status updates. Wake preparation waits for the
+post-registration engine status before planning requests, within the existing
+wake deadline.
+
+AI-69 rollout: deploy the backend first (compatible with existing runners), then
+upgrade runner binaries. No config change is needed. After upgrading halo2, the operator should cold-wake it with an embedding
+request and verify registration, model readiness and a successful first response
+without restarting the runner. Loopback tests cover stalled HTTP health probes,
+early gateway close, reconnect during status collection and missing registration
+acknowledgment; they do not replace this live wake check.
+
 Managed engine processes retain their existing ownership and Drop/kill policies;
 external engines such as Ollama are not stopped or unloaded by this change.
 There is no new guarantee that every engine subprocess or background extraction
