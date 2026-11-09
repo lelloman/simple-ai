@@ -512,3 +512,11 @@ Managed classification, audio embedding, TTS and extraction providers start with
 cache (or configure the provider's existing local model path) before loading them.
 Startup logs identify the engine/model and readiness or failure; an early exit
 fails immediately with its exit status and the last 8 KiB of stderr.
+
+The audio embedding provider (`simple-ai-audio-provider.py`, MusicFM MSD and MIT
+AST AudioSet) needs a Python 3.12 environment, the MusicFM source and its MSD
+checkpoint. Build them on each audio runner with `bash scripts/setup-audio.sh`,
+keeping `audio-requirements.txt` beside the script. The default install directory
+`~/rustentia_musicfm` matches the runner configs and the provider's
+`--musicfm-root` default. The script pins the MusicFM commit, verifies the
+checkpoint checksums and installs the pinned packages; it is safe to rerun.
