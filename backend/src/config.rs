@@ -100,6 +100,7 @@ fn default_pressure_groups() -> std::collections::BTreeMap<String, Vec<String>> 
         ("translation", &["translate"]),
         ("summaries", &["summarize"]),
         ("tag", &["tag"]),
+        ("tagger", &["tagger"]),
     ]
     .into_iter()
     .map(|(group, classes)| {
@@ -287,6 +288,8 @@ pub struct ModelsConfig {
     #[serde(default)]
     pub tag: Vec<String>,
     #[serde(default)]
+    pub tagger: Vec<String>,
+    #[serde(default)]
     pub semantic_decisions: Vec<String>,
 }
 
@@ -297,6 +300,7 @@ impl ModelsConfig {
             "translate" => &self.translate,
             "summarize" => &self.summarize,
             "tag" => &self.tag,
+            "tagger" => &self.tagger,
             "big" => &self.big,
             "fast" => &self.fast,
             "embed_small" => &self.embed_small,
@@ -316,6 +320,9 @@ impl ModelsConfig {
     /// or None if the model is not configured in either list.
     pub fn classify(&self, model_id: &str) -> Option<&'static str> {
         let lower = model_id.to_lowercase();
+        if self.tagger.iter().any(|id| id.to_lowercase() == lower) {
+            return Some("tagger");
+        }
         if self.tag.iter().any(|id| id.to_lowercase() == lower) {
             return Some("tag");
         }

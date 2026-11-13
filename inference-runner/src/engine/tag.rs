@@ -34,6 +34,7 @@ impl TagProcess {
     }
 }
 pub struct TagEngine {
+    kind: &'static str,
     revisions: super::revision::Revisions,
     config: TagEngineConfig,
     client: Client,
@@ -51,11 +52,17 @@ impl TagEngine {
             .build()
             .map_err(|e| Error::Internal(e.to_string()))?;
         Ok(Self {
+            kind: "tag",
             revisions: Default::default(),
             config,
             client,
             server: Arc::new(RwLock::new(None)),
         })
+    }
+    pub fn new_tagger(config: TagEngineConfig) -> Result<Self> {
+        let mut engine = Self::new(config)?;
+        engine.kind = "tagger";
+        Ok(engine)
     }
     fn provider_command(&self, id: &str, port: u16) -> Command {
         let mut command = Command::new(&self.config.command[0]);
@@ -85,7 +92,7 @@ impl TagEngine {
             name: self.config.model.clone(),
             size_bytes: None,
             parameter_count: None,
-            context_length: Some(2048),
+            context_length: Some(if self.kind == "tagger" { 4608 } else { 2048 }),
             quantization: None,
             modified_at: None,
             reasoning: None,
@@ -95,11 +102,15 @@ impl TagEngine {
 #[async_trait]
 impl InferenceEngine for TagEngine {
     fn engine_type(&self) -> &'static str {
-        "tag"
+        self.kind
     }
     // Independent concurrent HTTP requests enter vLLM continuous batching.
     fn batch_size(&self) -> u32 {
-        32
+        if self.kind == "tagger" {
+            256
+        } else {
+            32
+        }
     }
     async fn health_check(&self) -> Result<EngineHealth> {
         let guard = self.server.read().await;
@@ -156,7 +167,7 @@ impl InferenceEngine for TagEngine {
         drop(listener);
         let mut command = self.provider_command(id, port);
         let child =
-            super::provider::start(&mut command, &self.client, "tag", id, port, 600).await?;
+            super::provider::start(&mut command, &self.client, self.kind, id, port, 600).await?;
         *guard = Some(Server {
             port,
             process: Mutex::new(TagProcess {
@@ -200,6 +211,9 @@ impl InferenceEngine for TagEngine {
         let server = self.server.clone();
         let client = self.client.clone();
         let mut request = request.clone();
+        if self.kind == "tagger" && request.max_tokens.is_none() {
+            request.max_tokens = Some(256);
+        }
         request.model = Some(id.to_string());
         // Retain the read guard until the provider replies, even if the caller disconnects.
         tokio::spawn(async move {
@@ -288,6 +302,34 @@ fn normalized_request(request: &ChatCompletionRequest) -> Result<serde_json::Val
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn tagger_uses_shared_provider_with_its_own_defaults() {
+        let teacher = fixture();
+        assert_eq!(teacher.engine_type(), "tag");
+        assert_eq!(teacher.batch_size(), 32);
+        let mut config = teacher.config.clone();
+        config.model = "qwen3-06-tagger-w8a8".into();
+        let engine = TagEngine::new_tagger(config).unwrap();
+        assert_eq!(engine.engine_type(), "tagger");
+        assert_eq!(engine.batch_size(), 256);
+        assert_eq!(engine.info().context_length, Some(4608));
+        assert!(engine
+            .get_model(&teacher.config.model)
+            .await
+            .unwrap()
+            .is_none());
+        let id = engine.config.model.clone();
+        engine.load_model(&id).await.unwrap();
+        engine
+            .chat_completion(&id, &request("tagger-default"))
+            .await
+            .unwrap();
+        let mut explicit = request("tagger-explicit");
+        explicit.max_tokens = Some(512);
+        engine.chat_completion(&id, &explicit).await.unwrap();
+        assert!(engine.chat_completion_stream(&id, &explicit).await.is_err());
+        engine.quiesce().await.unwrap();
+    }
     #[test]
     fn configured_vllm_args_reach_provider_command() {
         let mut engine = fixture();

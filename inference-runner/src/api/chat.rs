@@ -114,7 +114,7 @@ async fn chat_completions(
 }
 
 fn validate_response_format_backend(engine: &str, request: &ChatCompletionRequest) -> Result<()> {
-    if request.response_format.is_some() && !matches!(engine, "vllm" | "tag") {
+    if request.response_format.is_some() && !matches!(engine, "vllm" | "tag" | "tagger") {
         return Err(Error::InvalidRequest(
             "response_format requires a vLLM-backed chat model".into(),
         ));
@@ -134,7 +134,7 @@ mod tests {
                 Err(Error::InvalidRequest(_))
             ));
         }
-        for engine in ["vllm", "tag"] {
+        for engine in ["vllm", "tag", "tagger"] {
             validate_response_format_backend(engine, &request).unwrap();
         }
     }

@@ -30,6 +30,7 @@ pub enum ModelClass {
     Translate,
     Summarize,
     Tag,
+    Tagger,
     SemanticDecisions,
 }
 
@@ -42,6 +43,7 @@ impl ModelClass {
             "translate" => Some(Self::Translate),
             "summarize" => Some(Self::Summarize),
             "tag" => Some(Self::Tag),
+            "tagger" => Some(Self::Tagger),
             "big" => Some(Self::Big),
             "fast" => Some(Self::Fast),
             "embed_small" => Some(Self::EmbedSmall),
@@ -61,6 +63,7 @@ impl ModelClass {
             Self::Translate => "translate",
             Self::Summarize => "summarize",
             Self::Tag => "tag",
+            Self::Tagger => "tagger",
             Self::Big => "big",
             Self::Fast => "fast",
             Self::EmbedSmall => "embed_small",
@@ -88,6 +91,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
         Some("translate") => Some(ModelClass::Translate),
         Some("summarize") => Some(ModelClass::Summarize),
         Some("tag") => Some(ModelClass::Tag),
+        Some("tagger") => Some(ModelClass::Tagger),
         Some("big") => Some(ModelClass::Big),
         Some("fast") => Some(ModelClass::Fast),
         Some("embed_small") => Some(ModelClass::EmbedSmall),
@@ -170,6 +174,27 @@ pub fn can_request_model(user_roles: &[String], request: &ModelRequest) -> bool 
 mod tests {
     use super::*;
 
+    #[test]
+    fn teacher_and_tagger_are_independent_classes() {
+        let config = ModelsConfig {
+            tag: vec!["teacher".into()],
+            tagger: vec!["student".into()],
+            ..Default::default()
+        };
+        for (name, model, class) in [
+            ("tag", "teacher", ModelClass::Tag),
+            ("tagger", "STUDENT", ModelClass::Tagger),
+        ] {
+            assert_eq!(
+                ModelRequest::parse(&format!("class:{name}")),
+                ModelRequest::Class(class)
+            );
+            assert_eq!(classify_model(model, &config), Some(class));
+            assert_eq!(config.models_for_class(name).len(), 1);
+            assert_eq!(class.as_str(), name);
+            assert!(can_request_model(&[], &ModelRequest::Class(class)));
+        }
+    }
     #[test]
     fn test_classify_model_big() {
         let config = ModelsConfig {
