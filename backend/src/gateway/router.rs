@@ -745,7 +745,7 @@ impl InferenceRouter {
         let model = &plan.resolved_model;
         let candidates = self.filter_available(self.registry.with_available_model(model).await);
         let has_capacity = |runner: &ConnectedRunner| {
-            runner.active_requests.load(Ordering::SeqCst)
+            runner.active_requests_for_capacity(model)
                 < runner.batch_size_for_model(model).max(1) as usize
         };
         let mut eligible: Vec<_> = if allow_engine_swap {
@@ -1614,7 +1614,7 @@ impl InferenceRouter {
         // 2. Capacity-normalized queue pressure. Comparing raw active-request
         // counts underfills high-parallelism runners and overloads single-slot
         // runners when a model is available on both.
-        let active_requests = runner.active_requests.load(Ordering::SeqCst) as f64;
+        let active_requests = runner.active_requests_for_capacity(resolved_model) as f64;
         let model_capacity = runner.batch_size_for_model(resolved_model).max(1) as f64;
         let queue_score = active_requests / model_capacity;
 

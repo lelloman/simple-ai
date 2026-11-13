@@ -117,7 +117,9 @@ def prompts(tokenizer, texts, max_tokens, *, prompt=PROMPT):
 
 
 class Provider:
-    def __init__(self, path, *, max_num_seqs=512, ngram=False):
+    def __init__(self, path, *, max_num_seqs=512, ngram=False, gpu_memory_utilization=0.92):
+        if not 0 < gpu_memory_utilization <= 1:
+            raise ValueError("gpu_memory_utilization must be in (0, 1]")
         from vllm import LLM
         speculation = ({"method": "ngram", "num_speculative_tokens": 3,
                         "prompt_lookup_min": 2, "prompt_lookup_max": 5} if ngram else None)
@@ -125,7 +127,7 @@ class Provider:
                        enable_prefix_caching=True, max_model_len=1024,
                        max_num_batched_tokens=16384, max_num_seqs=max_num_seqs,
                        speculative_config=speculation, distributed_executor_backend="uni",
-                       gpu_memory_utilization=0.92)
+                       gpu_memory_utilization=gpu_memory_utilization)
         self.tokenizer = self.llm.get_tokenizer()
         self.lock = threading.Lock()
 
@@ -199,6 +201,7 @@ def main():
     parser.add_argument('--model', required=True, choices=[MODEL])
     parser.add_argument('--model-path', required=True)
     parser.add_argument('--port', required=True, type=int)
+    parser.add_argument('--gpu-memory-utilization', type=float, default=0.92)
     args = parser.parse_args()
     # Never consult the service user's default Hugging Face token/cache.
     os.environ['HF_HOME'] = os.path.join(os.path.dirname(os.path.abspath(args.model_path)), 'cache')
@@ -209,7 +212,7 @@ def main():
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENABLE_V1_MULTIPROCESSING'] = '0'
     check_checkpoint(args.model_path)
-    serve(Provider(args.model_path), args.port)
+    serve(Provider(args.model_path, gpu_memory_utilization=args.gpu_memory_utilization), args.port)
 
 
 if __name__ == '__main__':

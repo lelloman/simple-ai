@@ -445,6 +445,7 @@ mod tests {
             capabilities: CapabilitiesConfig::default(),
             aliases: AliasesConfig::default(),
             model_routes: Default::default(),
+            co_resident_models: Default::default(),
             engine_resources: Default::default(),
             ocr: OcrConfig::default(),
         }

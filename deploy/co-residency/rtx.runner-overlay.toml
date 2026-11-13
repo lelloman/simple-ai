@@ -1,0 +1,15 @@
+# Merge these fields into existing tables; preserve all other cuda:0 members,
+# checkpoint paths, routes, and provider settings. Do not replace config.toml.
+[co_resident_models]
+summaries = "Qwen/Qwen3-4B-Instruct-2507"
+tagger = "qwen3-06-tagger-w8a8"
+
+[engines.summaries]
+command = ["/home/lelloman/.simple-ai-summary/venv/bin/python", "/home/lelloman/simple-ai-summary-provider.py", "--gpu-memory-utilization", "0.55"]
+
+[engines.tagger]
+vllm_args = ["--max-model-len", "4608", "--max-num-seqs", "128", "--gpu-memory-utilization", "0.30", "--enable-prefix-caching"]
+
+[engine_resources]
+summaries = "cuda:0"
+tagger = "cuda:0"

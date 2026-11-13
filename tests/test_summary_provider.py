@@ -15,6 +15,16 @@ spec.loader.exec_module(m)
 
 
 class SummaryTests(unittest.TestCase):
+    def test_configured_memory_share(self):
+        from unittest.mock import MagicMock
+        llm = MagicMock()
+        with patch.dict(sys.modules, {'vllm': types.SimpleNamespace(LLM=llm)}):
+            m.Provider('/local/model', gpu_memory_utilization=0.55)
+        self.assertEqual(llm.call_args.kwargs['gpu_memory_utilization'], 0.55)
+        for value in [0, -1, 1.1, float('nan')]:
+            with self.assertRaises(ValueError):
+                m.Provider('/local/model', gpu_memory_utilization=value)
+
     def test_limits(self):
         self.assertEqual(m.validate({'model': m.MODEL, 'input': ['hello']})[1], 60)
         for changes in [{'input': []}, {'input': [' ']}, {'input': ['x'] * 65},
@@ -56,7 +66,8 @@ class SummaryTests(unittest.TestCase):
 
     def test_main_disables_flashinfer_before_provider_load(self):
         import os
-        def provider(path):
+        def provider(path, *, gpu_memory_utilization):
+            self.assertEqual(gpu_memory_utilization, 0.92)
             self.assertEqual(os.environ['VLLM_USE_FLASHINFER_SAMPLER'], '0')
             return object()
         with patch.object(sys, 'argv', ['provider', '--model', m.MODEL,

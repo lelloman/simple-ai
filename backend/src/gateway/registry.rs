@@ -219,6 +219,23 @@ impl ConnectedRunner {
         self.resolve_model_alias(model).to_lowercase()
     }
 
+    /// Capacity of a resident model is independent of other resident engines.
+    /// Cold models retain runner-wide accounting until residency is known.
+    pub fn active_requests_for_capacity(&self, model: &str) -> usize {
+        let total = self.active_requests.load(Ordering::SeqCst);
+        if !self.has_model_or_alias(model) {
+            return total;
+        }
+        let key = self.model_request_key(model);
+        let independent: usize = self
+            .active_requests_by_model()
+            .iter()
+            .filter(|(other, _)| *other != &key && self.has_model_or_alias(other))
+            .map(|(_, count)| count)
+            .sum();
+        total.saturating_sub(independent)
+    }
+
     /// Snapshot of active requests per local model name.
     pub fn active_requests_by_model(&self) -> HashMap<String, usize> {
         self.model_requests
@@ -1447,6 +1464,34 @@ mod tests {
         let with_local = registry.with_model("local-model-name").await;
         assert_eq!(with_local.len(), 1);
         assert_eq!(with_local[0].id, "runner-1");
+    }
+
+    #[tokio::test]
+    async fn resident_models_have_independent_capacity() {
+        let registry = RunnerRegistry::new();
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner-1".into(),
+                "Runner 1".into(),
+                None,
+                create_test_status(vec!["summary".into(), "tagger".into()]),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        let runner = registry.all().await.pop().unwrap();
+        let summary = registry.reserve(&runner, "summary");
+        assert_eq!(runner.active_requests_for_capacity("summary"), 1);
+        assert_eq!(runner.active_requests_for_capacity("tagger"), 0);
+        let tagger = registry.reserve(&runner, "tagger");
+        assert_eq!(runner.active_requests_for_capacity("summary"), 1);
+        assert_eq!(runner.active_requests_for_capacity("tagger"), 1);
+        assert_eq!(runner.active_requests_for_capacity("cold"), 2);
+        drop(summary);
+        drop(tagger);
+        assert_eq!(runner.active_requests_for_capacity("tagger"), 0);
     }
 
     #[tokio::test]
