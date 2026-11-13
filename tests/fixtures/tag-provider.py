@@ -12,6 +12,7 @@ parser.add_argument('--port', type=int)
 args, _ = parser.parse_known_args()
 child = subprocess.Popen(['sleep', '600'])
 active = 0
+max_active = 0
 lock = threading.Lock()
 
 
@@ -24,10 +25,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        self.reply(200, {'active': active, 'child': child.pid})
+        self.reply(200, {'active': active, 'max_active': max_active, 'child': child.pid})
 
     def do_POST(self):
-        global active
+        global active, max_active
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         assert body['chat_template_kwargs']['enable_thinking'] is False
         assert body['response_format']['type'] == 'json_schema'
@@ -37,6 +38,7 @@ class Handler(BaseHTTPRequestHandler):
             assert body['temperature'] == 0
         with lock:
             active += 1
+            max_active = max(max_active, active)
         time.sleep(1 if text == 'slow' else .2)
         with lock:
             active -= 1
@@ -54,4 +56,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+class Server(ThreadingHTTPServer):
+    request_queue_size = 128
+
+
+Server(('127.0.0.1', args.port), Handler).serve_forever()

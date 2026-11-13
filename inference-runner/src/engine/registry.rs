@@ -86,10 +86,19 @@ impl ResourceGate {
             changed.as_mut().enable();
             {
                 let mut queue = self.batches.lock().unwrap();
-                if !queue.waiting.iter().any(|entry| entry.2) {
-                    let owner = queue.waiting.front().unwrap().1.clone();
-                    // Snapshot the waiting cohort: new arrivals cannot starve
-                    // another engine already waiting for its turn.
+                let active_owner = queue
+                    .waiting
+                    .iter()
+                    .find(|entry| entry.2)
+                    .map(|entry| entry.1.clone());
+                let can_join = active_owner
+                    .as_ref()
+                    .is_some_and(|owner| queue.waiting.iter().all(|entry| &entry.1 == owner));
+                if active_owner.is_none() || can_join {
+                    let owner =
+                        active_owner.unwrap_or_else(|| queue.waiting.front().unwrap().1.clone());
+                    // Keep continuous batching open until a competing model
+                    // queues. Then freeze the cohort so that model gets a turn.
                     for entry in &mut queue.waiting {
                         if entry.1 == owner {
                             entry.2 = true;
@@ -614,6 +623,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn same_model_arrivals_join_active_inference() {
+        let (registry, _) = fake_registry().await;
+        let held = registry.acquire_model("tag").await.unwrap();
+        let started = std::time::Instant::now();
+        let mut callers = Vec::new();
+        for _ in 0..64 {
+            let registry = registry.clone();
+            callers.push(tokio::spawn(async move {
+                let _lease = registry.acquire_model("tag").await.unwrap();
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }));
+        }
+        let result = tokio::time::timeout(Duration::from_secs(2), async {
+            for caller in &mut callers {
+                caller.await.unwrap();
+            }
+        })
+        .await;
+        eprintln!(
+            "64 delayed requests with an active same-model lease: {:?}",
+            started.elapsed()
+        );
+        for caller in callers {
+            caller.abort();
+        }
+        drop(held);
+        result.expect("same-model requests must overlap the active lease");
+    }
+
+    #[tokio::test]
     async fn default_embedding_rejects_swap_and_opt_in_permits_it() {
         let (registry, events) = fake_registry().await;
         let tag = registry.acquire_model("tag").await.unwrap();
@@ -731,7 +770,7 @@ mod tests {
     async fn cancelled_waiters_never_load_or_unload_an_engine() {
         let (registry, events) = fake_registry().await;
         let lease = registry.acquire_model("tag").await.unwrap();
-        for model in ["code", "tag", "code"] {
+        for model in ["code", "code"] {
             let r = registry.clone();
             let caller = tokio::spawn(async move { r.acquire_model(model).await });
             wait_for_queue(&registry, 2).await;
@@ -742,6 +781,30 @@ mod tests {
         drop(lease);
         drop(registry.acquire_model("tag").await.unwrap());
         assert_eq!(*events.lock().unwrap(), ["load tag"]);
+    }
+
+    #[tokio::test]
+    async fn cancelled_competitor_reopens_same_model_admission() {
+        let (registry, _) = fake_registry().await;
+        let held = registry.acquire_model("tag").await.unwrap();
+        let r = registry.clone();
+        let competitor = tokio::spawn(async move { r.acquire_model("code").await });
+        wait_for_queue(&registry, 2).await;
+        let r = registry.clone();
+        let mut same = tokio::spawn(async move { r.acquire_model("tag").await });
+        wait_for_queue(&registry, 3).await;
+        assert!(tokio::time::timeout(Duration::from_millis(20), &mut same)
+            .await
+            .is_err());
+        competitor.abort();
+        let _ = competitor.await;
+        let joined = tokio::time::timeout(Duration::from_secs(1), same)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        drop(joined);
+        drop(held);
     }
 
     #[tokio::test]

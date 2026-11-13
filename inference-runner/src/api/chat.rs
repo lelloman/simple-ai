@@ -1,6 +1,7 @@
 //! Chat completions endpoint (OpenAI-compatible).
 
 use std::sync::Arc;
+use tracing::Instrument;
 
 use futures_util::{stream, StreamExt};
 use simple_ai_common::{ChatCompletionRequest, ChatCompletionResponse};
@@ -59,6 +60,8 @@ async fn chat_completions(
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let started = std::time::Instant::now();
+    tracing::info!(%request_id, model = %resolved_model, "Runner request received");
     let acquire = state
         .engine_registry
         .acquire_model_for_request(resolved_model, &request_id);
@@ -81,6 +84,9 @@ async fn chat_completions(
         acquire.await?
     };
 
+    tracing::info!(%request_id, lease_ms = started.elapsed().as_millis() as u64,
+        model = %resolved_model, "Runner lease acquired");
+    let inference_started = std::time::Instant::now();
     if request.stream.unwrap_or(false) {
         let upstream = lease
             .engine
@@ -108,7 +114,10 @@ async fn chat_completions(
         let response: ChatCompletionResponse = lease
             .engine
             .chat_completion(&lease.engine_model, &request)
+            .instrument(tracing::info_span!("runner_chat", %request_id))
             .await?;
+        tracing::info!(%request_id, inference_ms = inference_started.elapsed().as_millis() as u64,
+            total_ms = started.elapsed().as_millis() as u64, "Runner response complete");
         Ok(Json(response.strip_internal_metrics()).into_response())
     }
 }
