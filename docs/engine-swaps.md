@@ -99,3 +99,66 @@ registry fix is shared runner code; include it in subsequent Halo binary updates
 Re-run RTX `~/tagger-ft-4cc1f8a/tools/tagger-ft/bench_gw.py` with SanCerchino's key,
 the same inputs and 64–128 concurrency. At least 40 domains/s and the stage logs
 must be checked live; agents cannot establish this gate or perform rollout.
+
+## RTX summary/tagger co-residency (AI-72)
+
+The optional runner table `co_resident_models` maps engine names to **exact
+local model IDs**, forming one residency cohort on one device. Configuration
+fails if a member has no resource mapping or members map to different devices.
+All unlisted engines and all other models in a listed engine retain exclusive
+swap semantics. Omit the table to retain the existing behavior.
+
+The cohort shares the resource queue key and read leases, including cold startup
+of the second provider while the first is serving. Revalidation/load still runs
+inside each engine's lifecycle lock. On transition into the cohort, peers are
+retained only if every loaded model matches their configured cohort model.
+A waiting nonmember freezes admission for the whole cohort and waits for all
+member responses to drain before eviction. Startup/stop cancellation retains
+the existing detached-operation reservation. Each provider remains responsible
+for cleaning up its own failed process; the resource gate never assumes that a
+shared owner key proves provider health.
+
+The gateway already sends different models concurrently over HTTP. Its capacity
+checks now subtract tracked requests for other loaded models; unknown/cold work
+still counts against runner capacity. Thus tagger's concurrency does not consume
+the one summary slot. Existing loaded-model status and aliases suffice; there
+are no new wire fields, and older runners keep their exclusive queue policy.
+
+### Operator rollout and exact changes
+
+Do not deploy from an agent session. After merge:
+1. Drain RTX and install the new runner binary first. Its restart requires the
+   owner's script. Keep the old configuration initially.
+2. Deploy the new backend image.
+3. Copy `scripts/simple_ai_summary_provider.py` to
+   `/home/lelloman/simple-ai-summary-provider.py` on RTX, then merge the exact
+   field changes in `deploy/co-residency/rtx.runner-overlay.toml` into
+   `~/config.toml` and restart via the owner's script after draining.
+   Preserve the existing summary/tagger model paths and every other
+   `engine_resources` entry, including legacy `tag` and `vllm`.
+   No backend configuration, Halo update, new dependency or checkpoint is needed.
+
+The overlay sets summary utilization to **0.55**, tagger to **0.30**, and tagger
+sequences to **128** while retaining its 4608-token context. Summary context
+1024, sequences 512 and the synchronous batched API remain unchanged. The
+provider accepts `--gpu-memory-utilization` via its existing configured command;
+omitting it preserves 0.92. Fractions must be in (0, 1].
+
+These are conservative starting allocations from the ticket, **not measured
+KV-cache sizing**. The combined reservation is 85% of 24 GiB (20.4 GiB), leaving
+15% outside the configured vLLM budgets. Real KV capacity, startup in both orders,
+preemption, memory headroom and combined throughput must be qualified on RTX;
+max sequences is a scheduling ceiling, not a guarantee of 128 full contexts.
+
+Run SanCerchino's live summary phase together with
+`~/tagger-ft-4cc1f8a/tools/tagger-ft/bench_gw.py` at 64–128 tagger concurrency.
+Record summary >=25 sites/s and tagger >=35 sites/s concurrently, GPU memory
+and KV/preemption diagnostics, and no unload journal entries between these
+models. Also qualify tagger-first and summary-first cold starts and a subsequent
+legacy `class:tag` request that drains/evicts both. These live gates have not
+been run in the agent environment.
+
+Rollback after draining: remove `co_resident_models`, restore summary command
+without the utilization flag, and restore tagger utilization 0.9 / sequences
+256, then use the owner's restart script. The new provider defaults and protocol
+remain backward compatible.

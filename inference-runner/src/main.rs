@@ -87,6 +87,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     registry
         .set_engine_resources(config.engine_resources.clone())
         .await;
+    registry
+        .set_co_resident_models(config.co_resident_models.clone())
+        .await?;
     let ocr_provider = if config.ocr.enabled {
         match CliOcrProvider::new(config.ocr.clone()) {
             Ok(provider) => {

@@ -3,7 +3,6 @@
 //! The dispatcher runs an async loop that monitors the batch queue and
 //! dispatches requests to runners when batches are ready.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -130,7 +129,7 @@ impl BatchDispatcher {
         let runners_saturated = !runners.is_empty()
             && runners.iter().all(|runner| {
                 let capacity = runner.batch_size_for_model(model).max(1) as usize;
-                runner.active_requests.load(Ordering::SeqCst) >= capacity
+                runner.active_requests_for_capacity(model) >= capacity
             });
 
         // Status/model discovery can change on any heartbeat, not only reconnect.

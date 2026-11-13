@@ -18,6 +18,7 @@ pub struct EngineRegistry {
     routes: RwLock<HashMap<String, ModelRouteConfig>>,
     route_aliases: RwLock<HashMap<String, String>>,
     engine_resources: RwLock<HashMap<String, String>>,
+    co_resident_models: RwLock<HashMap<String, String>>,
     resource_gates: RwLock<HashMap<String, Arc<ResourceGate>>>,
 }
 
@@ -175,6 +176,7 @@ impl EngineRegistry {
             routes: RwLock::new(HashMap::new()),
             route_aliases: RwLock::new(HashMap::new()),
             engine_resources: RwLock::new(HashMap::new()),
+            co_resident_models: RwLock::new(HashMap::new()),
             resource_gates: RwLock::new(HashMap::new()),
         }
     }
@@ -275,6 +277,27 @@ impl EngineRegistry {
         *self.resource_gates.write().await = gates;
     }
 
+    /// Configure the single residency cohort. Exact models prevent a different
+    /// model in the same engine from bypassing the resource's swap barrier.
+    pub async fn set_co_resident_models(
+        &self,
+        models: HashMap<String, String>,
+    ) -> Result<(), String> {
+        let resources = self.engine_resources.read().await;
+        let mut device = None;
+        for (engine, model) in &models {
+            let group = resources.get(engine).ok_or_else(|| {
+                format!("co-resident engine '{engine}' has no engine_resources entry")
+            })?;
+            if model.trim().is_empty() || device.is_some_and(|device| device != group) {
+                return Err("co-resident models must be nonempty and on one device".into());
+            }
+            device = Some(group);
+        }
+        *self.co_resident_models.write().await = models;
+        Ok(())
+    }
+
     pub async fn acquire_model(&self, model_id: &str) -> crate::error::Result<ModelLease> {
         self.acquire_model_for_request(model_id, &uuid::Uuid::new_v4().to_string())
             .await
@@ -321,7 +344,14 @@ impl EngineRegistry {
         } else {
             None
         };
-        let owner_key = format!("{}\0{}", target_type, engine_model);
+        let co_resident_models = self.co_resident_models.read().await.clone();
+        let co_resident = co_resident_models.get(&target_type) == Some(&engine_model);
+        let owner_key = if co_resident {
+            // This key cannot collide with engine/model keys, which contain NUL.
+            "co-resident".to_string()
+        } else {
+            format!("{}\0{}", target_type, engine_model)
+        };
         let resources = self.engine_resources.read().await.clone();
         let engines = self.all().await;
         let owned_target = target.clone();
@@ -426,6 +456,21 @@ impl EngineRegistry {
                                     || resources.get(engine.engine_type()) != Some(&group)
                                 {
                                     continue;
+                                }
+                                if co_resident {
+                                    if let Some(model) = co_resident_models.get(engine.engine_type()) {
+                                        let loaded = engine.health_check().await.inspect_err(|error| {
+                                            tracing::error!(%request_id, model = %engine_model,
+                                                engine = engine.engine_type(), %error,
+                                                "Co-resident health check failed");
+                                        })?;
+                                        // Empty status can hide a dead parent's surviving
+                                        // process group. Quiesce it to finish cleanup.
+                                        if !loaded.models_loaded.is_empty()
+                                            && loaded.models_loaded.iter().all(|loaded| loaded == model) {
+                                            continue;
+                                        }
+                                    }
                                 }
                                 tracing::info!(%request_id, model = %engine_model, engine = %target_type,
                                     evicted_engine = engine.engine_type(),
@@ -620,6 +665,117 @@ mod tests {
         })
         .await
         .expect("queue did not reach expected size");
+    }
+
+    #[tokio::test]
+    async fn co_resident_models_overlap_without_reload_and_third_engine_evicts() {
+        let (registry, events) = fake_registry().await;
+        registry
+            .register(Arc::new(FakeEngine {
+                kind: "third",
+                loaded: std::sync::atomic::AtomicBool::new(false),
+                events: events.clone(),
+            }))
+            .await;
+        registry
+            .set_engine_resources(HashMap::from([
+                ("tag".into(), "gpu".into()),
+                ("code".into(), "gpu".into()),
+                ("third".into(), "gpu".into()),
+            ]))
+            .await;
+        registry
+            .set_co_resident_models(HashMap::from([
+                ("tag".into(), "tag".into()),
+                ("code".into(), "code".into()),
+            ]))
+            .await
+            .unwrap();
+        let mut leases = Vec::new();
+        for model in ["tag", "code", "tag", "code"] {
+            // Holding all previous leases proves overlap, including cold startup
+            // of the second provider while the first is serving.
+            leases.push(
+                tokio::time::timeout(Duration::from_secs(2), registry.acquire_model(model))
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        assert_eq!(*events.lock().unwrap(), vec!["load tag", "load code"]);
+        let request = serde_json::from_value(serde_json::json!({
+            "model": "ignored", "messages": []
+        }))
+        .unwrap();
+        let responses = futures_util::future::join_all(
+            leases
+                .iter()
+                .map(|lease| lease.engine.chat_completion(&lease.engine_model, &request)),
+        )
+        .await;
+        assert!(responses.iter().all(Result::is_ok));
+        {
+            let mut recorded = events.lock().unwrap();
+            assert_eq!(
+                recorded
+                    .iter()
+                    .filter(|event| event.starts_with("serve "))
+                    .count(),
+                4
+            );
+            recorded.retain(|event| !event.starts_with("serve "));
+            assert_eq!(*recorded, vec!["load tag", "load code"]);
+        }
+        let other = registry.clone();
+        let third = tokio::spawn(async move { other.acquire_model("third").await.unwrap() });
+        wait_for_queue(&registry, 5).await;
+        let other = registry.clone();
+        let later = tokio::spawn(async move { other.acquire_model("tag").await.unwrap() });
+        wait_for_queue(&registry, 6).await;
+        assert!(!third.is_finished());
+        assert!(!later.is_finished());
+        drop(leases);
+        let third = tokio::time::timeout(Duration::from_secs(2), third)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!later.is_finished());
+        let snapshot = events.lock().unwrap().clone();
+        assert_eq!(snapshot.len(), 5);
+        assert!(snapshot.contains(&"unload tag".into()));
+        assert!(snapshot.contains(&"unload code".into()));
+        assert_eq!(snapshot.last().unwrap(), "load third");
+        drop(third);
+        drop(
+            tokio::time::timeout(Duration::from_secs(2), later)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+        let snapshot = events.lock().unwrap().clone();
+        assert_eq!(&snapshot[5..], ["unload third", "load tag"]);
+    }
+
+    #[tokio::test]
+    async fn co_residency_requires_one_device() {
+        let registry = EngineRegistry::new();
+        registry
+            .set_engine_resources(HashMap::from([
+                ("a".into(), "gpu0".into()),
+                ("b".into(), "gpu1".into()),
+            ]))
+            .await;
+        assert!(registry
+            .set_co_resident_models(HashMap::from([
+                ("a".into(), "a".into()),
+                ("b".into(), "b".into())
+            ]))
+            .await
+            .is_err());
+        assert!(registry
+            .set_co_resident_models(HashMap::from([("missing".into(), "a".into())]))
+            .await
+            .is_err());
     }
 
     #[tokio::test]

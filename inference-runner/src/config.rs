@@ -42,6 +42,10 @@ pub struct Config {
     /// Engine type to exclusive resource group (for example `cuda:0`).
     #[serde(default)]
     pub engine_resources: HashMap<String, String>,
+    /// One exact local model per engine allowed to share a device residency cohort.
+    /// Unlisted engines/models retain exclusive swap semantics.
+    #[serde(default)]
+    pub co_resident_models: HashMap<String, String>,
     /// Optional OCR provider configuration.
     #[serde(default)]
     pub ocr: OcrConfig,
