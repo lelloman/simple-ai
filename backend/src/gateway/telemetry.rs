@@ -321,6 +321,7 @@ fn compute_protected_classes(
         ModelClass::Translate,
         ModelClass::Summarize,
         ModelClass::Tag,
+        ModelClass::Tagger,
         ModelClass::SemanticDecisions,
     ] {
         let has_class = models

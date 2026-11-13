@@ -1429,6 +1429,7 @@ impl InferenceRouter {
                 ModelClass::Translate => self.models_config.translate.first(),
                 ModelClass::Summarize => self.models_config.summarize.first(),
                 ModelClass::Tag => self.models_config.tag.first(),
+                ModelClass::Tagger => self.models_config.tagger.first(),
                 ModelClass::TextClassification => self.models_config.text_classification.first(),
                 ModelClass::SemanticDecisions => self.models_config.semantic_decisions.first(),
                 ModelClass::InformationExtraction => {
@@ -1776,7 +1777,7 @@ impl InferenceRouter {
         if engines.is_empty()
             || engines
                 .iter()
-                .any(|engine| !matches!(engine.engine_type.as_str(), "vllm" | "tag"))
+                .any(|engine| !matches!(engine.engine_type.as_str(), "vllm" | "tag" | "tagger"))
         {
             return Err(RouterError::RunnerError {
                 status: 400,
@@ -3214,6 +3215,84 @@ mod tests {
         assert_eq!(plan.runner.id, "gpu-server");
         let mut old_runner = plan.runner.clone();
         let body = serde_json::json!({"model":"qwen3-4b-tag-w8a8", "response_format":request.response_format});
+        for engine in ["ollama", "llama_cpp", "halogen", "summaries"] {
+            old_runner.status.engines[0].engine_type = engine.into();
+            let error =
+                InferenceRouter::validate_chat_format(&old_runner, "/v1/chat/completions", &body)
+                    .unwrap_err();
+            assert_eq!(
+                error.client_status(),
+                simple_server::web::http::StatusCode::BAD_REQUEST
+            );
+        }
+        let reserved = router.reserve_plan(plan).await.unwrap();
+        let result = router
+            .execute_chat_plan::<_, serde_json::Value>(reserved, &request)
+            .await
+            .unwrap();
+        assert_eq!(result.response["ok"], true);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn tagger_class_routes_and_retains_schema_and_rejects_other_engines() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let schema = serde_json::json!({"type":"json_schema", "json_schema":{"name":"tags", "strict":true, "schema":{"type":"object", "properties":{"tag":{"type":"string"}}, "required":["tag"], "additionalProperties":false}}});
+        let expected = schema.clone();
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let expected = expected.clone();
+                async move {
+                    assert_eq!(body["response_format"], expected);
+                    assert_eq!(body["model"], "qwen3-06-tagger-w8a8");
+                    Json(serde_json::json!({"ok":true}))
+                }
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let registry = Arc::new(RunnerRegistry::new());
+        let mut status = create_test_status(vec!["qwen3-06-tagger-w8a8".into()]);
+        status.engines[0].engine_type = "tagger".into();
+        let (tx, _rx) = mpsc::channel(32);
+        registry
+            .register(
+                "gpu-server".into(),
+                "RTX".into(),
+                None,
+                status,
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        let router = InferenceRouter::new(
+            registry,
+            crate::config::ModelsConfig {
+                tagger: vec!["qwen3-06-tagger-w8a8".into()],
+                ..Default::default()
+            },
+            Default::default(),
+            Arc::new(AuditLogger::new(":memory:").unwrap()),
+        );
+        assert_eq!(
+            ModelRequest::parse("class:tagger"),
+            ModelRequest::Class(ModelClass::Tagger)
+        );
+        let request: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model":"class:tagger", "messages":[{"role":"user","content":"tag this"}], "response_format":schema
+        })).unwrap();
+        let plan = router
+            .plan_chat_request("class:tagger", None)
+            .await
+            .unwrap();
+        assert_eq!(plan.runner.id, "gpu-server");
+        let mut old_runner = plan.runner.clone();
+        let body = serde_json::json!({"model":"qwen3-06-tagger-w8a8", "response_format":request.response_format});
         for engine in ["ollama", "llama_cpp", "halogen", "summaries"] {
             old_runner.status.engines[0].engine_type = engine.into();
             let error =

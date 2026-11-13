@@ -116,6 +116,8 @@ pub struct EnginesConfig {
     #[serde(default)]
     pub tag: TagEngineConfig,
     #[serde(default)]
+    pub tagger: TagEngineConfig,
+    #[serde(default)]
     pub decisions: DecisionEngineConfig,
 }
 
@@ -934,6 +936,37 @@ name = "RTX"
             Some("cuda:0")
         );
         assert_eq!(config.model_routes["qwen3.6-35b-a3b-tag-awq"].engine, "tag");
+    }
+
+    #[test]
+    fn tagger_overlay_selects_independent_engine_on_shared_gpu() {
+        let loaded = ConfigLoader::builder()
+            .add_source(File::from_str(
+                "[runner]\nid = \"gpu-server\"\nname = \"RTX\"\n[api]\n",
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(
+                include_str!("../../deploy/tag/rtx.runner-overlay.toml"),
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(
+                include_str!("../../deploy/tagger/rtx.runner-overlay.toml"),
+                FileFormat::Toml,
+            ))
+            .build()
+            .unwrap();
+        let config: Config = loaded.try_deserialize().unwrap();
+        assert!(config.engines.tag.enabled && config.engines.tagger.enabled);
+        assert_eq!(config.engines.tag.model, "qwen3.6-35b-a3b-tag-awq");
+        assert_eq!(config.engines.tagger.model, "qwen3-06-tagger-w8a8");
+        assert_eq!(
+            config.engine_resources["tagger"],
+            config.engine_resources["tag"]
+        );
+        assert_eq!(config.model_routes["qwen3-06-tagger-w8a8"].engine, "tagger");
+        let args = config.engines.tagger.vllm_args.unwrap();
+        assert_eq!(args[3], "256");
+        assert!(!args.iter().any(|arg| arg == "--dtype"));
     }
 
     #[test]

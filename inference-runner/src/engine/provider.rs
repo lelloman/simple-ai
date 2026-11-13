@@ -23,7 +23,7 @@ pub(super) async fn start(
 ) -> Result<Child> {
     // Async vLLM chat has a separate engine-core child, unlike offline providers.
     #[cfg(unix)]
-    if engine == "tag" {
+    if matches!(engine, "tag" | "tagger") {
         command.process_group(0);
     }
     tracing::info!(engine, model, port, "Spawning provider (HF_HUB_OFFLINE=1)");
@@ -37,7 +37,11 @@ pub(super) async fn start(
             tracing::warn!(engine, model, %error, "Provider spawn failed");
             Error::LoadFailed(format!("{engine} provider for {model}: {error}"))
         })?;
-    let mut startup_group = ProcessGroup(if engine == "tag" { child.id() } else { None });
+    let mut startup_group = ProcessGroup(if matches!(engine, "tag" | "tagger") {
+        child.id()
+    } else {
+        None
+    });
     let mut stderr = child.stderr.take().expect("piped stderr");
     let tail = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BYTES)));
     let captured = tail.clone();

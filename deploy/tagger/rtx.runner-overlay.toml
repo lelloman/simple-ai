@@ -1,0 +1,14 @@
+# Merge into RTX tables, retaining tag, summaries and all other cuda:0 members.
+[engines.tagger]
+enabled = true
+command = ["/home/lelloman/.simple-ai-summary/venv/bin/python", "/home/lelloman/simple-ai-tag-provider.py"]
+model = "qwen3-06-tagger-w8a8"
+model_path = "/home/lelloman/simple-ai-models/tagger-06-w8a8"
+vllm_args = ["--max-model-len", "4608", "--max-num-seqs", "256", "--gpu-memory-utilization", "0.9", "--enable-prefix-caching"]
+
+[engine_resources]
+tagger = "cuda:0"
+
+[model_routes."qwen3-06-tagger-w8a8"]
+engine = "tagger"
+engine_model = "qwen3-06-tagger-w8a8"

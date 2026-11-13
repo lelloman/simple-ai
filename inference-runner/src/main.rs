@@ -207,6 +207,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("Registered tag engine");
     }
 
+    if config.engines.tagger.enabled {
+        if !config.engine_resources.contains_key("tagger") {
+            return Err("tagger requires the shared CUDA engine resource group".into());
+        }
+        registry
+            .register(Arc::new(engine::TagEngine::new_tagger(
+                config.engines.tagger.clone(),
+            )?))
+            .await;
+        tracing::info!("Registered tagger engine");
+    }
+
     if config.engines.translation.enabled {
         if config.engines.translation.device != "cpu"
             && !config.engine_resources.contains_key("translation")

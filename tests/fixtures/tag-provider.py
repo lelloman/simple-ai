@@ -32,6 +32,9 @@ class Handler(BaseHTTPRequestHandler):
         assert body['chat_template_kwargs']['enable_thinking'] is False
         assert body['response_format']['type'] == 'json_schema'
         text = body['messages'][0]['content']
+        if text.startswith('tagger-'):
+            assert body['max_tokens'] == (256 if text == 'tagger-default' else 512)
+            assert body['temperature'] == 0
         with lock:
             active += 1
         time.sleep(1 if text == 'slow' else .2)
