@@ -186,6 +186,7 @@ impl BatchQueue {
     ) -> oneshot::Receiver<Result<BatchedResponse, RouterError>> {
         let (tx, rx) = oneshot::channel();
 
+        tracing::info!(%request_id, %model, "Gateway request enqueued");
         let queued = QueuedRequest {
             request,
             response_tx: tx,

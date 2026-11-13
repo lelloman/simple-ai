@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::RwLock;
+use tracing::Instrument;
 
 use super::batch_queue::{BatchQueue, BatchedResponse, RequestBatch};
 use super::{AffinityDecision, InferenceRouter, RouterError, RouterTelemetry, RunnerRegistry};
@@ -20,8 +20,6 @@ pub struct BatchDispatcher {
     registry: Arc<RunnerRegistry>,
     router: Arc<InferenceRouter>,
     telemetry: Arc<RouterTelemetry>,
-    /// Cache of max batch sizes by model (updated periodically).
-    batch_size_cache: RwLock<std::collections::HashMap<String, u32>>,
 }
 
 impl BatchDispatcher {
@@ -39,7 +37,6 @@ impl BatchDispatcher {
             registry,
             router,
             telemetry,
-            batch_size_cache: RwLock::new(std::collections::HashMap::new()),
         }
     }
 
@@ -136,30 +133,13 @@ impl BatchDispatcher {
                 runner.active_requests.load(Ordering::SeqCst) >= capacity
             });
 
-        let cached_batch_size = self.batch_size_cache.read().await.get(model).copied();
-        let max_batch_size = match cached_batch_size {
-            Some(size) => size,
-            None => {
-                let size = runners
-                    .iter()
-                    .map(|runner| runner.batch_size_for_model(model))
-                    .max()
-                    .unwrap_or(1);
-                self.batch_size_cache
-                    .write()
-                    .await
-                    .insert(model.to_string(), size);
-                size
-            }
-        };
-
+        // Status/model discovery can change on any heartbeat, not only reconnect.
+        let max_batch_size = runners
+            .iter()
+            .map(|runner| runner.batch_size_for_model(model))
+            .max()
+            .unwrap_or(1);
         (max_batch_size, runners_saturated)
-    }
-
-    /// Invalidate the batch size cache (call when runners connect/disconnect).
-    pub async fn invalidate_cache(&self) {
-        let mut cache = self.batch_size_cache.write().await;
-        cache.clear();
     }
 
     /// Dispatch a batch of queued requests.
@@ -269,6 +249,9 @@ impl BatchDispatcher {
                 .as_ref()
                 .map(|service| service.keep_runner_awake(runner_id.clone()));
             let router = self.router.clone();
+            let span = tracing::info_span!("queued_chat", request_id = %queued.request_id);
+            tracing::info!(parent: &span, queue_ms = queued.enqueued_at.elapsed().as_millis() as u64,
+                %runner_id, %resolved_model, "Gateway queue dispatch");
             tokio::spawn(async move {
                 let _guard = guard;
                 let _activity = activity;
@@ -291,8 +274,10 @@ impl BatchDispatcher {
                 };
 
                 // Send response back to caller (ignore if receiver dropped)
+                tracing::info!(total_ms = queued.enqueued_at.elapsed().as_millis() as u64,
+                    success = response.is_ok(), "Gateway queued response complete");
                 let _ = queued.response_tx.send(response);
-            });
+            }.instrument(span));
         }
 
         if let Some(error) = first_error {
@@ -582,6 +567,88 @@ mod tests {
         );
         server.abort();
         let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn live_capacity_dispatches_64_requests_concurrently() {
+        use simple_server::web::extract::State;
+        let queue = Arc::new(BatchQueue::new(BatchQueueConfig::default()));
+        let registry = Arc::new(RunnerRegistry::new());
+        let dispatcher = Arc::new(BatchDispatcher::new(
+            queue.clone(),
+            registry.clone(),
+            create_test_router(registry.clone()),
+            Arc::new(RouterTelemetry::new()),
+        ));
+        // Query before discovery: fallback capacity must not stick at one.
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-a").await,
+            (1, false)
+        );
+        let peak = Arc::new(AtomicUsize::new(0));
+        let active = Arc::new(AtomicUsize::new(0));
+        let app = Router::new().route("/v1/chat/completions", post(
+            |State((active, peak)): State<(Arc<AtomicUsize>, Arc<AtomicUsize>)>| async move {
+                let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(count, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                active.fetch_sub(1, Ordering::SeqCst);
+                Json(ChatCompletionResponse::new("model-a".into(), ChatMessage {
+                    role: "assistant".into(), content: Some("ok".into()),
+                    tool_calls: None, tool_call_id: None,
+                }, Some("stop".into())))
+            }
+        )).with_state((active, peak.clone()));
+        let listener = simple_server::http::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stop = simple_server::lifecycle::Shutdown::new();
+        let server = tokio::spawn(simple_server::web::serve(listener, app, stop.clone()));
+        let (tx, _) = mpsc::channel(32);
+        registry
+            .register(
+                "runner".into(),
+                "runner".into(),
+                None,
+                create_test_status("model-a", 256),
+                Some(format!("http://{addr}")),
+                tx,
+                None,
+            )
+            .await;
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-a").await,
+            (256, false)
+        );
+        registry
+            .update_status("runner", create_test_status("model-a", 128))
+            .await;
+        assert_eq!(
+            dispatcher.get_runner_batch_state("model-a").await,
+            (128, false)
+        );
+        let receivers = futures_util::future::join_all(
+            (0..64).map(|_| queue.enqueue("model-a".into(), create_test_request())),
+        )
+        .await;
+        let started = std::time::Instant::now();
+        let dispatch_stop = stop.clone();
+        let dispatch_task =
+            tokio::spawn(async move { dispatcher.run_until_shutdown(dispatch_stop).await });
+        tokio::time::timeout(Duration::from_secs(2), async {
+            for receiver in receivers {
+                receiver.await.unwrap().unwrap();
+            }
+        })
+        .await
+        .expect("gateway must dispatch concurrent HTTP requests");
+        eprintln!(
+            "64 gateway requests, 200ms runner delay: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(peak.load(Ordering::SeqCst), 64);
+        stop.request();
+        dispatch_task.await.unwrap();
+        server.await.unwrap().unwrap();
     }
 
     #[tokio::test]

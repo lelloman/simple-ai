@@ -155,11 +155,6 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
         )
         .await;
 
-    // Invalidate batch size cache since a new runner connected
-    if let Some(ref dispatcher) = state.batch_dispatcher {
-        dispatcher.invalidate_cache().await;
-    }
-
     persist_runner_status(
         &state.audit_logger,
         &registration,
@@ -224,11 +219,6 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
 
     // Unregister the runner
     state.registry.unregister(&runner_id).await;
-
-    // Invalidate batch size cache since a runner disconnected
-    if let Some(ref dispatcher) = state.batch_dispatcher {
-        dispatcher.invalidate_cache().await;
-    }
 
     tracing::info!("Runner {} disconnected", runner_id);
 }

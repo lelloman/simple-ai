@@ -1808,6 +1808,7 @@ impl InferenceRouter {
 
         let proxy_request_id = uuid::Uuid::new_v4().to_string();
         tracing::info!(%proxy_request_id, runner_id = %runner.id, model = ?request.get("model"), "Dispatching runner request");
+        let proxy_started = std::time::Instant::now();
         let response = self
             .http_client
             .post(&url)
@@ -1841,7 +1842,10 @@ impl InferenceRouter {
             });
         }
 
-        response.json().await.map_err(RouterError::RequestFailed)
+        let result = response.json().await.map_err(RouterError::RequestFailed);
+        tracing::info!(%proxy_request_id, elapsed_ms = proxy_started.elapsed().as_millis() as u64,
+            success = result.is_ok(), "Gateway runner response complete");
+        result
     }
 
     /// Proxy a request with a JSON Value body and return the raw response (for streaming).

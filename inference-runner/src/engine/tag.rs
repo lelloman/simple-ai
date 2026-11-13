@@ -13,6 +13,7 @@ use tokio::{
     process::{Child, Command},
     sync::{Mutex, RwLock},
 };
+use tracing::Instrument;
 
 struct Server {
     port: u16,
@@ -217,6 +218,7 @@ impl InferenceEngine for TagEngine {
         request.model = Some(id.to_string());
         // Retain the read guard until the provider replies, even if the caller disconnects.
         tokio::spawn(async move {
+            let started = std::time::Instant::now();
             let guard = server.read().await;
             let server = guard
                 .as_ref()
@@ -262,8 +264,9 @@ impl InferenceEngine for TagEngine {
                     return Err(Error::Communication(error.to_string()));
                 }
             };
+            tracing::info!(provider_ms = started.elapsed().as_millis() as u64, "Tag provider response complete");
             Ok(reply)
-        })
+        }.instrument(tracing::Span::current()))
         .await
         .map_err(|e| Error::Internal(e.to_string()))?
     }
@@ -330,6 +333,85 @@ mod tests {
         assert!(engine.chat_completion_stream(&id, &explicit).await.is_err());
         engine.quiesce().await.unwrap();
     }
+    #[tokio::test]
+    async fn runner_http_keeps_tag_and_tagger_provider_requests_concurrent() {
+        use super::super::EngineRegistry;
+        use simple_server::lifecycle::{Lifecycle, ShutdownOptions};
+        for (kind, count) in [("tag", 32), ("tagger", 64)] {
+            let mut engine = fixture();
+            engine.kind = kind;
+            let engine = Arc::new(engine);
+            let id = engine.config.model.clone();
+            let registry = Arc::new(EngineRegistry::new());
+            registry.register(engine.clone()).await;
+            registry
+                .set_engine_resources(std::collections::HashMap::from([(
+                    kind.into(),
+                    "gpu".into(),
+                )]))
+                .await;
+            // Keep an existing inference lease alive: arrivals must join it,
+            // rather than waiting for a whole finite cohort to drain.
+            let held = registry.acquire_model(&id).await.unwrap();
+            let config = serde_json::from_value(serde_json::json!({
+                "runner":{"id":"test", "name":"test"}, "api":{}
+            }))
+            .unwrap();
+            let state = Arc::new(crate::state::AppState::new(config, registry, None));
+            let app = crate::api::chat::router().with_state(state);
+            let listener = simple_server::http::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let lifecycle = Lifecycle::new(ShutdownOptions {
+                grace_period: Duration::from_secs(1),
+            });
+            let shutdown = lifecycle.shutdown();
+            let server = tokio::spawn(simple_server::web::serve(listener, app, shutdown));
+            let client = Client::new();
+            let started = std::time::Instant::now();
+            let result = tokio::time::timeout(
+                Duration::from_secs(3),
+                futures_util::future::join_all((0..count).map(|_| {
+                    let mut body = request("concurrent");
+                    body.model = Some(id.clone());
+                    let client = &client;
+                    async move {
+                        client
+                            .post(format!("http://{addr}/chat/completions"))
+                            .json(&body)
+                            .send()
+                            .await
+                            .unwrap()
+                            .error_for_status()
+                            .unwrap()
+                            .json::<ChatCompletionResponse>()
+                            .await
+                            .unwrap()
+                    }
+                })),
+            )
+            .await;
+            eprintln!(
+                "{kind}: {count} runner HTTP requests, 200ms provider delay: {:?}",
+                started.elapsed()
+            );
+            drop(held);
+            let port = engine.server.read().await.as_ref().unwrap().port;
+            let health: serde_json::Value = client
+                .get(format!("http://127.0.0.1:{port}/health"))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            lifecycle.shutdown().request();
+            server.await.unwrap().unwrap();
+            engine.quiesce().await.unwrap();
+            assert_eq!(result.expect("runner requests must overlap").len(), count);
+            assert_eq!(health["max_active"], count);
+        }
+    }
+
     #[test]
     fn configured_vllm_args_reach_provider_command() {
         let mut engine = fixture();
