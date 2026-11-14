@@ -274,7 +274,16 @@ async fn admin_sse_auth_and_named_events_over_real_http() {
         register(&state, "runner-sse").await;
         state
             .runner_registry
-            .update_status("runner-sse", status(RunnerHealth::Degraded))
+            .update_connection_status(
+                "runner-sse",
+                state
+                    .runner_registry
+                    .get("runner-sse")
+                    .await
+                    .unwrap()
+                    .generation,
+                status(RunnerHealth::Degraded),
+            )
             .await;
         state.runner_registry.emit_command_response(
             "runner-sse",
@@ -285,7 +294,18 @@ async fn admin_sse_auth_and_named_events_over_real_http() {
                 status: None,
             },
         );
-        state.runner_registry.unregister("runner-sse").await;
+        state
+            .runner_registry
+            .unregister_connection(
+                "runner-sse",
+                state
+                    .runner_registry
+                    .get("runner-sse")
+                    .await
+                    .unwrap()
+                    .generation,
+            )
+            .await;
         let mut bytes = Vec::new();
         while bytes.windows(2).filter(|v| *v == b"\n\n").count() < 4 {
             bytes.extend_from_slice(&response.chunk().await.unwrap().expect("live SSE stream"));
@@ -450,7 +470,16 @@ async fn admin_drain_requires_admin_and_queues_typed_command() {
     assert!(rx.try_recv().is_err());
     state
         .runner_registry
-        .update_status("drain-test", status(RunnerHealth::Draining))
+        .update_connection_status(
+            "drain-test",
+            state
+                .runner_registry
+                .get("drain-test")
+                .await
+                .unwrap()
+                .generation,
+            status(RunnerHealth::Draining),
+        )
         .await;
     assert!(state.runner_registry.operational().await.is_empty());
 }

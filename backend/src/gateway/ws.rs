@@ -142,7 +142,7 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     };
 
     // Register the runner
-    state
+    let generation = state
         .registry
         .register(
             registration.runner_id.clone(),
@@ -185,8 +185,14 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
             Some(result) = ws_rx.next() => {
                 match result {
                     Ok(Message::Text(text)) => {
-                        if let Err(e) = handle_runner_message(&text, &runner_id, &state.registry).await {
-                            tracing::error!("Error handling message from {}: {}", runner_id, e);
+                        match handle_runner_message(&text, &runner_id, generation, &state.registry).await {
+                            Ok(false) => {
+                                tracing::warn!(runner = %runner_id, generation, "Runner connection is no longer registered; closing for reconnect");
+                                let _ = ws_tx.send(Message::Close(None)).await;
+                                break;
+                            }
+                            Err(e) => tracing::error!("Error handling message from {}: {}", runner_id, e),
+                            Ok(true) => {}
                         }
                         if let Some(runner) = state.registry.get(&runner_id).await {
                             persist_runner_status(&state.audit_logger, &registration, mac_address.as_deref(), &runner.status);
@@ -218,9 +224,14 @@ async fn handle_runner(socket: WebSocket, state: Arc<WsState>, addr: SocketAddr)
     }
 
     // Unregister the runner
-    state.registry.unregister(&runner_id).await;
-
-    tracing::info!("Runner {} disconnected", runner_id);
+    if state
+        .registry
+        .unregister_connection(&runner_id, generation)
+        .await
+        .is_some()
+    {
+        tracing::info!("Runner {} disconnected", runner_id);
+    }
 }
 
 /// Keep the offline wake catalog once readiness arrives, rather than replacing
@@ -278,22 +289,40 @@ fn validate_registration(reg: &RunnerRegistration, expected_token: &str) -> Resu
     Ok(())
 }
 
-/// Handle a message from a runner.
+/// Handle a message; false tells the socket loop to close and force reconnect.
 async fn handle_runner_message(
     text: &str,
     runner_id: &str,
+    generation: u64,
     registry: &RunnerRegistry,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    if registry
+        .get(runner_id)
+        .await
+        .is_none_or(|runner| runner.generation != generation)
+    {
+        return Ok(false);
+    }
     let msg: RunnerMessage = serde_json::from_str(text)?;
 
     match msg {
         RunnerMessage::Heartbeat(status) => {
             tracing::debug!("Heartbeat from {}: {:?}", runner_id, status.health);
-            registry.update_status(runner_id, status).await;
+            if !registry
+                .update_connection_status(runner_id, generation, status)
+                .await
+            {
+                return Ok(false);
+            }
         }
         RunnerMessage::StatusUpdate(status) => {
             tracing::debug!("Status update from {}: {:?}", runner_id, status.health);
-            registry.update_status(runner_id, status).await;
+            if !registry
+                .update_connection_status(runner_id, generation, status)
+                .await
+            {
+                return Ok(false);
+            }
         }
         RunnerMessage::CommandResponse(response) => {
             tracing::debug!(
@@ -304,7 +333,12 @@ async fn handle_runner_message(
             );
             // Update status if included
             if let Some(status) = response.status.as_ref() {
-                registry.update_status(runner_id, status.clone()).await;
+                if !registry
+                    .update_connection_status(runner_id, generation, status.clone())
+                    .await
+                {
+                    return Ok(false);
+                }
             }
             registry.emit_command_response(runner_id, &response);
         }
@@ -316,7 +350,7 @@ async fn handle_runner_message(
         }
     }
 
-    Ok(())
+    Ok(true)
 }
 
 /// Send a GatewayMessage over WebSocket.
@@ -354,6 +388,98 @@ where
 mod tests {
     use super::*;
     use simple_ai_common::RunnerStatus;
+
+    #[tokio::test]
+    async fn stale_exit_preserves_replacement_and_status_requires_reconnect() {
+        let registry = RunnerRegistry::new();
+        let (tx, _rx) = mpsc::channel(32);
+        let first = registry
+            .register(
+                "runner".into(),
+                "First".into(),
+                None,
+                RunnerStatus::starting(),
+                None,
+                tx.clone(),
+                None,
+            )
+            .await;
+        let second = registry
+            .register(
+                "runner".into(),
+                "Second".into(),
+                None,
+                RunnerStatus::starting(),
+                None,
+                tx,
+                None,
+            )
+            .await;
+        assert_ne!(first, second);
+        let mut events = registry.subscribe_events();
+        assert!(registry
+            .unregister_connection("runner", first)
+            .await
+            .is_none());
+        assert_eq!(registry.get("runner").await.unwrap().generation, second);
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+        let mut stale_status = RunnerStatus::starting();
+        stale_status.health = simple_ai_common::RunnerHealth::Healthy;
+        assert!(
+            !registry
+                .update_connection_status("runner", first, stale_status.clone())
+                .await
+        );
+        assert_eq!(
+            registry.get("runner").await.unwrap().status.health,
+            simple_ai_common::RunnerHealth::Starting
+        );
+        for message in [
+            RunnerMessage::Heartbeat(stale_status.clone()),
+            RunnerMessage::StatusUpdate(stale_status),
+        ] {
+            let text = serde_json::to_string(&message).unwrap();
+            // A false result causes the handler to send Close and exit.
+            assert!(!handle_runner_message(&text, "runner", first, &registry)
+                .await
+                .unwrap());
+            assert!(handle_runner_message(&text, "runner", second, &registry)
+                .await
+                .unwrap());
+        }
+        assert!(registry
+            .unregister_connection("runner", second)
+            .await
+            .is_some());
+        for message in [
+            RunnerMessage::Heartbeat(RunnerStatus::starting()),
+            RunnerMessage::StatusUpdate(RunnerStatus::starting()),
+        ] {
+            let text = serde_json::to_string(&message).unwrap();
+            assert!(!handle_runner_message(&text, "runner", second, &registry)
+                .await
+                .unwrap());
+        }
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            super::super::registry::RunnerEvent::StatusChanged { .. }
+        ));
+        assert!(matches!(
+            events.recv().await.unwrap(),
+            super::super::registry::RunnerEvent::Disconnected { .. }
+        ));
+        assert!(registry
+            .unregister_connection("runner", second)
+            .await
+            .is_none());
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
+    }
 
     #[test]
     fn starting_registration_preserves_catalog_until_status_reports_readiness() {
