@@ -535,6 +535,8 @@ impl RunnerRegistry {
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
+            // This task follows the runner ID across reconnects; socket cleanup
+            // must not remove its marker or allow a second task to start.
             registry.state_enforcement.lock().await.remove(&runner_id);
         });
     }
@@ -545,8 +547,7 @@ impl RunnerRegistry {
         self.event_tx.subscribe()
     }
 
-    /// Register a new runner.
-    // Preserve the public registration API used by gateway callers.
+    /// Register a new runner and return its unique connection generation.
     #[allow(clippy::too_many_arguments)]
     pub async fn register(
         &self,
@@ -557,7 +558,7 @@ impl RunnerRegistry {
         http_base_url: Option<String>,
         tx: mpsc::Sender<GatewayMessage>,
         mac_address: Option<String>,
-    ) {
+    ) -> u64 {
         let now = Utc::now();
         let health = format!("{:?}", status.health);
         let loaded_models: Vec<String> = status
@@ -605,11 +606,20 @@ impl RunnerRegistry {
             available_models,
             metrics,
         });
+        generation
     }
 
-    /// Remove a runner from the registry.
-    pub async fn unregister(&self, id: &str) -> Option<ConnectedRunner> {
-        let removed = self.runners.write().await.remove(id);
+    /// Remove only the connection that owns this generation.
+    pub async fn unregister_connection(
+        &self,
+        id: &str,
+        generation: u64,
+    ) -> Option<ConnectedRunner> {
+        let mut runners = self.runners.write().await;
+        if runners.get(id)?.generation != generation {
+            return None;
+        }
+        let removed = runners.remove(id);
         if removed.is_some() {
             // Notify subscribers that a runner disconnected
             let _ = self.event_tx.send(RunnerEvent::Disconnected {
@@ -619,10 +629,18 @@ impl RunnerRegistry {
         removed
     }
 
-    /// Update a runner's status.
-    pub async fn update_status(&self, id: &str, status: RunnerStatus) {
+    /// Update status only for the owning connection. False requires reconnecting.
+    pub async fn update_connection_status(
+        &self,
+        id: &str,
+        generation: u64,
+        status: RunnerStatus,
+    ) -> bool {
         let mut runners = self.runners.write().await;
         if let Some(runner) = runners.get_mut(id) {
+            if runner.generation != generation {
+                return false;
+            }
             // Check if health, loaded_models, or available_models changed
             let old_health = format!("{:?}", runner.status.health);
             let new_health = format!("{:?}", status.health);
@@ -664,6 +682,23 @@ impl RunnerRegistry {
                     metrics,
                 });
             }
+            return true;
+        }
+        false
+    }
+
+    /// Test helpers for callers that operate on the current registry snapshot.
+    #[cfg(test)]
+    pub async fn unregister(&self, id: &str) -> Option<ConnectedRunner> {
+        let generation = self.get(id).await?.generation;
+        self.unregister_connection(id, generation).await
+    }
+
+    #[cfg(test)]
+    pub async fn update_status(&self, id: &str, status: RunnerStatus) {
+        if let Some(runner) = self.get(id).await {
+            self.update_connection_status(id, runner.generation, status)
+                .await;
         }
     }
 

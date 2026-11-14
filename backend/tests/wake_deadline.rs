@@ -144,7 +144,13 @@ async fn starting_registration_waits_for_engine_status_before_finishing_wake() {
     );
     let mut status = RunnerStatus::starting();
     status.health = RunnerHealth::Healthy;
-    registry.update_status("fixture", status).await;
+    registry
+        .update_connection_status(
+            "fixture",
+            registry.get("fixture").await.unwrap().generation,
+            status,
+        )
+        .await;
     assert_eq!(
         tokio::time::timeout(Duration::from_secs(1), task)
             .await

@@ -50,3 +50,115 @@ async fn gateway_auth_registration_ping_and_disconnect_over_tcp() {
         let _ = server.await;
     }).await.expect("WebSocket transport test timed out");
 }
+
+#[tokio::test]
+async fn replaced_or_unknown_connection_closes_on_next_status_message() {
+    timeout(Duration::from_secs(10), async {
+        let registry = Arc::new(RunnerRegistry::new());
+        let state = Arc::new(WsState {
+            registry: registry.clone(),
+            auth_token: "secret".into(),
+            audit_logger: Arc::new(AuditLogger::new(":memory:").unwrap()),
+            batch_dispatcher: None,
+        });
+        let app = Router::new()
+            .route("/ws", get(ws_handler))
+            .with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            simple_server::web::serve_with_connect_info(
+                listener,
+                app,
+                simple_server::lifecycle::Shutdown::new(),
+            )
+            .await
+            .unwrap();
+        });
+
+        for message in [
+            RunnerMessage::Heartbeat(RunnerStatus::starting()),
+            RunnerMessage::StatusUpdate(RunnerStatus::starting()),
+        ] {
+            for replacement in [false, true] {
+                let (mut socket, _) = connect_async(format!("ws://{addr}/ws")).await.unwrap();
+                let registration = RunnerRegistration::new(
+                    "runner".into(),
+                    "Runner".into(),
+                    None,
+                    18080,
+                    "secret".into(),
+                    RunnerStatus::starting(),
+                );
+                socket
+                    .send(Message::Text(
+                        serde_json::to_string(&RunnerMessage::Register(registration)).unwrap(),
+                    ))
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    socket.next().await.unwrap().unwrap(),
+                    Message::Text(_)
+                ));
+                // Ping orders observation after registration, whose ack precedes insertion.
+                socket.send(Message::Ping(vec![])).await.unwrap();
+                assert_eq!(socket.next().await.unwrap().unwrap(), Message::Pong(vec![]));
+                let first = registry.get("runner").await.unwrap().generation;
+                let (tx, _rx) = tokio::sync::mpsc::channel(32);
+                let second = if replacement {
+                    Some(
+                        registry
+                            .register(
+                                "runner".into(),
+                                "Replacement".into(),
+                                None,
+                                RunnerStatus::starting(),
+                                None,
+                                tx,
+                                None,
+                            )
+                            .await,
+                    )
+                } else {
+                    assert!(registry
+                        .unregister_connection("runner", first)
+                        .await
+                        .is_some());
+                    None
+                };
+                let mut events = registry.subscribe_events();
+                socket
+                    .send(Message::Text(serde_json::to_string(&message).unwrap()))
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    socket.next().await.unwrap().unwrap(),
+                    Message::Close(_)
+                ));
+                // Draining the socket waits for the server handler to finish its exit path.
+                while let Some(frame) = socket.next().await {
+                    if frame.is_err() {
+                        break;
+                    }
+                }
+                assert!(matches!(
+                    events.try_recv(),
+                    Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+                ));
+                if let Some(second) = second {
+                    assert_eq!(registry.get("runner").await.unwrap().generation, second);
+                    assert!(registry
+                        .unregister_connection("runner", second)
+                        .await
+                        .is_some());
+                } else {
+                    assert!(registry.get("runner").await.is_none());
+                }
+            }
+        }
+        server.abort();
+        let _ = server.await;
+    })
+    .await
+    .expect("stale WebSocket did not close on its next heartbeat/status");
+}
