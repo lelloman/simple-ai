@@ -372,6 +372,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let report = lifecycle
         .run(signals.wait(), async { Ok::<(), std::io::Error>(()) })
         .await?;
+    audit_logger.flush();
     tracing::info!(?report, "Graceful shutdown complete");
     Ok(())
 }
