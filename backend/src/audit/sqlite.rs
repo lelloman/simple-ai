@@ -16,7 +16,7 @@ pub type ResponseObserver = Box<dyn Fn(&Response) + Send + Sync>;
 pub type ApiKeyUserInfo = (String, Option<String>, Vec<String>);
 
 pub struct AuditLogger {
-    conn: Mutex<Connection>,
+    pub(super) conn: Mutex<Connection>,
     response_observer: std::sync::OnceLock<ResponseObserver>,
 }
 

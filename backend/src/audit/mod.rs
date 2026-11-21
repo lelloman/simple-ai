@@ -1,3 +1,4 @@
+mod retention;
 mod schema;
 mod sqlite;
 
@@ -11,4 +12,5 @@ pub use sqlite::{
 mod legacy_bootstrap_tests;
 
 mod stream;
+pub use retention::spawn_pruner;
 pub use stream::capture_response;
