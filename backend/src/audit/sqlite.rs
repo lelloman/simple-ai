@@ -241,6 +241,30 @@ impl AuditLogger {
         }
     }
 
+    /// Keep SQLite mutex waits and disk I/O off the inference runtime. Await the
+    /// write so audit persistence and observer ordering retain their semantics.
+    pub async fn log_request_async(
+        self: &std::sync::Arc<Self>,
+        request: &Request,
+    ) -> Result<String, AuditError> {
+        let audit = self.clone();
+        let request = request.clone();
+        tokio::task::spawn_blocking(move || audit.log_request(&request))
+            .await
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?
+    }
+
+    pub async fn log_response_async(
+        self: &std::sync::Arc<Self>,
+        response: &Response,
+    ) -> Result<(), AuditError> {
+        let audit = self.clone();
+        let response = response.clone();
+        tokio::task::spawn_blocking(move || audit.log_response(&response))
+            .await
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?
+    }
+
     /// Log a request (before calling the LLM). Returns the request ID.
     pub fn log_request(&self, request: &Request) -> Result<String, AuditError> {
         let conn = self

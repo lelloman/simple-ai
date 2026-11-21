@@ -162,3 +162,39 @@ Rollback after draining: remove `co_resident_models`, restore summary command
 without the utilization flag, and restore tagger utilization 0.9 / sequences
 256, then use the owner's restart script. The new provider defaults and protocol
 remain backward compatible.
+
+## AI-74 gateway response relay under audit contention
+
+Inference responses use concurrent HTTP requests, not the runner control
+WebSocket. The gateway previously called synchronous SQLite methods from the
+chat handler, authentication and routing futures. The audit database has one
+`std::sync::Mutex<Connection>`; its mutex waits, writes (including API-key
+`last_used_at`) and disk synchronization occupied Tokio workers. Enough busy
+handlers could therefore delay unrelated dispatch futures and polling of runner
+HTTP responses even after the runner had finished.
+
+Chat request/response persistence, inference authentication database work and
+routing metric reads now run on Tokio's blocking pool. Persistence remains
+awaited: request logging still precedes inference, response auditing still
+finishes before the caller receives its response, and authentication checks and
+routing policy are unchanged. No queue, cache, durability setting, wire change
+or retry is introduced. Already-started blocking operations finish if the caller
+is cancelled, preserving audit writes rather than interrupting SQLite.
+
+The existing 64-request batch relay test now includes concurrent serialized
+40 ms audit observers on a single-thread runtime and a fake HTTP runner taking
+200 ms per request. All 64 requests must be active together and all gateway
+responses must arrive within 700 ms. Locally they completed in about 362 ms;
+restoring synchronous auditing makes the same test exceed its two-second
+outer timeout. Audit tasks are awaited separately before test teardown. This
+reproduces worker starvation; it does not establish the exact contribution of
+each database call to the operator's production timestamps.
+
+Operator rollout: deploy only the backend image after merge; no runner, provider,
+configuration, checkpoint or Halo update is required. Re-run bulk tagging at
+64–128 concurrency and compare the correlated queue-dispatch, runner-dispatch,
+provider-complete and gateway-response logs. Live `class:tagger` `total_ms`
+versus `provider_ms` and domains.tagging throughput remain unverified here.
+Audit disk latency can still increase individual caller completion time; this
+change prevents those waits from stopping unrelated network progress. Other
+administrative database paths are outside this ticket's scope.

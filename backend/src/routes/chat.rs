@@ -211,7 +211,11 @@ async fn finalize_stream_response(
         resp_log.tokens_completion = metrics.completion_tokens;
     }
 
-    let _ = log_context.state.audit_logger.log_response(&resp_log);
+    let _ = log_context
+        .state
+        .audit_logger
+        .log_response_async(&resp_log)
+        .await;
     log_context
         .state
         .router_telemetry
@@ -339,7 +343,8 @@ async fn chat_completions(
 
     let request_id = state
         .audit_logger
-        .log_request(&req_log)
+        .log_request_async(&req_log)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Emit pending request event for admin dashboard
@@ -396,7 +401,7 @@ async fn chat_completions(
                     resp_log.response_body = e.to_string();
                     resp_log.latency_ms = start.elapsed().as_millis() as u64;
                     resp_log.model_class = model_class_str.clone();
-                    let _ = state.audit_logger.log_response(&resp_log);
+                    let _ = state.audit_logger.log_response_async(&resp_log).await;
                     return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
                 }
                 Err(SchedulerError::Router(e)) => {
@@ -406,7 +411,7 @@ async fn chat_completions(
                     resp_log.response_body = message.clone();
                     resp_log.latency_ms = start.elapsed().as_millis() as u64;
                     resp_log.model_class = model_class_str.clone();
-                    let _ = state.audit_logger.log_response(&resp_log);
+                    let _ = state.audit_logger.log_response_async(&resp_log).await;
                     return Err((status, message));
                 }
             };
@@ -453,7 +458,7 @@ async fn chat_completions(
             resp_log.response_body = e.to_string();
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.model_class = model_class_str.clone();
-            let _ = state.audit_logger.log_response(&resp_log);
+            let _ = state.audit_logger.log_response_async(&resp_log).await;
             return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         } else {
             let result = state.ollama_client.chat_stream(&request, &model).await;
@@ -470,7 +475,7 @@ async fn chat_completions(
                     resp_log.runner_id = runner_id.clone();
                     resp_log.wol_sent = wol_sent;
                     resp_log.model_class = model_class_str.clone();
-                    let _ = state.audit_logger.log_response(&resp_log);
+                    let _ = state.audit_logger.log_response_async(&resp_log).await;
                     Body::from_stream(stream)
                 }
                 Err(e) => {
@@ -478,7 +483,7 @@ async fn chat_completions(
                     resp_log.response_body = e.to_string();
                     resp_log.latency_ms = start.elapsed().as_millis() as u64;
                     resp_log.model_class = model_class_str.clone();
-                    let _ = state.audit_logger.log_response(&resp_log);
+                    let _ = state.audit_logger.log_response_async(&resp_log).await;
                     return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
                 }
             }
@@ -586,7 +591,7 @@ async fn chat_completions(
             resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
             resp_log.model_class = model_class_str.clone();
-            let _ = state.audit_logger.log_response(&resp_log);
+            let _ = state.audit_logger.log_response_async(&resp_log).await;
             state
                 .router_telemetry
                 .emit(
@@ -657,7 +662,7 @@ async fn chat_completions(
             resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
             resp_log.model_class = model_class_str.clone();
-            let _ = state.audit_logger.log_response(&resp_log);
+            let _ = state.audit_logger.log_response_async(&resp_log).await;
             state
                 .router_telemetry
                 .emit(
@@ -687,7 +692,7 @@ async fn chat_completions(
         }
     };
 
-    let _ = state.audit_logger.log_response(&resp_log);
+    let _ = state.audit_logger.log_response_async(&resp_log).await;
     let _ = state.request_events.send(RequestEvent {
         id: req_log.id.clone(),
         timestamp: req_log.timestamp.to_rfc3339(),

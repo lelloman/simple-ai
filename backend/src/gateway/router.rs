@@ -932,10 +932,12 @@ impl InferenceRouter {
             ));
         };
 
-        let normal_wait =
-            self.estimated_wait_ms(&normal.runner, &normal.resolved_model, class_hint);
-        let affinity_wait =
-            self.estimated_wait_ms(&bound_runner, &binding.resolved_model, class_hint);
+        let normal_wait = self
+            .estimated_wait_ms(&normal.runner, &normal.resolved_model, class_hint)
+            .await;
+        let affinity_wait = self
+            .estimated_wait_ms(&bound_runner, &binding.resolved_model, class_hint)
+            .await;
         let extra_wait = affinity_wait.saturating_sub(normal_wait);
         if extra_wait <= self.routing_config.prompt_cache_affinity_max_extra_wait_ms {
             Ok(RoutePlan {
@@ -1029,8 +1031,12 @@ impl InferenceRouter {
                 None,
             ));
         };
-        let normal_wait = self.estimated_wait_ms(&normal.runner, resolved_model, class_hint);
-        let affinity_wait = self.estimated_wait_ms(&bound_runner, resolved_model, class_hint);
+        let normal_wait = self
+            .estimated_wait_ms(&normal.runner, resolved_model, class_hint)
+            .await;
+        let affinity_wait = self
+            .estimated_wait_ms(&bound_runner, resolved_model, class_hint)
+            .await;
         if affinity_wait.saturating_sub(normal_wait)
             <= self.routing_config.prompt_cache_affinity_max_extra_wait_ms
         {
@@ -1101,7 +1107,7 @@ impl InferenceRouter {
         Some(runner)
     }
 
-    fn estimated_wait_ms(
+    async fn estimated_wait_ms(
         &self,
         runner: &ConnectedRunner,
         resolved_model: &str,
@@ -1110,12 +1116,16 @@ impl InferenceRouter {
         let batch_size = u64::from(runner.batch_size_for_model(resolved_model).max(1));
         let active = runner.active_requests.load(Ordering::SeqCst) as u64;
         let class_name = class_hint.or_else(|| classify_model(resolved_model, &self.models_config));
+        let audit = self.audit_logger.clone();
+        let all_metrics = tokio::task::spawn_blocking(move || audit.get_all_metrics())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
         let latency_ms = class_name
             .and_then(|class| {
-                self.audit_logger
-                    .get_all_metrics()
-                    .ok()?
-                    .into_iter()
+                all_metrics
+                    .iter()
                     .find(|metric| {
                         metric.runner_id == runner.id && metric.model_class == class.as_str()
                     })
@@ -1547,7 +1557,12 @@ impl InferenceRouter {
         let all_operational = self.registry.operational().await;
 
         // Collect all runner metrics for scoring
-        let all_metrics = self.audit_logger.get_all_metrics().unwrap_or_default();
+        let audit = self.audit_logger.clone();
+        let all_metrics = tokio::task::spawn_blocking(move || audit.get_all_metrics())
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or_default();
 
         let mut scored: Vec<(usize, f64)> = candidates
             .iter()
