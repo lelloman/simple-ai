@@ -629,6 +629,32 @@ mod tests {
             (0..64).map(|_| queue.enqueue("model-a".into(), create_test_request())),
         )
         .await;
+        // Model the synchronous audit observer/disk contention present in the
+        // production chat handler. A single-thread runtime makes starvation
+        // deterministic rather than depending on the host's CPU count.
+        let audit = Arc::new(crate::audit::AuditLogger::new(":memory:").unwrap());
+        let user = audit.find_or_create_user("audit-load", None).unwrap();
+        let request = crate::models::request::Request::new(user.id, "/test".into());
+        let request_id = audit.log_request(&request).unwrap();
+        let serial = std::sync::Mutex::new(());
+        audit.set_response_observer(Box::new(move |_| {
+            let _guard = serial.lock().unwrap();
+            std::thread::sleep(Duration::from_millis(40));
+        }));
+        let audit_task = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            futures_util::future::join_all((0..64).map(|_| {
+                let audit = audit.clone();
+                let request_id = request_id.clone();
+                async move {
+                    audit
+                        .log_response_async(&crate::models::request::Response::new(request_id, 200))
+                        .await
+                        .unwrap();
+                }
+            }))
+            .await;
+        });
         let started = std::time::Instant::now();
         let dispatch_stop = stop.clone();
         let dispatch_task =
@@ -644,10 +670,16 @@ mod tests {
             "64 gateway requests, 200ms runner delay: {:?}",
             started.elapsed()
         );
+        assert!(
+            started.elapsed() < Duration::from_millis(700),
+            "200ms provider responses must be polled promptly despite audit contention: {:?}",
+            started.elapsed()
+        );
         assert_eq!(peak.load(Ordering::SeqCst), 64);
         stop.request();
         dispatch_task.await.unwrap();
         server.await.unwrap().unwrap();
+        audit_task.await.unwrap();
     }
 
     #[tokio::test]

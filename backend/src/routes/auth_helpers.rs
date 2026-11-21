@@ -125,10 +125,13 @@ async fn authenticate_with_context(
                 && !headers.contains_key(AUTHORIZATION)
                 && state.lan_local.allows(headers, context.peer)
             {
-                let user = state
-                    .audit_logger
-                    .find_or_create_user("lan-local", None)
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                let audit = state.audit_logger.clone();
+                let user = tokio::task::spawn_blocking(move || {
+                    audit.find_or_create_user("lan-local", None)
+                })
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 let mut auth_user = AuthUser::new(
                     user.id.clone(),
                     None,
@@ -149,28 +152,37 @@ async fn authenticate_with_context(
             if let Ok(credential) = bearer {
                 let token = credential.expose();
                 if token.starts_with("sk-") {
-                    return match state.audit_logger.validate_api_key_with_identity(token) {
-                        Ok(Some(identity)) => {
-                            let crate::audit::ValidatedApiKey {
-                                user_id,
-                                email,
-                                roles,
-                                key_id,
-                                key_name,
-                            } = identity;
-                            let user = state
-                                .audit_logger
-                                .find_or_create_user(&user_id, email.as_deref())
-                                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                            let mut auth_user = AuthUser::new(user_id, email, roles);
-                            auth_user.auth_method = "api_key";
-                            auth_user.api_key_id = Some(key_id);
-                            auth_user.api_key_name = Some(key_name);
-                            Ok((auth_user, user))
+                    let audit = state.audit_logger.clone();
+                    let token = token.to_owned();
+                    return tokio::task::spawn_blocking(move || {
+                        match audit.validate_api_key_with_identity(&token) {
+                            Ok(Some(identity)) => {
+                                let crate::audit::ValidatedApiKey {
+                                    user_id,
+                                    email,
+                                    roles,
+                                    key_id,
+                                    key_name,
+                                } = identity;
+                                let user = audit
+                                    .find_or_create_user(&user_id, email.as_deref())
+                                    .map_err(|e| {
+                                        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                                    })?;
+                                let mut auth_user = AuthUser::new(user_id, email, roles);
+                                auth_user.auth_method = "api_key";
+                                auth_user.api_key_id = Some(key_id);
+                                auth_user.api_key_name = Some(key_name);
+                                Ok((auth_user, user))
+                            }
+                            Ok(None) => {
+                                Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()))
+                            }
+                            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
                         }
-                        Ok(None) => Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string())),
-                        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
-                    };
+                    })
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 }
             }
 
@@ -179,10 +191,15 @@ async fn authenticate_with_context(
                 .authenticate(headers)
                 .await
                 .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
-            let user = state
-                .audit_logger
-                .find_or_create_user(&auth_user.sub, auth_user.email.as_deref())
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let audit = state.audit_logger.clone();
+            let sub = auth_user.sub.clone();
+            let email = auth_user.email.clone();
+            let user = tokio::task::spawn_blocking(move || {
+                audit.find_or_create_user(&sub, email.as_deref())
+            })
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             Ok((auth_user, user))
         })
     })
