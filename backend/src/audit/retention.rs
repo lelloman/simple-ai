@@ -2,10 +2,10 @@
 //! and delete audit rows after `METADATA_RETENTION_DAYS`. See
 //! `docs/audit-durability.md`.
 //!
-//! Every batch is one short transaction under the audit connection lock, which
-//! is released between batches so request logging never waits for a whole run.
+//! Every batch is one short `IMMEDIATE` transaction on the general connection,
+//! so the audit writer and admin queries wait at most one batch, never a run.
 use chrono::{DateTime, Duration as Days, Utc};
-use rusqlite::params;
+use rusqlite::{params, TransactionBehavior};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -90,7 +90,9 @@ impl AuditLogger {
             .conn
             .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let ids = tx
             .prepare("SELECT id FROM requests WHERE timestamp < ?1 ORDER BY timestamp LIMIT ?2")
             .map_err(db_err)?
@@ -131,7 +133,9 @@ impl AuditLogger {
             .conn
             .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-        let tx = conn.transaction().map_err(db_err)?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_err)?;
         let rows = tx
             .prepare(
                 "SELECT rowid, timestamp FROM requests WHERE rowid > ?1 ORDER BY rowid LIMIT ?2",
@@ -213,7 +217,7 @@ mod tests {
         request.timestamp = now - Days::days(age_days);
         request.request_body = "x".repeat(4096);
         let id = logger.log_request(&request).unwrap();
-        logger.save_stream_body(&id, "data: streamed").unwrap();
+        logger.save_stream_body(&id, "data: streamed");
         let mut response = Response::new(id.clone(), 200);
         response.response_body = "y".repeat(4096);
         response.inference_metrics = Some(InferenceMetrics {
@@ -221,6 +225,7 @@ mod tests {
             ..Default::default()
         });
         logger.log_response(&response).unwrap();
+        logger.flush();
         id
     }
 
@@ -311,10 +316,11 @@ mod tests {
         );
     }
 
-    /// A chat request's audit write must wait at most one prune batch, not the
-    /// whole run.
-    #[test]
-    fn request_logging_is_not_stalled_by_a_prune_run() {
+    /// While a prune run is in progress, a chat request's queued audit write
+    /// is committed after at most one batch, and an inline write on the general
+    /// connection waits at most one batch, not the whole run.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn request_logging_is_not_stalled_by_a_prune_run() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("audit.db");
         let logger = Arc::new(AuditLogger::new(path.to_str().unwrap()).unwrap());
@@ -334,24 +340,38 @@ mod tests {
             })
         };
         // Let the run start; with 20 batches and 20 ms pauses it takes > 400 ms.
-        std::thread::sleep(Duration::from_millis(50));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
         let started = Instant::now();
-        let request = Request::new("user".into(), "/v1/chat/completions".into());
-        logger.log_request(&request).unwrap();
-        let waited = started.elapsed();
-        assert!(!pruner.is_finished(), "prune finished before the write");
+        let queued = Request::new("user".into(), "/v1/chat/completions".into());
+        logger.log_request_async(&queued).await.unwrap();
+        logger.flush();
+        let chat_wait = started.elapsed();
+
+        let started = Instant::now();
+        let inline = Request::new("user".into(), "/v1/embeddings".into());
+        logger.log_request(&inline).unwrap();
+        let inline_wait = started.elapsed();
+        assert!(!pruner.is_finished(), "prune finished before the writes");
 
         let report = pruner.join().unwrap();
         assert_eq!(report.bodies_cleared, 2_000);
         assert!(report.batches >= 20);
-        assert!(
-            report.longest_batch < Duration::from_millis(250),
-            "a batch held the audit lock for {:?}",
-            report.longest_batch
-        );
-        assert!(
-            waited < Duration::from_millis(250),
-            "request logging waited {waited:?}"
-        );
+        for (what, waited) in [
+            ("longest prune batch", report.longest_batch),
+            ("queued chat write", chat_wait),
+            ("inline write", inline_wait),
+        ] {
+            assert!(
+                waited < Duration::from_millis(250),
+                "{what} took {waited:?}"
+            );
+        }
+        assert!(logger
+            .get_request_bodies(&queued.id)
+            .unwrap()
+            .unwrap()
+            .request_body
+            .is_some());
     }
 }

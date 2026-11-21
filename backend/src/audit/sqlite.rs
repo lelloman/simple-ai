@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rusqlite::{params, Connection};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock};
+use std::time::Duration;
 
 use crate::models::request::{Request, Response};
 use crate::models::user::User;
@@ -15,9 +16,156 @@ pub type ResponseObserver = Box<dyn Fn(&Response) + Send + Sync>;
 /// User ID, optional email, and roles returned by API-key validation.
 pub type ApiKeyUserInfo = (String, Option<String>, Vec<String>);
 
+/// Request-path persistence is queued to a dedicated writer thread that
+/// commits batches (WAL, `synchronous=NORMAL`), so no request waits on disk.
+/// Rows land shortly after the response; a process crash can lose the queued
+/// tail and an OS crash can lose the last few commits. `conn` serves admin
+/// queries and rare writes, `fast` serves request-path reads so they never
+/// queue behind a slow admin scan. In-memory databases have neither `fast`
+/// nor a writer and run everything inline on `conn`.
 pub struct AuditLogger {
     pub(super) conn: Mutex<Connection>,
-    response_observer: std::sync::OnceLock<ResponseObserver>,
+    fast: Option<Mutex<Connection>>,
+    writer: Option<mpsc::Sender<WriteOp>>,
+    response_observer: Arc<OnceLock<ResponseObserver>>,
+}
+
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_WRITE_BATCH: usize = 512;
+const COMMIT_ATTEMPTS: u32 = 3;
+
+enum WriteOp {
+    Request(Request),
+    Response(Response),
+    StreamBody {
+        id: String,
+        body: String,
+    },
+    TouchUser {
+        id: String,
+        email: Option<String>,
+        at: String,
+    },
+    TouchApiKey {
+        id: String,
+        at: String,
+    },
+    Flush(mpsc::Sender<()>),
+}
+
+fn is_memory(path: &str) -> bool {
+    path.is_empty() || path == ":memory:"
+}
+
+fn open_connection(path: &str) -> Result<Connection, AuditError> {
+    let conn = Connection::open(path).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+    conn.busy_timeout(BUSY_TIMEOUT)
+        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+    if !is_memory(path) {
+        match conn
+            .pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get::<_, String>(0))
+        {
+            Ok(mode) if mode.eq_ignore_ascii_case("wal") => {}
+            Ok(mode) => tracing::warn!(%mode, "Audit database is not in WAL mode"),
+            Err(error) => tracing::warn!(%error, "Cannot switch audit database to WAL mode"),
+        }
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+    }
+    Ok(conn)
+}
+
+fn notify_observer(observer: &OnceLock<ResponseObserver>, response: &Response) {
+    if let Some(observer) = observer.get() {
+        observer(response);
+    }
+}
+
+fn apply_op(conn: &Connection, op: &WriteOp) -> Result<(), AuditError> {
+    let db = |e: rusqlite::Error| AuditError::DatabaseError(e.to_string());
+    match op {
+        WriteOp::Request(request) => AuditLogger::insert_request(conn, request),
+        WriteOp::Response(response) => AuditLogger::insert_response(conn, response),
+        WriteOp::StreamBody { id, body } => conn
+            .execute(
+                "UPDATE requests SET stream_body = ? WHERE id = ?",
+                params![body, id],
+            )
+            .map(drop)
+            .map_err(db),
+        WriteOp::TouchUser { id, email, at } => conn
+            .execute(
+                "UPDATE users SET last_seen_at = ?1, email = COALESCE(?2, email) WHERE id = ?3",
+                params![at, email, id],
+            )
+            .map(drop)
+            .map_err(db),
+        WriteOp::TouchApiKey { id, at } => conn
+            .execute(
+                "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2",
+                params![at, id],
+            )
+            .map(drop)
+            .map_err(db),
+        WriteOp::Flush(_) => Ok(()),
+    }
+}
+
+fn commit_batch(conn: &mut Connection, batch: &[WriteOp]) {
+    for attempt in 1..=COMMIT_ATTEMPTS {
+        // IMMEDIATE so lock contention fails the whole batch here (and is
+        // retried) instead of losing a single statement halfway through.
+        let result = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .and_then(|tx| {
+                for op in batch {
+                    if let Err(error) = apply_op(&tx, op) {
+                        tracing::error!(%error, "Audit write failed");
+                    }
+                }
+                tx.commit()
+            });
+        match result {
+            Ok(()) => return,
+            Err(error) => {
+                tracing::error!(%error, attempt, "Audit batch commit failed");
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        }
+    }
+    tracing::error!(
+        writes = batch.len(),
+        "Dropping audit writes after repeated commit failures"
+    );
+}
+
+fn run_writer(
+    mut conn: Connection,
+    queue: mpsc::Receiver<WriteOp>,
+    observer: Arc<OnceLock<ResponseObserver>>,
+) {
+    while let Ok(first) = queue.recv() {
+        let mut batch = vec![first];
+        while batch.len() < MAX_WRITE_BATCH {
+            match queue.try_recv() {
+                Ok(op) => batch.push(op),
+                Err(_) => break,
+            }
+        }
+        for op in &batch {
+            if let WriteOp::Response(response) = op {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    notify_observer(&observer, response)
+                }));
+            }
+        }
+        commit_batch(&mut conn, &batch);
+        for op in batch {
+            if let WriteOp::Flush(done) = op {
+                let _ = done.send(());
+            }
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -84,7 +232,7 @@ impl AuditLogger {
             std::fs::create_dir_all(parent).map_err(|e| AuditError::IoError(e.to_string()))?;
         }
 
-        let conn = Connection::open(path).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let conn = open_connection(path)?;
 
         // Create users table
         super::schema::create_table(&conn, "users")?;
@@ -160,93 +308,164 @@ impl AuditLogger {
 
         tracing::info!("Audit logger initialized with database: {}", path);
 
+        let response_observer = Arc::new(OnceLock::new());
+        let (fast, writer) = if is_memory(path) {
+            (None, None)
+        } else {
+            let (tx, rx) = mpsc::channel();
+            let writer_conn = open_connection(path)?;
+            // Request ids are random UUIDs, so inserts touch scattered index
+            // pages of a very large file; keep more of them cached.
+            writer_conn
+                .pragma_update(None, "cache_size", -65536)
+                .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+            let observer = response_observer.clone();
+            std::thread::Builder::new()
+                .name("audit-writer".into())
+                .spawn(move || run_writer(writer_conn, rx, observer))
+                .map_err(|e| AuditError::IoError(e.to_string()))?;
+            (Some(Mutex::new(open_connection(path)?)), Some(tx))
+        };
+
         Ok(Self {
             conn: Mutex::new(conn),
-            response_observer: std::sync::OnceLock::new(),
+            fast,
+            writer,
+            response_observer,
         })
     }
 
-    /// Find or create a user. Returns the user.
+    fn read_conn(&self) -> Result<MutexGuard<'_, Connection>, AuditError> {
+        self.fast
+            .as_ref()
+            .unwrap_or(&self.conn)
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))
+    }
+
+    /// Queue a write for the writer thread, or run it inline when there is
+    /// none (in-memory database) or the writer has died.
+    fn submit(&self, op: WriteOp) {
+        let op = match &self.writer {
+            Some(writer) => match writer.send(op) {
+                Ok(()) => return,
+                Err(mpsc::SendError(op)) => op,
+            },
+            None => op,
+        };
+        if let WriteOp::Response(response) = &op {
+            notify_observer(&self.response_observer, response);
+        }
+        let result = match self.conn.lock() {
+            Ok(conn) => apply_op(&conn, &op),
+            Err(error) => Err(AuditError::DatabaseError(error.to_string())),
+        };
+        if let Err(error) = result {
+            tracing::error!(%error, "Audit write failed");
+        }
+    }
+
+    /// Wait until every write queued before this call is committed.
+    pub fn flush(&self) {
+        if let Some(writer) = &self.writer {
+            let (done, wait) = mpsc::channel();
+            if writer.send(WriteOp::Flush(done)).is_ok() {
+                let _ = wait.recv();
+            }
+        }
+    }
+
+    /// Find or create a user. Returns the user. `last_seen_at` is updated
+    /// asynchronously so a known user costs one read.
     pub fn find_or_create_user(
         &self,
         user_id: &str,
         email: Option<&str>,
     ) -> Result<User, AuditError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-
         let now = Utc::now();
+        let db = |e: rusqlite::Error| AuditError::DatabaseError(e.to_string());
 
-        // Try to find existing user
-        let existing: Option<(String, Option<String>, String, String, bool)> = conn
-            .query_row(
-                "SELECT id, email, created_at, last_seen_at, is_enabled FROM users WHERE id = ?1",
-                params![user_id],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get::<_, i32>(4)? != 0,
-                    ))
-                },
-            )
-            .ok();
-
-        match existing {
-            Some((id, db_email, created_at, _, is_enabled)) => {
-                // Update last_seen_at and email if changed
-                conn.execute(
-                    "UPDATE users SET last_seen_at = ?1, email = COALESCE(?2, email) WHERE id = ?3",
-                    params![now.to_rfc3339(), email, user_id],
+        let (user, known) = {
+            let conn = self.read_conn()?;
+            let existing: Option<(String, Option<String>, String, bool)> = conn
+                .query_row(
+                    "SELECT id, email, created_at, is_enabled FROM users WHERE id = ?1",
+                    params![user_id],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get::<_, i32>(3)? != 0,
+                        ))
+                    },
                 )
-                .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+                .ok();
 
-                let created = chrono::DateTime::parse_from_rfc3339(&created_at)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or(now);
+            match existing {
+                Some((id, db_email, created_at, is_enabled)) => {
+                    let created = chrono::DateTime::parse_from_rfc3339(&created_at)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or(now);
+                    (
+                        User {
+                            id,
+                            email: email.map(String::from).or(db_email),
+                            created_at: created,
+                            last_seen_at: now,
+                            is_enabled,
+                        },
+                        true,
+                    )
+                }
+                None => {
+                    conn.execute(
+                        "INSERT INTO users (id, email, created_at, last_seen_at, is_enabled) VALUES (?1, ?2, ?3, ?4, 1)",
+                        params![user_id, email, now.to_rfc3339(), now.to_rfc3339()],
+                    )
+                    .map_err(db)?;
 
-                Ok(User {
-                    id,
-                    email: email.map(String::from).or(db_email),
-                    created_at: created,
-                    last_seen_at: now,
-                    is_enabled,
-                })
+                    tracing::info!(
+                        "Created new user: {} ({})",
+                        user_id,
+                        email.unwrap_or("no email")
+                    );
+
+                    (
+                        User {
+                            id: user_id.to_string(),
+                            email: email.map(String::from),
+                            created_at: now,
+                            last_seen_at: now,
+                            is_enabled: true,
+                        },
+                        false,
+                    )
+                }
             }
-            None => {
-                // Create new user
-                conn.execute(
-                    "INSERT INTO users (id, email, created_at, last_seen_at, is_enabled) VALUES (?1, ?2, ?3, ?4, 1)",
-                    params![user_id, email, now.to_rfc3339(), now.to_rfc3339()],
-                ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        };
 
-                tracing::info!(
-                    "Created new user: {} ({})",
-                    user_id,
-                    email.unwrap_or("no email")
-                );
-
-                Ok(User {
-                    id: user_id.to_string(),
-                    email: email.map(String::from),
-                    created_at: now,
-                    last_seen_at: now,
-                    is_enabled: true,
-                })
-            }
+        if known {
+            self.submit(WriteOp::TouchUser {
+                id: user_id.to_string(),
+                email: email.map(String::from),
+                at: now.to_rfc3339(),
+            });
         }
+        Ok(user)
     }
 
-    /// Keep SQLite mutex waits and disk I/O off the inference runtime. Await the
-    /// write so audit persistence and observer ordering retain their semantics.
+    /// Queue the request row for the writer thread; it is persisted shortly
+    /// after this returns. Without a writer (in-memory database) the insert
+    /// runs on the blocking pool.
     pub async fn log_request_async(
         self: &std::sync::Arc<Self>,
         request: &Request,
     ) -> Result<String, AuditError> {
+        if self.writer.is_some() {
+            self.submit(WriteOp::Request(request.clone()));
+            return Ok(request.id.clone());
+        }
         let audit = self.clone();
         let request = request.clone();
         tokio::task::spawn_blocking(move || audit.log_request(&request))
@@ -254,10 +473,16 @@ impl AuditLogger {
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?
     }
 
+    /// Queue the response row (and its metrics) for the writer thread. The
+    /// response observer runs there, off the runtime workers.
     pub async fn log_response_async(
         self: &std::sync::Arc<Self>,
         response: &Response,
     ) -> Result<(), AuditError> {
+        if self.writer.is_some() {
+            self.submit(WriteOp::Response(response.clone()));
+            return Ok(());
+        }
         let audit = self.clone();
         let response = response.clone();
         tokio::task::spawn_blocking(move || audit.log_response(&response))
@@ -271,7 +496,11 @@ impl AuditLogger {
             .conn
             .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        Self::insert_request(&conn, request)?;
+        Ok(request.id.clone())
+    }
 
+    fn insert_request(conn: &Connection, request: &Request) -> Result<(), AuditError> {
         conn.execute(
             "INSERT INTO requests (id, timestamp, user_id, request_path, request_body, model, client_ip, source_app, auth_method, api_key_id, api_key_name, user_agent, peer_ip, proxy_request_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
@@ -295,24 +524,25 @@ impl AuditLogger {
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
         tracing::debug!("Logged request: {}", request.id);
-        Ok(request.id.clone())
+        Ok(())
     }
 
-    /// Log a response (after getting LLM result).
     /// Install the response observer. Only the first call takes effect.
     pub fn set_response_observer(&self, observer: ResponseObserver) {
         let _ = self.response_observer.set(observer);
     }
 
+    /// Log a response (after getting LLM result) and call the observer.
     pub fn log_response(&self, response: &Response) -> Result<(), AuditError> {
-        if let Some(observer) = self.response_observer.get() {
-            observer(response);
-        }
+        notify_observer(&self.response_observer, response);
         let conn = self
             .conn
             .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        Self::insert_response(&conn, response)
+    }
 
+    fn insert_response(conn: &Connection, response: &Response) -> Result<(), AuditError> {
         conn.execute(
             "INSERT INTO responses (id, request_id, timestamp, status, response_body, latency_ms, tokens_prompt, tokens_completion, runner_id, wol_sent, model_class)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -331,17 +561,15 @@ impl AuditLogger {
             ],
         ).map_err(|e| AuditError::DatabaseError(e.to_string()))?;
 
-        drop(conn);
-
         // Record inference metrics if we have runner_id and model_class
         if let (Some(ref runner_id), Some(ref model_class)) =
             (&response.runner_id, &response.model_class)
         {
-            let _ = self.record_metric(runner_id, model_class, response.latency_ms);
+            let _ = Self::record_metric_on(conn, runner_id, model_class, response.latency_ms);
         }
 
         if let Some(ref metrics) = response.inference_metrics {
-            let _ = self.record_inference_metrics(response, metrics);
+            let _ = Self::record_inference_metrics_on(conn, response, metrics);
         }
 
         tracing::debug!("Logged response for request: {}", response.request_id);
@@ -357,7 +585,14 @@ impl AuditLogger {
             .conn
             .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        Self::record_inference_metrics_on(&conn, response, metrics)
+    }
 
+    fn record_inference_metrics_on(
+        conn: &Connection,
+        response: &Response,
+        metrics: &InferenceMetrics,
+    ) -> Result<(), AuditError> {
         let requested_model: Option<String> = conn
             .query_row(
                 "SELECT model FROM requests WHERE id = ?1",
@@ -402,7 +637,7 @@ impl AuditLogger {
             metrics.context_window,
         ) {
             Self::record_model_context_metric(
-                &conn,
+                conn,
                 resolved_model,
                 runner_id,
                 context_window,
@@ -496,7 +731,15 @@ impl AuditLogger {
             .conn
             .lock()
             .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        Self::record_metric_on(&conn, runner_id, model_class, ms)
+    }
 
+    fn record_metric_on(
+        conn: &Connection,
+        runner_id: &str,
+        model_class: &str,
+        ms: u64,
+    ) -> Result<(), AuditError> {
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -659,17 +902,11 @@ impl AuditLogger {
         .map(|(requests, pages, _)| (requests, pages))
     }
 
-    pub(super) fn save_stream_body(&self, id: &str, body: &str) -> Result<(), AuditError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-        conn.execute(
-            "UPDATE requests SET stream_body = ? WHERE id = ?",
-            params![body, id],
-        )
-        .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-        Ok(())
+    pub(super) fn save_stream_body(&self, id: &str, body: &str) {
+        self.submit(WriteOp::StreamBody {
+            id: id.to_string(),
+            body: body.to_string(),
+        });
     }
 
     pub fn get_request_bodies(&self, id: &str) -> Result<Option<RequestBodies>, AuditError> {
@@ -1012,7 +1249,7 @@ impl AuditLogger {
     }
 
     /// Validate an API key and return the associated user info.
-    /// Updates last_used_at on successful validation.
+    /// Queues a last_used_at update on successful validation.
     pub fn validate_api_key(
         &self,
         plaintext_key: &str,
@@ -1033,44 +1270,38 @@ impl AuditLogger {
             return Ok(None);
         }
 
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-
         // Hash the provided key
         let mut hasher = Sha256::new();
         hasher.update(plaintext_key.as_bytes());
         let key_hash = hex::encode(hasher.finalize());
 
         // Look up the key
-        let result: Result<(String, String, Option<String>, String, String), _> = conn.query_row(
-            "SELECT ak.id, ak.user_id, u.email, ak.roles, ak.name
-             FROM api_keys ak
-             LEFT JOIN users u ON u.id = ak.user_id
-             WHERE ak.key_hash = ?1 AND ak.revoked = 0",
-            params![key_hash],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            },
-        );
+        let result: Result<(String, String, Option<String>, String, String), _> =
+            self.read_conn()?.query_row(
+                "SELECT ak.id, ak.user_id, u.email, ak.roles, ak.name
+                 FROM api_keys ak
+                 LEFT JOIN users u ON u.id = ak.user_id
+                 WHERE ak.key_hash = ?1 AND ak.revoked = 0",
+                params![key_hash],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            );
 
         match result {
             Ok((key_id, user_id, email, roles_json, key_name)) => {
                 let roles = serde_json::from_str(&roles_json)
                     .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
-                // Update last_used_at
-                let now = chrono::Utc::now().to_rfc3339();
-                let _ = conn.execute(
-                    "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2",
-                    params![now, key_id],
-                );
+                self.submit(WriteOp::TouchApiKey {
+                    id: key_id.clone(),
+                    at: chrono::Utc::now().to_rfc3339(),
+                });
                 Ok(Some(ValidatedApiKey {
                     user_id,
                     email,
@@ -1516,10 +1747,7 @@ impl AuditLogger {
 
     /// Get all metrics across all runners.
     pub fn get_all_metrics(&self) -> Result<Vec<RunnerMetricRow>, AuditError> {
-        let conn = self
-            .conn
-            .lock()
-            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let conn = self.read_conn()?;
 
         let mut stmt = conn.prepare(
             "SELECT runner_id, model_class, sample_count, total_ms, min_ms, max_ms, last_updated_at
@@ -2093,9 +2321,7 @@ mod tests {
             Some(request.request_body.as_str())
         );
         assert_eq!(bodies.response_body.as_deref(), Some("answer"));
-        logger
-            .save_stream_body(&request.id, "data: streamed answer")
-            .unwrap();
+        logger.save_stream_body(&request.id, "data: streamed answer");
         assert_eq!(
             logger
                 .get_request_bodies(&request.id)
@@ -3007,5 +3233,52 @@ mod tests {
         assert_eq!(metrics.len(), 1);
         assert_eq!(metrics[0].model_class, "fast");
         assert_eq!(metrics[0].total_ms, 150);
+    }
+
+    #[tokio::test]
+    async fn file_database_queues_request_path_writes_behind_a_write_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.db");
+        let logger = Arc::new(AuditLogger::new(path.to_str().unwrap()).unwrap());
+        let user = logger.find_or_create_user("queued-user", None).unwrap();
+        let (_, key) = logger.create_api_key(&user.id, "k", &[]).unwrap();
+        let mode: String = logger
+            .conn
+            .lock()
+            .unwrap()
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+
+        let blocker = Connection::open(&path).unwrap();
+        blocker.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let started = std::time::Instant::now();
+        assert!(logger.validate_api_key(&key).unwrap().is_some());
+        logger.find_or_create_user(&user.id, None).unwrap();
+        let request = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
+        logger.log_request_async(&request).await.unwrap();
+        let mut response = Response::new(request.id.clone(), 200);
+        response.runner_id = Some("runner-1".into());
+        response.model_class = Some("fast".into());
+        logger.log_response_async(&response).await.unwrap();
+        logger.save_stream_body(&request.id, "data: streamed");
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "request-path audit work waited for the write lock: {:?}",
+            started.elapsed()
+        );
+
+        blocker.execute_batch("ROLLBACK").unwrap();
+        logger.flush();
+        let bodies = logger.get_request_bodies(&request.id).unwrap().unwrap();
+        assert_eq!(bodies.response_body.as_deref(), Some("data: streamed"));
+        assert_eq!(logger.get_runner_metrics("runner-1").unwrap().len(), 1);
+        let last_used: Option<String> = logger
+            .conn
+            .lock()
+            .unwrap()
+            .query_row("SELECT last_used_at FROM api_keys", [], |row| row.get(0))
+            .unwrap();
+        assert!(last_used.is_some());
     }
 }
