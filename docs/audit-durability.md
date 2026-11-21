@@ -49,11 +49,12 @@ the gateway stopped.
 
 | Data | Kept for | Then |
 | --- | --- | --- |
-| Request, streamed and response bodies (`requests.request_body`, `requests.stream_body`, `responses.response_body`) | 14 days | set to `NULL` |
+| Request, streamed and response bodies (`requests.request_body`, `requests.stream_body`, `responses.response_body`) | 2 days | set to `NULL` |
 | Request, response and inference-metric rows | 365 days | deleted |
 | Aggregates (`runner_metrics`, `model_context_metrics`), users, API keys, runners | forever | — |
 
-The same ages apply to every model class, including `class:tagger`.
+Owner decision (2026-11-21): bodies are kept 2 days and metadata rows 365 days,
+for every model class, including `class:tagger`.
 
 The ages are the constants `BODY_RETENTION_DAYS` and `METADATA_RETENTION_DAYS`
 in `backend/src/audit/retention.rs`. The gateway prunes once at startup and
