@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use super::sqlite::{AuditError, AuditLogger};
 
-pub const BODY_RETENTION_DAYS: i64 = 14;
+pub const BODY_RETENTION_DAYS: i64 = 2;
 pub const METADATA_RETENTION_DAYS: i64 = 365;
 const BATCH_ROWS: usize = 500;
 const BATCH_PAUSE: Duration = Duration::from_millis(20);
@@ -323,7 +323,7 @@ mod tests {
 
         let mut cursor = PruneCursor::default();
         let report = logger.prune(now, &mut cursor, 4, Duration::ZERO).unwrap();
-        // Rows aged 44..15 days are past the 14-day cutoff; 25 rows in batches of 4.
+        // Rows aged 32..8 days are past the 2-day cutoff; 25 rows in batches of 4.
         assert_eq!(report.bodies_cleared, 25);
         assert!(report.batches >= 7);
 
