@@ -17,6 +17,27 @@ const BATCH_ROWS: usize = 500;
 const BATCH_PAUSE: Duration = Duration::from_millis(20);
 const PRUNE_INTERVAL: Duration = Duration::from_secs(3600);
 
+const SELECT_EXPIRED_SQL: &str =
+    "SELECT id FROM requests WHERE timestamp < ?1 ORDER BY timestamp LIMIT ?2";
+/// Deletes for one batch of expired request ids, children first. `{ids}` is
+/// replaced with the id placeholders. Every statement looks rows up by an
+/// index: `response_inference_metrics` by its `response_id` key, since its
+/// `request_id` has no index.
+const DELETE_ROWS_SQL: [&str; 3] = [
+    "DELETE FROM response_inference_metrics
+     WHERE response_id IN (SELECT id FROM responses WHERE request_id IN ({ids}))",
+    "DELETE FROM responses WHERE request_id IN ({ids})",
+    "DELETE FROM requests WHERE id IN ({ids})",
+];
+const SELECT_BODY_ROWS_SQL: &str =
+    "SELECT rowid, timestamp FROM requests WHERE rowid > ?1 ORDER BY rowid LIMIT ?2";
+const CLEAR_RESPONSE_BODIES_SQL: &str = "UPDATE responses SET response_body = NULL
+     WHERE response_body IS NOT NULL
+       AND request_id IN (SELECT id FROM requests WHERE rowid > ?1 AND rowid <= ?2)";
+const CLEAR_REQUEST_BODIES_SQL: &str = "UPDATE requests SET request_body = NULL, stream_body = NULL
+     WHERE rowid > ?1 AND rowid <= ?2
+       AND (request_body IS NOT NULL OR stream_body IS NOT NULL)";
+
 #[derive(Debug, Default)]
 pub struct PruneReport {
     pub bodies_cleared: usize,
@@ -94,7 +115,7 @@ impl AuditLogger {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_err)?;
         let ids = tx
-            .prepare("SELECT id FROM requests WHERE timestamp < ?1 ORDER BY timestamp LIMIT ?2")
+            .prepare(SELECT_EXPIRED_SQL)
             .map_err(db_err)?
             .query_map(params![cutoff, limit as i64], |row| row.get::<_, String>(0))
             .map_err(db_err)?
@@ -104,13 +125,9 @@ impl AuditLogger {
             return Ok(0);
         }
         let placeholders = vec!["?"; ids.len()].join(",");
-        for sql in [
-            "DELETE FROM response_inference_metrics WHERE request_id IN",
-            "DELETE FROM responses WHERE request_id IN",
-            "DELETE FROM requests WHERE id IN",
-        ] {
+        for sql in DELETE_ROWS_SQL {
             tx.execute(
-                &format!("{sql} ({placeholders})"),
+                &sql.replace("{ids}", &placeholders),
                 rusqlite::params_from_iter(&ids),
             )
             .map_err(db_err)?;
@@ -137,9 +154,7 @@ impl AuditLogger {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_err)?;
         let rows = tx
-            .prepare(
-                "SELECT rowid, timestamp FROM requests WHERE rowid > ?1 ORDER BY rowid LIMIT ?2",
-            )
+            .prepare(SELECT_BODY_ROWS_SQL)
             .map_err(db_err)?
             .query_map(params![cursor.body_rowid, limit as i64], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
@@ -154,20 +169,10 @@ impl AuditLogger {
         let Some(&(last, _)) = rows[..aged].last() else {
             return Ok((0, false));
         };
-        tx.execute(
-            "UPDATE responses SET response_body = NULL
-             WHERE response_body IS NOT NULL
-               AND request_id IN (SELECT id FROM requests WHERE rowid > ?1 AND rowid <= ?2)",
-            params![cursor.body_rowid, last],
-        )
-        .map_err(db_err)?;
-        tx.execute(
-            "UPDATE requests SET request_body = NULL, stream_body = NULL
-             WHERE rowid > ?1 AND rowid <= ?2
-               AND (request_body IS NOT NULL OR stream_body IS NOT NULL)",
-            params![cursor.body_rowid, last],
-        )
-        .map_err(db_err)?;
+        for sql in [CLEAR_RESPONSE_BODIES_SQL, CLEAR_REQUEST_BODIES_SQL] {
+            tx.execute(sql, params![cursor.body_rowid, last])
+                .map_err(db_err)?;
+        }
         tx.commit().map_err(db_err)?;
         cursor.body_rowid = last;
         Ok((aged, aged == limit))
@@ -275,6 +280,37 @@ mod tests {
         let ids: Vec<_> = rows.iter().map(|row| row.id.as_str()).collect();
         assert_eq!(ids, [fresh.as_str(), aged.as_str()]);
         assert_eq!(rows[1].status, Some(200));
+    }
+
+    /// No prune statement may scan a whole table: each batch runs while the
+    /// writers wait, so its cost must follow the batch size, not the table.
+    #[test]
+    fn prune_statements_never_scan_a_table() {
+        let logger = logger();
+        let conn = logger.conn.lock().unwrap();
+        let deletes = DELETE_ROWS_SQL.map(|sql| sql.replace("{ids}", "?1,?2"));
+        let statements = [
+            SELECT_EXPIRED_SQL,
+            SELECT_BODY_ROWS_SQL,
+            CLEAR_RESPONSE_BODIES_SQL,
+            CLEAR_REQUEST_BODIES_SQL,
+        ]
+        .into_iter()
+        .chain(deletes.iter().map(String::as_str));
+        for sql in statements {
+            let plan = conn
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .unwrap()
+                .query_map(params!["a", "b"], |row| row.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap();
+            assert!(!plan.is_empty(), "no plan for {sql}");
+            assert!(
+                plan.iter().all(|step| !step.starts_with("SCAN ")),
+                "{sql} scans a table: {plan:?}"
+            );
+        }
     }
 
     #[test]

@@ -311,6 +311,24 @@ mod tests {
         result
     }
 
+    /// Indexes the bootstrap adds on top of the frozen legacy schema.
+    const ADDED_INDEXES: [&str; 1] = ["idx_response_inference_metrics_request_id"];
+
+    /// Metadata without `ADDED_INDEXES`, asserting that each of them exists.
+    fn legacy_metadata(conn: &Connection) -> Vec<String> {
+        let all = metadata(conn);
+        let is_added = |line: &String| {
+            ADDED_INDEXES
+                .iter()
+                .any(|name| line.contains(&format!(":index:(\"{name}\"")))
+        };
+        assert_eq!(
+            all.iter().filter(|line| is_added(line)).count(),
+            ADDED_INDEXES.len()
+        );
+        all.into_iter().filter(|line| !is_added(line)).collect()
+    }
+
     #[test]
     fn shared_bootstrap_matches_legacy_metadata_and_defaults() {
         let legacy = Connection::open_in_memory().unwrap();
@@ -321,7 +339,7 @@ mod tests {
         let logger = AuditLogger::new(path.to_str().unwrap()).unwrap();
         drop(logger);
         let shared = Connection::open(&path).unwrap();
-        assert_eq!(metadata(&shared), metadata(&legacy));
+        assert_eq!(legacy_metadata(&shared), metadata(&legacy));
         for conn in [&legacy, &shared] {
             conn.execute(
                 "INSERT INTO users(id,created_at,last_seen_at) VALUES('u','now','now')",
@@ -355,7 +373,7 @@ mod tests {
                 .unwrap(),
             83
         );
-        assert_eq!(metadata(&conn), metadata(&legacy));
+        assert_eq!(legacy_metadata(&conn), metadata(&legacy));
         drop(conn);
     }
 
@@ -380,7 +398,7 @@ mod tests {
         );
         drop(logger);
         let conn = Connection::open(&path).unwrap();
-        assert_eq!(metadata(&conn), before);
+        assert_eq!(legacy_metadata(&conn), before);
         drop(conn);
     }
     #[test]

@@ -66,6 +66,15 @@ so they never wait for pruning. Every run logs `Audit retention prune finished`
 with the counts and the longest batch; failures log
 `Audit retention prune failed`.
 
+A batch costs time in proportion to its size, not to the table, because every
+prune statement looks rows up by an index. SQLite enforces the foreign key
+from `response_inference_metrics.request_id` to `requests`, so deleting a
+request looks for its metrics rows. The gateway therefore creates
+`idx_response_inference_metrics_request_id` at startup; the first start after
+the upgrade builds it once over the existing metrics rows before serving.
+`prune_statements_never_scan_a_table` in `retention.rs` fails if a prune
+statement's query plan scans a whole table.
+
 After pruning, the admin request history still lists the request with its
 status, tokens, latency and attribution; the detail view shows
 "No request body recorded." for the cleared bodies.
