@@ -24,7 +24,7 @@ pub type ApiKeyUserInfo = (String, Option<String>, Vec<String>);
 /// queue behind a slow admin scan. In-memory databases have neither `fast`
 /// nor a writer and run everything inline on `conn`.
 pub struct AuditLogger {
-    conn: Mutex<Connection>,
+    pub(super) conn: Mutex<Connection>,
     fast: Option<Mutex<Connection>>,
     writer: Option<mpsc::Sender<WriteOp>>,
     response_observer: Arc<OnceLock<ResponseObserver>>,
@@ -301,6 +301,14 @@ impl AuditLogger {
         super::schema::create_table(&conn, "runner_metrics")?;
 
         super::schema::create_table(&conn, "response_inference_metrics")?;
+        // Foreign-key checks on request deletes (audit retention) look up
+        // metrics rows by request_id; without this index each check scans the table.
+        super::schema::create_index(
+            &conn,
+            "response_inference_metrics",
+            "idx_response_inference_metrics_request_id",
+            "request_id",
+        )?;
 
         super::schema::create_table(&conn, "model_context_metrics")?;
 
