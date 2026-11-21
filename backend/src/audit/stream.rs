@@ -26,9 +26,7 @@ impl Drop for Capture {
         if !self.complete {
             body.push_str("\n[Stream interrupted; partial output]");
         }
-        if let Err(error) = self.logger.save_stream_body(&self.request_id, &body) {
-            tracing::error!(%error, "Cannot save streamed response history");
-        }
+        self.logger.save_stream_body(&self.request_id, &body);
     }
 }
 
