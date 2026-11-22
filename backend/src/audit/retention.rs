@@ -1,11 +1,13 @@
 //! Audit retention: clear request/response bodies after `BODY_RETENTION_DAYS`
-//! and delete audit rows after `METADATA_RETENTION_DAYS`. See
+//! (sooner for API keys listed in `[audit] body_retention_hours`) and delete
+//! audit rows after `METADATA_RETENTION_DAYS`. See
 //! `docs/audit-durability.md`.
 //!
 //! Every batch is one short `IMMEDIATE` transaction on the general connection,
 //! so the audit writer and admin queries wait at most one batch, never a run.
 use chrono::{DateTime, Duration as Days, Utc};
 use rusqlite::{params, TransactionBehavior};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -31,11 +33,17 @@ const DELETE_ROWS_SQL: [&str; 3] = [
 ];
 const SELECT_BODY_ROWS_SQL: &str =
     "SELECT rowid, timestamp FROM requests WHERE rowid > ?1 ORDER BY rowid LIMIT ?2";
+/// `?3` is an API key name (any case), or NULL for every key. A named key's error
+/// responses (status >= 400) keep their bodies until the default window ends.
 const CLEAR_RESPONSE_BODIES_SQL: &str = "UPDATE responses SET response_body = NULL
      WHERE response_body IS NOT NULL
-       AND request_id IN (SELECT id FROM requests WHERE rowid > ?1 AND rowid <= ?2)";
+       AND (?3 IS NULL OR status < 400)
+       AND request_id IN (SELECT id FROM requests
+                          WHERE rowid > ?1 AND rowid <= ?2
+                            AND (?3 IS NULL OR lower(api_key_name) = lower(?3)))";
 const CLEAR_REQUEST_BODIES_SQL: &str = "UPDATE requests SET request_body = NULL, stream_body = NULL
      WHERE rowid > ?1 AND rowid <= ?2
+       AND (?3 IS NULL OR lower(api_key_name) = lower(?3))
        AND (request_body IS NOT NULL OR stream_body IS NOT NULL)";
 
 #[derive(Debug, Default)]
@@ -52,6 +60,8 @@ pub struct PruneReport {
 #[derive(Debug, Default)]
 pub struct PruneCursor {
     body_rowid: i64,
+    /// The same position for each API key with its own retention.
+    key_body_rowids: HashMap<String, i64>,
 }
 
 impl PruneReport {
@@ -75,10 +85,12 @@ fn db_err(e: rusqlite::Error) -> AuditError {
 
 impl AuditLogger {
     /// Prune bodies and rows older than the retention ages relative to `now`.
+    /// `key_hours` maps API key names to their own body retention in hours.
     pub fn prune(
         &self,
         now: DateTime<Utc>,
         cursor: &mut PruneCursor,
+        key_hours: &HashMap<String, u32>,
         batch_rows: usize,
         pause: Duration,
     ) -> Result<PruneReport, AuditError> {
@@ -94,11 +106,27 @@ impl AuditLogger {
         }
         loop {
             let (cleared, full) = report.time(pause, || {
-                self.clear_bodies_batch(cursor, &body_cutoff, batch_rows)
+                self.clear_bodies_batch(&mut cursor.body_rowid, &body_cutoff, batch_rows, None)
             })?;
             report.bodies_cleared += cleared;
             if !full {
                 break;
+            }
+        }
+        // Everything up to the default cursor is already cleared for every
+        // key, so a key's walk only covers the rows between the two cutoffs.
+        for (name, hours) in key_hours {
+            let hours = i64::from(*hours).min(BODY_RETENTION_DAYS * 24);
+            let key_cutoff = (now - Days::hours(hours)).to_rfc3339();
+            let rowid = cursor.key_body_rowids.entry(name.clone()).or_insert(0);
+            *rowid = (*rowid).max(cursor.body_rowid);
+            loop {
+                let (_, full) = report.time(pause, || {
+                    self.clear_bodies_batch(rowid, &key_cutoff, batch_rows, Some(name))
+                })?;
+                if !full {
+                    break;
+                }
             }
         }
         Ok(report)
@@ -137,14 +165,16 @@ impl AuditLogger {
     }
 
     /// Clear the bodies of up to `limit` requests after the cursor whose
-    /// timestamp is before `cutoff`. Walks by rowid (insertion order), stopping
-    /// at the first request that is still inside the body retention window.
-    /// Returns the number of requests examined and whether the batch was full.
+    /// timestamp is before `cutoff`, only those of API key `key` when given.
+    /// Walks by rowid (insertion order), stopping at the first request that is
+    /// still inside the body retention window. Returns the number of requests
+    /// examined and whether the batch was full.
     fn clear_bodies_batch(
         &self,
-        cursor: &mut PruneCursor,
+        body_rowid: &mut i64,
         cutoff: &str,
         limit: usize,
+        key: Option<&str>,
     ) -> Result<(usize, bool), AuditError> {
         let mut conn = self
             .conn
@@ -156,7 +186,7 @@ impl AuditLogger {
         let rows = tx
             .prepare(SELECT_BODY_ROWS_SQL)
             .map_err(db_err)?
-            .query_map(params![cursor.body_rowid, limit as i64], |row| {
+            .query_map(params![*body_rowid, limit as i64], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(db_err)?
@@ -170,17 +200,20 @@ impl AuditLogger {
             return Ok((0, false));
         };
         for sql in [CLEAR_RESPONSE_BODIES_SQL, CLEAR_REQUEST_BODIES_SQL] {
-            tx.execute(sql, params![cursor.body_rowid, last])
+            tx.execute(sql, params![*body_rowid, last, key])
                 .map_err(db_err)?;
         }
         tx.commit().map_err(db_err)?;
-        cursor.body_rowid = last;
+        *body_rowid = last;
         Ok((aged, aged == limit))
     }
 }
 
 /// Run `prune` once at startup and then every `PRUNE_INTERVAL`.
-pub fn spawn_pruner(audit: Arc<AuditLogger>) -> tokio::task::JoinHandle<()> {
+pub fn spawn_pruner(
+    audit: Arc<AuditLogger>,
+    key_hours: HashMap<String, u32>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let cursor = Arc::new(std::sync::Mutex::new(PruneCursor::default()));
         let mut interval = tokio::time::interval(PRUNE_INTERVAL);
@@ -189,9 +222,10 @@ pub fn spawn_pruner(audit: Arc<AuditLogger>) -> tokio::task::JoinHandle<()> {
             interval.tick().await;
             let audit = audit.clone();
             let cursor = cursor.clone();
+            let key_hours = key_hours.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut cursor = cursor.lock().unwrap_or_else(|e| e.into_inner());
-                audit.prune(Utc::now(), &mut cursor, BATCH_ROWS, BATCH_PAUSE)
+                audit.prune(Utc::now(), &mut cursor, &key_hours, BATCH_ROWS, BATCH_PAUSE)
             })
             .await;
             match result {
@@ -218,12 +252,23 @@ mod tests {
 
     /// Log a request and its response `age_days` ago, with bodies and metrics.
     fn log_aged(logger: &AuditLogger, now: DateTime<Utc>, age_days: i64) -> String {
+        log_aged_for(logger, now, Days::days(age_days), None, 200)
+    }
+
+    fn log_aged_for(
+        logger: &AuditLogger,
+        now: DateTime<Utc>,
+        age: Days,
+        key: Option<&str>,
+        status: u16,
+    ) -> String {
         let mut request = Request::new("user".into(), "/v1/chat/completions".into());
-        request.timestamp = now - Days::days(age_days);
+        request.timestamp = now - age;
         request.request_body = "x".repeat(4096);
+        request.api_key_name = key.map(str::to_owned);
         let id = logger.log_request(&request).unwrap();
         logger.save_stream_body(&id, "data: streamed");
-        let mut response = Response::new(id.clone(), 200);
+        let mut response = Response::new(id.clone(), status);
         response.response_body = "y".repeat(4096);
         response.inference_metrics = Some(InferenceMetrics {
             prompt_tokens: Some(1),
@@ -254,7 +299,9 @@ mod tests {
         let fresh = log_aged(&logger, now, BODY_RETENTION_DAYS - 1);
 
         let mut cursor = PruneCursor::default();
-        let report = logger.prune(now, &mut cursor, 10, Duration::ZERO).unwrap();
+        let report = logger
+            .prune(now, &mut cursor, &HashMap::new(), 10, Duration::ZERO)
+            .unwrap();
         assert_eq!(report.rows_deleted, 1);
         assert_eq!(report.bodies_cleared, 1);
 
@@ -298,10 +345,12 @@ mod tests {
         .into_iter()
         .chain(deletes.iter().map(String::as_str));
         for sql in statements {
-            let plan = conn
-                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-                .unwrap()
-                .query_map(params!["a", "b"], |row| row.get::<_, String>(3))
+            let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+            let args = vec!["a"; stmt.parameter_count()];
+            let plan = stmt
+                .query_map(rusqlite::params_from_iter(args), |row| {
+                    row.get::<_, String>(3)
+                })
                 .unwrap()
                 .collect::<rusqlite::Result<Vec<_>>>()
                 .unwrap();
@@ -322,14 +371,18 @@ mod tests {
             .collect();
 
         let mut cursor = PruneCursor::default();
-        let report = logger.prune(now, &mut cursor, 4, Duration::ZERO).unwrap();
+        let report = logger
+            .prune(now, &mut cursor, &HashMap::new(), 4, Duration::ZERO)
+            .unwrap();
         // Rows aged 32..8 days are past the 2-day cutoff; 25 rows in batches of 4.
         assert_eq!(report.bodies_cleared, 25);
         assert!(report.batches >= 7);
 
         let later = now + Days::days(5);
         let id = log_aged(&logger, later, 0);
-        let report = logger.prune(later, &mut cursor, 4, Duration::ZERO).unwrap();
+        let report = logger
+            .prune(later, &mut cursor, &HashMap::new(), 4, Duration::ZERO)
+            .unwrap();
         assert_eq!(report.bodies_cleared, 0);
         assert!(logger
             .get_request_bodies(&id)
@@ -352,6 +405,87 @@ mod tests {
         );
     }
 
+    fn bodies(logger: &AuditLogger, id: &str) -> (bool, bool) {
+        let bodies = logger.get_request_bodies(id).unwrap().unwrap();
+        (
+            bodies.request_body.is_some(),
+            bodies.response_body.is_some(),
+        )
+    }
+
+    #[test]
+    fn key_retention_clears_only_that_keys_bodies_after_its_hours() {
+        let logger = logger();
+        let now = Utc::now();
+        let hours = Days::hours;
+        let key_hours = HashMap::from([("bulk".to_string(), 6_u32)]);
+        let old_bulk = log_aged_for(&logger, now, hours(7), Some("bulk"), 200);
+        let old_bulk_error = log_aged_for(&logger, now, hours(7), Some("bulk"), 500);
+        let old_other = log_aged_for(&logger, now, hours(7), Some("other"), 200);
+        let old_anonymous = log_aged_for(&logger, now, hours(7), None, 200);
+        let young_bulk = log_aged_for(&logger, now, hours(5), Some("bulk"), 200);
+
+        let mut cursor = PruneCursor::default();
+        logger
+            .prune(now, &mut cursor, &key_hours, 2, Duration::ZERO)
+            .unwrap();
+        assert_eq!(bodies(&logger, &old_bulk), (false, false));
+        // An error keeps its response body for the default window.
+        assert_eq!(bodies(&logger, &old_bulk_error), (false, true));
+        assert_eq!(bodies(&logger, &old_other), (true, true));
+        assert_eq!(bodies(&logger, &old_anonymous), (true, true));
+        assert_eq!(bodies(&logger, &young_bulk), (true, true));
+
+        // Two hours later the young row passes the key's 6 h; the cursor resumes.
+        let later = now + Days::hours(2);
+        logger
+            .prune(later, &mut cursor, &key_hours, 2, Duration::ZERO)
+            .unwrap();
+        assert_eq!(bodies(&logger, &young_bulk), (false, false));
+        assert_eq!(bodies(&logger, &old_other), (true, true));
+
+        // The default pass still clears everything else after its 2 days.
+        logger
+            .prune(
+                now + Days::days(3),
+                &mut cursor,
+                &key_hours,
+                2,
+                Duration::ZERO,
+            )
+            .unwrap();
+        assert_eq!(bodies(&logger, &old_other), (false, false));
+        assert_eq!(bodies(&logger, &old_bulk_error), (false, false));
+    }
+
+    #[test]
+    fn zero_hour_key_clears_existing_bodies_at_once() {
+        let logger = logger();
+        let now = Utc::now();
+        let key_hours = HashMap::from([("BULK".to_string(), 0_u32)]);
+        let bulk = log_aged_for(&logger, now, Days::minutes(1), Some("bulk"), 200);
+        let other = log_aged_for(&logger, now, Days::minutes(1), Some("other"), 200);
+        let mut cursor = PruneCursor::default();
+        logger
+            .prune(now, &mut cursor, &key_hours, 10, Duration::ZERO)
+            .unwrap();
+        assert_eq!(bodies(&logger, &bulk), (false, false));
+        assert_eq!(bodies(&logger, &other), (true, true));
+    }
+
+    #[test]
+    fn key_retention_above_the_default_is_capped_to_it() {
+        let logger = logger();
+        let now = Utc::now();
+        let key_hours = HashMap::from([("bulk".to_string(), 24 * 30_u32)]);
+        let id = log_aged_for(&logger, now, Days::hours(60), Some("bulk"), 200);
+        let mut cursor = PruneCursor::default();
+        logger
+            .prune(now, &mut cursor, &key_hours, 10, Duration::ZERO)
+            .unwrap();
+        assert_eq!(bodies(&logger, &id), (false, false));
+    }
+
     /// While a prune run is in progress, a chat request's queued audit write
     /// is committed after at most one batch, and an inline write on the general
     /// connection waits at most one batch, not the whole run.
@@ -371,7 +505,13 @@ mod tests {
             std::thread::spawn(move || {
                 let mut cursor = PruneCursor::default();
                 logger
-                    .prune(now, &mut cursor, 100, Duration::from_millis(20))
+                    .prune(
+                        now,
+                        &mut cursor,
+                        &HashMap::new(),
+                        100,
+                        Duration::from_millis(20),
+                    )
                     .unwrap()
             })
         };

@@ -320,7 +320,13 @@ async fn chat_completions(
 
     // Log request BEFORE calling Ollama
     let mut req_log = Request::new(user.id.clone(), "/v1/chat/completions".to_string());
-    req_log.request_body = serde_json::to_string(&request).unwrap_or_default();
+    let keep_bodies = state
+        .config
+        .audit
+        .keeps_bodies(auth_user.api_key_name.as_deref());
+    if keep_bodies {
+        req_log.request_body = serde_json::to_string(&request).unwrap_or_default();
+    }
     req_log.model = Some(model.clone());
     // Informational attribution only: never consulted by authentication or authorization.
     req_log.source_app = headers
@@ -489,11 +495,15 @@ async fn chat_completions(
             }
         };
 
-        let stream_body = crate::audit::capture_response(
-            stream_body,
-            state.audit_logger.clone(),
-            req_log.id.clone(),
-        );
+        let stream_body = if keep_bodies {
+            crate::audit::capture_response(
+                stream_body,
+                state.audit_logger.clone(),
+                req_log.id.clone(),
+            )
+        } else {
+            stream_body
+        };
         let mut response = AxumResponse::new(stream_body);
         *response.status_mut() = StatusCode::OK;
         response.headers_mut().insert(
@@ -629,7 +639,9 @@ async fn chat_completions(
             let metrics = resp.inference_metrics.clone();
             let client_resp = resp.strip_internal_metrics();
             let mut resp_log = AuditResponse::new(request_id, 200);
-            resp_log.response_body = serde_json::to_string(&client_resp).unwrap_or_default();
+            if keep_bodies {
+                resp_log.response_body = serde_json::to_string(&client_resp).unwrap_or_default();
+            }
             resp_log.latency_ms = start.elapsed().as_millis() as u64;
             resp_log.runner_id = runner_id.clone();
             resp_log.wol_sent = wol_sent;
@@ -844,6 +856,130 @@ mod tests {
             assert_eq!(state.runner_registry.get_active_requests("test").await, 0);
             drop(release);
             server.await.unwrap();
+        }
+    }
+
+    /// A key with 0 retention stores no request or successful response
+    /// bodies, streamed or not; its error responses and other keys are kept.
+    #[tokio::test]
+    async fn zero_hour_key_stores_no_bodies_but_keeps_error_responses() {
+        use super::*;
+        use crate::audit::RequestFilters;
+        use tower::ServiceExt;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(path("/.well-known/openid-configuration"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"jwks_uri": format!("{}/jwks", server.uri())}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(path("/jwks"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::from_str::<serde_json::Value>(include_str!(
+                        "../../tests/fixtures/test-oidc-jwks.json"
+                    ))
+                    .unwrap(),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let ollama_ok = ResponseTemplate::new(200).set_body_json(
+            crate::test_util::mock_ollama::MockOllamaResponse::simple_text("tagged ok"),
+        );
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ollama_ok)
+            .up_to_n_times(3)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("model exploded"))
+            .mount(&server)
+            .await;
+
+        let mut config = crate::test_util::test_config();
+        config.oidc.issuer = server.uri();
+        config.ollama.base_url = server.uri();
+        config.audit.body_retention_hours.insert("bulk".into(), 0);
+        let state = Arc::new(crate::test_util::create_test_state_with_config(config).await);
+        let user = state.audit_logger.find_or_create_user("u", None).unwrap();
+        let mut secrets = std::collections::HashMap::new();
+        for name in ["bulk", "normal"] {
+            let (_, secret) = state
+                .audit_logger
+                .create_api_key(&user.id, name, &[])
+                .unwrap();
+            secrets.insert(name, secret);
+        }
+        let app = router(state.clone());
+        let call = |key: &'static str, stream: bool| {
+            let app = app.clone();
+            let secret = secrets[key].clone();
+            async move {
+                let body = serde_json::json!({
+                    "model": "class:fast",
+                    "stream": stream,
+                    "messages": [{"role": "user", "content": "tag this document"}],
+                });
+                let response = app
+                    .oneshot(
+                        simple_server::web::http::Request::builder()
+                            .method("POST")
+                            .uri("/chat/completions")
+                            .header("content-type", "application/json")
+                            .header("authorization", format!("Bearer {secret}"))
+                            .body(Body::from(body.to_string()))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                let status = response.status();
+                let _ = simple_server::web::body::to_bytes(response.into_body(), usize::MAX).await;
+                status
+            }
+        };
+        assert_eq!(call("bulk", false).await, StatusCode::OK);
+        assert_eq!(call("normal", false).await, StatusCode::OK);
+        assert_eq!(call("bulk", true).await, StatusCode::OK);
+        assert_ne!(call("bulk", false).await, StatusCode::OK);
+        state.audit_logger.flush();
+
+        let (rows, _, _) = state
+            .audit_logger
+            .get_request_history(&RequestFilters::default(), 1, 10)
+            .unwrap();
+        assert_eq!(rows.len(), 4);
+        for row in rows {
+            let bodies = state
+                .audit_logger
+                .get_request_bodies(&row.id)
+                .unwrap()
+                .unwrap();
+            let request = bodies.request_body.unwrap_or_default();
+            let response = bodies.response_body.unwrap_or_default();
+            match (row.api_key_name.as_deref().unwrap(), row.status.unwrap()) {
+                ("bulk", 200) => {
+                    assert_eq!(request, "");
+                    assert!(response.is_empty() || response == "[stream]", "{response}");
+                }
+                ("bulk", _) => {
+                    assert_eq!(request, "");
+                    assert!(response.contains("model exploded"), "{response}");
+                }
+                ("normal", 200) => {
+                    assert!(request.contains("tag this document"));
+                    assert!(response.contains("tagged ok"));
+                }
+                other => panic!("unexpected row {other:?}"),
+            }
+            assert!(row.latency_ms.is_some(), "metadata row is kept");
         }
     }
 

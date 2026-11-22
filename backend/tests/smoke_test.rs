@@ -84,6 +84,7 @@ async fn create_test_state() -> Result<Arc<AppState>, AuthError> {
         routing: simple_ai_backend::config::RoutingConfig::default(),
         trusted_proxies: vec![],
         pressure: Default::default(),
+        audit: Default::default(),
     };
 
     let mock_server = MockServer::start().await;

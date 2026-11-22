@@ -259,7 +259,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         router_telemetry.clone(),
         audit_logger.clone(),
     );
-    simple_ai_backend::audit::spawn_pruner(audit_logger.clone());
+    simple_ai_backend::audit::spawn_pruner(
+        audit_logger.clone(),
+        config.audit.body_retention_hours.clone(),
+    );
 
     let state = Arc::new(AppState {
         lan_local: Default::default(),
