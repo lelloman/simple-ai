@@ -27,7 +27,7 @@ use super::registry::RunnerRegistry;
 use super::telemetry::RouterTelemetry;
 
 /// Class names in `ModelsConfig`, in display order.
-const CLASSES: [&str; 10] = [
+const CLASSES: [&str; 13] = [
     "big",
     "fast",
     "embed_small",
@@ -38,6 +38,9 @@ const CLASSES: [&str; 10] = [
     "information_extraction",
     "semantic_decisions",
     "translate",
+    "summarize",
+    "tag",
+    "tagger",
 ];
 
 /// Capability engines serve their class whatever model ids they advertise.
@@ -49,6 +52,9 @@ fn class_for_engine_type(engine_type: &str) -> Option<&'static str> {
         "extraction" => Some("information_extraction"),
         "translation" => Some("translate"),
         "decisions" => Some("semantic_decisions"),
+        "summaries" => Some("summarize"),
+        "tag" => Some("tag"),
+        "tagger" => Some("tagger"),
         _ => None,
     }
 }
@@ -762,6 +768,90 @@ mod tests {
         assert_eq!(snapshot.groups["big"].level, PressureLevel::Green);
         assert!(!snapshot.groups["tts"].available);
         assert_eq!(snapshot.groups["tts"].level, PressureLevel::Red);
+    }
+
+    #[tokio::test]
+    async fn unloaded_engines_on_an_online_runner_read_green_and_available() {
+        use simple_ai_common::{EngineStatus, ModelInfo, RunnerHealth, RunnerStatus};
+        let engine = |engine_type: &str, group: &str, model: &str, loaded: bool| EngineStatus {
+            engine_type: engine_type.into(),
+            resource_group: Some(group.into()),
+            is_healthy: true,
+            version: None,
+            loaded_models: if loaded { vec![model.into()] } else { vec![] },
+            available_models: vec![ModelInfo {
+                revision: None,
+                id: model.into(),
+                name: model.into(),
+                size_bytes: None,
+                parameter_count: None,
+                context_length: None,
+                quantization: None,
+                modified_at: None,
+                reasoning: None,
+            }],
+            error: None,
+            batch_size: 1,
+            prompt_cache: None,
+        };
+        let registry = RunnerRegistry::new();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        registry
+            .register(
+                "rtx".into(),
+                "RTX".into(),
+                Some("gpu-server".into()),
+                RunnerStatus {
+                    health: RunnerHealth::Healthy,
+                    capabilities: vec![],
+                    engines: vec![
+                        engine("audio_embeddings", "cuda:0", "musicfm-msd", true),
+                        engine("tagger", "cuda:0", "tagger-model", false),
+                        engine("tag", "cuda:0", "tag-model", false),
+                        engine("summaries", "cuda:0", "summary-model", false),
+                        engine("translation", "cuda:0", "madlad", false),
+                    ],
+                    metrics: None,
+                    model_aliases: Default::default(),
+                },
+                None,
+                tx,
+                None,
+            )
+            .await;
+
+        let tracker = tracker();
+        let snapshot = tracker
+            .sample(
+                &registry,
+                &RouterTelemetry::new(),
+                &AuditLogger::new(":memory:").unwrap(),
+            )
+            .await;
+        for group in ["tagger", "tag", "summaries", "translation", "embeddings"] {
+            let group_pressure = &snapshot.groups[group];
+            assert!(group_pressure.available, "{group} should be available");
+            assert!(!group_pressure.cold, "{group} runner is online");
+            assert_eq!(group_pressure.level, PressureLevel::Green, "{group}");
+            assert_eq!(group_pressure.retry_after_secs, None, "{group}");
+        }
+        // Nothing serves tts here, so it stays red.
+        assert!(!snapshot.groups["tts"].available);
+        assert_eq!(snapshot.groups["tts"].level, PressureLevel::Red);
+    }
+
+    #[test]
+    fn waiting_past_threshold_still_reddens_the_group() {
+        let tracker = tracker();
+        let t0 = Instant::now();
+        let busy = || vec![host("rtx", vec![lane("cuda:0", &["tagger"], 1)])];
+        assert_eq!(
+            tracker.evaluate(busy(), t0).groups["tagger"].level,
+            PressureLevel::Green
+        );
+        let snapshot = tracker.evaluate(busy(), t0 + Duration::from_secs(10));
+        assert!(snapshot.groups["tagger"].available);
+        assert_eq!(snapshot.groups["tagger"].level, PressureLevel::Red);
     }
 
     #[tokio::test]
