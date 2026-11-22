@@ -445,6 +445,9 @@ mod tests {
             aliases: AliasesConfig::default(),
             model_routes: Default::default(),
             co_resident_models: Default::default(),
+            vram_budget_mib: Default::default(),
+            device_vram_mib: Default::default(),
+            min_residency_secs: 0,
             engine_resources: Default::default(),
             ocr: OcrConfig::default(),
         }

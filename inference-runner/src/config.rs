@@ -46,6 +46,17 @@ pub struct Config {
     /// Unlisted engines/models retain exclusive swap semantics.
     #[serde(default)]
     pub co_resident_models: HashMap<String, String>,
+    /// VRAM budget in MiB of each co-resident engine's model.
+    #[serde(default)]
+    pub vram_budget_mib: HashMap<String, u64>,
+    /// VRAM capacity in MiB per resource group. When set for the group of the
+    /// co-resident cohort, startup fails unless the members' budgets fit.
+    #[serde(default)]
+    pub device_vram_mib: HashMap<String, u64>,
+    /// An engine loaded less than this many seconds ago is not evicted by a
+    /// request for another model; that request waits instead. Default 0 (off).
+    #[serde(default)]
+    pub min_residency_secs: u64,
     /// Optional OCR provider configuration.
     #[serde(default)]
     pub ocr: OcrConfig,
@@ -762,6 +773,32 @@ fn default_classification_shutdown_timeout_secs() -> u64 {
 }
 
 impl Config {
+    /// Reject a co-resident cohort whose declared VRAM budgets exceed its device.
+    pub fn validate_co_residency(&self) -> Result<(), String> {
+        let mut per_device: HashMap<&str, u64> = HashMap::new();
+        for engine in self.co_resident_models.keys() {
+            let Some(group) = self.engine_resources.get(engine) else {
+                continue;
+            };
+            if !self.device_vram_mib.contains_key(group) {
+                continue;
+            }
+            let budget = self.vram_budget_mib.get(engine).ok_or_else(|| {
+                format!("co-resident engine '{engine}' needs vram_budget_mib: device '{group}' declares device_vram_mib")
+            })?;
+            *per_device.entry(group).or_default() += budget;
+        }
+        for (group, total) in per_device {
+            let capacity = self.device_vram_mib[group];
+            if total > capacity {
+                return Err(format!(
+                    "co-resident VRAM budgets total {total} MiB, over device '{group}' capacity {capacity} MiB"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Load configuration from file and environment variables.
     ///
     /// Configuration sources (in order of precedence):
@@ -971,6 +1008,50 @@ name = "RTX"
         let args = config.engines.tagger.vllm_args.unwrap();
         assert_eq!(args[3], "256");
         assert!(!args.iter().any(|arg| arg == "--dtype"));
+    }
+
+    fn co_residency_config(extra: &str) -> Config {
+        ConfigLoader::builder()
+            .add_source(File::from_str(
+                "[runner]\nid = \"gpu-server\"\nname = \"RTX\"\n[api]\n",
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(
+                include_str!("../../deploy/co-residency/rtx.runner-overlay.toml"),
+                FileFormat::Toml,
+            ))
+            .add_source(File::from_str(extra, FileFormat::Toml))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap()
+    }
+
+    #[test]
+    fn rtx_co_residency_overlay_fits_the_card_and_includes_audio() {
+        let config = co_residency_config("");
+        assert_eq!(config.co_resident_models["audio_embeddings"], "musicfm-msd");
+        assert_eq!(config.engine_resources["audio_embeddings"], "cuda:0");
+        assert_eq!(config.min_residency_secs, 30);
+        config.validate_co_residency().unwrap();
+    }
+
+    #[test]
+    fn co_residency_rejects_budgets_over_device_or_missing() {
+        let over = co_residency_config("[vram_budget_mib]\naudio_embeddings = 9000\n");
+        assert!(over
+            .validate_co_residency()
+            .unwrap_err()
+            .contains("over device"));
+        let mut missing = co_residency_config("");
+        missing.vram_budget_mib.remove("tagger");
+        assert!(missing
+            .validate_co_residency()
+            .unwrap_err()
+            .contains("needs vram_budget_mib"));
+        let mut undeclared = co_residency_config("");
+        undeclared.device_vram_mib.clear();
+        undeclared.validate_co_residency().unwrap();
     }
 
     #[test]
