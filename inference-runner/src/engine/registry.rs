@@ -3,7 +3,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
+use std::time::Duration;
 use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
+use tokio::time::Instant;
 
 use super::InferenceEngine;
 use crate::config::ModelRouteConfig;
@@ -20,11 +22,13 @@ pub struct EngineRegistry {
     engine_resources: RwLock<HashMap<String, String>>,
     co_resident_models: RwLock<HashMap<String, String>>,
     resource_gates: RwLock<HashMap<String, Arc<ResourceGate>>>,
+    min_residency: StdRwLock<Duration>,
 }
 
 struct ResourceGate {
     lock: Arc<RwLock<()>>,
     owner: StdRwLock<Option<String>>,
+    owner_since: StdRwLock<Option<Instant>>,
     batches: std::sync::Mutex<BatchQueue>,
     changed: tokio::sync::Notify,
 }
@@ -64,8 +68,48 @@ impl ResourceGate {
         Self {
             lock: Arc::new(RwLock::new(())),
             owner: StdRwLock::new(None),
+            owner_since: StdRwLock::new(None),
             batches: Default::default(),
             changed: tokio::sync::Notify::new(),
+        }
+    }
+
+    /// Hold back a request that would evict an owner loaded less than
+    /// `min_residency` ago. It stays out of the batch queue meanwhile, so the
+    /// owner keeps admitting its own requests instead of freezing for it.
+    async fn wait_min_residency(&self, owner_key: &str, min_residency: Duration) {
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            let deadline = {
+                if self.is_owner(owner_key) {
+                    return;
+                }
+                match *self
+                    .owner_since
+                    .read()
+                    .expect("resource owner lock poisoned")
+                {
+                    Some(since)
+                        if self
+                            .owner
+                            .read()
+                            .expect("resource owner lock poisoned")
+                            .is_some() =>
+                    {
+                        since + min_residency
+                    }
+                    _ => return,
+                }
+            };
+            if Instant::now() >= deadline {
+                return;
+            }
+            tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => return,
+                _ = &mut changed => {}
+            }
         }
     }
 
@@ -124,12 +168,20 @@ impl ResourceGate {
     }
 
     fn set_owner(&self, owner_key: String) {
+        *self
+            .owner_since
+            .write()
+            .expect("resource owner lock poisoned") = Some(Instant::now());
         *self.owner.write().expect("resource owner lock poisoned") = Some(owner_key);
         self.changed.notify_waiters();
     }
 
     fn clear_owner(&self) {
         *self.owner.write().expect("resource owner lock poisoned") = None;
+        *self
+            .owner_since
+            .write()
+            .expect("resource owner lock poisoned") = None;
     }
 
     async fn acquire(&self, owner_key: &str) -> ResourceAccess {
@@ -178,7 +230,17 @@ impl EngineRegistry {
             engine_resources: RwLock::new(HashMap::new()),
             co_resident_models: RwLock::new(HashMap::new()),
             resource_gates: RwLock::new(HashMap::new()),
+            min_residency: StdRwLock::new(Duration::ZERO),
         }
+    }
+
+    /// Anti-thrash window: an engine loaded less than this long ago is not
+    /// evicted by a request for another model; that request waits instead.
+    pub fn set_min_residency(&self, min_residency: Duration) {
+        *self
+            .min_residency
+            .write()
+            .expect("min residency lock poisoned") = min_residency;
     }
 
     pub async fn configure_routes(
@@ -360,6 +422,15 @@ impl EngineRegistry {
         // Queue in the caller's future, not in a detached task. Cancellation
         // before ownership is granted must never start an engine.
         let (batch, access) = if allow_engine_swap {
+            if let Some(gate) = &gate {
+                let min_residency = *self
+                    .min_residency
+                    .read()
+                    .expect("min residency lock poisoned");
+                if !min_residency.is_zero() {
+                    gate.wait_min_residency(&owner_key, min_residency).await;
+                }
+            }
             let batch = match &gate {
                 Some(gate) => Some(gate.batch(&owner_key).await),
                 None => None,
@@ -544,7 +615,6 @@ impl Default for EngineRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     struct FakeEngine {
         kind: &'static str,
@@ -754,6 +824,91 @@ mod tests {
         );
         let snapshot = events.lock().unwrap().clone();
         assert_eq!(&snapshot[5..], ["unload third", "load tag"]);
+    }
+
+    #[tokio::test]
+    async fn fresh_engine_is_not_evicted_until_min_residency_passes() {
+        let (registry, events) = fake_registry().await;
+        registry.set_min_residency(Duration::from_millis(400));
+        drop(registry.acquire_model("tag").await.unwrap());
+        let started = Instant::now();
+        let r = registry.clone();
+        let mut minority = tokio::spawn(async move { r.acquire_model("code").await.unwrap() });
+        // The waiting minority request neither evicts nor freezes the owner.
+        for _ in 0..5 {
+            drop(
+                tokio::time::timeout(Duration::from_millis(50), registry.acquire_model("tag"))
+                    .await
+                    .expect("owner must keep admitting its own requests")
+                    .unwrap(),
+            );
+        }
+        assert!(!minority.is_finished());
+        assert_eq!(*events.lock().unwrap(), ["load tag"]);
+        wait_for_queue(&registry, 0).await;
+        let lease = tokio::time::timeout(Duration::from_secs(2), &mut minority)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(400));
+        assert_eq!(
+            *events.lock().unwrap(),
+            ["load tag", "unload tag", "load code"]
+        );
+        // The new owner is fresh: the old one waits its turn in the same way.
+        let r = registry.clone();
+        let tag = tokio::spawn(async move { r.acquire_model("tag").await.unwrap() });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!tag.is_finished());
+        drop(lease);
+        drop(
+            tokio::time::timeout(Duration::from_secs(2), tag)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+
+    #[tokio::test]
+    async fn long_resident_engine_is_evicted_without_extra_wait() {
+        let (registry, events) = fake_registry().await;
+        registry.set_min_residency(Duration::from_millis(100));
+        drop(registry.acquire_model("tag").await.unwrap());
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let started = Instant::now();
+        drop(
+            tokio::time::timeout(Duration::from_millis(80), registry.acquire_model("code"))
+                .await
+                .expect("an engine past its residency window must be evictable immediately")
+                .unwrap(),
+        );
+        assert!(started.elapsed() < Duration::from_millis(80));
+        assert_eq!(
+            *events.lock().unwrap(),
+            ["load tag", "unload tag", "load code"]
+        );
+    }
+
+    #[tokio::test]
+    async fn co_resident_cohort_survives_interleaved_traffic_under_min_residency() {
+        let (registry, events) = fake_registry().await;
+        registry.set_min_residency(Duration::from_millis(200));
+        registry
+            .set_co_resident_models(HashMap::from([
+                ("tag".into(), "tag".into()),
+                ("code".into(), "code".into()),
+            ]))
+            .await
+            .unwrap();
+        for model in ["tag", "code", "tag", "code", "code", "tag"] {
+            drop(
+                tokio::time::timeout(Duration::from_millis(100), registry.acquire_model(model))
+                    .await
+                    .expect("cohort members must never wait for each other")
+                    .unwrap(),
+            );
+        }
+        assert_eq!(*events.lock().unwrap(), ["load tag", "load code"]);
     }
 
     #[tokio::test]

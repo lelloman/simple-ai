@@ -1,8 +1,27 @@
 # Merge these fields into existing tables; preserve all other cuda:0 members,
 # checkpoint paths, routes, and provider settings. Do not replace config.toml.
+
+# An engine loaded less than this long ago is not evicted by a request for a
+# model outside the cohort; that request waits instead of thrashing (AI-79).
+min_residency_secs = 30
+
 [co_resident_models]
 summaries = "Qwen/Qwen3-4B-Instruct-2507"
 tagger = "qwen3-06-tagger-w8a8"
+# Pezzottify audio embeddings (AI-79): stay loaded next to the vLLM engines
+# instead of evicting them. Other audio models still swap exclusively.
+audio_embeddings = "musicfm-msd"
+
+# Startup fails if the cohort's budgets exceed the card. They mirror the vLLM
+# utilization flags below (0.55 and 0.30 of 24576 MiB) plus about 2 GiB for
+# MusicFM: starting allocations, not measurements.
+[device_vram_mib]
+"cuda:0" = 24576
+
+[vram_budget_mib]
+summaries = 13517
+tagger = 7373
+audio_embeddings = 2048
 
 [engines.summaries]
 command = ["/home/lelloman/.simple-ai-summary/venv/bin/python", "/home/lelloman/simple-ai-summary-provider.py", "--gpu-memory-utilization", "0.55"]
@@ -13,3 +32,4 @@ vllm_args = ["--max-model-len", "4608", "--max-num-seqs", "128", "--gpu-memory-u
 [engine_resources]
 summaries = "cuda:0"
 tagger = "cuda:0"
+audio_embeddings = "cuda:0"

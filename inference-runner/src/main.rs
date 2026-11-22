@@ -72,6 +72,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             e
         )
     })?;
+    config
+        .validate_co_residency()
+        .map_err(|e| format!("Invalid co-residency configuration: {e}"))?;
     tracing::info!(
         "Starting simple-ai-runner: {} ({})",
         config.runner.name,
@@ -90,6 +93,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     registry
         .set_co_resident_models(config.co_resident_models.clone())
         .await?;
+    registry.set_min_residency(std::time::Duration::from_secs(config.min_residency_secs));
     let ocr_provider = if config.ocr.enabled {
         match CliOcrProvider::new(config.ocr.clone()) {
             Ok(provider) => {

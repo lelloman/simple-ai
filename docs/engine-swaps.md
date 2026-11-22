@@ -163,6 +163,31 @@ without the utilization flag, and restore tagger utilization 0.9 / sequences
 256, then use the owner's restart script. The new provider defaults and protocol
 remain backward compatible.
 
+## Audio co-residency and anti-thrash (AI-79)
+
+Incident 2026-11-22: Pezzottify's `musicfm-msd` audio embeddings and SanCerchino's
+tagger alternated on RTX, 41 provider spawns each in 25 minutes, because the audio
+engine was outside the AI-72 cohort and every audio request evicted the tagger.
+
+1. **Co-residency.** `audio_embeddings = "musicfm-msd"` joins `co_resident_models`
+   (see `deploy/co-residency/rtx.runner-overlay.toml`; add it to the tagger cohort
+   even without summaries). Optional `vram_budget_mib` (per engine) and
+   `device_vram_mib` (per resource group) are checked at startup only: if a cohort's
+   device declares a capacity, every member needs a budget and the sum must fit, or
+   the runner refuses to start. The real limits stay the providers' own flags
+   (vLLM `--gpu-memory-utilization`).
+2. **Anti-thrash.** `min_residency_secs` (default 0, off; 30 in the overlay). A
+   request that would evict an owner loaded less than this long ago waits, outside
+   the batch queue, so the owner keeps serving its own traffic and the waiter is
+   not frozen into a swap. Once the window passes it evicts as before. A model
+   outside the cohort therefore waits at most `min_residency_secs` plus the swap.
+
+Operator rollout after merge: install the new runner binary on RTX (drain first,
+owner's script), then merge the overlay changes into `~/config.toml`, restart, and
+check the journal for no `Spawning provider` lines for `tagger`/`audio_embeddings`
+during interleaved traffic. The new keys are runner config only; there is no
+protocol change. Rollback: remove the three keys.
+
 ## AI-74 gateway response relay under audit contention
 
 Inference responses use concurrent HTTP requests, not the runner control
