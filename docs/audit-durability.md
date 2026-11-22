@@ -56,6 +56,39 @@ the gateway stopped.
 Owner decision (2026-11-21): bodies are kept 2 days and metadata rows 365 days,
 for every model class, including `class:tagger`.
 
+### Per-API-key body retention
+
+A bulk client can fill the database with bodies (about 200k requests an hour
+from SanCerchino's tagging is roughly 600 MB an hour). `[audit.body_retention_hours]`
+in `config.toml` maps an API key name (the name shown in the admin UI, matched
+case-insensitively because the config loader lowercases table keys) to its own
+body retention in hours:
+
+```toml
+[audit.body_retention_hours]
+SanCerchino = 0   # store no bodies
+"batch key" = 6   # clear bodies after 6 hours
+```
+
+- `0`: `/v1/chat/completions` stores no request body, no successful response
+  body and no streamed body for the key. The request row (model, tokens,
+  latency, status, error) is still written. Pruning also clears the key's
+  bodies that were stored before the setting, on its next run.
+- `N > 0`: the hourly pruner clears the key's bodies once they are `N` hours
+  old. Values above 48 are capped to the 2-day default; the setting only
+  shortens retention.
+- Error responses (status 400 and above) keep their response body for the
+  normal 2 days, so failures stay debuggable. The request body of a failed
+  request is not kept for a `0` key, because the request row is written before
+  the outcome is known, and it is cleared at `N` hours for an `N` key. A stream
+  that fails after its headers were sent has no body to keep for a `0` key.
+- Other keys, JWT users and other endpoints (embeddings, classifications, ...)
+  are unchanged.
+- The setting costs the request path one map lookup and no database work. The
+  pruner starts each key's walk at the default pass's position, so it only
+  scans rows between the two cutoffs, in the same bounded batches.
+- A change takes effect on restart.
+
 The ages are the constants `BODY_RETENTION_DAYS` and `METADATA_RETENTION_DAYS`
 in `backend/src/audit/retention.rs`. The gateway prunes once at startup and
 then every hour, on the general connection. Each batch handles at most 500

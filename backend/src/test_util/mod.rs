@@ -52,6 +52,7 @@ pub fn test_config() -> Config {
         routing: RoutingConfig::default(),
         trusted_proxies: vec![],
         pressure: Default::default(),
+        audit: Default::default(),
     }
 }
 

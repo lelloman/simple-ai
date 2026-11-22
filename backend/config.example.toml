@@ -32,6 +32,15 @@ url = "sqlite:./data/audit.db"
 [logging]
 level = "info"
 
+[audit]
+# Per-API-key body retention for /v1/chat/completions, by key name (as shown in
+# the admin UI, matched case-insensitively). Bulk clients that send ~100k requests an hour fill audit.db
+# with bodies, so give them a shorter window than the 2-day default, or 0 to
+# store no bodies at all (the metadata row is always kept). Values above 48 are
+# capped to the default. See docs/audit-durability.md.
+# [audit.body_retention_hours]
+# SanCerchino = 0
+
 [cors]
 origins = "*"
 

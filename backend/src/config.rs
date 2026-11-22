@@ -39,6 +39,28 @@ pub struct Config {
     /// Advisory load levels reported to clients and the dashboard.
     #[serde(default)]
     pub pressure: PressureConfig,
+    /// Audit log settings.
+    #[serde(default)]
+    pub audit: AuditConfig,
+}
+
+/// Audit log settings.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AuditConfig {
+    /// Hours to keep chat request/response bodies, by lowercase API key name. A listed
+    /// key overrides the 2-day default; 0 stores no bodies at all. A value
+    /// above the default is capped to it.
+    #[serde(default)]
+    pub body_retention_hours: HashMap<String, u32>,
+}
+
+impl AuditConfig {
+    /// False when the named API key is configured to store no bodies. The
+    /// config loader lowercases table keys, so names match case-insensitively.
+    pub fn keeps_bodies(&self, api_key_name: Option<&str>) -> bool {
+        api_key_name.and_then(|name| self.body_retention_hours.get(&name.to_lowercase()))
+            != Some(&0)
+    }
 }
 
 /// Pressure: green when nothing waits, orange when requests wait for a host,
@@ -838,6 +860,24 @@ mod tests {
         let config = OllamaConfig::default();
         assert_eq!(config.base_url, "http://localhost:11434");
         assert_eq!(config.model, "gpt-oss:20b");
+    }
+
+    #[test]
+    fn audit_body_retention_hours_is_read_per_key_name() {
+        let audit: AuditConfig = ConfigLoader::builder()
+            .add_source(File::from_str(
+                "[body_retention_hours]\nSanCerchino = 0\n\"batch key\" = 6\n",
+                config::FileFormat::Toml,
+            ))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+        assert!(!audit.keeps_bodies(Some("SanCerchino")));
+        assert!(audit.keeps_bodies(Some("batch key")));
+        assert!(audit.keeps_bodies(Some("other")));
+        assert!(audit.keeps_bodies(None));
+        assert!(AuditConfig::default().keeps_bodies(Some("SanCerchino")));
     }
 
     #[test]
