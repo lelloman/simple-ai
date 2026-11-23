@@ -52,6 +52,10 @@ pub struct AuditConfig {
     /// above the default is capped to it.
     #[serde(default)]
     pub body_retention_hours: HashMap<String, u32>,
+    /// Days to keep request/response metadata rows, by lowercase API key name.
+    /// A listed key overrides the 365-day default; a value above it is capped.
+    #[serde(default)]
+    pub metadata_retention_days: HashMap<String, u32>,
 }
 
 impl AuditConfig {
@@ -866,7 +870,7 @@ mod tests {
     fn audit_body_retention_hours_is_read_per_key_name() {
         let audit: AuditConfig = ConfigLoader::builder()
             .add_source(File::from_str(
-                "[body_retention_hours]\nSanCerchino = 0\n\"batch key\" = 6\n",
+                "[body_retention_hours]\nSanCerchino = 0\n\"batch key\" = 6\n[metadata_retention_days]\nSanCerchino = 7\n",
                 config::FileFormat::Toml,
             ))
             .build()
@@ -878,6 +882,7 @@ mod tests {
         assert!(audit.keeps_bodies(Some("other")));
         assert!(audit.keeps_bodies(None));
         assert!(AuditConfig::default().keeps_bodies(Some("SanCerchino")));
+        assert_eq!(audit.metadata_retention_days.get("sancerchino"), Some(&7));
     }
 
     #[test]
