@@ -40,6 +40,12 @@ level = "info"
 # capped to the default. See docs/audit-durability.md.
 # [audit.body_retention_hours]
 # SanCerchino = 0
+#
+# Per-API-key metadata (request/response rows) retention in days, by key name.
+# Rows of a listed key are deleted after N days instead of 365; larger values
+# are capped to 365.
+# [audit.metadata_retention_days]
+# SanCerchino = 7
 
 [cors]
 origins = "*"

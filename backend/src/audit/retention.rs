@@ -1,6 +1,7 @@
 //! Audit retention: clear request/response bodies after `BODY_RETENTION_DAYS`
 //! (sooner for API keys listed in `[audit] body_retention_hours`) and delete
-//! audit rows after `METADATA_RETENTION_DAYS`. See
+//! audit rows after `METADATA_RETENTION_DAYS` (sooner for API keys listed in
+//! `[audit] metadata_retention_days`). See
 //! `docs/audit-durability.md`.
 //!
 //! Every batch is one short `IMMEDIATE` transaction on the general connection,
@@ -31,6 +32,9 @@ const DELETE_ROWS_SQL: [&str; 3] = [
     "DELETE FROM responses WHERE request_id IN ({ids})",
     "DELETE FROM requests WHERE id IN ({ids})",
 ];
+/// `?3` is an API key name (any case). Ids of that key's requests in a rowid range.
+const SELECT_KEY_ROWS_SQL: &str =
+    "SELECT id FROM requests WHERE rowid > ?1 AND rowid <= ?2 AND lower(api_key_name) = lower(?3)";
 const SELECT_BODY_ROWS_SQL: &str =
     "SELECT rowid, timestamp FROM requests WHERE rowid > ?1 ORDER BY rowid LIMIT ?2";
 /// `?3` is an API key name (any case), or NULL for every key. A named key's error
@@ -62,6 +66,10 @@ pub struct PruneCursor {
     body_rowid: i64,
     /// The same position for each API key with its own retention.
     key_body_rowids: HashMap<String, i64>,
+    /// The last request rowid examined for row deletion, per API key with its
+    /// own metadata retention. Starts at 0: rows past the 2-day body cutoff
+    /// may still be inside the key's window.
+    key_row_rowids: HashMap<String, i64>,
 }
 
 impl PruneReport {
@@ -85,12 +93,14 @@ fn db_err(e: rusqlite::Error) -> AuditError {
 
 impl AuditLogger {
     /// Prune bodies and rows older than the retention ages relative to `now`.
-    /// `key_hours` maps API key names to their own body retention in hours.
+    /// `key_hours` and `key_days` map API key names to their own body
+    /// retention in hours and metadata retention in days.
     pub fn prune(
         &self,
         now: DateTime<Utc>,
         cursor: &mut PruneCursor,
         key_hours: &HashMap<String, u32>,
+        key_days: &HashMap<String, u32>,
         batch_rows: usize,
         pause: Duration,
     ) -> Result<PruneReport, AuditError> {
@@ -129,6 +139,22 @@ impl AuditLogger {
                 }
             }
         }
+        // Everything older than the default cutoff is already deleted, so
+        // only the rows inside it can still be expired for a key.
+        for (name, days) in key_days {
+            let days = i64::from(*days).min(METADATA_RETENTION_DAYS);
+            let key_cutoff = (now - Days::days(days)).to_rfc3339();
+            let rowid = cursor.key_row_rowids.entry(name.clone()).or_insert(0);
+            loop {
+                let (deleted, full) = report.time(pause, || {
+                    self.delete_key_rows_batch(rowid, &key_cutoff, batch_rows, name)
+                })?;
+                report.rows_deleted += deleted;
+                if !full {
+                    break;
+                }
+            }
+        }
         Ok(report)
     }
 
@@ -152,16 +178,56 @@ impl AuditLogger {
         if ids.is_empty() {
             return Ok(0);
         }
-        let placeholders = vec!["?"; ids.len()].join(",");
-        for sql in DELETE_ROWS_SQL {
-            tx.execute(
-                &sql.replace("{ids}", &placeholders),
-                rusqlite::params_from_iter(&ids),
-            )
-            .map_err(db_err)?;
-        }
+        delete_requests(&tx, &ids)?;
         tx.commit().map_err(db_err)?;
         Ok(ids.len())
+    }
+
+    /// Delete the requests of API key `key` among the next `limit` requests
+    /// after the cursor, up to the last one older than `cutoff`, with their
+    /// responses and inference metrics. Walks by rowid like `clear_bodies_batch`.
+    /// Returns the number of requests deleted and whether the walk was full.
+    fn delete_key_rows_batch(
+        &self,
+        rowid: &mut i64,
+        cutoff: &str,
+        limit: usize,
+        key: &str,
+    ) -> Result<(usize, bool), AuditError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| AuditError::DatabaseError(e.to_string()))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_err)?;
+        let rows = tx
+            .prepare(SELECT_BODY_ROWS_SQL)
+            .map_err(db_err)?
+            .query_map(params![*rowid, limit as i64], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(db_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(db_err)?;
+        let aged = rows
+            .iter()
+            .take_while(|(_, ts)| ts.as_str() < cutoff)
+            .count();
+        let Some(&(last, _)) = rows[..aged].last() else {
+            return Ok((0, false));
+        };
+        let ids = tx
+            .prepare(SELECT_KEY_ROWS_SQL)
+            .map_err(db_err)?
+            .query_map(params![*rowid, last, key], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(db_err)?;
+        delete_requests(&tx, &ids)?;
+        tx.commit().map_err(db_err)?;
+        *rowid = last;
+        Ok((ids.len(), aged == limit))
     }
 
     /// Clear the bodies of up to `limit` requests after the cursor whose
@@ -209,10 +275,27 @@ impl AuditLogger {
     }
 }
 
+/// Delete the given requests with their responses and inference metrics.
+fn delete_requests(tx: &rusqlite::Transaction, ids: &[String]) -> Result<(), AuditError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    for sql in DELETE_ROWS_SQL {
+        tx.execute(
+            &sql.replace("{ids}", &placeholders),
+            rusqlite::params_from_iter(ids),
+        )
+        .map_err(db_err)?;
+    }
+    Ok(())
+}
+
 /// Run `prune` once at startup and then every `PRUNE_INTERVAL`.
 pub fn spawn_pruner(
     audit: Arc<AuditLogger>,
     key_hours: HashMap<String, u32>,
+    key_days: HashMap<String, u32>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let cursor = Arc::new(std::sync::Mutex::new(PruneCursor::default()));
@@ -223,9 +306,17 @@ pub fn spawn_pruner(
             let audit = audit.clone();
             let cursor = cursor.clone();
             let key_hours = key_hours.clone();
+            let key_days = key_days.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let mut cursor = cursor.lock().unwrap_or_else(|e| e.into_inner());
-                audit.prune(Utc::now(), &mut cursor, &key_hours, BATCH_ROWS, BATCH_PAUSE)
+                audit.prune(
+                    Utc::now(),
+                    &mut cursor,
+                    &key_hours,
+                    &key_days,
+                    BATCH_ROWS,
+                    BATCH_PAUSE,
+                )
             })
             .await;
             match result {
@@ -300,7 +391,14 @@ mod tests {
 
         let mut cursor = PruneCursor::default();
         let report = logger
-            .prune(now, &mut cursor, &HashMap::new(), 10, Duration::ZERO)
+            .prune(
+                now,
+                &mut cursor,
+                &HashMap::new(),
+                &HashMap::new(),
+                10,
+                Duration::ZERO,
+            )
             .unwrap();
         assert_eq!(report.rows_deleted, 1);
         assert_eq!(report.bodies_cleared, 1);
@@ -339,6 +437,7 @@ mod tests {
         let statements = [
             SELECT_EXPIRED_SQL,
             SELECT_BODY_ROWS_SQL,
+            SELECT_KEY_ROWS_SQL,
             CLEAR_RESPONSE_BODIES_SQL,
             CLEAR_REQUEST_BODIES_SQL,
         ]
@@ -372,7 +471,14 @@ mod tests {
 
         let mut cursor = PruneCursor::default();
         let report = logger
-            .prune(now, &mut cursor, &HashMap::new(), 4, Duration::ZERO)
+            .prune(
+                now,
+                &mut cursor,
+                &HashMap::new(),
+                &HashMap::new(),
+                4,
+                Duration::ZERO,
+            )
             .unwrap();
         // Rows aged 32..8 days are past the 2-day cutoff; 25 rows in batches of 4.
         assert_eq!(report.bodies_cleared, 25);
@@ -381,7 +487,14 @@ mod tests {
         let later = now + Days::days(5);
         let id = log_aged(&logger, later, 0);
         let report = logger
-            .prune(later, &mut cursor, &HashMap::new(), 4, Duration::ZERO)
+            .prune(
+                later,
+                &mut cursor,
+                &HashMap::new(),
+                &HashMap::new(),
+                4,
+                Duration::ZERO,
+            )
             .unwrap();
         assert_eq!(report.bodies_cleared, 0);
         assert!(logger
@@ -427,7 +540,14 @@ mod tests {
 
         let mut cursor = PruneCursor::default();
         logger
-            .prune(now, &mut cursor, &key_hours, 2, Duration::ZERO)
+            .prune(
+                now,
+                &mut cursor,
+                &key_hours,
+                &HashMap::new(),
+                2,
+                Duration::ZERO,
+            )
             .unwrap();
         assert_eq!(bodies(&logger, &old_bulk), (false, false));
         // An error keeps its response body for the default window.
@@ -439,7 +559,14 @@ mod tests {
         // Two hours later the young row passes the key's 6 h; the cursor resumes.
         let later = now + Days::hours(2);
         logger
-            .prune(later, &mut cursor, &key_hours, 2, Duration::ZERO)
+            .prune(
+                later,
+                &mut cursor,
+                &key_hours,
+                &HashMap::new(),
+                2,
+                Duration::ZERO,
+            )
             .unwrap();
         assert_eq!(bodies(&logger, &young_bulk), (false, false));
         assert_eq!(bodies(&logger, &old_other), (true, true));
@@ -450,6 +577,7 @@ mod tests {
                 now + Days::days(3),
                 &mut cursor,
                 &key_hours,
+                &HashMap::new(),
                 2,
                 Duration::ZERO,
             )
@@ -467,7 +595,14 @@ mod tests {
         let other = log_aged_for(&logger, now, Days::minutes(1), Some("other"), 200);
         let mut cursor = PruneCursor::default();
         logger
-            .prune(now, &mut cursor, &key_hours, 10, Duration::ZERO)
+            .prune(
+                now,
+                &mut cursor,
+                &key_hours,
+                &HashMap::new(),
+                10,
+                Duration::ZERO,
+            )
             .unwrap();
         assert_eq!(bodies(&logger, &bulk), (false, false));
         assert_eq!(bodies(&logger, &other), (true, true));
@@ -481,9 +616,84 @@ mod tests {
         let id = log_aged_for(&logger, now, Days::hours(60), Some("bulk"), 200);
         let mut cursor = PruneCursor::default();
         logger
-            .prune(now, &mut cursor, &key_hours, 10, Duration::ZERO)
+            .prune(
+                now,
+                &mut cursor,
+                &key_hours,
+                &HashMap::new(),
+                10,
+                Duration::ZERO,
+            )
             .unwrap();
         assert_eq!(bodies(&logger, &id), (false, false));
+    }
+
+    fn request_count(logger: &AuditLogger, key: &str) -> i64 {
+        count(
+            logger,
+            &format!("SELECT COUNT(*) FROM requests WHERE api_key_name = '{key}'"),
+        )
+    }
+
+    #[test]
+    fn key_metadata_retention_deletes_only_that_keys_rows_after_its_days() {
+        let logger = logger();
+        let now = Utc::now();
+        let key_days = HashMap::from([("SanCerchino".to_string(), 7_u32)]);
+        let key = Some("sancerchino");
+        let old = log_aged_for(&logger, now, Days::days(8), key, 200);
+        log_aged_for(&logger, now, Days::days(8), key, 500);
+        let old_other = log_aged_for(&logger, now, Days::days(8), Some("other"), 200);
+        let old_anonymous = log_aged_for(&logger, now, Days::days(8), None, 200);
+        let young = log_aged_for(&logger, now, Days::days(6), key, 200);
+        let expired_other = log_aged_for(
+            &logger,
+            now,
+            Days::days(METADATA_RETENTION_DAYS + 1),
+            Some("other"),
+            200,
+        );
+
+        let mut cursor = PruneCursor::default();
+        let report = logger
+            .prune(
+                now,
+                &mut cursor,
+                &HashMap::new(),
+                &key_days,
+                2,
+                Duration::ZERO,
+            )
+            .unwrap();
+        assert_eq!(report.rows_deleted, 3);
+        assert_eq!(request_count(&logger, "sancerchino"), 1);
+        assert!(logger.get_request_bodies(&old).unwrap().is_none());
+        assert!(logger.get_request_bodies(&young).unwrap().is_some());
+        assert!(logger.get_request_bodies(&old_other).unwrap().is_some());
+        assert!(logger.get_request_bodies(&old_anonymous).unwrap().is_some());
+        assert!(logger.get_request_bodies(&expired_other).unwrap().is_none());
+        assert_eq!(count(&logger, "SELECT COUNT(*) FROM requests"), 3);
+        assert_eq!(count(&logger, "SELECT COUNT(*) FROM responses"), 3);
+        assert_eq!(
+            count(&logger, "SELECT COUNT(*) FROM response_inference_metrics"),
+            3
+        );
+
+        // Two days later the young row passes 7 days; the cursor resumes.
+        let later = now + Days::days(2);
+        let report = logger
+            .prune(
+                later,
+                &mut cursor,
+                &HashMap::new(),
+                &key_days,
+                2,
+                Duration::ZERO,
+            )
+            .unwrap();
+        assert_eq!(report.rows_deleted, 1);
+        assert_eq!(request_count(&logger, "sancerchino"), 0);
+        assert_eq!(count(&logger, "SELECT COUNT(*) FROM requests"), 2);
     }
 
     /// While a prune run is in progress, a chat request's queued audit write
@@ -508,6 +718,7 @@ mod tests {
                     .prune(
                         now,
                         &mut cursor,
+                        &HashMap::new(),
                         &HashMap::new(),
                         100,
                         Duration::from_millis(20),

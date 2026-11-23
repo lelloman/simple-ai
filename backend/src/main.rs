@@ -262,6 +262,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     simple_ai_backend::audit::spawn_pruner(
         audit_logger.clone(),
         config.audit.body_retention_hours.clone(),
+        config.audit.metadata_retention_days.clone(),
     );
 
     let state = Arc::new(AppState {

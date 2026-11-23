@@ -89,6 +89,36 @@ SanCerchino = 0   # store no bodies
   scans rows between the two cutoffs, in the same bounded batches.
 - A change takes effect on restart.
 
+### Per-API-key metadata retention
+
+Bodies are not the only cost of a bulk client: SanCerchino's tagging sends about
+180k requests an hour, and each request, response and index entry costs about
+2.4 KB even with no bodies, roughly 10 GB a day at the 365-day default. Owner
+decision (2026-11-23): SanCerchino's metadata is kept 7 days.
+`[audit.metadata_retention_days]` maps an API key name (matched
+case-insensitively, like body retention) to the days its `requests`,
+`responses` and inference-metric rows are kept:
+
+```toml
+[audit.metadata_retention_days]
+SanCerchino = 7
+```
+
+- The hourly pruner deletes the key's rows older than `N` days. Values above
+  365 have no effect (the default pass deletes at 365); the setting only
+  shortens retention.
+- The key's walk goes by rowid with its own in-memory position, in the same
+  500-request `IMMEDIATE` batches with the same 20 ms pause as the default
+  pass, and each statement is index-bound. After a restart the first run walks
+  every request once (cheap, bounded batches); later runs only walk new rows.
+- Other keys, JWT users and anonymous requests keep 365 days. The deleted
+  rows no longer appear in the request history or the statistics built from it.
+- A change takes effect on restart.
+- Deleting rows does not shrink `audit.db`: SQLite reuses the freed pages for
+  new rows but keeps the file size. After the first prune on a database that
+  already holds days of bulk rows, run `VACUUM` (gateway stopped) to give the
+  space back.
+
 The ages are the constants `BODY_RETENTION_DAYS` and `METADATA_RETENTION_DAYS`
 in `backend/src/audit/retention.rs`. The gateway prunes once at startup and
 then every hour, on the general connection. Each batch handles at most 500
