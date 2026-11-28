@@ -99,6 +99,11 @@ application-specific rule. Class/alias resolution still uses existing mappings.
   waking never authorizes eviction on an online runner. If nothing qualifies,
   return **HTTP 503** explaining that no runner can serve without an engine swap.
   No speculative capacity expansion is started after dispatch.
+  One request per resolved model owns the wake; concurrent requests for that
+  model wait for it (until their own wake deadline) instead of waking another
+  machine while the first runner is booting or still loading. A second machine is
+  tried only when the owner's wake fails (the next-best candidate is woken
+  within the same request) or the owner gives up before any runner came up.
 - Wake/registration has the existing 480-second default budget, followed by a
   separate 300-second HTTP load/inference budget. Halo2's expected first-query
   latency is roughly 64–94 seconds (60–90 seconds boot plus about four seconds

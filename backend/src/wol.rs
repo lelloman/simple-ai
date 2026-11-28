@@ -287,6 +287,25 @@ pub struct WakeService {
     models_config: ModelsConfig,
     routing_config: RoutingConfig,
     http_client: reqwest::Client,
+    pending_wakes: Arc<std::sync::Mutex<std::collections::HashSet<ModelRequest>>>,
+    wake_successes: std::sync::atomic::AtomicU64,
+}
+
+/// Held by the request that owns the wake for a model request, from the
+/// moment it picks a runner until a safe plan exists or it gives up. Other
+/// requests for the same model wait for it instead of waking more machines.
+pub(crate) struct WakeClaim {
+    pending: Arc<std::sync::Mutex<std::collections::HashSet<ModelRequest>>>,
+    request: ModelRequest,
+}
+
+impl Drop for WakeClaim {
+    fn drop(&mut self) {
+        self.pending
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.request);
+    }
 }
 
 impl WakeService {
@@ -307,7 +326,43 @@ impl WakeService {
             models_config,
             routing_config,
             http_client: reqwest::Client::new(),
+            pending_wakes: Default::default(),
+            wake_successes: Default::default(),
         }
+    }
+
+    /// Number of claimed wakes that brought a runner up. A request waiting on
+    /// another request's wake uses it to tell success from failure once the
+    /// claim is released.
+    pub(crate) fn wake_successes(&self) -> u64 {
+        self.wake_successes
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub(crate) fn record_wake_success(&self) {
+        self.wake_successes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Claim the wake for `request`; `None` means another request already owns it.
+    pub(crate) fn claim_wake(&self, request: &ModelRequest) -> Option<WakeClaim> {
+        let inserted = self
+            .pending_wakes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(request.clone());
+        inserted.then(|| WakeClaim {
+            pending: self.pending_wakes.clone(),
+            request: request.clone(),
+        })
+    }
+
+    /// Whether a request currently owns the wake for `request`.
+    pub(crate) fn wake_pending(&self, request: &ModelRequest) -> bool {
+        self.pending_wakes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(request)
     }
 
     /// Check if speculative wake is enabled.
@@ -427,47 +482,40 @@ impl WakeService {
         &self,
         model_request: &ModelRequest,
     ) -> Result<Option<RunnerRecord>, WakeError> {
+        Ok(self
+            .wakeable_by_boot_time(model_request)
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    /// Wakeable runners for a request, fastest historical boot first.
+    async fn wakeable_by_boot_time(
+        &self,
+        model_request: &ModelRequest,
+    ) -> Result<Vec<RunnerRecord>, WakeError> {
         let mut wakeable = self.find_wakeable_runners(Some(model_request)).await?;
-
         if wakeable.is_empty() {
-            return Ok(None);
+            return Ok(wakeable);
         }
-
-        // Get boot metrics for all wakeable runners
         let all_metrics = self.audit_logger.get_all_metrics().unwrap_or_default();
-
-        // Sort by boot time (ascending) - faster boot first
-        // If no boot metric, use u64::MAX to deprioritize
-        wakeable.sort_by(|a, b| {
-            let a_boot = all_metrics
+        let boot_ms = |id: &str| {
+            all_metrics
                 .iter()
-                .find(|m| m.runner_id == a.id && m.model_class == "boot")
+                .find(|m| m.runner_id == id && m.model_class == "boot")
                 .and_then(|m| m.avg_ms())
                 .map(|ms| ms as u64)
-                .unwrap_or(u64::MAX);
-            let b_boot = all_metrics
-                .iter()
-                .find(|m| m.runner_id == b.id && m.model_class == "boot")
-                .and_then(|m| m.avg_ms())
-                .map(|ms| ms as u64)
-                .unwrap_or(u64::MAX);
-            a_boot.cmp(&b_boot)
-        });
-
-        let best = wakeable.into_iter().next();
-        if let Some(ref runner) = best {
-            let boot_time = all_metrics
-                .iter()
-                .find(|m| m.runner_id == runner.id && m.model_class == "boot")
-                .and_then(|m| m.avg_ms());
+                .unwrap_or(u64::MAX)
+        };
+        wakeable.sort_by_key(|r| boot_ms(&r.id));
+        if let Some(best) = wakeable.first() {
             tracing::debug!(
                 "Best runner to wake: {} (avg boot time: {:?}ms)",
-                runner.id,
-                boot_time
+                best.id,
+                boot_ms(&best.id)
             );
         }
-
-        Ok(best)
+        Ok(wakeable)
     }
 
     /// Find runners to wake speculatively for a model class.
@@ -793,24 +841,40 @@ impl WakeService {
     ) -> Result<WakeResult, WakeError> {
         let start = std::time::Instant::now();
 
-        // 1. Find the best runner for this request
-        let runner = self
-            .find_best_runner_to_wake(model_request)
-            .await?
-            .ok_or(WakeError::NoWakeableRunners)?;
-
-        tracing::info!(
-            "Found wakeable runner {} for {:?} (models: {:?})",
-            runner.id,
-            model_request,
-            runner.available_models
-        );
+        // 1. Candidates for this request, best first
+        let candidates = self.wakeable_by_boot_time(model_request).await?;
+        if candidates.is_empty() {
+            return Err(WakeError::NoWakeableRunners);
+        }
 
         // 2. Subscribe BEFORE waking to avoid race conditions
         let mut rx = self.registry.subscribe_events();
 
-        // 3. Wake the runner
-        self.wake_runner(&runner).await?;
+        // 3. Wake the best candidate; only a failed wake moves on to the next
+        let mut woken = None;
+        let mut last_error = None;
+        for runner in candidates {
+            tracing::info!(
+                "Found wakeable runner {} for {:?} (models: {:?})",
+                runner.id,
+                model_request,
+                runner.available_models
+            );
+            match self.wake_runner(&runner).await {
+                Ok(()) => {
+                    woken = Some(runner);
+                    break;
+                }
+                Err(error) => {
+                    tracing::warn!("Wake of runner {} failed: {}", runner.id, error);
+                    last_error = Some(error);
+                }
+            }
+        }
+        let runner = match woken {
+            Some(runner) => runner,
+            None => return Err(last_error.unwrap_or(WakeError::NoWakeableRunners)),
+        };
 
         tracing::info!(
             "Sent wake signal to runner {}, waiting for connection...",
@@ -1067,6 +1131,87 @@ mod wake_service_tests {
             "a disabled runner must not receive a WOL fallback packet"
         );
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_wake_falls_back_to_next_runner_and_claims_are_exclusive() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let server = {
+            let seen = seen.clone();
+            tokio::spawn(async move {
+                loop {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let mut request = [0; 1024];
+                    let read = socket.read(&mut request).await.unwrap();
+                    let head = String::from_utf8_lossy(&request[..read]).to_string();
+                    let path = head
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or_default()
+                        .to_string();
+                    let reply: &[u8] = if path.contains("/nodes/a/") {
+                        b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    } else {
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    };
+                    seen.lock().unwrap().push(path);
+                    let _ = socket.write_all(reply).await;
+                }
+            })
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let audit = Arc::new(
+            AuditLogger::new(dir.path().join("wake-state.sqlite").to_str().unwrap()).unwrap(),
+        );
+        for (id, mac) in [("a", "AA:BB:CC:DD:EE:01"), ("b", "AA:BB:CC:DD:EE:02")] {
+            audit
+                .upsert_runner(
+                    id,
+                    id,
+                    Some(mac),
+                    Some("halo"),
+                    Some(&["model-x".to_string()]),
+                )
+                .unwrap();
+        }
+        let _ = audit.record_metric("a", "boot", 1_000);
+        let _ = audit.record_metric("b", "boot", 5_000);
+        let service = WakeService::new(
+            Arc::new(RunnerRegistry::new()),
+            audit,
+            GatewayConfig {
+                auto_wake_enabled: true,
+                idle_manager_url: Some(format!("http://{address}")),
+                wake_timeout_secs: 1,
+                ..Default::default()
+            },
+            WolConfig {
+                // Direct WOL fallback fails, so a failed idle-manager wake is a failed wake.
+                bouncer_url: Some("http://127.0.0.1:1".into()),
+                ..Default::default()
+            },
+            ModelsConfig::default(),
+            RoutingConfig::default(),
+        );
+        let request = ModelRequest::Specific("model-x".into());
+        let result = service.wake_and_wait(&request).await;
+        assert!(matches!(result, Err(WakeError::Timeout(1))), "{result:?}");
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec!["/nodes/a/wake".to_string(), "/nodes/b/wake".to_string()]
+        );
+
+        let claim = service.claim_wake(&request).unwrap();
+        assert!(service.wake_pending(&request));
+        assert!(service.claim_wake(&request).is_none());
+        drop(claim);
+        assert!(!service.wake_pending(&request));
+        assert!(service.claim_wake(&request).is_some());
+        server.abort();
     }
 
     #[tokio::test]
