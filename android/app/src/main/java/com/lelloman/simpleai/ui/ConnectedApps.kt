@@ -2,7 +2,6 @@ package com.lelloman.simpleai.ui
 
 import android.content.Context
 import android.content.pm.PackageManager
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +36,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.lelloman.lellodesign.LelloButton
 import com.lelloman.lellodesign.LelloDimensions
-import com.lelloman.lellodesign.LelloOutlinedButton
+import com.lelloman.lellodesign.LelloIllustration
+import com.lelloman.lellodesign.LelloIllustrationKind
+import com.lelloman.lellodesign.LelloTextButton
+import com.lelloman.lellodesign.LelloTextStyles
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.text.font.FontWeight
 import com.lelloman.lellodesign.LelloState
 import com.lelloman.lellodesign.LelloWorkspace
 import com.lelloman.lellodesign.LocalLelloPalette
@@ -69,13 +73,7 @@ internal fun ConnectedAppsContent(
                 title = stringResource(R.string.apps_empty_title),
                 description = stringResource(R.string.apps_empty_hint),
                 modifier = Modifier.fillMaxWidth(),
-                icon = {
-                    Icon(
-                        painterResource(R.drawable.ic_app_fallback),
-                        contentDescription = null,
-                        modifier = Modifier.size(LelloDimensions.space8),
-                    )
-                },
+                illustration = { LelloIllustration(LelloIllustrationKind.Empty) },
             )
         }
     } else {
@@ -83,17 +81,20 @@ internal fun ConnectedAppsContent(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = LelloDimensions.space6),
-                verticalArrangement = Arrangement.spacedBy(LelloDimensions.space3),
             ) {
                 item {
                     Text(
                         stringResource(R.string.apps_hint),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = LelloDimensions.space2),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LocalLelloPalette.current["text-secondary"],
                     )
                 }
                 items(ordered, key = { it.identity }) { client ->
-                    ConnectedAppRow(client, onSetApproved = onSetApproved, metadata = metadata)
+                    Column {
+                        ConnectedAppRow(client, onSetApproved = onSetApproved, metadata = metadata)
+                        RowDivider()
+                    }
                 }
             }
         }
@@ -114,55 +115,52 @@ private fun ConnectedAppRow(
     val approveLabel = stringResource(R.string.apps_approve_label, actionTarget)
     val revokeLabel = stringResource(R.string.apps_revoke_label, actionTarget)
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = LelloDimensions.space4),
+        verticalArrangement = Arrangement.spacedBy(LelloDimensions.space2),
     ) {
-        Column(
-            modifier = Modifier.padding(LelloDimensions.space4),
-            verticalArrangement = Arrangement.spacedBy(LelloDimensions.space3),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(LelloDimensions.space4),
+            verticalAlignment = Alignment.Top,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(LelloDimensions.space3),
-                verticalAlignment = Alignment.Top,
+            AppIcon(appMetadata.icon)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics(mergeDescendants = true) {},
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                AppIcon(appMetadata.icon)
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .semantics(mergeDescendants = true) {},
-                    verticalArrangement = Arrangement.spacedBy(LelloDimensions.space1),
-                ) {
-                    Text(displayName, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        packageNames.joinToString(", "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text(displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(
+                    packageNames.joinToString(", "),
+                    style = LelloTextStyles.caption,
+                )
+                Box(Modifier.padding(top = LelloDimensions.space1)) {
+                    StatusPill(
+                        stringResource(if (client.approved) R.string.ui_approved else R.string.apps_waiting),
+                        if (client.approved) PillTone.Success else PillTone.Warning,
                     )
-                    ApprovalTag(client.approved)
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                if (client.approved) {
-                    LelloOutlinedButton(
-                        onClick = { onSetApproved(client, false) },
-                        modifier = Modifier.semantics { contentDescription = revokeLabel },
-                    ) {
-                        Text(stringResource(R.string.apps_revoke))
-                    }
-                } else {
-                    LelloButton(
-                        onClick = { onSetApproved(client, true) },
-                        modifier = Modifier.semantics { contentDescription = approveLabel },
-                    ) {
-                        Text(stringResource(R.string.apps_approve))
-                    }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            if (client.approved) {
+                LelloTextButton(
+                    onClick = { onSetApproved(client, false) },
+                    modifier = Modifier.semantics { contentDescription = revokeLabel },
+                ) {
+                    Text(stringResource(R.string.apps_revoke))
+                }
+            } else {
+                LelloButton(
+                    onClick = { onSetApproved(client, true) },
+                    modifier = Modifier.semantics { contentDescription = approveLabel },
+                ) {
+                    Text(stringResource(R.string.apps_approve))
                 }
             }
         }
@@ -172,10 +170,9 @@ private fun ConnectedAppRow(
 @Composable
 private fun AppIcon(icon: ImageBitmap?) {
     Surface(
-        modifier = Modifier.size(48.dp),
+        modifier = Modifier.size(40.dp),
         shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = LocalLelloPalette.current["neutral"],
     ) {
         if (icon != null) {
             Image(
@@ -188,28 +185,10 @@ private fun AppIcon(icon: ImageBitmap?) {
             Icon(
                 painterResource(R.drawable.ic_app_fallback),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize().padding(LelloDimensions.space3),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxSize().padding(10.dp),
+                tint = LocalLelloPalette.current["text-secondary"],
             )
         }
-    }
-}
-
-@Composable
-private fun ApprovalTag(approved: Boolean) {
-    val palette = LocalLelloPalette.current
-    val role = if (approved) "success" else "warning"
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = palette["$role-container"],
-        contentColor = palette["on-$role-container"],
-        border = BorderStroke(1.dp, palette["$role-border"]),
-    ) {
-        Text(
-            stringResource(if (approved) R.string.ui_approved else R.string.apps_waiting),
-            modifier = Modifier.padding(horizontal = LelloDimensions.space2, vertical = 2.dp),
-            style = MaterialTheme.typography.labelMedium,
-        )
     }
 }
 

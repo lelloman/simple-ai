@@ -1,55 +1,50 @@
 package com.lelloman.simpleai.ui
 
-import com.lelloman.lellodesign.LelloTextButton
-
-import com.lelloman.simpleai.R
-
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Card
-import androidx.compose.material3.Surface
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lelloman.lellodesign.LelloIconButton
+import com.lelloman.lellodesign.LocalLelloPalette
+import com.lelloman.simpleai.R
 
 /**
  * Language info for display.
@@ -99,13 +94,14 @@ fun TranslationLanguagesScreen(
     }
 
     deleteLanguage?.let { language ->
-        AlertDialog(
-            onDismissRequest = { deleteLanguage = null },
-            title = { Text(strings.getString(R.string.ui_delete, language.name)) },
-            text = { Text(strings.getString(R.string.ui_apps_will_need_this_language_pack_downloaded_again_before_transla)) },
-            confirmButton = { LelloTextButton(onClick = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null }) { Text(strings.getString(R.string.ui_delete_language_pack)) } },
-            dismissButton = { LelloTextButton(onClick = { deleteLanguage = null }) { Text(strings.getString(R.string.ui_cancel)) } }
-        )
+        CalmDialog(
+            title = strings.getString(R.string.ui_delete, language.name),
+            onDismiss = { deleteLanguage = null },
+            confirmLabel = strings.getString(R.string.ui_delete_language_pack),
+            onConfirm = { viewModel.deleteTranslationLanguage(language.code); deleteLanguage = null },
+            dismissLabel = strings.getString(R.string.ui_cancel),
+            danger = true,
+        ) { Text(strings.getString(R.string.ui_apps_will_need_this_language_pack_downloaded_again_before_transla)) }
     }
     LaunchedEffect(state.languageOperationMessage) {
         state.languageOperationMessage?.let {
@@ -114,7 +110,11 @@ fun TranslationLanguagesScreen(
         }
     }
 
+    val builtIn = allLanguages.first { it.isBuiltIn }
+    val showBuiltIn = matching.any { it.isBuiltIn }
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
                 Snackbar(
@@ -126,32 +126,33 @@ fun TranslationLanguagesScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .widthIn(max = 720.dp)
+                .padding(innerPadding),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
         ) {
             item {
-                OutlinedTextField(query, { query = it }, label = { Text(strings.getString(R.string.ui_search_languages)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = {
-                    if (query.isNotEmpty()) LelloTextButton(onClick = { query = "" }) { Text(strings.getString(R.string.ui_clear)) }
-                })
-                if (matching.isEmpty()) Text(strings.getString(R.string.ui_no_languages_match_your_search))
+                OutlinedTextField(query, { query = it }, label = { Text(strings.getString(R.string.ui_search_languages)) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small,
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_search), null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) LelloIconButton(onClick = { query = "" },
+                            contentDescription = strings.getString(R.string.ui_clear)) { Icon(painterResource(R.drawable.ic_close), null) }
+                    })
+                if (matching.isEmpty()) Text(strings.getString(R.string.ui_no_languages_match_your_search),
+                    Modifier.padding(top = 24.dp), style = MaterialTheme.typography.bodyLarge,
+                    color = LocalLelloPalette.current["text-secondary"])
             }
-            if (matching.any { it.isBuiltIn }) item {
-                LanguageCard(language = allLanguages.first { it.isBuiltIn }, onAction = {})
-            }
-            // Downloaded section
-            if (downloaded.isNotEmpty()) {
+            // On this device: English is built in, then downloaded packs
+            if (showBuiltIn || downloaded.isNotEmpty()) {
                 item {
-                    Text(
-                        text = strings.getString(R.string.ui_downloaded),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    ListSectionHeader(strings.getString(R.string.ui_downloaded),
+                        meta = strings.getString(R.string.languages_count, downloaded.size + if (showBuiltIn) 1 else 0))
                 }
-
+                if (showBuiltIn) item(key = builtIn.code) {
+                    LanguageRow(language = builtIn, onAction = {})
+                }
                 items(downloaded, key = { it.code }) { language ->
-                    LanguageCard(
+                    LanguageRow(
                         language = language,
                         onAction = {
                             if (!language.isBuiltIn) {
@@ -165,102 +166,79 @@ fun TranslationLanguagesScreen(
             // Available section
             if (available.isNotEmpty()) {
                 item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = strings.getString(R.string.ui_available),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    ListSectionHeader(strings.getString(R.string.ui_available),
+                        meta = strings.getString(R.string.ui_language_pack_estimate,
+                            formatSize(com.lelloman.simpleai.capability.CapabilityManager.TRANSLATION_LANGUAGE_SIZE)))
                 }
 
                 items(available, key = { it.code }) { language ->
-                    LanguageCard(
+                    LanguageRow(
                         language = language,
                         onAction = { viewModel.downloadTranslationLanguage(language.code) }
                     )
                 }
-            }
-
-            // Bottom padding
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 }
 
 @Composable
-private fun LanguageCard(
+private fun LanguageRow(
     language: LanguageInfo,
     onAction: () -> Unit
 ) {
     val strings = androidx.compose.ui.platform.LocalContext.current
-    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+    val palette = LocalLelloPalette.current
+    Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .heightIn(min = 64.dp)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = language.name,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
                 val nativeName = nativeLanguageName(language.code)
-                if (!nativeName.equals(language.name, ignoreCase = true)) Text(nativeName, style = MaterialTheme.typography.bodySmall)
-                if (language.isBuiltIn) {
-                    Text(
-                        text = strings.getString(R.string.ui_built_in_no_download_needed),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else if (!language.isDownloaded) {
-                    Text(
-                        text = strings.getString(R.string.ui_language_pack_estimate, formatSize(com.lelloman.simpleai.capability.CapabilityManager.TRANSLATION_LANGUAGE_SIZE)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                val details = listOfNotNull(
+                    nativeName.takeUnless { it.equals(language.name, ignoreCase = true) },
+                    if (language.isBuiltIn) strings.getString(R.string.ui_built_in_no_download_needed) else null,
+                )
+                if (details.isNotEmpty()) Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
+                    color = palette["text-secondary"])
             }
 
             when {
                 language.isDownloading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp).semantics { contentDescription = strings.getString(R.string.ui_downloading_2, language.name) },
-                        strokeWidth = 2.dp
-                    )
-                }
-                language.isBuiltIn -> {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                language.isDownloaded -> {
-                    IconButton(onClick = onAction) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = strings.getString(R.string.ui_delete_language_pack_2, language.name),
-                            tint = MaterialTheme.colorScheme.error
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp).semantics { contentDescription = strings.getString(R.string.ui_downloading_2, language.name) },
+                            strokeWidth = 2.dp
                         )
                     }
                 }
+                language.isBuiltIn -> Unit
+                language.isDownloaded -> {
+                    LelloIconButton(onClick = onAction,
+                        contentDescription = strings.getString(R.string.ui_delete_language_pack_2, language.name)) {
+                        Icon(painterResource(R.drawable.ic_delete), null, tint = palette["text-secondary"])
+                    }
+                }
                 else -> {
-                    IconButton(onClick = onAction) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = strings.getString(R.string.ui_download_language_pack, language.name),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    LelloIconButton(onClick = onAction,
+                        contentDescription = strings.getString(R.string.ui_download_language_pack, language.name)) {
+                        Icon(painterResource(R.drawable.ic_download), null, tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         }
+        RowDivider()
     }
 }
 

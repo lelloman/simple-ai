@@ -4,8 +4,8 @@ SimpleAI manages shared AI models for compatible Android apps. Users download th
 
 The app has four main screens: **Models** manages downloads, **Translate** translates text, **Apps** manages access approvals, and **Settings** contains network preferences, storage and support. Model actions live on individual detail screens.
 
-The interface adopts the pinned LelloDesign green open-workspace specification; see
-[design adoption](../docs/android-lellodesign.md) for the reference and layout decisions.
+The interface uses LelloDesign Compose 0.5.0 (green family) from the private Fucina Maven registry; see
+[design adoption](../docs/android-lellodesign.md) for the build credential, reference and layout decisions.
 
 ## Capabilities and storage
 
@@ -43,7 +43,7 @@ Set `ANDROID_HOME` to your SDK directory, or copy [local.properties.example](loc
 ./gradlew installDebug
 ```
 
-Gradle builds the Rust tokenizer JNI library for ARM64/ARMv7 and a host library for JVM tests. Cargo dependencies are locked in `tokenizer-native/Cargo.lock`. Initial setup needs network access; `./scripts/check --offline` uses the Gradle cache once dependencies exist. Small tokenizer fixtures were generated with Python `tokenizers==0.22.2`; see `tokenizer-native/generate_fixtures.py`.
+Gradle builds the Rust tokenizer JNI library for ARM64/ARMv7 and a host library for JVM tests. Cargo dependencies are locked in `tokenizer-native/Cargo.lock`. Initial setup needs network access, including Fucina for LelloDesign (`FUCINA_MAVEN_TOKEN` or `~/.config/fucina/lellodesign-maven-consume.token`); `./scripts/check --offline` uses the Gradle cache once dependencies exist. Small tokenizer fixtures were generated with Python `tokenizers==0.22.2`; see `tokenizer-native/generate_fixtures.py`.
 
 Configure the server on the device under **Settings → Cloud AI**. Enter an HTTPS base URL and save; subsequent requests use it immediately. Clear the field to disable Cloud AI. This device-local setting survives restarts and is excluded from backup. Sign in inside SimpleAI after saving. Approved apps share this gateway without their own accounts. Changing the server clears the gateway credential; sign-out removes it locally. Saving alone does not verify connectivity.
 
