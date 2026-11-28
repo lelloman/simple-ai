@@ -18,6 +18,9 @@ use simple_ai_common::{
     ClassificationRequest, ClassificationResponse, ExtractionRequest, ExtractionResponse,
 };
 
+/// How often a request waiting on another's wake re-plans; capacity freeing up emits no event.
+const WAKE_WAITER_POLL: Duration = Duration::from_millis(200);
+
 #[derive(Debug)]
 pub struct ScheduledResponse<T> {
     pub model_revision: Option<String>,
@@ -240,11 +243,12 @@ impl RequestScheduler {
                     .map(|plan| ModelRequest::Specific(plan.resolved_model));
                 let wake_request = resolved_request.as_ref().unwrap_or(model_request);
                 if !self.wake_service.is_enabled()
-                    || self
-                        .wake_service
-                        .find_wakeable_runners(Some(wake_request))
-                        .await?
-                        .is_empty()
+                    || (!self.wake_service.wake_pending(wake_request)
+                        && self
+                            .wake_service
+                            .find_wakeable_runners(Some(wake_request))
+                            .await?
+                            .is_empty())
                 {
                     return Err(error.into());
                 }
@@ -253,21 +257,44 @@ impl RequestScheduler {
                 // actually exists, including registrations during the wake call.
                 let mut events = self.runner_registry.subscribe_events();
                 let wake_timeout = self.wake_service.wake_timeout();
+                // One request per model owns the wake. Others wait for it, so a
+                // runner that is booting or still loading is never joined by a
+                // second machine. They take over only if the owner's wake fails.
                 let plan = timeout(wake_timeout, async {
-                    self.wake_service
-                        .speculative_wake_and_wait(wake_request)
-                        .await?;
+                    let mut claim = None;
+                    let mut woke = false;
+                    let mut joined_at = None;
                     loop {
                         match self.inference_router.plan_embeddings(model, false).await {
                             Ok(plan) => return Ok(plan),
                             Err(RouterError::NoNonEvictingRunner(_)) => {}
                             Err(error) => return Err(SchedulerError::Router(error)),
                         }
-                        match events.recv().await {
-                            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
-                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                                return Err(SchedulerError::Router(error));
+                        let owner_succeeded =
+                            joined_at.is_some_and(|at| self.wake_service.wake_successes() != at);
+                        if claim.is_none() && !owner_succeeded {
+                            let successes = self.wake_service.wake_successes();
+                            claim = self.wake_service.claim_wake(wake_request);
+                            if claim.is_some() {
+                                // Re-plan: the previous owner may just have finished.
+                                continue;
                             }
+                            joined_at.get_or_insert(successes);
+                        } else if claim.is_some() && !woke {
+                            woke = true;
+                            self.wake_service
+                                .speculative_wake_and_wait(wake_request)
+                                .await?;
+                            self.wake_service.record_wake_success();
+                            continue;
+                        }
+                        tokio::select! {
+                            event = events.recv() => {
+                                if let Err(tokio::sync::broadcast::error::RecvError::Closed) = event {
+                                    return Err(SchedulerError::Router(error));
+                                }
+                            }
+                            _ = sleep(WAKE_WAITER_POLL) => {}
                         }
                     }
                 })
@@ -1652,6 +1679,101 @@ mod decision_race_tests {
             }
             server.abort();
         }
+    }
+
+    #[tokio::test]
+    async fn embedding_wake_waits_for_booting_runner_without_waking_another() {
+        use simple_server::web::{routing::post, Json, Router};
+        let (mut s, audit) = setup();
+        let socket = capacity_wake_setup(&mut s, &audit).await;
+        audit
+            .upsert_runner(
+                "spare",
+                "spare",
+                Some("00:11:22:33:44:77"),
+                Some("halo"),
+                Some(&[DECISION_MODEL.into()]),
+            )
+            .unwrap();
+        let _ = audit.record_metric("offline", "boot", 1_000);
+        let _ = audit.record_metric("spare", "boot", 5_000);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/v1/embeddings",
+            post(|Json(_): Json<serde_json::Value>| async move {
+                Json(serde_json::json!({"object":"list", "model":DECISION_MODEL, "data":[], "usage":{"prompt_tokens":1,"total_tokens":1}}))
+            }),
+        );
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
+        });
+        let woken = Arc::new(std::sync::Mutex::new(Vec::<[u8; 6]>::new()));
+        let collector = {
+            let woken = woken.clone();
+            tokio::spawn(async move {
+                let mut packet = [0; 1024];
+                while let Ok(read) = socket.recv(&mut packet).await {
+                    if read >= 12 {
+                        woken
+                            .lock()
+                            .unwrap()
+                            .push(packet[6..12].try_into().unwrap());
+                    }
+                }
+            })
+        };
+        let request =
+            serde_json::from_value(serde_json::json!({"model":DECISION_MODEL,"input":"query"}))
+                .unwrap();
+        let model_request = ModelRequest::Specific(DECISION_MODEL.into());
+        let boot = async {
+            while woken.lock().unwrap().is_empty() {
+                sleep(Duration::from_millis(10)).await;
+            }
+            // Connected, but still starting and not advertising the embedder.
+            let (tx, _rx) = tokio::sync::mpsc::channel(4);
+            let mut starting = status(false);
+            starting.health = RunnerHealth::Starting;
+            starting.engines.clear();
+            s.runner_registry
+                .register(
+                    "offline".into(),
+                    "offline".into(),
+                    Some("halo".into()),
+                    starting,
+                    Some(url.clone()),
+                    tx,
+                    None,
+                )
+                .await;
+            sleep(Duration::from_millis(300)).await;
+            let mut ready = status(false);
+            ready.engines[0].resource_group = Some("cpu:embed".into());
+            s.runner_registry.update_status("offline", ready).await;
+        };
+        let concurrent = async {
+            sleep(Duration::from_millis(150)).await;
+            s.embeddings("concurrent", DECISION_MODEL, &model_request, &request)
+                .await
+        };
+        let (first, second, ()) = tokio::join!(
+            s.embeddings("first", DECISION_MODEL, &model_request, &request),
+            concurrent,
+            boot
+        );
+        assert_eq!(first.unwrap().runner_id, "offline");
+        assert_eq!(second.unwrap().runner_id, "offline");
+        sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            *woken.lock().unwrap(),
+            vec![[0x00, 0x11, 0x22, 0x33, 0x44, 0x66]]
+        );
+        assert!(!s.wake_service.wake_pending(&model_request));
+        collector.abort();
+        server.abort();
     }
 
     #[tokio::test]

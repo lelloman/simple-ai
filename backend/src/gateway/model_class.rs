@@ -106,7 +106,7 @@ pub fn classify_model(model_id: &str, config: &ModelsConfig) -> Option<ModelClas
 }
 
 /// Parsed model request - either a specific model or a class.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ModelRequest {
     /// Request for a specific model by ID
     Specific(String),
