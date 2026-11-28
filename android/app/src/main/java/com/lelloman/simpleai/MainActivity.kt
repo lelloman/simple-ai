@@ -10,10 +10,7 @@ import com.lelloman.lellodesign.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -92,10 +89,10 @@ class MainActivity : ComponentActivity() {
                     else -> "models"
                 }
                 val tabs = listOf(
-                    LelloDestination("models", stringResource(R.string.nav_models)) { Icon(Icons.AutoMirrored.Filled.List, null) },
-                    LelloDestination("translate", stringResource(R.string.nav_translate)) { Icon(Icons.Default.Edit, null) },
-                    LelloDestination("apps", stringResource(R.string.nav_apps)) { Icon(Icons.Default.Person, null) },
-                    LelloDestination("settings", stringResource(R.string.nav_settings)) { Icon(Icons.Default.Settings, null) },
+                    LelloDestination("models", stringResource(R.string.nav_models)) { Icon(painterResource(R.drawable.ic_nav_models), null) },
+                    LelloDestination("translate", stringResource(R.string.nav_translate)) { Icon(painterResource(R.drawable.ic_nav_translate), null) },
+                    LelloDestination("apps", stringResource(R.string.nav_apps)) { Icon(painterResource(R.drawable.ic_nav_apps), null) },
+                    LelloDestination("settings", stringResource(R.string.nav_settings)) { Icon(Icons.Outlined.Settings, null) },
                 )
                 val title = when {
                     destination?.hasRoute<TranslationLanguages>() == true -> stringResource(R.string.ui_manage_languages)
@@ -111,11 +108,7 @@ class MainActivity : ComponentActivity() {
                     bottomDestinations = if (rootScreen) tabs else emptyList(),
                     onBack = if (rootScreen) null else ({ navController.popBackStack(); Unit }),
                     logo = {
-                        Surface(color = androidx.compose.ui.graphics.Color.White,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(7.dp)) {
-                            Icon(painterResource(R.drawable.ic_brand), null,
-                                modifier = Modifier.size(32.dp), tint = androidx.compose.ui.graphics.Color.Unspecified)
-                        }
+                        LelloProductMark { Icon(painterResource(R.drawable.ic_brand_symbol), null) }
                     },
                     account = { compact ->
                         val signedIn by sharedViewModel.gatewaySignedIn.collectAsState()
@@ -127,10 +120,6 @@ class MainActivity : ComponentActivity() {
                         LelloAccount(label,
                             onClick = { navController.navigate(Settings) { launchSingleTop = true } }, compact = compact)
                     },
-                    actions = { LelloAppearanceSelector(appearance, onSelected = {
-                        appearance = it
-                        preferences.edit().putString("mode", it.name).apply()
-                    }) },
                     onNavigate = { id ->
                         val route = when (id) {
                             "translate" -> TranslationTest
@@ -155,7 +144,12 @@ class MainActivity : ComponentActivity() {
                             TranslationTestScreen(sharedViewModel, onLanguages = { navController.navigate(TranslationLanguages) })
                         }
                         composable<Apps> { ConnectedApps() }
-                        composable<Settings> { SettingsScreen(sharedViewModel, onAbout = { navController.navigate(About) }) }
+                        composable<Settings> {
+                            SettingsScreen(sharedViewModel, appearance, onAppearance = {
+                                appearance = it
+                                preferences.edit().putString("mode", it.name).apply()
+                            }, onAbout = { navController.navigate(About) })
+                        }
                         composable<ModelDetail> { detail ->
                             ModelDetailScreen(detail.toRoute<ModelDetail>().model, sharedViewModel) { navController.popBackStack() }
                         }

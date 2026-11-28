@@ -25,7 +25,6 @@
     <string name="ui_downloading">Downloading… %1$d%%</string>
     <string name="ui_downloading_2">Downloading %1$s</string>
     <string name="ui_enter_text_to_translate" formatted="false">Enter text to translate</string>
-    <string name="ui_error" formatted="false">Error</string>
     <string name="ui_from" formatted="false">From</string>
     <string name="ui_local_ai" formatted="false">Local AI</string>
     <string name="ui_manage_languages" formatted="false">Manage languages</string>
@@ -116,8 +115,6 @@
     <string name="gateway_signed_out">Sign in to let approved apps use Cloud AI</string>
     <string name="gateway_sign_in">Sign in</string>
     <string name="gateway_sign_out">Sign out</string>
-    <string name="settings_account">Account</string>
-    <string name="gateway_status_signed_in">Signed in</string>
     <string name="gateway_status_signed_out">Not signed in</string>
     <string name="gateway_signed_out_hint">Sign in to let approved apps use Cloud AI with your account.</string>
     <string name="gateway_no_server_title">No Cloud AI server</string>
@@ -133,4 +130,24 @@
     <string name="gateway_profile_unavailable">Account details unavailable</string>
     <string name="gateway_profile_unavailable_hint">Your session is active, but no username was provided. Sign in again to refresh account details.</string>
     <string name="settings_downloads">Downloads</string>
+    <string name="models_on_device">On-device models</string>
+    <string name="models_on_device_meta">Downloaded once, shared by every approved app</string>
+    <string name="models_translation">Translation</string>
+    <string name="model_details">Details</string>
+    <string name="model_detail_model">Model</string>
+    <string name="model_detail_size">Download size</string>
+    <string name="model_detail_status">Status</string>
+    <string name="model_not_downloaded">Not downloaded</string>
+    <string name="translate_failed">Translation failed</string>
+    <string name="languages_count">%1$d on this device</string>
+    <string name="settings_service_problem">SimpleAI service unavailable</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_system">Follows the system setting</string>
+    <string name="settings_help">Help</string>
+    <string name="gateway_status_signed_in_server">Signed in · %1$s</string>
+    <string name="about_help_and_support">Help and support</string>
+    <string name="about_diagnostics_hint">Version and device details, without personal data</string>
 </resources>
